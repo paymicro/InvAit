@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="UIBlazor/UIBlazor.csproj" />
+  <Project Path="InvGen/InvGen.csproj" Id="306abb42-dd0a-49db-a5ef-2165c3db35ea" />
+</Solution>
