@@ -1,14 +1,13 @@
 ﻿using System;
-using System.Configuration.Assemblies;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Text.Json;
+using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Forms;
-using Microsoft.VisualStudio.OLE.Interop;
-using Microsoft.VisualStudio.Shell;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
+using Shared.Contracts;
 using MessageBox = System.Windows.MessageBox;
 using Package = Microsoft.VisualStudio.Shell.Package;
 
@@ -23,12 +22,11 @@ public partial class ChatControl
     public ChatControl()
     {
         InitializeComponent();
-        Loaded += OnLoaded;
-
         _viewModel = (ChatViewModel)DataContext;
+        Loaded += (_, _) => _ = HandleLoadedAsync();
     }
 
-    private async void OnLoaded(object sender, RoutedEventArgs e)
+    private async Task HandleLoadedAsync()
     {
         try
         {
@@ -56,7 +54,20 @@ public partial class ChatControl
             }
         }
 
-        _webView = new WebView2();
+        WebViewHost.Content = _webView = new WebView2();
+
+        var userDataFolder = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "InvGenChatWebView2");
+
+        var options = new CoreWebView2EnvironmentOptions("--allow-running-insecure-content");
+        var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder, options);
+        await _webView.EnsureCoreWebView2Async(env);
+
+        SetupVirtualHost();
+
+        _webView.WebMessageReceived += (sender, e) => _ = HandleWebMessageAsync(e);
+        _webView.CoreWebView2.NavigationStarting += (_, _) => SetupVirtualHost();
         //_webView.CoreWebView2InitializationCompleted += CoreWebView2InitializationCompleted;
         //_webView.NavigationCompleted += (_, _) =>
         //{
@@ -64,25 +75,33 @@ public partial class ChatControl
         //    _viewModel.ForceDownloadChats();
         //    _ = _viewModel.LoadChatAsync();
         //};
+    }
 
-        WebViewHost.Content = _webView;
-
-        var userDataFolder = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "InvGenChatWebView2");
-
-        var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
-        await _webView.EnsureCoreWebView2Async(env);
-
-        SetupVirtualHost();
-
-        //_webView.WebMessageReceived += WebViewOnWebMessageReceived;
-
-        _webView.CoreWebView2.NavigationStarting += (sender, args) =>
+    private async Task HandleWebMessageAsync(CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        try
         {
-            SetupVirtualHost();
-        };
+            var request = JsonSerializer.Deserialize<VsRequest>(e.WebMessageAsJson);
 
+            if (request == null)
+            {
+                return;
+            }
+
+            VsResponse response = request.Action switch
+            {
+                //"getActiveDocumentContent" => await HandleGetDocumentAsync(request),
+                //"insertTextAtCursor" => await HandleInsertTextAsync(request),
+                _ => new VsResponse { CorrelationId = request.CorrelationId, Success = false, Error = "Unknown action" }
+            };
+
+            var json = JsonSerializer.Serialize(response);
+            await _webView.CoreWebView2.ExecuteScriptAsync($"window.receiveVsResponse({json})");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"WebMessage error: {ex.Message}");
+        }
     }
 
     private void SetupVirtualHost()
