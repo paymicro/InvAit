@@ -1,0 +1,92 @@
+﻿@using UIBlazor.Options
+@using UIBlazor.Services
+@inherits RadzenComponent
+
+<RadzenStack Orientation="Orientation.Vertical">
+    <RadzenFormField Text="Endpoint" Variant="Variant.Outlined">
+		<RadzenTextBox @bind-Value="@Options.Endpoint" />
+    </RadzenFormField>
+
+    <RadzenFormField Text="ApiKey" Variant="Variant.Outlined">
+        <RadzenTextBox @bind-Value="@Options.ApiKey" />
+    </RadzenFormField>
+
+	<RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+        <RadzenDropDown TValue="string"
+                        Data="@Options.AvailableModels"
+                        @bind-Value="@Options.Model"
+                        Placeholder="Select model"
+						Style="width: 100%"/>
+        <RadzenButton Icon="autorenew" Click="() => UpdateModelsAsync(CancellationToken.None)" ButtonStyle="ButtonStyle.Light"/>
+    </RadzenStack>
+
+	<RadzenFormField Text="Proxy" Variant="Variant.Outlined" >
+		<RadzenTextBox @bind-Value="@Options.Proxy" />
+	</RadzenFormField>
+
+	<RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+		<RadzenCheckBox @bind-Value=@Options.Stream Name="Stream" />
+		<RadzenLabel Text="Use stream" Component="Stream" />
+	</RadzenStack>
+
+	
+	<RadzenStack Gap="0.2rem">
+		<RadzenLabel Text="Temperature" />
+		<RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+			<RadzenSlider @bind-Value="@Options.Temperature" Min="0" Max="2" Step="0.1" Style="width: 100%; height: 20px;" />
+			<RadzenLabel Text="@Math.Abs(Options.Temperature).ToString("0.0")" Style="text-align: right; width: 50px;" />
+		</RadzenStack>
+	</RadzenStack>
+
+	<RadzenStack Gap="0.2rem">
+		<RadzenLabel Text="Max tokens in response" />
+		<RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+			<RadzenSlider @bind-Value="@Options.MaxTokens" Min=200 Max=100000 Step="100" Style="width: 100%; height: 20px;" />
+			<RadzenLabel Text="@Options.MaxTokens.ToString()" Style="text-align: right; width: 50px;" />
+		</RadzenStack>
+	</RadzenStack>
+
+	<RadzenStack Gap="0.2rem">
+		<RadzenLabel Text="Max messages in memory" />
+		<RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+			<RadzenSlider @bind-Value="@Options.MaxMessages" Min=5 Max=100 Style="width: 100%; height: 20px;" />
+			<RadzenLabel Text="@Options.MaxMessages.ToString()" Style="text-align: right; width: 50px;" />
+		</RadzenStack>
+	</RadzenStack>
+
+	<RadzenStack Gap="0.2rem">
+		<RadzenLabel Text="Max hours before cleanup conversation" />
+		<RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+			<RadzenSlider @bind-Value="@Options.SessionMaxAgeHours" Min=1 Max=2400 Style="width: 100%; height: 20px;" />
+			<RadzenLabel Text="@Options.SessionMaxAgeHours.ToString("0 H")" Style="text-align: right; width: 50px;" />
+		</RadzenStack>
+	</RadzenStack>
+
+	<RadzenFormField Text="System prompt" Variant="Variant.Outlined">
+		<RadzenTextArea @bind-Value="@Options.SystemPrompt" Style="min-height: 90px" />
+	</RadzenFormField>
+
+	<RadzenButton Text="Reset tuning settings" Click="OnReset" />
+</RadzenStack>
+
+@code
+{
+	[Inject] ChatService ChatService { get; set; } = null!;
+	[Inject] AiSettingsProvider AiSettingsProvider { get; set; } = null!;
+
+	private AiOptions Options => AiSettingsProvider.Current;
+
+	private CancellationTokenSource? _cts;
+
+	private async Task UpdateModelsAsync(CancellationToken cancellationToken)
+	{
+		var models = await ChatService.GetModelsAsync(cancellationToken);
+		await InvokeAsync(() => Options.AvailableModels = models?.Data?.Select(m => m.Id).ToList() ?? []);
+		StateHasChanged();
+	}
+
+	private async Task OnReset(MouseEventArgs args)
+	{
+		await AiSettingsProvider.ResetAsync();
+	}
+}

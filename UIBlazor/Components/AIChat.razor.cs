@@ -4,12 +4,13 @@ using Microsoft.JSInterop;
 using Radzen;
 using Radzen.Blazor;
 using Radzen.Blazor.Rendering;
+using UIBlazor.Services;
 
 namespace UIBlazor.Components;
 
-public partial class AIChat : RadzenComponent
+public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenComponent
 {
-    private List<ChatMessage> Messages { get; set; } = new();
+    private List<ChatMessage> Messages { get; set; } = [];
     private string CurrentInput { get; set; } = string.Empty;
     private bool IsLoading { get; set; }
     private bool preventDefault;
@@ -59,7 +60,7 @@ public partial class AIChat : RadzenComponent
     /// Gets or sets the text displayed in the user avatar.
     /// </summary>
     [Parameter]
-    public string UserAvatarText { get; set; } = "User";
+    public string UserAvatarText { get; set; } = "U";
 
     /// <summary>
     /// Gets or sets the text displayed in the assistant avatar.
@@ -68,52 +69,16 @@ public partial class AIChat : RadzenComponent
     public string AssistantAvatarText { get; set; } = "AI";
 
     /// <summary>
-    /// Gets or sets the model name.
-    /// </summary>
-    [Parameter]
-    public string? Model { get; set; }
-
-    /// <summary>
-    /// Gets or sets the system prompt.
-    /// </summary>
-    [Parameter]
-    public string? SystemPrompt { get; set; }
-
-    /// <summary>
-    /// Gets or sets the temperature.
-    /// </summary>
-    [Parameter]
-    public double? Temperature { get; set; }
-
-    /// <summary>
     /// Gets or sets the max tokens.
     /// </summary>
     [Parameter]
     public int? MaxTokens { get; set; }
 
     /// <summary>
-    /// Gets or sets the endpoint URL for the AI service.
-    /// </summary>
-    [Parameter]
-    public string? Endpoint { get; set; }
-
-    /// <summary>
     /// Gets or sets the proxy URL for the AI service.
     /// </summary>
     [Parameter]
     public string? Proxy { get; set; }
-
-    /// <summary>
-    /// Gets or sets the API key for authentication.
-    /// </summary>
-    [Parameter]
-    public string? ApiKey { get; set; }
-
-    /// <summary>
-    /// Gets or sets the API key header name.
-    /// </summary>
-    [Parameter]
-    public string? ApiKeyHeader { get; set; }
 
     /// <summary>
     /// Gets or sets whether to show the clear chat button.
@@ -251,7 +216,15 @@ public partial class AIChat : RadzenComponent
         await InvokeAsync(StateHasChanged);
 
         // Get AI response
-        await GetAIResponse(content, Model, SystemPrompt, Temperature, MaxTokens, Endpoint, Proxy, ApiKey, ApiKeyHeader);
+        await GetAIResponse(content, 
+            aiSettingsProvider.Current.Model,
+            aiSettingsProvider.Current.SystemPrompt,
+            aiSettingsProvider.Current.Temperature,
+            aiSettingsProvider.Current.MaxTokens,
+            $"{aiSettingsProvider.Current.Endpoint}/v1/chat/completions",
+            string.IsNullOrEmpty(aiSettingsProvider.Current.Proxy) ? null : aiSettingsProvider.Current.Proxy,
+            aiSettingsProvider.Current.ApiKey,
+            aiSettingsProvider.Current.ApiKeyHeader);
     }
 
     /// <summary>
@@ -415,6 +388,17 @@ public partial class AIChat : RadzenComponent
     private async Task OnClearChat()
     {
         await ClearChat();
+    }
+
+    private async Task OnShowSettings()
+    {
+        await DialogService.OpenSideAsync<AiSettings>("Settings", options: new SideDialogOptions {
+            CloseDialogOnOverlayClick = true,
+            Resizable = false,
+            Position = DialogPosition.Right,
+            MinHeight = 250.0,
+            MinWidth = 350.0
+        });
     }
 
     /// <inheritdoc />

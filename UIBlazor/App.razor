@@ -1,7 +1,45 @@
-﻿<RadzenTheme Theme="software" />
-<Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
-    <Found Context="routeData">
-        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)"/>
-        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
-    </Found>
-</Router>
+﻿@using Microsoft.Extensions.Options
+@using UIBlazor.Components
+@using UIBlazor.Services
+
+<HeadContent>
+	<RadzenTheme Theme="standard-dark" />
+	<link rel="stylesheet" href="css/app.css" />
+</HeadContent>
+
+<RadzenComponents />
+
+<RadzenLayout>
+	<RadzenBody>
+		<AIChat Title="InvGen Chat"
+				ShowClearButton="true"
+				class="rz-h-100" />
+	</RadzenBody>
+</RadzenLayout>
+
+
+@* <RadzenTabs TabPosition="TabPosition.TopRight">
+    <Tabs>
+        <RadzenTabsItem Text="Chat">
+            <AIChat Title="InvGen Chat"
+                    Placeholder="Ask me anything..."
+                    ShowClearButton="true"
+                    class="rz-h-100" />
+        </RadzenTabsItem>
+        <RadzenTabsItem Text="Settings">
+            <AiSettings />
+        </RadzenTabsItem>
+    </Tabs>
+</RadzenTabs> *@
+
+@code
+{
+	[Inject]
+	private AiSettingsProvider AiSettingsProvider { get; set; } = null!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        await AiSettingsProvider.InitializeAsync();
+    }
+}
