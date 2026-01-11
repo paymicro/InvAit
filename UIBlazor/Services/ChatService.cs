@@ -27,6 +27,11 @@ public class ChatService(IServiceProvider serviceProvider, AiSettingsProvider ai
                 request.Headers.Add(aiSettingsProvider.Current.ApiKeyHeader, aiSettingsProvider.Current.ApiKey);
             }
         }
+
+        if (string.IsNullOrEmpty(aiSettingsProvider.Current.Endpoint))
+        {
+            throw new InvalidOperationException("Endpoint must be specified.");
+        }
         
         var httpClient = serviceProvider.GetRequiredService<HttpClient>();
         var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken).ConfigureAwait(false);

@@ -73,16 +73,39 @@
 {
 	[Inject] ChatService ChatService { get; set; } = null!;
 	[Inject] AiSettingsProvider AiSettingsProvider { get; set; } = null!;
+    [Inject] NotificationService NotificationService { get; set; } = null!;
 
 	private AiOptions Options => AiSettingsProvider.Current;
 
-	private CancellationTokenSource? _cts;
-
 	private async Task UpdateModelsAsync(CancellationToken cancellationToken)
-	{
-		var models = await ChatService.GetModelsAsync(cancellationToken);
-		await InvokeAsync(() => Options.AvailableModels = models?.Data?.Select(m => m.Id).ToList() ?? []);
-		StateHasChanged();
+    {
+        List<string> list = ["---"];
+        try
+        {
+            var models = await ChatService.GetModelsAsync(cancellationToken);
+            list = models.Data.Select(m => m.Id).ToList();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Models not found",
+                Detail = ex.Message,
+                Duration = 10_000,
+                ShowProgress = true,
+            });
+        }
+
+        await InvokeAsync(() =>
+        {
+            Options.AvailableModels = list;
+            if (!list.Contains(Options.Model))
+            {
+                Options.Model = list.First();
+            }
+        });
+        StateHasChanged();
 	}
 
 	private async Task OnReset(MouseEventArgs args)
