@@ -118,20 +118,19 @@
   <Target Name="IncludeUIBlazorInVsix" BeforeTargets="_CopyFilesMarkedCopyLocal;_CopyFilesToOutputDirectory;_CopySourceItemsToOutputDirectory">
     <PropertyGroup>
       <BlazorProjectPath>$(SolutionDir)UIBlazor\UIBlazor.csproj</BlazorProjectPath>
-      <BlazorPublishOutput>$(SolutionDir)UIBlazor\bin\$(Configuration)\net10.0\browser-wasm\publish</BlazorPublishOutput>
     </PropertyGroup>
-    <Message Text="UIBlazor project $(BlazorProjectPath)" Importance="high" />
-    <Message Text="UIBlazor output $(BlazorPublishOutput)" Importance="high" />
-    <Exec Command="dotnet publish &quot;$(BlazorProjectPath)&quot; -c $(Configuration) --no-restore -r browser-wasm --self-contained" Condition="!Exists('$(BlazorPublishOutput)\wwwroot\index.html')" WorkingDirectory="$(SolutionDir)UIBlazor" />
-    <ItemGroup>
-      <_BlazorFiles Include="$(BlazorPublishOutput)\wwwroot\**\*.*" />
-    </ItemGroup>
-    <Copy SourceFiles="@(_BlazorFiles)" DestinationFiles="@(_BlazorFiles->'$(MSBuildProjectDirectory)\UI\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+
+    <Exec Command="dotnet publish &quot;$(BlazorProjectPath)&quot; -c $(Configuration) --no-restore --self-contained --runtime browser-wasm --output UI"
+          Condition="!Exists('UI\wwwroot\index.html')" />
+
     <ItemGroup>
       <Content Include="UI\**\*.*">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         <IncludeInVSIX>true</IncludeInVSIX>
       </Content>
     </ItemGroup>
+  </Target>
+  <Target Name="RemoveUIBlazor" BeforeTargets="Clean">
+    <RemoveDir Directories="UI" />
   </Target>
 </Project>

@@ -82,6 +82,8 @@ public partial class ChatControl
         try
         {
             var request = JsonSerializer.Deserialize<VsRequest>(e.WebMessageAsJson);
+            // test
+            MessageBox.Show(e.WebMessageAsJson);
 
             if (request == null)
             {
@@ -108,7 +110,7 @@ public partial class ChatControl
     {
         var virtualHost = "blazorui.local";
         var assemblyPath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-        var blazorRoot = Path.Combine(assemblyPath, "UI");
+        var blazorRoot = Path.Combine(assemblyPath, "UI", "wwwroot");
 
 #if DEBUG
         if (!Directory.Exists(blazorRoot))

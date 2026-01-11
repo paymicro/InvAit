@@ -1,9 +1,11 @@
-﻿using Microsoft.AspNetCore.Components;
+﻿using System;
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using Radzen;
 using Radzen.Blazor;
 using Radzen.Blazor.Rendering;
+using Shared.Contracts;
 using UIBlazor.Services;
 
 namespace UIBlazor.Components;
@@ -401,6 +403,12 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
         });
     }
 
+    private async Task OnTest()
+    {
+        var message = new VsMessage { Action = "getActiveDocumentContent", Payload = "wow wow" };
+        await JS.InvokeVoidAsync("postVsMessage", message);  // в index.html: window.postVsMessage = msg => chrome.webview.postMessage(JSON.stringify(msg));
+    }
+
     /// <inheritdoc />
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -419,6 +427,13 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
     protected override string GetComponentCssClass()
     {
         return ClassList.Create("rz-chat").ToString();
+    }
+
+    [JSInvokable]
+    public static Task HandleVsResponse(VsMessage response)
+    {
+        // получение запроса от VS
+        return Task.CompletedTask;
     }
 
     /// <inheritdoc />
