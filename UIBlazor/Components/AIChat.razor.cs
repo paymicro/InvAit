@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Text.Json;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
@@ -20,6 +21,12 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
     private ElementReference messagesContainer;
     private CancellationTokenSource cts = new();
     private string? currentSessionId;
+
+    [Inject]
+    public NotificationService NotificationService { get; set; } = null!;
+
+    [Inject]
+    public IVsBridge VsBridge { get; set; } = null!;
 
     /// <summary>
     /// Gets or sets the session ID for maintaining conversation memory. If null, a new session will be created.
@@ -405,8 +412,11 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
 
     private async Task OnTest()
     {
-        var message = new VsMessage { Action = "getActiveDocumentContent", Payload = "wow wow" };
-        await JS.InvokeVoidAsync("postVsMessage", message);  // в index.html: window.postVsMessage = msg => chrome.webview.postMessage(JSON.stringify(msg));
+        var doc = await VsBridge.GetActiveDocumentContentAsync();
+        if (!string.IsNullOrEmpty(doc))
+        {
+            NotificationService.Notify(NotificationSeverity.Info, doc);
+        }
     }
 
     /// <inheritdoc />
@@ -429,12 +439,12 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
         return ClassList.Create("rz-chat").ToString();
     }
 
-    [JSInvokable]
-    public static Task HandleVsResponse(VsMessage response)
-    {
-        // получение запроса от VS
-        return Task.CompletedTask;
-    }
+    //[JSInvokable]
+    //public static Task HandleVsResponse(VsMessage response)
+    //{
+    //    // получение запроса от VS
+    //    return Task.CompletedTask;
+    //}
 
     /// <inheritdoc />
     public override void Dispose()

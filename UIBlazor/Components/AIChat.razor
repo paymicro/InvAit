@@ -2,6 +2,7 @@
 
 @inject IAIChatService ChatService
 @inject DialogService DialogService
+@inject IJSRuntime JS
 
 <div @ref="@Element" @attributes="Attributes" class="@GetCssClass()" style="@Style" id="@GetId()" >
     <!-- Chat Header -->
@@ -20,6 +21,7 @@
 			}
 			<RadzenButton Icon="settings" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
 							Click="@OnShowSettings" Title="Settings" class="rz-chat-header-settings" />
+			<RadzenButton Icon="close" Click="@OnTest" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" />
         </RadzenStack>
     </RadzenStack>
 

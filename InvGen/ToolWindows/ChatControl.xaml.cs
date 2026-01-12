@@ -81,9 +81,7 @@ public partial class ChatControl
     {
         try
         {
-            var request = JsonSerializer.Deserialize<VsRequest>(e.WebMessageAsJson);
-            // test
-            MessageBox.Show(e.WebMessageAsJson);
+            var request = JsonSerializer.Deserialize<VsRequest>(e.WebMessageAsJson, JsonSerializerOptions.Web);
 
             if (request == null)
             {
@@ -92,12 +90,12 @@ public partial class ChatControl
 
             VsResponse response = request.Action switch
             {
-                //"getActiveDocumentContent" => await HandleGetDocumentAsync(request),
+                "getActiveDocumentContent" => new VsResponse { CorrelationId = request.CorrelationId, Success = true, Payload = "test content" },
                 //"insertTextAtCursor" => await HandleInsertTextAsync(request),
                 _ => new VsResponse { CorrelationId = request.CorrelationId, Success = false, Error = "Unknown action" }
             };
 
-            var json = JsonSerializer.Serialize(response);
+            var json = JsonSerializer.Serialize(response, JsonSerializerOptions.Web);
             await _webView.CoreWebView2.ExecuteScriptAsync($"window.receiveVsResponse({json})");
         }
         catch (Exception ex)
