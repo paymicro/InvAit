@@ -13,9 +13,10 @@ window.postVsMessage = msg => chrome.webview.postMessage(msg);
 
 // сообщение InvGen -> UIBlazor
 // response - объект
-window.receiveVsResponse = function (response) {
+// isMessage - boolean. true - инициатор InvGen. false - ответ на запрос выше.
+window.receiveVsResponse = function (response, isMessage) {
     if (vsBridgeHandler) {
-        vsBridgeHandler.invokeMethodAsync('HandleVsResponse', JSON.stringify(response))
+        vsBridgeHandler.invokeMethodAsync('HandleVsResponse', JSON.stringify(response), isMessage)
             .catch(err => console.error('Error invoking HandleVsResponse:', err));
     } else {
         console.error('VS Bridge handler not initialized yet');

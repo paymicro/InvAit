@@ -96,7 +96,7 @@ public partial class ChatControl
             };
 
             var json = JsonSerializer.Serialize(response, JsonSerializerOptions.Web);
-            await _webView.CoreWebView2.ExecuteScriptAsync($"window.receiveVsResponse({json})");
+            await _webView.CoreWebView2.ExecuteScriptAsync($"window.receiveVsResponse({json}, false)");
         }
         catch (Exception ex)
         {

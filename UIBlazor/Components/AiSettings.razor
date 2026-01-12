@@ -4,11 +4,11 @@
 
 <RadzenStack Orientation="Orientation.Vertical">
     <RadzenFormField Text="Endpoint" Variant="Variant.Outlined">
-		<RadzenTextBox @bind-Value="@Options.Endpoint" />
+		<RadzenTextBox @bind-Value="@Options.Endpoint" Immediate />
     </RadzenFormField>
 
     <RadzenFormField Text="ApiKey" Variant="Variant.Outlined">
-        <RadzenTextBox @bind-Value="@Options.ApiKey" />
+		<RadzenPassword @bind-Value="@Options.ApiKey" Immediate />
     </RadzenFormField>
 
 	<RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
@@ -20,16 +20,11 @@
         <RadzenButton Icon="autorenew" Click="() => UpdateModelsAsync(CancellationToken.None)" ButtonStyle="ButtonStyle.Light"/>
     </RadzenStack>
 
-	<RadzenFormField Text="Proxy" Variant="Variant.Outlined" >
-		<RadzenTextBox @bind-Value="@Options.Proxy" />
-	</RadzenFormField>
-
 	<RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
 		<RadzenCheckBox @bind-Value=@Options.Stream Name="Stream" />
 		<RadzenLabel Text="Use stream" Component="Stream" />
 	</RadzenStack>
 
-	
 	<RadzenStack Gap="0.2rem">
 		<RadzenLabel Text="Temperature" />
 		<RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
@@ -71,9 +66,14 @@
 
 @code
 {
-	[Inject] ChatService ChatService { get; set; } = null!;
-	[Inject] AiSettingsProvider AiSettingsProvider { get; set; } = null!;
-    [Inject] NotificationService NotificationService { get; set; } = null!;
+	[Inject]
+	ChatService ChatService { get; set; } = null!;
+
+	[Inject]
+	AiSettingsProvider AiSettingsProvider { get; set; } = null!;
+
+    [Inject]
+	NotificationService NotificationService { get; set; } = null!;
 
 	private AiOptions Options => AiSettingsProvider.Current;
 

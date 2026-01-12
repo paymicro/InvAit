@@ -1,6 +1,5 @@
 ﻿using System.Collections.Concurrent;
 using System.Text.Json;
-using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Radzen;
 using Shared.Contracts;
@@ -84,10 +83,22 @@ public class VsBridgeProxy : IVsBridge, IDisposable
     }
 
     [JSInvokable("HandleVsResponse")]
-    public async Task HandleVsResponseAsync(string responseJson)
+    public async Task HandleVsResponseAsync(string responseJson, bool isMessage)
     {
         try
         {
+            if (isMessage)
+            {
+                var message = JsonSerializer.Deserialize<VsMessage>(responseJson, JsonSerializerOptions.Web);
+                if (message == null || string.IsNullOrEmpty(message.CorrelationId))
+                {
+                    Console.WriteLine("Invalid message received");
+                    return;
+                }
+
+                //TODO: обработка сообщений (выделение, выбран документ ...)
+            }
+
             var response = JsonSerializer.Deserialize<VsResponse>(responseJson, JsonSerializerOptions.Web);
 
             if (response == null || string.IsNullOrEmpty(response.CorrelationId))

@@ -1,6 +1,4 @@
-﻿using System;
-using System.Text.Json;
-using Microsoft.AspNetCore.Components;
+﻿using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using Radzen;
@@ -23,10 +21,13 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
     private string? currentSessionId;
 
     [Inject]
-    public NotificationService NotificationService { get; set; } = null!;
+    private NotificationService NotificationService { get; set; } = null!;
 
     [Inject]
-    public IVsBridge VsBridge { get; set; } = null!;
+    private LocalStorageService Storage { get; set; } = null!;
+
+    [Inject]
+    private IVsBridge VsBridge { get; set; } = null!;
 
     /// <summary>
     /// Gets or sets the session ID for maintaining conversation memory. If null, a new session will be created.
@@ -225,45 +226,7 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
         await InvokeAsync(StateHasChanged);
 
         // Get AI response
-        await GetAIResponse(content, 
-            aiSettingsProvider.Current.Model,
-            aiSettingsProvider.Current.SystemPrompt,
-            aiSettingsProvider.Current.Temperature,
-            aiSettingsProvider.Current.MaxTokens,
-            $"{aiSettingsProvider.Current.Endpoint}/v1/chat/completions",
-            string.IsNullOrEmpty(aiSettingsProvider.Current.Proxy) ? null : aiSettingsProvider.Current.Proxy,
-            aiSettingsProvider.Current.ApiKey,
-            aiSettingsProvider.Current.ApiKeyHeader);
-    }
-
-    /// <summary>
-    /// Sends a message programmatically with custom AI parameters.
-    /// </summary>
-    /// <param name="content">The message content to send.</param>
-    /// <param name="model">Optional model name to override the configured model.</param>
-    /// <param name="systemPrompt">Optional system prompt to override the configured system prompt.</param>
-    /// <param name="temperature">Optional temperature to override the configured temperature.</param>
-    /// <param name="maxTokens">Optional maximum tokens to override the configured max tokens.</param>
-    /// <param name="endpoint">Optional endpoint URL to override the configured endpoint.</param>
-    /// <param name="proxy">Optional proxy URL to override the configured proxy.</param>
-    /// <param name="apiKey">Optional API key to override the configured API key.</param>
-    /// <param name="apiKeyHeader">Optional API key header name to override the configured header.</param>
-    public async Task SendMessage(string content, string? model = null, string? systemPrompt = null, double? temperature = null, int? maxTokens = null, string? endpoint = null, string? proxy = null, string? apiKey = null, string? apiKeyHeader = null)
-    {
-        if (string.IsNullOrWhiteSpace(content) || Disabled || IsLoading)
-            return;
-
-        // Add user message
-        var userMessage = AddMessage(content, true);
-        await MessageAdded.InvokeAsync(userMessage);
-        await MessageSent.InvokeAsync(content);
-
-        // Clear input
-        CurrentInput = string.Empty;
-        await InvokeAsync(StateHasChanged);
-
-        // Get AI response with custom parameters
-        await GetAIResponse(content, model, systemPrompt, temperature, maxTokens, endpoint, proxy, apiKey, apiKeyHeader);
+        await GetAIResponse(content);
     }
 
     /// <summary>
@@ -288,7 +251,7 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
         await InvokeAsync(StateHasChanged);
     }
 
-    private async Task GetAIResponse(string userInput, string? model = null, string? systemPrompt = null, double? temperature = null, int? maxTokens = null, string? endpoint = null, string? proxy = null, string? apiKey = null, string? apiKeyHeader = null)
+    private async Task GetAIResponse(string userInput)
     {
         if (string.IsNullOrWhiteSpace(userInput))
             return;
@@ -313,7 +276,7 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
         try
         {
             var response = "";
-            await foreach (var token in ChatService.GetCompletionsAsync(userInput, currentSessionId, cts.Token, model, systemPrompt, temperature, maxTokens, endpoint, proxy, apiKey, apiKeyHeader))
+            await foreach (var token in ChatService.GetCompletionsAsync(userInput, currentSessionId, cts.Token))
             {
                 response += token;
                 assistantMessage.Content = response;
@@ -438,13 +401,6 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
     {
         return ClassList.Create("rz-chat").ToString();
     }
-
-    //[JSInvokable]
-    //public static Task HandleVsResponse(VsMessage response)
-    //{
-    //    // получение запроса от VS
-    //    return Task.CompletedTask;
-    //}
 
     /// <inheritdoc />
     public override void Dispose()
