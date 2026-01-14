@@ -5,7 +5,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Radzen;
-using UIBlazor.Agents;
 using UIBlazor.Models;
 using UIBlazor.Options;
 
@@ -14,11 +13,10 @@ namespace UIBlazor.Services;
 public class ChatService(
     IServiceProvider serviceProvider,
     AiSettingsProvider aiSettingsProvider,
-    BuiltInAgent builtInAgent
+    ToolManager toolManager,
+    LocalStorageService localStorage
     )
 {
-    private readonly Dictionary<string, ConversationSession> _sessions = new();
-    private readonly object _sessionsLock = new();
     public AiOptions Options => aiSettingsProvider.Current;
 
     public async Task<AiModelList> GetModelsAsync(CancellationToken cancellationToken)
@@ -69,7 +67,7 @@ public class ChatService(
         }
 
         // Get or create session
-        var session = GetOrCreateSession(sessionId);
+        var session = await GetOrCreateSessionAsync(sessionId);
 
         // Add user message to conversation history
         session.AddMessage("user", userInput);
@@ -79,8 +77,9 @@ public class ChatService(
         var effectiveApiKey = Options.ApiKey;
         var effectiveApiKeyHeader = Options.ApiKeyHeader;
 
+        var systemPrompt = toolManager.GetToolUseSystemInstructions(Options.SystemPrompt);
         // Get formatted messages including conversation history
-        var messages = session.GetFormattedMessages(Options.SystemPrompt);
+        var messages = session.GetFormattedMessages(systemPrompt);
 
         var payload = new
         {
@@ -184,62 +183,54 @@ public class ChatService(
         return result;
     }
 
-    public ConversationSession GetOrCreateSession(string sessionId = null)
+    public async Task<ConversationSession> GetOrCreateSessionAsync(string sessionId = null)
     {
-        lock (_sessionsLock)
+        if (string.IsNullOrEmpty(sessionId))
         {
-            if (string.IsNullOrEmpty(sessionId))
-            {
-                sessionId = Guid.NewGuid().ToString();
-            }
+            sessionId = $"{DateTime.Now:D}";
+        }
 
-            if (!_sessions.TryGetValue(sessionId, out var session))
-            {
-                session = new ConversationSession
+        var sessionList = await GetSessionsListAsync();
+        ConversationSession session;
+        if (sessionList.Contains(sessionId))
+        {
+            session = await localStorage.GetItemAsync<ConversationSession>(sessionId) ??
+                new ConversationSession
                 {
                     Id = sessionId,
                     MaxMessages = Options.MaxMessages
                 };
-                _sessions[sessionId] = session;
-            }
-
-            return session;
         }
-    }
-
-    public void ClearSession(string sessionId)
-    {
-        lock (_sessionsLock)
+        else
         {
-            if (_sessions.TryGetValue(sessionId, out var session))
+            session = new ConversationSession
             {
-                session.Clear();
-            }
+                Id = sessionId,
+                MaxMessages = Options.MaxMessages
+            };
+
+            sessionList.Add(sessionId);
         }
+
+        await SetSessionsListAsync(sessionList);
+
+        return session;
     }
 
-    public IEnumerable<ConversationSession> GetActiveSessions()
-    {
-        lock (_sessionsLock)
-        {
-            return _sessions.Values.ToList();
-        }
-    }
+    private async Task<List<string>> GetSessionsListAsync()
+        => await localStorage.GetItemAsync<List<string>>("sessionList") ?? [];
 
-    public void CleanupOldSessions(int maxAgeHours = 24)
-    {
-        lock (_sessionsLock)
-        {
-            var cutoffTime = DateTime.Now.AddHours(-maxAgeHours);
-            var sessionsToRemove = _sessions.Values
-                .Where(s => s.LastUpdated < cutoffTime)
-                .Select(s => s.Id)
-                .ToList();
+    private async Task SetSessionsListAsync(List<string> sessionList)
+        => await localStorage.SetItemAsync("sessionList", sessionList);
 
-            foreach (var sessionId in sessionsToRemove)
-            {
-                _sessions.Remove(sessionId);
-            }
+    public async Task ClearSessionAsync(string sessionId)
+    {
+        var sessions = await GetSessionsListAsync();
+        var index = sessions.FindIndex(s => s == sessionId);
+        if (index != -1)
+        {
+            sessions.RemoveAt(index);
+            await SetSessionsListAsync(sessions);
         }
     }
 

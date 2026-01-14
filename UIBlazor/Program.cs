@@ -16,6 +16,7 @@ builder.Services.AddScoped<LocalStorageService>();
 builder.Services.AddScoped<AiSettingsProvider>();
 builder.Services.AddScoped<IVsBridge, VsBridge>();
 builder.Services.AddScoped<BuiltInAgent>();
+builder.Services.AddScoped<ToolManager>();
 
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 

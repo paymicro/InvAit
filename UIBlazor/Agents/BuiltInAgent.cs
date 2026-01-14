@@ -1,5 +1,4 @@
 ﻿using Shared.Contracts;
-using UIBlazor.Utils;
 using UIBlazor.VS;
 
 namespace UIBlazor.Agents;
@@ -16,6 +15,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
                                      For example, to read 2 files, you would respond with this:
                                      <|tool_call_begin|> functions.read_files:1 <|tool_call_argument_begin|> {"files": [ \"path/to/the_file1.txt\", \"path/to/the_file2.txt\" ]} <|tool_call_end|>
                                      """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, args),
             ApprovalNeeded = false
         },
         new()
@@ -28,7 +28,9 @@ public class BuiltInAgent(IVsBridge vsBridge)
             ExampleToSystemMessage = """
                                      For example
                                      <|tool_call_begin|> functions.read_currently_open_file:1 <|tool_call_argument_begin|> <|tool_call_end|>
-                                     """
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ReadOpenFile, args),
+            ApprovalNeeded = false
         },
         new()
         {
@@ -37,7 +39,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
             ExampleToSystemMessage = """
                                      For example, to create a file located at 'path/to/file.txt', you would respond with:
                                      <|tool_call_begin|> functions.create_new_file:1 <|tool_call_argument_begin|> {"filepath": "path/to/file.txt", "contents": "Contents of the file"} <|tool_call_end|>
-                                     """
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.CreateFile, args)
         },
         new()
         {
@@ -54,7 +57,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
             ExampleToSystemMessage = """
                                      For example, to see the git log, you could respond with:
                                      <|tool_call_begin|> functions.execute_command:1 <|tool_call_argument_begin|> {"exe": "dotnet", "command": "restore"} <|tool_call_end|>
-                                     """
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Exec, args)
         },
         new()
         {
@@ -63,7 +67,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
             ExampleToSystemMessage = """
                                      For example:
                                      <|tool_call_begin|> functions.search_files:1 <|tool_call_argument_begin|> {"regex": "^.*\.cs$"} <|tool_call_end|>
-                                     """
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.SearchFiles, args)
         },
         new()
         {
@@ -72,7 +77,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
             ExampleToSystemMessage = """
                                      For example:
                                      <|tool_call_begin|> functions.grep_search:1 <|tool_call_argument_begin|> {"regex": "^.*?main_services.*"} <|tool_call_end|>
-                                     """
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GrepSearch, args)
         },
         new()
         {
@@ -81,7 +87,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
             ExampleToSystemMessage = """
                                      For example:
                                      <|tool_call_begin|> functions.ls:1 <|tool_call_argument_begin|> {"dirPath": "path/to/dir", "recursive": false} <|tool_call_end|>
-                                     """
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Ls, args)
         },
         new()
         {
@@ -90,7 +97,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
             ExampleToSystemMessage = """
                                      For example, to read the contents of a webpage, you might respond with:
                                      <|tool_call_begin|> functions.fetch_url_content:1 <|tool_call_argument_begin|> {"url": "https://example.com"} <|tool_call_end|>
-                                     """
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.FetchUrl, args)
         },
         new()
         {
@@ -175,6 +183,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
                                      Only use a single line of '=======' between search and replacement content, because multiple '=======' will corrupt the file." }
                                      <|tool_call_end|>
                                      """",
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ApplyDiff, args)
         },
         new()
         {
@@ -184,7 +193,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
                                      For example:
                                      <|tool_call_begin|> functions.build_solution:1 <|tool_call_argument_begin|> {"action": "build"} <|tool_call_end|>
                                      """,
-            ExecuteAsync = (args) => vsBridge.BuildSolutionAsync(args.GetString("action") ?? "build")
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Build, args)
         },
         new()
         {
@@ -193,7 +202,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
             ExampleToSystemMessage = """
                                      For example:
                                      <|tool_call_begin|> functions.get_error_list:1 <|tool_call_argument_begin|> {} <|tool_call_end|>
-                                     """
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetErrors)
         }
     ];
 }

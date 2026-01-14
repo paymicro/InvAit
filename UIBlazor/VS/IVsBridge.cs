@@ -4,13 +4,27 @@ namespace UIBlazor.VS;
 
 public interface IVsBridge
 {
-    Task<string> ReadOpenFileAsync();
+    //Task<VsToolResult> ReadFilesAsync(IReadOnlyDictionary<string, object> args);
 
-    Task<string> GetSelectedTextAsync();
+    //Task<VsToolResult> ReadOpenFileAsync();
 
-    Task<List<string>> GetOpenDocumentsAsync();
+    //Task<VsToolResult> CreateFileAsync(IReadOnlyDictionary<string, object> args);
 
-    Task InsertTextAtPositionAsync(string filePath, int line, int column, string text);
+    //Task<VsToolResult> ExecAsync(IReadOnlyDictionary<string, object> args);
 
-    Task<VsToolResult> BuildSolutionAsync(string action);
+    //Task<VsToolResult> SearchFilesAsync(IReadOnlyDictionary<string, object> args);
+
+    //Task<VsToolResult> GrepSearchAsync(IReadOnlyDictionary<string, object> args);
+
+    //Task<VsToolResult> LsAsync();
+
+    //Task<VsToolResult> FetchUrlAsync(IReadOnlyDictionary<string, object> args);
+
+    //Task<VsToolResult> ApplyDiffAsync(IReadOnlyDictionary<string, object> args);
+
+    //Task<VsToolResult> BuildSolutionAsync(string action);
+
+    //Task<VsToolResult> GetErrorsAsync();
+
+    Task<VsToolResult> ExecuteToolAsync(string name, IReadOnlyDictionary<string, object>? args = null);
 }

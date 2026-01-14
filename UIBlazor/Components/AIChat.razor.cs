@@ -5,6 +5,7 @@ using Microsoft.JSInterop;
 using Radzen;
 using Radzen.Blazor;
 using Radzen.Blazor.Rendering;
+using Shared.Contracts;
 using UIBlazor.Agents;
 using UIBlazor.Services;
 using UIBlazor.Utils;
@@ -34,6 +35,9 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
 
     [Inject]
     private BuiltInAgent BuiltInAgent { get; set; } = null!;
+
+    [Inject]
+    private ToolManager ToolManager { get; set; } = null!;
 
     /// <summary>
     /// Gets or sets the session ID for maintaining conversation memory. If null, a new session will be created.
@@ -206,7 +210,7 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
         // Clear the session in the AI service
         if (!string.IsNullOrEmpty(currentSessionId))
         {
-            ChatService.ClearSession(currentSessionId);
+            ChatService.ClearSessionAsync(currentSessionId);
         }
 
         await ChatCleared.InvokeAsync();
@@ -243,7 +247,7 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
         if (string.IsNullOrEmpty(currentSessionId))
             return;
 
-        var session = ChatService.GetOrCreateSession(currentSessionId);
+        var session = await ChatService.GetOrCreateSessionAsync(currentSessionId);
 
         // Clear current messages
         Messages.Clear();
@@ -335,6 +339,8 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
         {
             await SessionIdChanged.InvokeAsync(currentSessionId);
         }
+
+        ToolManager.RegisterAllTools();
     }
 
     /// <inheritdoc />
@@ -399,11 +405,14 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
 
     private async Task OnTest()
     {
-        var doc = await VsBridge.ReadOpenFileAsync();
-        if (!string.IsNullOrEmpty(doc))
+        var result = await VsBridge.ExecuteToolAsync(BuiltInToolEnum.GetErrors);
+        NotificationService.Notify(new NotificationMessage
         {
-            NotificationService.Notify(NotificationSeverity.Info, doc);
-        }
+            Severity = NotificationSeverity.Info,
+            Summary = result.Result,
+            Duration = 15_000,
+            ShowProgress = true
+        });
     }
 
     /// <inheritdoc />

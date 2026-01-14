@@ -4,6 +4,7 @@ using Microsoft.JSInterop;
 using Radzen;
 using Shared.Contracts;
 using UIBlazor.Agents;
+using UIBlazor.Utils;
 
 namespace UIBlazor.VS;
 
@@ -51,7 +52,32 @@ public class VsBridge : IVsBridge, IDisposable
         }
     }
 
-    private async Task<VsResponse?> SendRequestAsync(VsRequest request)
+
+    public async Task<VsToolResult> ExecuteToolAsync(string name, IReadOnlyDictionary<string, object>? args = null)
+    {
+        var request = new VsRequest
+        {
+            Action = name,
+            Payload = args != null ? JsonUtils.Serialize(args) : null
+        };
+
+        var response = await SendRequestAsync(request);
+        return Convert(request, response);
+    }
+
+    private VsToolResult Convert(VsRequest vsRequest, VsResponse vsResponse)
+    {
+        return new VsToolResult
+        {
+            Args = vsRequest.Payload ?? string.Empty,
+            ErrorMessage = vsResponse.Error ?? string.Empty,
+            Name = vsRequest.Action,
+            Result = vsResponse.Payload ?? vsResponse.Error ?? string.Empty,
+            Success = vsResponse.Success
+        };
+    }
+
+    private async Task<VsResponse> SendRequestAsync(VsRequest request)
     {
         await EnsureInitializedAsync();
 
@@ -73,8 +99,18 @@ public class VsBridge : IVsBridge, IDisposable
         }
         catch (Exception ex)
         {
-            _notificationService.Notify(NotificationSeverity.Error, $"Error getting response '{request.Action}'", ex.Message);
-            return null;
+            _notificationService.Notify(new NotificationMessage {
+                Severity = NotificationSeverity.Error,
+                Summary = $"Error getting response '{request.Action}'",
+                Detail = ex.Message,
+                Duration = 6_000,
+                ShowProgress = true
+            });
+            return new VsResponse
+            {
+                Success = false,
+                Error = $"Error getting response: {ex.Message}"
+            };
         }
         finally
         {
@@ -148,28 +184,5 @@ public class VsBridge : IVsBridge, IDisposable
             tcs.TrySetCanceled();
         }
         _pendingRequests.Clear();
-    }
-
-    public Task<List<string>> GetOpenDocumentsAsync()
-    {
-        return Task.FromResult(new List<string>());
-    }
-
-    public Task<string> GetSelectedTextAsync()
-    {
-        return Task.FromResult("");
-    }
-
-    public Task InsertTextAtPositionAsync(string filePath, int line, int column, string text)
-    {
-        return Task.FromResult("");
-    }
-
-    public Task<VsToolResult> BuildSolutionAsync(string action)
-    {
-        return Task.FromResult(new VsToolResult
-        {
-            Result = "OK"
-        });
     }
 }

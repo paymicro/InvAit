@@ -13,7 +13,7 @@ public class VsResponse
     /// <summary>
     /// Удачно
     /// </summary>
-    public bool Success { get; set; }
+    public bool Success { get; set; } = true;
 
     /// <summary>
     /// Ошибка если <see cref="Success"/> is false
