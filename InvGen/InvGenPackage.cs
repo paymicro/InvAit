@@ -1,10 +1,11 @@
-﻿using Community.VisualStudio.Toolkit;
-using InvGen.ToolWindows;
-using Microsoft.VisualStudio.Shell;
-using System;
+﻿using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Community.VisualStudio.Toolkit;
+using InvGen.ToolWindows;
+using InvGen.Utils;
+using Microsoft.VisualStudio.Shell;
 
 namespace InvGen;
 
@@ -21,5 +22,9 @@ public sealed class InvGenPackage : ToolkitPackage
 
         await JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
         await this.RegisterCommandsAsync();
+
+        var test = JsonUtils.DeserializeParameters("{\"regex\": \" ^.*? main_services.* \"}");
+        await Logger.InitializeAsync();
+        await Logger.LogAsync("Started");
     }
 }

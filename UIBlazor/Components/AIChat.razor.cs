@@ -1,11 +1,14 @@
-﻿using Microsoft.AspNetCore.Components;
+﻿using System.Text.Json;
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using Radzen;
 using Radzen.Blazor;
 using Radzen.Blazor.Rendering;
-using Shared.Contracts;
+using UIBlazor.Agents;
 using UIBlazor.Services;
+using UIBlazor.Utils;
+using UIBlazor.VS;
 
 namespace UIBlazor.Components;
 
@@ -28,6 +31,9 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
 
     [Inject]
     private IVsBridge VsBridge { get; set; } = null!;
+
+    [Inject]
+    private BuiltInAgent BuiltInAgent { get; set; } = null!;
 
     /// <summary>
     /// Gets or sets the session ID for maintaining conversation memory. If null, a new session will be created.
@@ -283,9 +289,27 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
                 await InvokeAsync(StateHasChanged);
             }
 
+            //response = """
+            //           <|tool_call_begin|> functions.build_solution:1 <|tool_call_argument_begin|> {"action": "build"} <|tool_call_end|>
+            //           """;
+            //assistantMessage.Content = response;
+
             assistantMessage.IsStreaming = false;
             await ResponseReceived.InvokeAsync(response);
             await MessageAdded.InvokeAsync(assistantMessage);
+
+            var functions = ChatService.ParseToolBlock(response);
+            if (functions.Count > 0)
+            {
+                foreach (var tool in functions)
+                {
+                    var toolAgent = BuiltInAgent.Tools.FirstOrDefault(t => t.Name == tool.Function.Name);
+                    if (toolAgent != null)
+                    {
+                        await toolAgent.ExecuteAsync(JsonUtils.DeserializeParameters(tool.Function.Arguments));
+                    }
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -375,7 +399,7 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
 
     private async Task OnTest()
     {
-        var doc = await VsBridge.GetActiveDocumentContentAsync();
+        var doc = await VsBridge.ReadOpenFileAsync();
         if (!string.IsNullOrEmpty(doc))
         {
             NotificationService.Notify(NotificationSeverity.Info, doc);

@@ -3,18 +3,19 @@ using System.Text.Json;
 using Microsoft.JSInterop;
 using Radzen;
 using Shared.Contracts;
+using UIBlazor.Agents;
 
 namespace UIBlazor.VS;
 
-public class VsBridgeProxy : IVsBridge, IDisposable
+public class VsBridge : IVsBridge, IDisposable
 {
     private readonly IJSRuntime _jsRuntime;
     private readonly NotificationService _notificationService;
-    private DotNetObjectReference<VsBridgeProxy> _dotNetRef;
+    private DotNetObjectReference<VsBridge> _dotNetRef;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<VsResponse>> _pendingRequests;
     private bool _isInitialized;
 
-    public VsBridgeProxy(IJSRuntime jsRuntime, NotificationService notificationService)
+    public VsBridge(IJSRuntime jsRuntime, NotificationService notificationService)
     {
         _jsRuntime = jsRuntime;
         _notificationService = notificationService;
@@ -31,9 +32,9 @@ public class VsBridgeProxy : IVsBridge, IDisposable
         }
     }
 
-    public async Task<string> GetActiveDocumentContentAsync()
+    public async Task<string> ReadOpenFileAsync()
     {
-        var request = new VsRequest { Action = "getActiveDocumentContent" };
+        var request = new VsRequest { Action = BuiltInToolEnum.ReadOpenFile };
 
         var response = await SendRequestAsync(request);
         if (response == null)
@@ -162,5 +163,13 @@ public class VsBridgeProxy : IVsBridge, IDisposable
     public Task InsertTextAtPositionAsync(string filePath, int line, int column, string text)
     {
         return Task.FromResult("");
+    }
+
+    public Task<VsToolResult> BuildSolutionAsync(string action)
+    {
+        return Task.FromResult(new VsToolResult
+        {
+            Result = "OK"
+        });
     }
 }

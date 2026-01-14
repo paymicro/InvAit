@@ -1,8 +1,9 @@
 :root {
     --rz-layout-body-padding: 4px;
-    --rz-text-h1-font-size: 1.8rem;
-    --rz-text-h2-font-size: 1.4rem;
-    --rz-text-h3-font-size: 1.2rem;
+    --rz-text-h1-font-size: 2.2rem;
+    --rz-text-h2-font-size: 2.0rem;
+    --rz-text-h3-font-size: 1.8rem;
+    --rz-text-h4-font-size: 1.4rem;
 }
 
 html, body {

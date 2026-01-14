@@ -1,8 +1,8 @@
 ﻿using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Radzen;
-using Shared.Contracts;
 using UIBlazor;
+using UIBlazor.Agents;
 using UIBlazor.Services;
 using UIBlazor.VS;
 
@@ -14,7 +14,8 @@ builder.Services.AddRadzenComponents();
 builder.Services.AddScoped<ChatService>();
 builder.Services.AddScoped<LocalStorageService>();
 builder.Services.AddScoped<AiSettingsProvider>();
-builder.Services.AddScoped<IVsBridge, VsBridgeProxy>();
+builder.Services.AddScoped<IVsBridge, VsBridge>();
+builder.Services.AddScoped<BuiltInAgent>();
 
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 

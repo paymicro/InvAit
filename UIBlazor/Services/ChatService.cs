@@ -3,13 +3,19 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Radzen;
+using UIBlazor.Agents;
 using UIBlazor.Models;
 using UIBlazor.Options;
 
 namespace UIBlazor.Services;
 
-public class ChatService(IServiceProvider serviceProvider, AiSettingsProvider aiSettingsProvider)
+public class ChatService(
+    IServiceProvider serviceProvider,
+    AiSettingsProvider aiSettingsProvider,
+    BuiltInAgent builtInAgent
+    )
 {
     private readonly Dictionary<string, ConversationSession> _sessions = new();
     private readonly object _sessionsLock = new();
@@ -145,6 +151,39 @@ public class ChatService(IServiceProvider serviceProvider, AiSettingsProvider ai
         }
     }
 
+    public List<AiTool> ParseToolBlock(string content)
+    {
+        var result = new List<AiTool>();
+
+        var clearContent = RemoveThinkBlock(content);
+
+        // tool calls inside
+        var callRegex = new Regex(
+            @"<\|tool_call_begin\|>\s*functions\.(\w+):(\d+)\s*<\|tool_call_argument_begin\|>\s*(.*?)\s*<\|tool_call_end\|>",
+            RegexOptions.Singleline);
+
+        foreach (Match callMatch in callRegex.Matches(clearContent))
+        {
+            var toolName = callMatch.Groups[1].Value;
+            var callId = callMatch.Groups[2].Value;
+            var jsonArgs = callMatch.Groups[3].Value;
+
+            result.Add(new AiTool
+            {
+                Type = "function",
+                Id = callId,
+                Index = result.Count,
+                Function = new AiToolToCall
+                {
+                    Name = toolName,
+                    Arguments = jsonArgs
+                }
+            });
+        }
+
+        return result;
+    }
+
     public ConversationSession GetOrCreateSession(string sessionId = null)
     {
         lock (_sessionsLock)
@@ -235,4 +274,7 @@ public class ChatService(IServiceProvider serviceProvider, AiSettingsProvider ai
             return string.Empty;
         }
     }
+
+    private string RemoveThinkBlock(string input)
+        => Regex.Replace(input, @"<think>[\s\S]*?</think>", "", RegexOptions.Singleline);
 }

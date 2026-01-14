@@ -5,6 +5,9 @@ using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
+using InvGen.Agent;
+using Microsoft.Build.Framework;
+using Microsoft.VisualStudio.PlatformUI;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 using Shared.Contracts;
@@ -18,11 +21,13 @@ public partial class ChatControl
     private bool _webView2Installed;
     private readonly ChatViewModel _viewModel;
     private IWebView2 _webView;
+    private BuiltInAgent _builtInAgent;
 
     public ChatControl()
     {
         InitializeComponent();
         _viewModel = (ChatViewModel)DataContext;
+        _builtInAgent = new BuiltInAgent();
         Loaded += (_, _) => _ = HandleLoadedAsync();
     }
 
@@ -68,13 +73,47 @@ public partial class ChatControl
 
         _webView.WebMessageReceived += (sender, e) => _ = HandleWebMessageAsync(e);
         _webView.CoreWebView2.NavigationStarting += (_, _) => SetupVirtualHost();
-        //_webView.CoreWebView2InitializationCompleted += CoreWebView2InitializationCompleted;
+        _webView.CoreWebView2InitializationCompleted += CoreWebView2InitializationCompleted;
         //_webView.NavigationCompleted += (_, _) =>
         //{
         //    SafeExecuteJs(WebFunctions.ReloadThemeCss(WebAsset.IsDarkTheme));
         //    _viewModel.ForceDownloadChats();
         //    _ = _viewModel.LoadChatAsync();
         //};
+    }
+
+    private void CoreWebView2InitializationCompleted(object sender, CoreWebView2InitializationCompletedEventArgs e)
+    {
+        if (!e.IsSuccess)
+        {
+            Debug.WriteLine($"WebView error: {e.InitializationException}");
+            return;
+        }
+        _webView.CoreWebView2.Settings.AreDefaultScriptDialogsEnabled = true;
+        _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
+#if !DEBUG
+        _webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
+#else
+        _webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+#endif
+        _webView.CoreWebView2.Settings.AreHostObjectsAllowed = true;
+        _webView.CoreWebView2.Settings.IsPasswordAutosaveEnabled = true;
+        _webView.CoreWebView2.Settings.IsGeneralAutofillEnabled = true;
+        _webView.CoreWebView2.Settings.IsBuiltInErrorPageEnabled = true;
+        _webView.CoreWebView2.Settings.IsScriptEnabled = true;
+        _webView.CoreWebView2.Settings.IsZoomControlEnabled = true;
+        _webView.CoreWebView2.Settings.IsWebMessageEnabled = true;
+        _webView.DefaultBackgroundColor = VSColorTheme.GetThemedColor(EnvironmentColors.ToolWindowBackgroundBrushKey);
+        _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = true;
+        _webView.CoreWebView2.Settings.AreHostObjectsAllowed = true;
+        try
+        {
+            _webView.CoreWebView2.MemoryUsageTargetLevel = CoreWebView2MemoryUsageTargetLevel.Low;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"WebView MemoryUsageTargetLevel error: {ex}");
+        }
     }
 
     private async Task HandleWebMessageAsync(CoreWebView2WebMessageReceivedEventArgs e)
@@ -88,12 +127,7 @@ public partial class ChatControl
                 return;
             }
 
-            VsResponse response = request.Action switch
-            {
-                "getActiveDocumentContent" => new VsResponse { CorrelationId = request.CorrelationId, Success = true, Payload = "test content" },
-                //"insertTextAtCursor" => await HandleInsertTextAsync(request),
-                _ => new VsResponse { CorrelationId = request.CorrelationId, Success = false, Error = "Unknown action" }
-            };
+            var response = await _builtInAgent.ExecuteAsync(request);
 
             var json = JsonSerializer.Serialize(response, JsonSerializerOptions.Web);
             await _webView.CoreWebView2.ExecuteScriptAsync($"window.receiveVsResponse({json}, false)");
