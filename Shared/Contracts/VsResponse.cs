@@ -21,7 +21,7 @@ public class VsResponse
     public string? Error { get; set; }
 
     /// <summary>
-    /// JSON ответ
+    /// Ответ
     /// </summary>
     public string? Payload { get; set; }
 }

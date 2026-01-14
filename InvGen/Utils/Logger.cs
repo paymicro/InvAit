@@ -17,18 +17,7 @@ internal static class Logger
 
     public static void Log(string message, string level = "INFO")
     {
-        if (_pane == null)
-        {
-            return;
-        }
-
-        _pane.WriteLineAsync(GetMessage(message, level)).FireAndForget();
-
-        // Если это ошибка, можно автоматически активировать панель, чтобы пользователь её увидел
-        if (level == "ERROR")
-        {
-            _pane.ActivateAsync().FireAndForget();
-        }
+        LogAsync(message, level).FireAndForget();
     }
 
     public static async Task LogAsync(string message, string level = "INFO")
@@ -40,6 +29,7 @@ internal static class Logger
 
         await _pane.WriteLineAsync(GetMessage(message, level));
 
+        // Если это ошибка, можно автоматически активировать панель, чтобы пользователь её увидел
         if (level == "ERROR")
         {
             await _pane?.ActivateAsync();

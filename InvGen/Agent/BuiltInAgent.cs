@@ -1,17 +1,21 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Net;
 using System.Text;
-using System.Threading;
+using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using Community.VisualStudio.Toolkit;
-using Microsoft.Build.Framework;
+using EnvDTE;
+using EnvDTE80;
+using InvGen.Utils;
 using Shared.Contracts;
+using Process = System.Diagnostics.Process;
 using Shell = Microsoft.VisualStudio.Shell;
 using Toolkit = Community.VisualStudio.Toolkit;
 using VS = Community.VisualStudio.Toolkit.VS;
-using Process = System.Diagnostics.Process;
-using InvGen.Utils;
 
 namespace InvGen.Agent;
 
@@ -21,9 +25,17 @@ public class BuiltInAgent
     {
         var response = vsRequest.Action switch
         {
-            BuiltInToolEnum.ReadOpenFile => await ReadCurrentlyOpenFileAsync(),
             BuiltInToolEnum.ReadFiles => await ReadFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-            //"insertTextAtCursor" => await HandleInsertTextAsync(request),
+            BuiltInToolEnum.ReadOpenFile => await ReadCurrentlyOpenFileAsync(),
+            BuiltInToolEnum.CreateFile => await CreateNewFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+            BuiltInToolEnum.Exec => await ExecAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+            BuiltInToolEnum.SearchFiles => await SearchFilesAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+            BuiltInToolEnum.GrepSearch => await GrepSearchAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+            BuiltInToolEnum.Ls => await ListDirectoryAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+            BuiltInToolEnum.FetchUrl => await FetchUrlContentAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+            BuiltInToolEnum.ApplyDiff => await ApplyDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+            BuiltInToolEnum.Build => await BuildSolutionAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+            BuiltInToolEnum.GetErrors => await GetErrorListAsync(),
             _ => new VsResponse { Success = false, Error = "Unknown action" }
         };
 
@@ -91,6 +103,505 @@ public class BuiltInAgent
         };
     }
 
+    private async Task<VsResponse> CreateNewFileAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var solutionPath = await GetSolutionPathAsync();
+        var filepath = GetAbsolutePath(args.GetString("filepath"), solutionPath);
+        var contents = args.GetString("contents");
+
+        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        try
+        {
+            var directory = Path.GetDirectoryName(filepath);
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllText(filepath, contents);
+            return new VsResponse
+            {
+                Payload = $"File {args.GetString("filepath")} created successfully."
+            };
+        }
+        catch (Exception e)
+        {
+            await Logger.LogAsync(e.Message);
+            return new VsResponse
+            {
+                Success = false,
+                Error = e.Message
+            };
+        }
+    }
+
+    private async Task<VsResponse> ExecAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var exe = args.GetString("exe");
+        var command = args.GetString("command");
+        var waitForCompletion = !args.ContainsKey("waitForCompletion") || args.GetBool("waitForCompletion");
+
+        var solutionPath = await GetSolutionPathAsync();
+
+        if (exe is not ("cmd" or "powershell" or "dotnet"))
+        {
+            return new VsResponse
+            {
+                Success = false,
+                Payload = $"{exe} is unsupported."
+            };
+        }
+
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            return new VsResponse
+            {
+                Success = false,
+                Payload = "Command should be not empty."
+            };
+        }
+
+        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = exe,
+            Arguments = exe is "powershell"
+                ? $"-Command \"{command}\""
+                : command,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = solutionPath
+        };
+
+        using var process = Process.Start(startInfo);
+        if (process == null)
+            return new VsResponse
+            {
+                Success = false,
+                Payload = "Failed to start process"
+            };
+
+        if (waitForCompletion)
+        {
+            var outputTask = process.StandardOutput.ReadToEndAsync();
+            var errorTask = process.StandardError.ReadToEndAsync();
+            await Task.WhenAll(outputTask, errorTask);
+            await Task.Run(() => process.WaitForExit());
+
+            var error = await errorTask;
+            var output = await outputTask;
+            var isSuccess = string.IsNullOrEmpty(error);
+            return new VsResponse
+            {
+                Success = isSuccess,
+                Payload = isSuccess ? $"Command executed successfully: {output}" : $"Error: {error}",
+                Error = error
+            };
+        }
+
+        return new VsResponse
+        {
+            Payload = "Command started in background"
+        };
+    }
+
+    private async Task<VsResponse> SearchFilesAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var pattern = args.GetString("regex");
+        if (string.IsNullOrEmpty(pattern))
+        {
+            return new VsResponse
+            {
+                Success = false,
+                Payload = "Regex pattern should be not empty."
+            };
+        }
+
+        var solutionPath = await GetSolutionPathAsync();
+        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        var regex = new Regex(pattern, RegexOptions.Compiled);
+        var files = (await GetAllSolutionFilesAsync()).Where(f => regex.IsMatch(f))
+            .Select(f => MakeRelativeToSolution(f, solutionPath))
+            .ToArray();
+
+        return new VsResponse
+        {
+            Payload = files.Length == 0 ? "Nothing found." : string.Join(", ", files)
+        };
+    }
+
+    private async Task<VsResponse> GrepSearchAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var query = args.GetString("query");
+        if (string.IsNullOrEmpty(query))
+        {
+            return new VsResponse
+            {
+                Success = false,
+                Payload = "Parameter 'query' is invalid."
+            };
+        }
+
+        var results = new List<string>();
+        var solutionPath = await GetSolutionPathAsync();
+
+        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        var files = await GetAllSolutionFilesAsync();
+        var regex = new Regex(query, RegexOptions.Multiline);
+
+        foreach (var file in files)
+        {
+            try
+            {
+                var content = File.ReadAllText(file);
+                var matches = regex.Matches(content);
+                if (matches.Count <= 0)
+                    continue;
+                var relativePath = MakeRelativeToSolution(file, solutionPath);
+                results.Add($"{relativePath} - {matches.Count} matches");
+            }
+            catch
+            {
+                // Skip files that can't be read
+            }
+        }
+
+        return new VsResponse
+        {
+            Payload = results.Count == 0 ? "Nothing found." : string.Join("\n", results)
+        };
+    }
+
+    private async Task<VsResponse> ListDirectoryAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var solutionPath = await GetSolutionPathAsync();
+        var dirPath = GetAbsolutePath(args.GetString("dirPath"), solutionPath);
+        var recursive = args.GetBool("recursive");
+
+        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        if (!Directory.Exists(dirPath))
+            return new VsResponse
+            {
+                Success = false,
+                Error = $"Directory {args.GetString("dirPath")} doesn't exist",
+            };
+
+        var searchOption = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
+        var items = string.Join(Environment.NewLine, Directory.GetFileSystemEntries(dirPath, "*", searchOption)
+            .Select(f => MakeRelativeToSolution(f, solutionPath)));
+
+        return new VsResponse
+        {
+            Payload = $"Listed directory {args.GetString("dirPath")}{Environment.NewLine}{items}"
+        };
+    }
+
+    private async Task<VsResponse> FetchUrlContentAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var url = args.GetString("url");
+        if (string.IsNullOrEmpty(url))
+        {
+            return new VsResponse
+            {
+                Success = false,
+                Error = "Error: url is empty."
+            };
+        }
+
+        try
+        {
+            var request = WebRequest.CreateHttp(url);
+            request.Method = "GET";
+            request.UserAgent = "Visual_ChatGpt_Studio";
+            request.Timeout = 3000;
+
+            using var response = await request.GetResponseAsync();
+            using var stream = response.GetResponseStream();
+            if (stream == null)
+            {
+                return new VsResponse
+                {
+                    Success = false,
+                    Error = "Error: response stream is null."
+                };
+            }
+
+            var buffer = new char[1000];
+            using var reader = new StreamReader(stream);
+            var read = await reader.ReadAsync(buffer, 0, buffer.Length);
+            var content = new string(buffer, 0, read);
+            if (content.Length >= 1000)
+            {
+                content = content.Substring(0, 1000) + " ...";
+            }
+
+            return new VsResponse
+            {
+                Payload = content
+            };
+        }
+        catch (WebException ex)
+        {
+            return new VsResponse
+            {
+                Success = false,
+                Error = $"Web error: {ex.Message}"
+            };
+        }
+        catch (Exception ex)
+        {
+            return new VsResponse
+            {
+                Success = false,
+                Error = $"Error fetching URL: {ex.Message}"
+            };
+        }
+    }
+
+    private async Task<VsResponse> ApplyDiffAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var solutionPath = await GetSolutionPathAsync();
+        var inputFileName = args.GetString("path");
+        var filepath = GetAbsolutePath(inputFileName, solutionPath);
+        var replacements = ParseDiff(args.GetString("diff"));
+
+        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        if (!File.Exists(filepath))
+            return new VsResponse { Success = false, Error = "File doesn't exist." };
+
+        if (replacements == null || replacements.Count == 0)
+            return new VsResponse { Success = false, Error = "No valid replacements found in diff." };
+
+        var lines = File.ReadAllLines(filepath).ToList();
+        var totalReplacements = 0;
+        var appliedReplacements = new List<string>();
+
+        replacements = replacements.OrderByDescending(r => r.StartLine).ToList();
+
+        foreach (var replacement in replacements)
+        {
+            var startIndex = replacement.StartLine;
+            var endLine = replacement.StartLine + replacement.Search.Count - 1;
+
+            if (replacement.StartLine < 1 || endLine > lines.Count)
+            {
+                continue;
+            }
+
+            var currentLines = lines.Skip(startIndex).Take(replacement.Search.Count).ToList();
+            if (!currentLines.SequenceEqual(replacement.Search))
+            {
+                continue;
+            }
+
+            // Replace lines
+            lines.RemoveRange(startIndex, currentLines.Count);
+            lines.InsertRange(startIndex, replacement.Replace);
+
+            totalReplacements++;
+            appliedReplacements.Insert(0, $"{startIndex}-{endLine}");
+        }
+
+        if (totalReplacements == 0)
+        {
+            return new VsResponse { Success = false, Error = "No valid replacements found." };
+        }
+
+        try
+        {
+            var tempFile = Path.Combine(Path.GetTempPath(), Path.GetFileName(filepath));
+            File.Copy(filepath, tempFile, true);
+            File.WriteAllLines(filepath, lines);
+            await FileDiffAsync(tempFile, filepath, "old", "new");
+        }
+        catch (Exception e)
+        {
+            await Logger.LogAsync(e.Message);
+            return new VsResponse
+            {
+                Payload = $"File {inputFileName} updated. Applied {totalReplacements} replacements: {string.Join(", ", appliedReplacements)}"
+            };
+        }
+
+        return new VsResponse
+        {
+            Payload = $"File {inputFileName} updated. Applied {totalReplacements} replacements: {string.Join(", ", appliedReplacements)}"
+        };
+    }
+
+    private async Task<VsResponse> BuildSolutionAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var buildAction = (Toolkit.BuildAction)args.GetInt("action");
+        var result = await VS.Build.BuildSolutionAsync(buildAction);
+
+        if (!result)
+        {
+            var errorList = await GetErrorListAsync();
+
+            return new VsResponse
+            {
+                Success = false,
+                Error = $"""
+                          Build is failed.
+
+                          {errorList.Error}
+                          """
+            };
+        }
+
+        return new VsResponse
+        {
+            Payload = "Build is successful."
+        };
+    }
+
+    private async Task<VsResponse> GetErrorListAsync()
+    {
+        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        var dte = Shell.Package.GetGlobalService(typeof(DTE)) as DTE2;
+        var errorList = dte?.ToolWindows?.ErrorList?.ErrorItems;
+        if (errorList == null)
+        {
+            return new VsResponse
+            {
+                Success = false,
+                Error = "Error list is null"
+            };
+        }
+
+        var errors = new List<BuildError>();
+
+        for (var i = 1; i <= errorList.Count; i++)
+        {
+            var errorItem = errorList.Item(i);
+            try
+            {
+                errors.Add(new BuildError
+                {
+                    Message = errorItem.Description,
+                    FileName = errorItem.FileName,
+                    Line = errorItem.Line
+                });
+            }
+            catch
+            {
+                // safe skip error
+            }
+        }
+
+        return new VsResponse
+        {
+            Payload = JsonUtils.Serialize(errors)
+        };
+    }
+
+    private List<DiffReplacement> ParseDiff(string diffContent)
+    {
+        var results = new List<DiffReplacement>();
+        var lines = diffContent.Split(["\r\n", "\r", "\n"], StringSplitOptions.None);
+
+        int i = 0;
+        while (i < lines.Length)
+        {
+            // Skip empty lines between blocks
+            while (i < lines.Length && string.IsNullOrWhiteSpace(lines[i]))
+            {
+                i++;
+            }
+
+            if (i >= lines.Length) break;
+
+            var block = ParseSingleBlock(lines, ref i);
+            if (block != null)
+            {
+                results.Add(block);
+            }
+        }
+
+        return results;
+    }
+
+    private DiffReplacement ParseSingleBlock(string[] lines, ref int i)
+    {
+        if (lines[i] != "<<<<<<< SEARCH")
+        {
+            throw new FormatException($"Expected '<<<<<<< SEARCH' at line {i + 1}, got: {lines[i]}");
+        }
+        i++;
+
+        // Parse start line
+        if (i >= lines.Length || !lines[i].StartsWith(":start_line:"))
+        {
+            throw new FormatException($"Expected ':start_line:' at line {i + 1}");
+        }
+
+        var startLineStr = lines[i].Substring(12).Trim();
+        if (!int.TryParse(startLineStr, out var startLine))
+        {
+            throw new FormatException($"Invalid start line format: {startLineStr}");
+        }
+        i++;
+
+        // Check separator
+        if (i >= lines.Length || lines[i] != "-------")
+        {
+            throw new FormatException($"Expected '-------' separator at line {i + 1}");
+        }
+        i++;
+
+        // Parse search content
+        var searchLines = new List<string>();
+        while (i < lines.Length && lines[i] != "=======")
+        {
+            searchLines.Add(lines[i]);
+            i++;
+        }
+
+        if (i >= lines.Length)
+        {
+            throw new FormatException("Unexpected end of input while searching for '======='");
+        }
+        i++; // Skip "======="
+
+        // Parse replace content
+        var replaceLines = new List<string>();
+        while (i < lines.Length && lines[i] != ">>>>>>> REPLACE")
+        {
+            replaceLines.Add(lines[i]);
+            i++;
+        }
+
+        if (i >= lines.Length)
+        {
+            throw new FormatException("Unexpected end of input while searching for '>>>>>>> REPLACE'");
+        }
+        i++; // Skip ">>>>>>> REPLACE"
+
+        return new DiffReplacement
+        {
+            StartLine = startLine,
+            Search = searchLines,
+            Replace = replaceLines
+        };
+    }
+
+    private async Task FileDiffAsync(string file1, string file2, string file1Title, string file2Title)
+    {
+        if (string.IsNullOrEmpty(file1Title))
+        {
+            file1Title = Path.GetFileName(file1);
+        }
+        if (string.IsNullOrEmpty(file2Title))
+        {
+            file2Title = Path.GetFileName(file2);
+        }
+        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        var dte = Shell.Package.GetGlobalService(typeof(DTE)) as DTE;
+        dte?.ExecuteCommand("Tools.DiffFiles", $"\"{file1}\" \"{file2}\" \"{file1Title}\" \"{file2Title}\"");
+    }
+
     private async Task<string> GetSolutionPathAsync()
     {
         var solution = await VS.Solutions.GetCurrentSolutionAsync();
@@ -111,5 +622,68 @@ public class BuiltInAgent
 
         var path = relativePath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar).TrimStart('.', Path.DirectorySeparatorChar);
         return path.StartsWith(solutionPath) ? path : $"{solutionPath}{Path.DirectorySeparatorChar}{path}";
+    }
+
+    private string MakeRelativeToSolution(string fullPath, string solutionPath)
+    {
+        return !fullPath.StartsWith(solutionPath, StringComparison.OrdinalIgnoreCase)
+            ? fullPath
+            : fullPath.Substring(solutionPath.Length + 1);
+    }
+
+    /// <summary>
+    /// Get list with full file paths included in solution.
+    /// </summary>
+    private async Task<List<string>> GetAllSolutionFilesAsync()
+    {
+        var files = new List<string>();
+        var projects = await VS.Solutions.GetAllProjectsAsync();
+        foreach (var project in projects)
+        {
+            await WalkItemsAsync(project.Children, files);
+        }
+
+        return files;
+    }
+
+    private async Task WalkItemsAsync(IEnumerable<Toolkit.SolutionItem> items, List<string> files)
+    {
+        foreach (var item in items)
+        {
+            switch (item.Type)
+            {
+                case Toolkit.SolutionItemType.PhysicalFile when (item as Toolkit.PhysicalFile)?.Extension is not (".zip" or ".bin" or ".dll" or ".exe"):
+                    files.Add(item.FullPath);
+                    break;
+                case Toolkit.SolutionItemType.Project:
+                    files.Add(item.FullPath);
+                    await WalkItemsAsync(item.Children, files);
+                    break;
+                case Toolkit.SolutionItemType.PhysicalFolder or Toolkit.SolutionItemType.SolutionFolder:
+                    await WalkItemsAsync(item.Children, files);
+                    break;
+            }
+        }
+    }
+
+    private class BuildError
+    {
+        [JsonPropertyName("message")]
+        public string Message { get; set; }
+
+        [JsonPropertyName("file_name")]
+        public string FileName { get; set; }
+
+        [JsonPropertyName("line")]
+        public int Line { get; set; }
+    }
+
+    private class DiffReplacement
+    {
+        public int StartLine { get; set; } = -1;
+
+        public List<string> Search { get; set; } = [];
+
+        public List<string> Replace { get; set; } = [];
     }
 }
