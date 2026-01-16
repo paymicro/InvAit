@@ -1,4 +1,5 @@
-﻿@using UIBlazor.Services
+﻿@using UIBlazor.Models
+@using UIBlazor.Services
 @inherits RadzenComponent
 
 @inject ChatService ChatService
@@ -12,22 +13,19 @@
         {
             <span class="rz-chat-header-title">@Title</span>
         }
-		<RadzenAppearanceToggle Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" />
+        <RadzenAppearanceToggle Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" />
 
         <RadzenStack class="rz-chat-header-actions" Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.5rem">
-			@if (ShowClearButton)
-			{
-				<RadzenButton Icon="delete_history" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
-							Click="@OnClearChat" Title="Clear chat history" class="rz-chat-header-clear" />
-			}
-			<RadzenButton Icon="settings" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
-							Click="@OnShowSettings" Title="Settings" class="rz-chat-header-settings" />
-			<RadzenButton Icon="close" Click="@OnTest" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" />
+            <RadzenButton Icon="delete_history" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
+                            Click="@OnClearChatAsync" Title="Clear chat history" class="rz-chat-header-clear" />
+            <RadzenButton Icon="settings" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
+                            Click="@OnShowSettingsAsync" Title="Settings" class="rz-chat-header-settings" />
+            <RadzenButton Icon="favorite" Click="@OnTestAsync" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" />
         </RadzenStack>
     </RadzenStack>
 
     <!-- Chat Messages -->
-    <div class="rz-chat-messages" @ref="messagesContainer">
+    <div class="rz-chat-messages" @ref="_messagesContainer">
         @if (Messages.Count == 0)
         {
             if (EmptyTemplate != null)
@@ -52,19 +50,26 @@
                 }
                 else
                 {
-                <div class="rz-chat-message @(message.IsUser ? "rz-chat-message-user" : "rz-chat-message-assistant")" @key="message.Id">
+                    var isUser = message.Role == ChatMessageRole.User;
+                <div class="rz-chat-message rz-chat-message-@message.Role" @key="message.Id">
                     <RadzenStack class="rz-chat-message-avatar" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0">
-                        @if (message.IsUser)
-                        {
-                            <span class="rz-chat-avatar-initials" title="@UserAvatarText">@UserAvatarText</span>
-                        }
-                        else
-                        {
-                            <span class="rz-chat-avatar-initials" title="@AssistantAvatarText">@AssistantAvatarText</span>
-                        }
+                        <span class="rz-chat-avatar-initials" >
+                            @if (message.Role == ChatMessageRole.User)
+                            {
+                                @UserAvatarText
+                            }
+                            else if (message.Role == ChatMessageRole.Assistant)
+                            {
+                                <RadzenIcon Icon="robot_2" IconStyle="IconStyle.Info" />
+                            }
+                            else if (message.Role == ChatMessageRole.Tool)
+                            {
+                                <RadzenIcon Icon="design_services" />
+                            }
+                        </span>
                     </RadzenStack>
-                    <RadzenStack Orientation="Orientation.Vertical" AlignItems="@(message.IsUser ? AlignItems.End : AlignItems.Start)" Gap="0.25rem" class="rz-chat-message-content">
-                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="@(message.IsUser ? JustifyContent.End : JustifyContent.Start)" Gap="0.5rem" class="rz-chat-message-info">
+                    <RadzenStack Orientation="Orientation.Vertical" AlignItems="@(isUser ? AlignItems.End : AlignItems.Start)" Gap="0.25rem" class="rz-chat-message-content">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="@(isUser ? JustifyContent.End : JustifyContent.Start)" Gap="0.5rem" class="rz-chat-message-info">
                             <div class="rz-chat-message-time">
                                 @message.Timestamp.ToString("HH:mm")
                             </div>
@@ -76,7 +81,14 @@
                             }
                             else
                             {
-                                <RadzenMarkdown Text=@message.Content />
+                                if (message.Role != ChatMessageRole.Tool)
+                                {
+                                    @message.Content
+                                }
+                                else
+                                {
+                                    <RadzenMarkdown Text=@message.Content />
+                                }
                             }
                         </div>
                     </RadzenStack>
@@ -89,11 +101,11 @@
     <!-- Chat Input -->
     <div class="rz-chat-input">
         <div class="rz-chat-input-inner">
-            <textarea @ref="inputElement" 
+            <textarea @ref="_inputElement" 
                         value="@CurrentInput"
-                        @oninput="OnInput" 
-                        @onkeydown="OnKeyDown" 
-                        @onkeydown:preventDefault="preventDefault"
+                        @oninput="OnInputAsync" 
+                        @onkeydown="OnKeyDownAsync" 
+                        @onkeydown:preventDefault="_preventDefault"
                         class="rz-textarea rz-chat-textarea"
                         placeholder="@Placeholder"
                         disabled="@Disabled"
@@ -103,10 +115,18 @@
                 <RadzenButton Icon="send"
                             ButtonStyle="ButtonStyle.Primary" 
                             Variant="Variant.Text"
+                            Visible="@(!IsLoading)"
                             Disabled="@(string.IsNullOrWhiteSpace(CurrentInput) || IsLoading || Disabled)"
-                            Click="@OnSendMessage"
+                            Click="@OnSendMessageAsync"
                             Title="Send message"
                             class="rz-chat-send-btn" />
+                <RadzenButton Icon="dangerous"
+                            ButtonStyle="ButtonStyle.Danger"
+                            Variant="Variant.Text"
+                            Visible="@IsLoading"
+                            Click="@CancelResponceAsync"
+                            Title="Cancel"
+                            class="rz-chat-cancel-btn" />
         </div>
     </div>
 </div>

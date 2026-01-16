@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using InvGen.Agent;
+using InvGen.Utils;
 using Microsoft.Build.Framework;
 using Microsoft.VisualStudio.PlatformUI;
 using Microsoft.Web.WebView2.Core;
@@ -118,23 +119,31 @@ public partial class ChatControl
 
     private async Task HandleWebMessageAsync(CoreWebView2WebMessageReceivedEventArgs e)
     {
+        if (e.Source != _webView.Source.ToString())
+        {
+            // Ожидаем вызов тулзов только из правильных мест.
+            // Чтобы левые сайты (если будет поиск в вебе) не могли получить доступ к тулзам.
+            Logger.Log($"Wrong source {e.Source}", "ERROR");
+            return;
+        }
+
         try
         {
             var request = JsonSerializer.Deserialize<VsRequest>(e.WebMessageAsJson, JsonSerializerOptions.Web);
-
             if (request == null)
             {
                 return;
             }
 
+            Logger.Log($"WebMessage {request.Action} received.");
             var response = await _builtInAgent.ExecuteAsync(request);
-
-            var json = JsonSerializer.Serialize(response, JsonSerializerOptions.Web);
-            await _webView.CoreWebView2.ExecuteScriptAsync($"window.receiveVsResponse({json}, false)");
+            var json = new { type = nameof(VsResponse), payload = response };
+            _webView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(json, JsonSerializerOptions.Web));
+            Logger.Log($"WebMessage {request.Action} response result: {response.Success}.");
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"WebMessage error: {ex.Message}");
+            await Logger.LogAsync($"WebMessage error: {ex.Message}", "ERROR");
         }
     }
 

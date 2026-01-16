@@ -50,7 +50,7 @@ public class AiOptions : INotifyPropertyChanged
     /// <summary>
     /// Gets or sets the maximum number of tokens to generate in the response.
     /// </summary>
-    public int MaxTokens { get => field; set => SetIfChanged(ref field, value); } = 100_000;
+    public int MaxTokens { get => field; set => SetIfChanged(ref field, value); } = 256_000;
 
     /// <summary>
     /// Gets or sets the maximum number of messages to keep in conversation memory.

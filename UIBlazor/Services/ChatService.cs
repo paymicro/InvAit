@@ -4,7 +4,6 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using Radzen;
 using UIBlazor.Models;
 using UIBlazor.Options;
 
@@ -58,7 +57,7 @@ public class ChatService(
     }
 
     public async IAsyncEnumerable<string> GetCompletionsAsync(string userInput,
-        string sessionId = null,
+        string sessionId,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(userInput))
@@ -183,13 +182,8 @@ public class ChatService(
         return result;
     }
 
-    public async Task<ConversationSession> GetOrCreateSessionAsync(string sessionId = null)
+    public async Task<ConversationSession> GetOrCreateSessionAsync(string sessionId)
     {
-        if (string.IsNullOrEmpty(sessionId))
-        {
-            sessionId = $"{DateTime.Now:D}";
-        }
-
         var sessionList = await GetSessionsListAsync();
         ConversationSession session;
         if (sessionList.Contains(sessionId))

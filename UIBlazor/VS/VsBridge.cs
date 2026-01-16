@@ -33,26 +33,6 @@ public class VsBridge : IVsBridge, IDisposable
         }
     }
 
-    public async Task<string> ReadOpenFileAsync()
-    {
-        var request = new VsRequest { Action = BuiltInToolEnum.ReadOpenFile };
-
-        var response = await SendRequestAsync(request);
-        if (response == null)
-        {
-            return string.Empty;
-        }
-        else if (response.Success)
-        {
-            return response.Payload ?? string.Empty;
-        }
-        else
-        {
-            return response.Error ?? string.Empty;
-        }
-    }
-
-
     public async Task<VsToolResult> ExecuteToolAsync(string name, IReadOnlyDictionary<string, object>? args = null)
     {
         var request = new VsRequest
@@ -62,6 +42,19 @@ public class VsBridge : IVsBridge, IDisposable
         };
 
         var response = await SendRequestAsync(request);
+
+        if (!response.Success)
+        {
+            _notificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = $"Error getting response '{request.Action}'",
+                Detail = response.Error ?? string.Empty,
+                Duration = 6_000,
+                ShowProgress = true
+            });
+        }
+
         return Convert(request, response);
     }
 
@@ -87,9 +80,19 @@ public class VsBridge : IVsBridge, IDisposable
         try
         {
             // Отправляем запрос
-            await _jsRuntime.InvokeVoidAsync("postVsMessage", request);
+            var result = await _jsRuntime.InvokeAsync<string>("postVsMessage", request);
 
-            // Устанавливаем таймаут
+            if (result != "OK")
+            {
+                return new VsResponse
+                {
+                    Success = false,
+                    Error = $"WebView2 API is`t find."
+                };
+            }
+
+            // Устанавливаем таймаут 30 секунд
+            // TODO в опции запихать
             using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             timeoutCts.Token.Register(() =>
                 tcs.TrySetException(new TimeoutException("Request timed out")));
@@ -99,13 +102,6 @@ public class VsBridge : IVsBridge, IDisposable
         }
         catch (Exception ex)
         {
-            _notificationService.Notify(new NotificationMessage {
-                Severity = NotificationSeverity.Error,
-                Summary = $"Error getting response '{request.Action}'",
-                Detail = ex.Message,
-                Duration = 6_000,
-                ShowProgress = true
-            });
             return new VsResponse
             {
                 Success = false,
@@ -119,25 +115,23 @@ public class VsBridge : IVsBridge, IDisposable
         }
     }
 
+    [JSInvokable("HandleVsMessage")]
+    public async Task HandleVsMessageAsync(VsMessage message)
+    {
+        if (message == null || string.IsNullOrEmpty(message.CorrelationId))
+        {
+            Console.WriteLine("Invalid message received");
+            return;
+        }
+
+        // TODO: обработка сообщений (выделение, выбран документ ...)
+    }
+
     [JSInvokable("HandleVsResponse")]
-    public async Task HandleVsResponseAsync(string responseJson, bool isMessage)
+    public async Task HandleVsResponseAsync(VsResponse response)
     {
         try
         {
-            if (isMessage)
-            {
-                var message = JsonSerializer.Deserialize<VsMessage>(responseJson, JsonSerializerOptions.Web);
-                if (message == null || string.IsNullOrEmpty(message.CorrelationId))
-                {
-                    Console.WriteLine("Invalid message received");
-                    return;
-                }
-
-                //TODO: обработка сообщений (выделение, выбран документ ...)
-            }
-
-            var response = JsonSerializer.Deserialize<VsResponse>(responseJson, JsonSerializerOptions.Web);
-
             if (response == null || string.IsNullOrEmpty(response.CorrelationId))
             {
                 Console.WriteLine("Invalid response received");

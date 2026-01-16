@@ -1,28 +1,29 @@
-﻿using System.Text.Json;
-using Microsoft.AspNetCore.Components;
+﻿using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using Radzen;
-using Radzen.Blazor;
 using Radzen.Blazor.Rendering;
 using Shared.Contracts;
 using UIBlazor.Agents;
+using UIBlazor.Models;
 using UIBlazor.Services;
 using UIBlazor.Utils;
 using UIBlazor.VS;
+using ChatMessage = UIBlazor.Models.ChatMessage;
 
 namespace UIBlazor.Components;
 
-public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenComponent
+public partial class AIChat : RadzenComponent
 {
     private List<ChatMessage> Messages { get; set; } = [];
     private string CurrentInput { get; set; } = string.Empty;
     private bool IsLoading { get; set; }
-    private bool preventDefault;
-    private ElementReference inputElement;
-    private ElementReference messagesContainer;
-    private CancellationTokenSource cts = new();
-    private string? currentSessionId;
+
+    private bool _preventDefault;
+    private ElementReference _inputElement;
+    private ElementReference _messagesContainer;
+    private CancellationTokenSource _cts = new();
+    private string? _currentSessionId;
 
     [Inject]
     private NotificationService NotificationService { get; set; } = null!;
@@ -38,18 +39,6 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
 
     [Inject]
     private ToolManager ToolManager { get; set; } = null!;
-
-    /// <summary>
-    /// Gets or sets the session ID for maintaining conversation memory. If null, a new session will be created.
-    /// </summary>
-    [Parameter]
-    public string? SessionId { get; set; }
-
-    /// <summary>
-    /// Event callback that is invoked when a session ID is created or retrieved.
-    /// </summary>
-    [Parameter]
-    public EventCallback<string> SessionIdChanged { get; set; }
 
     /// <summary>
     /// Specifies additional custom attributes that will be rendered by the input.
@@ -89,16 +78,10 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
     public string AssistantAvatarText { get; set; } = "AI";
 
     /// <summary>
-    /// Gets or sets the max tokens.
+    /// Gets or sets the text displayed in the assistant avatar.
     /// </summary>
     [Parameter]
-    public int? MaxTokens { get; set; }
-
-    /// <summary>
-    /// Gets or sets the proxy URL for the AI service.
-    /// </summary>
-    [Parameter]
-    public string? Proxy { get; set; }
+    public string ToolAvatarText { get; set; } = "T";
 
     /// <summary>
     /// Gets or sets whether to show the clear chat button.
@@ -133,12 +116,6 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
     public RenderFragment? EmptyTemplate { get; set; }
 
     /// <summary>
-    /// Gets or sets the maximum number of messages to keep in the chat.
-    /// </summary>
-    [Parameter]
-    public int MaxMessages { get; set; } = 100;
-
-    /// <summary>
     /// Event callback that is invoked when a new message is added.
     /// </summary>
     [Parameter]
@@ -170,28 +147,26 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
     /// <summary>
     /// Gets the current session ID.
     /// </summary>
-    public string? GetSessionId() => currentSessionId;
+    public string? GetSessionId() => _currentSessionId;
 
     /// <summary>
     /// Adds a message to the chat.
     /// </summary>
     /// <param name="content">The message content.</param>
-    /// <param name="isUser">Whether the message is from the user.</param>
     /// <returns>The created message.</returns>
-    public ChatMessage AddMessage(string content, bool isUser = false)
+    public ChatMessage AddMessage(string content, string role)
     {
         var message = new ChatMessage
         {
             Content = content,
-            UserId = isUser ? "user" : "system",
-            IsUser = isUser,
+            Role = role,
             Timestamp = DateTime.Now
         };
 
         Messages.Add(message);
 
         // Limit the number of messages
-        if (Messages.Count > MaxMessages)
+        if (Messages.Count > ChatService.Options.MaxMessages)
         {
             Messages.RemoveAt(0);
         }
@@ -203,14 +178,14 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
     /// <summary>
     /// Clears all messages from the chat.
     /// </summary>
-    public async Task ClearChat()
+    public async Task ClearChatAsync()
     {
         Messages.Clear();
 
         // Clear the session in the AI service
-        if (!string.IsNullOrEmpty(currentSessionId))
+        if (!string.IsNullOrEmpty(_currentSessionId))
         {
-            ChatService.ClearSessionAsync(currentSessionId);
+            await ChatService.ClearSessionAsync(_currentSessionId);
         }
 
         await ChatCleared.InvokeAsync();
@@ -221,33 +196,33 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
     /// Sends a message programmatically.
     /// </summary>
     /// <param name="content">The message content to send.</param>
-    public async Task SendMessage(string content)
+    public async Task SendMessageAsync(string content)
     {
         if (string.IsNullOrWhiteSpace(content) || Disabled || IsLoading)
             return;
-
-        // Add user message
-        var userMessage = AddMessage(content, true);
-        await MessageAdded.InvokeAsync(userMessage);
-        await MessageSent.InvokeAsync(content);
 
         // Clear input
         CurrentInput = string.Empty;
         await InvokeAsync(StateHasChanged);
 
+        // Add user message
+        var userMessage = AddMessage(content, ChatMessageRole.User);
+        await MessageAdded.InvokeAsync(userMessage);
+        await MessageSent.InvokeAsync(content);        
+
         // Get AI response
-        await GetAIResponse(content);
+        await GetAIResponseAsync(content);
     }
 
     /// <summary>
     /// Loads conversation history from the AI service session.
     /// </summary>
-    public async Task LoadConversationHistory()
+    public async Task LoadConversationHistoryAsync()
     {
-        if (string.IsNullOrEmpty(currentSessionId))
+        if (string.IsNullOrEmpty(_currentSessionId))
             return;
 
-        var session = await ChatService.GetOrCreateSessionAsync(currentSessionId);
+        var session = await ChatService.GetOrCreateSessionAsync(_currentSessionId);
 
         // Clear current messages
         Messages.Clear();
@@ -255,65 +230,58 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
         // Add messages from session history
         foreach (var message in session.Messages)
         {
-            AddMessage(message.Content, message.IsUser);
+            Messages.Add(message);
+
+            // Limit the number of messages
+            if (Messages.Count > ChatService.Options.MaxMessages)
+            {
+                Messages.RemoveAt(0);
+            }
         }
 
         await InvokeAsync(StateHasChanged);
     }
 
-    private async Task GetAIResponse(string userInput)
+    private string GenerateSessionId() => $"session_{DateTime.Now:s}";
+
+    private async Task GetAIResponseAsync(string userInput)
     {
         if (string.IsNullOrWhiteSpace(userInput))
             return;
 
         IsLoading = true;
 
-        await cts.CancelAsync();
+        await _cts.CancelAsync();
 
-        cts = new CancellationTokenSource();
+        _cts = new CancellationTokenSource();
 
         // Ensure we have a session ID
-        if (string.IsNullOrEmpty(currentSessionId))
+        if (string.IsNullOrEmpty(_currentSessionId))
         {
-            currentSessionId = SessionId ?? Guid.NewGuid().ToString();
-            await SessionIdChanged.InvokeAsync(currentSessionId);
+            _currentSessionId = GenerateSessionId();
         }
 
         // Add assistant message placeholder
-        var assistantMessage = AddMessage("", false);
+        var assistantMessage = AddMessage("", ChatMessageRole.Assistant);
         assistantMessage.IsStreaming = true;
 
         try
         {
             var response = "";
-            await foreach (var token in ChatService.GetCompletionsAsync(userInput, currentSessionId, cts.Token))
+            await foreach (var token in ChatService.GetCompletionsAsync(userInput, _currentSessionId, _cts.Token))
             {
                 response += token;
                 assistantMessage.Content = response;
                 await InvokeAsync(StateHasChanged);
             }
 
-            //response = """
-            //           <|tool_call_begin|> functions.build_solution:1 <|tool_call_argument_begin|> {"action": "build"} <|tool_call_end|>
-            //           """;
-            //assistantMessage.Content = response;
-
             assistantMessage.IsStreaming = false;
             await ResponseReceived.InvokeAsync(response);
             await MessageAdded.InvokeAsync(assistantMessage);
 
-            var functions = ChatService.ParseToolBlock(response);
-            if (functions.Count > 0)
-            {
-                foreach (var tool in functions)
-                {
-                    var toolAgent = BuiltInAgent.Tools.FirstOrDefault(t => t.Name == tool.Function.Name);
-                    if (toolAgent != null)
-                    {
-                        await toolAgent.ExecuteAsync(JsonUtils.DeserializeParameters(tool.Function.Arguments));
-                    }
-                }
-            }
+            var tools = ChatService.ParseToolBlock(response);
+            await HandleToolCallAsync(tools);
+
         }
         catch (Exception ex)
         {
@@ -328,71 +296,88 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
         }
     }
 
+    private async Task HandleToolCallAsync(List<AiTool> aiTools)
+    {
+        if (aiTools.Count == 0)
+        {
+            return;
+        }
+
+        var toolResults = new List<VsToolResult>();
+
+        foreach (var aiTool in aiTools)
+        {
+            var tool = ToolManager.GetTool(aiTool.Function.Name);
+            if (tool != null)
+            {
+                var vsToolResult = await tool.ExecuteAsync(JsonUtils.DeserializeParameters(aiTool.Function.Arguments));
+                if (vsToolResult != null)
+                {
+                    toolResults.Add(vsToolResult);
+                    NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Success,
+                        Summary = vsToolResult.Result,
+                        Duration = 3_000,
+                        ShowProgress = true
+                    });
+                }
+            }
+        }
+
+        var tollMessage = string.Join($"{Environment.NewLine}{Environment.NewLine}",
+            toolResults.Select(x => $"""
+                                     Tool {x.Name}
+                                     {x.Result}
+                                     """));
+        AddMessage(tollMessage, ChatMessageRole.Tool);
+        await GetAIResponseAsync(tollMessage);
+    }
+
+    private async Task CancelResponceAsync()
+    {
+        await _cts.CancelAsync();
+    }
+
     /// <inheritdoc />
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
-
-        // Initialize session ID
-        currentSessionId = SessionId ?? Guid.NewGuid().ToString();
-        if (currentSessionId != SessionId)
-        {
-            await SessionIdChanged.InvokeAsync(currentSessionId);
-        }
-
+        _currentSessionId = GenerateSessionId();
         ToolManager.RegisterAllTools();
     }
 
-    /// <inheritdoc />
-    protected override async Task OnParametersSetAsync()
-    {
-        await base.OnParametersSetAsync();
-
-        // Update session ID if it changed
-        if (!string.IsNullOrEmpty(SessionId) && SessionId != currentSessionId)
-        {
-            currentSessionId = SessionId;
-            await SessionIdChanged.InvokeAsync(currentSessionId);
-
-            // Load conversation history for the new session
-            await LoadConversationHistory();
-        }
-    }
-
-    private async Task OnInput(ChangeEventArgs e)
+    private async Task OnInputAsync(ChangeEventArgs e)
     {
         CurrentInput = e.Value?.ToString() ?? "";
         await InvokeAsync(StateHasChanged);
     }
 
-    private async Task OnKeyDown(KeyboardEventArgs e)
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" && !e.ShiftKey && JSRuntime != null)
         {
-            await JSRuntime.InvokeAsync<string>("Radzen.setInputValue", inputElement, "");
-            preventDefault = true;
-            await OnSendMessage();
+            // await JSRuntime.InvokeAsync<string>("Radzen.setInputValue", inputElement, "");
+            _preventDefault = true;
+            await OnSendMessageAsync();
         }
         else
         {
-            preventDefault = false;
+            _preventDefault = false;
         }
     }
 
-    private async Task OnSendMessage()
+    private async Task OnSendMessageAsync()
     {
-        if (!string.IsNullOrWhiteSpace(CurrentInput))
-        {
-            await SendMessage(CurrentInput);
-        }
+        await SendMessageAsync(CurrentInput);
     }
 
-    private async Task OnClearChat()
+    private async Task OnClearChatAsync()
     {
-        await ClearChat();
+        await ClearChatAsync();
     }
 
-    private async Task OnShowSettings()
+    private async Task OnShowSettingsAsync()
     {
         await DialogService.OpenSideAsync<AiSettings>("Settings", options: new SideDialogOptions {
             CloseDialogOnOverlayClick = true,
@@ -403,7 +388,7 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
         });
     }
 
-    private async Task OnTest()
+    private async Task OnTestAsync()
     {
         var result = await VsBridge.ExecuteToolAsync(BuiltInToolEnum.GetErrors);
         NotificationService.Notify(new NotificationMessage
@@ -418,7 +403,7 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
     /// <inheritdoc />
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender && messagesContainer.Context != null && JSRuntime != null)
+        if (!firstRender && _messagesContainer.Context != null && JSRuntime != null)
         {
             // Scroll to bottom when new messages are added
             await JSRuntime.InvokeVoidAsync("eval",
@@ -440,8 +425,8 @@ public partial class AIChat(AiSettingsProvider aiSettingsProvider) : RadzenCompo
     {
         base.Dispose();
 
-        cts?.Cancel();
-        cts?.Dispose();
+        _cts?.Cancel();
+        _cts?.Dispose();
 
         GC.SuppressFinalize(this);
     }

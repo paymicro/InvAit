@@ -38,6 +38,7 @@ public class ToolManager(BuiltInAgent builtInAgent)
         }
 
         var sb = new StringBuilder();
+        sb.AppendLine(promptFromOptions);
         sb.AppendLine($"Current date: {DateTime.Now.ToString("F")}");
         sb.AppendLine("""
 

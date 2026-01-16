@@ -1,13 +1,50 @@
-:root {
+﻿:root {
     --rz-layout-body-padding: 4px;
     --rz-text-h1-font-size: 2.2rem;
     --rz-text-h2-font-size: 2.0rem;
     --rz-text-h3-font-size: 1.8rem;
     --rz-text-h4-font-size: 1.4rem;
+    background: #242527;
 }
 
 html, body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+.loading-container {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+    background: #242527;
+}
+
+.loading-ball {
+    width: 18px;
+    height: 18px;
+    background: #007bff;
+    border-radius: 50%;
+    animation: bounce 1.2s infinite;
+}
+
+.loading-ball:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.loading-ball:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes bounce {
+    0%, 100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-25px);
+    }
 }
 
 #blazor-error-ui {
@@ -39,38 +76,4 @@ html, body {
 
 .blazor-error-boundary::after {
     content: "An error has occurred."
-}
-
-.loading-progress {
-    position: absolute;
-    display: block;
-    width: 8rem;
-    height: 8rem;
-    inset: 20vh 0 auto 0;
-    margin: 0 auto 0 auto;
-}
-
-.loading-progress circle {
-    fill: none;
-    stroke: #e0e0e0;
-    stroke-width: 0.6rem;
-    transform-origin: 50% 50%;
-    transform: rotate(-90deg);
-}
-
-.loading-progress circle:last-child {
-    stroke: #1b6ec2;
-    stroke-dasharray: calc(3.141 * var(--blazor-load-percentage, 0%) * 0.8), 500%;
-    transition: stroke-dasharray 0.05s ease-in-out;
-}
-
-.loading-progress-text {
-    position: absolute;
-    text-align: center;
-    font-weight: bold;
-    inset: calc(20vh + 3.25rem) 0 auto 0.2rem;
-}
-
-.loading-progress-text:after {
-    content: var(--blazor-load-percentage-text, "Loading");
 }
