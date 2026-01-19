@@ -4,6 +4,8 @@ using Microsoft.JSInterop;
 using Radzen;
 using Shared.Contracts;
 using UIBlazor.Agents;
+using UIBlazor.Options;
+using UIBlazor.Services;
 using UIBlazor.Utils;
 
 namespace UIBlazor.VS;
@@ -12,14 +14,16 @@ public class VsBridge : IVsBridge, IDisposable
 {
     private readonly IJSRuntime _jsRuntime;
     private readonly NotificationService _notificationService;
+    private readonly CommonSettingsProvider _commonOptions;
     private DotNetObjectReference<VsBridge> _dotNetRef;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<VsResponse>> _pendingRequests;
     private bool _isInitialized;
 
-    public VsBridge(IJSRuntime jsRuntime, NotificationService notificationService)
+    public VsBridge(IJSRuntime jsRuntime, NotificationService notificationService, CommonSettingsProvider commonSettingsProvider)
     {
         _jsRuntime = jsRuntime;
         _notificationService = notificationService;
+        _commonOptions = commonSettingsProvider;
         _pendingRequests = new ConcurrentDictionary<string, TaskCompletionSource<VsResponse>>();
     }
 
@@ -92,8 +96,13 @@ public class VsBridge : IVsBridge, IDisposable
             }
 
             // Устанавливаем таймаут 30 секунд
-            // TODO в опции запихать
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            // TODO в опции запихать CommonO
+            var timeOut = TimeSpan.FromSeconds(_commonOptions.Current.ToolTimeoutMs);
+#if DEBUG
+            // Дебаг не быстрый)
+            timeOut = TimeSpan.FromDays(1);
+#endif
+            using var timeoutCts = new CancellationTokenSource(timeOut);
             timeoutCts.Token.Register(() =>
                 tcs.TrySetException(new TimeoutException("Request timed out")));
 

@@ -1,4 +1,6 @@
-﻿namespace UIBlazor.Agents;
+﻿using UIBlazor.Models;
+
+namespace UIBlazor.Agents;
 
 public record VsToolResult
 {
@@ -6,6 +8,8 @@ public record VsToolResult
     /// Result showed to AI.
     /// </summary>
     public string Result { get; init; } = string.Empty;
+
+    public string Role { get; set; } = ChatMessageRole.Tool;
 
     /// <summary>
     /// Tool arguments

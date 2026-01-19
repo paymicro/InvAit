@@ -36,6 +36,11 @@ public class BuiltInAgent
             BuiltInToolEnum.ApplyDiff => await ApplyDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
             BuiltInToolEnum.Build => await BuildSolutionAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
             BuiltInToolEnum.GetErrors => await GetErrorListAsync(),
+            BuiltInToolEnum.GetProjectInfo => await GetProjectInfoAsync(),
+            BuiltInToolEnum.GitStatus => await GitStatusAsync(),
+            BuiltInToolEnum.GitLog => await GitLogAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+            BuiltInToolEnum.GitDiff => await GitDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+            BuiltInToolEnum.GitBranch => await GitBranchAsync(),
             _ => new VsResponse { Success = false, Error = "Unknown action" }
         };
 
@@ -137,13 +142,13 @@ public class BuiltInAgent
 
     private async Task<VsResponse> ExecAsync(IReadOnlyDictionary<string, object> args)
     {
-        var exe = args.GetString("exe");
+        var exe = args.GetString("exe").ToLower();
         var command = args.GetString("command");
         var waitForCompletion = !args.ContainsKey("waitForCompletion") || args.GetBool("waitForCompletion");
 
         var solutionPath = await GetSolutionPathAsync();
 
-        if (exe is not ("cmd" or "powershell" or "dotnet"))
+        if (exe is not ("cmd" or "powershell" or "dotnet" or "git"))
         {
             return new VsResponse
             {
@@ -314,7 +319,7 @@ public class BuiltInAgent
         {
             var request = WebRequest.CreateHttp(url);
             request.Method = "GET";
-            request.UserAgent = "Visual_ChatGpt_Studio";
+            request.UserAgent = "InvGen";
             request.Timeout = 3000;
 
             using var response = await request.GetResponseAsync();
@@ -495,6 +500,53 @@ public class BuiltInAgent
         {
             Payload = JsonUtils.Serialize(errors)
         };
+    }
+
+    private async Task<VsResponse> GetProjectInfoAsync()
+    {
+        var solutionPath = await GetSolutionPathAsync();
+        var projectInfoList = new List<string>();
+
+        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        var projects = await VS.Solutions.GetAllProjectsAsync();
+        foreach (var project in projects)
+        {
+            var projectFilePath = project.FullPath;
+            var projectName = Path.GetFileNameWithoutExtension(projectFilePath);
+            projectInfoList.Add($"Project: {projectName}, Path: {projectFilePath}");
+        }
+
+        return new VsResponse
+        {
+            Payload = projectInfoList.Count == 0 ? "No projects found." : string.Join(Environment.NewLine, projectInfoList)
+        };
+    }
+
+    private async Task<VsResponse> GitStatusAsync()
+    {
+        return await ExecGitCommandAsync("status");
+    }
+
+    private async Task<VsResponse> GitLogAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var format = args.GetString("format") ?? "oneline";
+        return await ExecGitCommandAsync($"log --pretty={format}");
+    }
+
+    private async Task<VsResponse> GitDiffAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var revisions = args.GetString("revisions");
+        return await ExecGitCommandAsync($"diff {revisions}");
+    }
+
+    private async Task<VsResponse> GitBranchAsync()
+    {
+        return await ExecGitCommandAsync("branch --show-current");
+    }
+
+    private async Task<VsResponse> ExecGitCommandAsync(string arguments)
+    {
+        return await ExecAsync(new Dictionary<string, object>() { { "exe", "git" }, { "command", arguments } });
     }
 
     private List<DiffReplacement> ParseDiff(string diffContent)

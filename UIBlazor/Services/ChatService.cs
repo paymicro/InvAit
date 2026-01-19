@@ -56,20 +56,19 @@ public class ChatService(
                ?? throw new JsonException("Models deserialization exception");
     }
 
-    public async IAsyncEnumerable<string> GetCompletionsAsync(string userInput,
-        string sessionId,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async Task AddMessageAsync(string sessionId, string role, string content)
     {
-        if (string.IsNullOrWhiteSpace(userInput))
-        {
-            throw new ArgumentException("User input cannot be null or empty.", nameof(userInput));
-        }
-
         // Get or create session
         var session = await GetOrCreateSessionAsync(sessionId);
+        session.AddMessage(role, content);
+        await localStorage.SetItemAsync(sessionId, session);
+    }
 
-        // Add user message to conversation history
-        session.AddMessage("user", userInput);
+    public async IAsyncEnumerable<string> GetCompletionsAsync(string sessionId,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        // Get or create session
+        var session = await GetOrCreateSessionAsync(sessionId);
 
         // Use runtime parameters or fall back to configured options
         var url = $"{Options.Endpoint}/v1/chat/completions";

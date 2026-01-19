@@ -81,7 +81,7 @@
                             }
                             else
                             {
-                                if (message.Role != ChatMessageRole.Tool)
+                                if (message.Role == ChatMessageRole.Tool)
                                 {
                                     @message.Content
                                 }

@@ -1,7 +1,4 @@
-﻿using System.Text.Json.Serialization;
-using UIBlazor.Utils;
-
-namespace UIBlazor.Agents;
+﻿namespace UIBlazor.Agents;
 
 /// <summary>
 /// LLM wanted to call tool.

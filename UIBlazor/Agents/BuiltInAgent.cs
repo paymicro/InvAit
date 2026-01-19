@@ -7,6 +7,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
 {
     public readonly IReadOnlyList<Tool> Tools =
     [
+        // File operations
         new()
         {
             Name = BuiltInToolEnum.ReadFiles,
@@ -44,22 +45,25 @@ public class BuiltInAgent(IVsBridge vsBridge)
         },
         new()
         {
-            Name = BuiltInToolEnum.Exec,
+            Name = BuiltInToolEnum.ApplyDiff,
             Description = """
-                          To run a terminal command, use the execute_command tool in
-                          The shell is not stateful and will not remember any previous commands.
-                          When a command is run in the background ALWAYS suggest using shell commands to stop it; NEVER suggest using Ctrl+C.
-                          When suggesting subsequent shell commands ALWAYS format them in shell command blocks.
-                          Do NOT perform actions requiring special/admin privileges.
-                          Choose terminal commands and scripts optimized for win32 and x64.
-                          You can also optionally include the waitForCompletion argument set to false to run the command in the background, without output message.
+                          Request to apply PRECISE, TARGETED modifications to an existing file by searching for specific sections of content and replacing them. This tool is for SURGICAL EDITS ONLY - specific changes to existing code.
+                          You can perform multiple distinct search and replace operations within a single `apply_diff` call by providing multiple SEARCH/REPLACE blocks in the `diff` parameter. This is the preferred way to make several targeted changes efficiently.
+                          The SEARCH section must exactly match existing content including whitespace and indentation.
+                          If you're not confident in the exact content to search for, use the read_file tool first to get the exact content.
+                          When applying the diffs, be extra careful to remember to change any closing brackets or other syntax that may be affected by the diff farther down in the file.
+                          ALWAYS make as many changes in a single 'apply_diff' request as possible using multiple SEARCH/REPLACE blocks
                           """,
             ExampleToSystemMessage = """
-                                     For example, to see the git log, you could respond with:
-                                     <|tool_call_begin|> functions.execute_command:1 <|tool_call_argument_begin|> {"exe": "dotnet", "command": "restore"} <|tool_call_end|>
+                                     For example:
+                                     <|tool_call_begin|> functions.apply_diff:1 <|tool_call_argument_begin|>
+                                     { "path": "path/to/file.txt", "diff": "<<<<<<< SEARCH\n:start_line:0\n-------\noriginal content\n=======\nnew content\n>>>>>>> REPLACE" }
+                                     <|tool_call_end|>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Exec, args)
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ApplyDiff, args)
         },
+        
+        // Search and navigation
         new()
         {
             Name = BuiltInToolEnum.SearchFiles,
@@ -90,101 +94,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Ls, args)
         },
-        new()
-        {
-            Name = BuiltInToolEnum.FetchUrl,
-            Description = "To fetch the content of a URL, use the fetch_url_content tool.",
-            ExampleToSystemMessage = """
-                                     For example, to read the contents of a webpage, you might respond with:
-                                     <|tool_call_begin|> functions.fetch_url_content:1 <|tool_call_argument_begin|> {"url": "https://example.com"} <|tool_call_end|>
-                                     """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.FetchUrl, args)
-        },
-        new()
-        {
-            Name = BuiltInToolEnum.ApplyDiff,
-            Description = """
-                          Request to apply PRECISE, TARGETED modifications to an existing file by searching for specific sections of content and replacing them. This tool is for SURGICAL EDITS ONLY - specific changes to existing code.
-                          You can perform multiple distinct search and replace operations within a single `apply_diff` call by providing multiple SEARCH/REPLACE blocks in the `diff` parameter. This is the preferred way to make several targeted changes efficiently.
-                          The SEARCH section must exactly match existing content including whitespace and indentation.
-                          If you're not confident in the exact content to search for, use the read_file tool first to get the exact content.
-                          When applying the diffs, be extra careful to remember to change any closing brackets or other syntax that may be affected by the diff farther down in the file.
-                          ALWAYS make as many changes in a single 'apply_diff' request as possible using multiple SEARCH/REPLACE blocks
-                          """,
-            ExampleToSystemMessage = """"
-                                     If you're not confident in the exact content to search for, use the read_file tool first to get the exact content.
-                                     `start_line` - (required) The line number 0-indexed of original content where the search block starts.
-                                     `diff` - The search/replace block defining the changes.
-                                     Example:
-
-                                     Original file:
-                                     ```
-                                     1 | def calculate_total(items):
-                                     2 |     total = 0
-                                     3 |     for item in items:
-                                     4 |         total += item
-                                     5 |     return total
-                                     ```
-
-                                     Search/Replace content:
-                                     ```
-                                     <<<<<<< SEARCH
-                                     :start_line:1
-                                     -------
-                                     def calculate_total(items):
-                                         total = 0
-                                         for item in items:
-                                             total += item
-                                         return total
-                                     =======
-                                     def calculate_total(items):
-                                         """Calculate total with 10% markup"""
-                                         return sum(item * 1.1 for item in items)
-                                     >>>>>>> REPLACE
-                                     ```
-
-                                     Search/Replace content with multiple edits:
-                                     ```
-                                     <<<<<<< SEARCH
-                                     :start_line:1
-                                     -------
-                                     def calculate_total(items):
-                                         sum = 0
-                                     =======
-                                     def calculate_sum(items):
-                                         sum = 0
-                                     >>>>>>> REPLACE
-
-                                     <<<<<<< SEARCH
-                                     :start_line:4
-                                     -------
-                                             total += item
-                                         return total
-                                     =======
-                                             sum += item
-                                         return sum
-                                     >>>>>>> REPLACE
-                                     ```
-
-                                     Usage:
-                                     <apply_diff>
-                                     <path>File path here</path>
-                                     <diff>
-                                     Your search/replace content here
-                                     You can use multi search/replace block in one diff block, but make sure to include the line numbers for each block.
-                                     Only use a single line of '=======' between search and replacement content, because multiple '=======' will corrupt the file.
-                                     </diff>
-                                     </apply_diff>
-
-                                     For example, you could respond with:
-                                     <|tool_call_begin|> functions.apply_diff:1 <|tool_call_argument_begin|>
-                                     { "path": "path/to/file.txt", "diff": "Your search/replace content here
-                                     You can use multi search/replace block in one diff block, but make sure to include the line numbers for each block.
-                                     Only use a single line of '=======' between search and replacement content, because multiple '=======' will corrupt the file." }
-                                     <|tool_call_end|>
-                                     """",
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ApplyDiff, args)
-        },
+        
+        // Project and build
         new()
         {
             Name = BuiltInToolEnum.Build,
@@ -204,6 +115,88 @@ public class BuiltInAgent(IVsBridge vsBridge)
                                      <|tool_call_begin|> functions.get_error_list:1 <|tool_call_argument_begin|> {} <|tool_call_end|>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetErrors)
+        },
+        new()
+        {
+            Name = BuiltInToolEnum.GetProjectInfo,
+            Description = "Get information about the solution and projects. Returns list of projects, their types, target frameworks, and file structure.",
+            ExampleToSystemMessage = """
+                                     For example:
+                                     <|tool_call_begin|> functions.get_project_info:1 <|tool_call_argument_begin|> {} <|tool_call_end|>
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetProjectInfo, args)
+        },
+        
+        // Execution
+        new()
+        {
+            Name = BuiltInToolEnum.Exec,
+            Description = """
+                          To run a terminal command, use the execute_command tool in
+                          The shell is not stateful and will not remember any previous commands.
+                          When a command is run in the background ALWAYS suggest using shell commands to stop it; NEVER suggest using Ctrl+C.
+                          When suggesting subsequent shell commands ALWAYS format them in shell command blocks.
+                          Do NOT perform actions requiring special/admin privileges.
+                          Choose terminal commands and scripts optimized for win32 and x64.
+                          You can also optionally include the waitForCompletion argument set to false to run the command in the background, without output message.
+                          """,
+            ExampleToSystemMessage = """
+                                     For example, to see the git log, you could respond with:
+                                     <|tool_call_begin|> functions.execute_command:1 <|tool_call_argument_begin|> {"exe": "dotnet", "command": "restore"} <|tool_call_end|>
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Exec, args)
+        },
+        new()
+        {
+            Name = BuiltInToolEnum.FetchUrl,
+            Description = "To fetch the content of a URL, use the fetch_url_content tool.",
+            ExampleToSystemMessage = """
+                                     For example, to read the contents of a webpage, you might respond with:
+                                     <|tool_call_begin|> functions.fetch_url_content:1 <|tool_call_argument_begin|> {"url": "https://example.com"} <|tool_call_end|>
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.FetchUrl, args)
+        },
+        
+        // Git operations
+        new()
+        {
+            Name = BuiltInToolEnum.GitStatus,
+            Description = "Check git status of the current repository. Shows modified, staged, and untracked files.",
+            ExampleToSystemMessage = """
+                                     For example:
+                                     <|tool_call_begin|> functions.git_status:1 <|tool_call_argument_begin|> {} <|tool_call_end|>
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitStatus, args)
+        },
+        new()
+        {
+            Name = BuiltInToolEnum.GitLog,
+            Description = "View git commit history. Can specify number of commits to display.",
+            ExampleToSystemMessage = """
+                                     For example:
+                                     <|tool_call_begin|> functions.git_log:1 <|tool_call_argument_begin|> {"limit": 10} <|tool_call_end|>
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitLog, args)
+        },
+        new()
+        {
+            Name = BuiltInToolEnum.GitDiff,
+            Description = "View git diff for files. Can compare working directory with staged or specific commits.",
+            ExampleToSystemMessage = """
+                                     For example:
+                                     <|tool_call_begin|> functions.git_diff:1 <|tool_call_argument_begin|> {"staged": false} <|tool_call_end|>
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitDiff, args)
+        },
+        new()
+        {
+            Name = BuiltInToolEnum.GitBranch,
+            Description = "List git branches or get current branch information.",
+            ExampleToSystemMessage = """
+                                     For example:
+                                     <|tool_call_begin|> functions.git_branch:1 <|tool_call_argument_begin|> {} <|tool_call_end|>
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitBranch, args)
         }
     ];
 }

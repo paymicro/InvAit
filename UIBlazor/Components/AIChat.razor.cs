@@ -145,16 +145,11 @@ public partial class AIChat : RadzenComponent
     public IReadOnlyList<ChatMessage> GetMessages() => Messages.AsReadOnly();
 
     /// <summary>
-    /// Gets the current session ID.
-    /// </summary>
-    public string? GetSessionId() => _currentSessionId;
-
-    /// <summary>
     /// Adds a message to the chat.
     /// </summary>
     /// <param name="content">The message content.</param>
     /// <returns>The created message.</returns>
-    public ChatMessage AddMessage(string content, string role)
+    public ChatMessage AddVisualMessage(string content, string role)
     {
         var message = new ChatMessage
         {
@@ -206,12 +201,14 @@ public partial class AIChat : RadzenComponent
         await InvokeAsync(StateHasChanged);
 
         // Add user message
-        var userMessage = AddMessage(content, ChatMessageRole.User);
+        var userMessage = AddVisualMessage(content, ChatMessageRole.User);
         await MessageAdded.InvokeAsync(userMessage);
-        await MessageSent.InvokeAsync(content);        
+        await MessageSent.InvokeAsync(content);
+
+        await ChatService.AddMessageAsync(_currentSessionId, ChatMessageRole.User, content);
 
         // Get AI response
-        await GetAIResponseAsync(content);
+        await GetAIResponseAsync();
     }
 
     /// <summary>
@@ -244,11 +241,8 @@ public partial class AIChat : RadzenComponent
 
     private string GenerateSessionId() => $"session_{DateTime.Now:s}";
 
-    private async Task GetAIResponseAsync(string userInput)
+    private async Task GetAIResponseAsync()
     {
-        if (string.IsNullOrWhiteSpace(userInput))
-            return;
-
         IsLoading = true;
 
         await _cts.CancelAsync();
@@ -262,13 +256,13 @@ public partial class AIChat : RadzenComponent
         }
 
         // Add assistant message placeholder
-        var assistantMessage = AddMessage("", ChatMessageRole.Assistant);
+        var assistantMessage = AddVisualMessage("", ChatMessageRole.Assistant);
         assistantMessage.IsStreaming = true;
 
         try
         {
             var response = "";
-            await foreach (var token in ChatService.GetCompletionsAsync(userInput, _currentSessionId, _cts.Token))
+            await foreach (var token in ChatService.GetCompletionsAsync(_currentSessionId, _cts.Token))
             {
                 response += token;
                 assistantMessage.Content = response;
@@ -303,8 +297,6 @@ public partial class AIChat : RadzenComponent
             return;
         }
 
-        var toolResults = new List<VsToolResult>();
-
         foreach (var aiTool in aiTools)
         {
             var tool = ToolManager.GetTool(aiTool.Function.Name);
@@ -313,7 +305,6 @@ public partial class AIChat : RadzenComponent
                 var vsToolResult = await tool.ExecuteAsync(JsonUtils.DeserializeParameters(aiTool.Function.Arguments));
                 if (vsToolResult != null)
                 {
-                    toolResults.Add(vsToolResult);
                     NotificationService.Notify(new NotificationMessage
                     {
                         Severity = NotificationSeverity.Success,
@@ -322,16 +313,13 @@ public partial class AIChat : RadzenComponent
                         ShowProgress = true
                     });
                 }
+
+                AddVisualMessage(vsToolResult.Result, vsToolResult.Role);
+                await ChatService.AddMessageAsync(_currentSessionId, vsToolResult.Role, vsToolResult.Result);
             }
         }
 
-        var tollMessage = string.Join($"{Environment.NewLine}{Environment.NewLine}",
-            toolResults.Select(x => $"""
-                                     Tool {x.Name}
-                                     {x.Result}
-                                     """));
-        AddMessage(tollMessage, ChatMessageRole.Tool);
-        await GetAIResponseAsync(tollMessage);
+        await GetAIResponseAsync();
     }
 
     private async Task CancelResponceAsync()
@@ -384,7 +372,7 @@ public partial class AIChat : RadzenComponent
             Resizable = false,
             Position = DialogPosition.Right,
             MinHeight = 250.0,
-            MinWidth = 350.0
+            MinWidth = 400.0
         });
     }
 

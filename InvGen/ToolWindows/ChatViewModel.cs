@@ -1,11 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace InvGen.ToolWindows;
+﻿namespace InvGen.ToolWindows;
 
 public class ChatViewModel
 {
+    public bool SkipSSLValidation { get; set; } = false;
 }

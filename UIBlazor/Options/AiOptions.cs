@@ -1,11 +1,10 @@
-﻿using System.ComponentModel;
-using System.Runtime.CompilerServices;
+﻿namespace UIBlazor.Options;
 
-namespace UIBlazor.Options;
-
-public class AiOptions : INotifyPropertyChanged
+public class AiOptions : BaseOptions
 {
-    public string Endpoint { get => field; set => SetIfChanged(ref field, value); } = "";
+    public string Endpoint { get => field; set => SetIfChanged(ref field, value.TrimEnd('/', '\\')); } = string.Empty;
+
+    public bool SkipSSL { get => field; set { SetIfChanged(ref field, value); } } = false;
 
     /// <summary>
     /// Use streaming
@@ -61,21 +60,4 @@ public class AiOptions : INotifyPropertyChanged
     /// Gets or sets the maximum age in hours for conversation sessions before cleanup.
     /// </summary>
     public int SessionMaxAgeHours { get => field; set => SetIfChanged(ref field, value); } = 24;
-
-    public event PropertyChangedEventHandler? PropertyChanged;
-
-    protected virtual void OnPropertyChanged(string propertyName)
-        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-
-    private void SetIfChanged<T>(ref T storage, T value, [CallerMemberName] string prop = "")
-    {
-        if (EqualityComparer<T>.Default.Equals(storage, value))
-            return;
-
-        storage = value;
-        RaisePropertyChanged(prop);
-    }
-
-    private void RaisePropertyChanged([CallerMemberName] string propertyName = "")
-        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }

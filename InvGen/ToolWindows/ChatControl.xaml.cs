@@ -4,16 +4,14 @@ using System.IO;
 using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
-using System.Windows;
 using InvGen.Agent;
 using InvGen.Utils;
-using Microsoft.Build.Framework;
 using Microsoft.VisualStudio.PlatformUI;
 using Microsoft.Web.WebView2.Core;
-using Microsoft.Web.WebView2.Wpf;
 using Shared.Contracts;
 using MessageBox = System.Windows.MessageBox;
 using Package = Microsoft.VisualStudio.Shell.Package;
+using WV = Microsoft.Web.WebView2.Wpf;
 
 namespace InvGen.ToolWindows;
 
@@ -21,7 +19,7 @@ public partial class ChatControl
 {
     private bool _webView2Installed;
     private readonly ChatViewModel _viewModel;
-    private IWebView2 _webView;
+    private WV.IWebView2 _webView;
     private BuiltInAgent _builtInAgent;
 
     public ChatControl()
@@ -60,21 +58,37 @@ public partial class ChatControl
             }
         }
 
-        WebViewHost.Content = _webView = new WebView2();
+        WebViewHost.Content = _webView = new WV.WebView2();
 
         var userDataFolder = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "InvGenChatWebView2");
 
-        var options = new CoreWebView2EnvironmentOptions("--allow-running-insecure-content");
+        // Включаем CORS выключаем защиту
+        var options = new CoreWebView2EnvironmentOptions("--allow-running-insecure-content --disable-web-security --disable-features=BlockInsecurePrivateNetworkRequests");
         var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder, options);
         await _webView.EnsureCoreWebView2Async(env);
 
         SetupVirtualHost();
 
+
         _webView.WebMessageReceived += (sender, e) => _ = HandleWebMessageAsync(e);
         _webView.CoreWebView2.NavigationStarting += (_, _) => SetupVirtualHost();
+        _webView.CoreWebView2.ServerCertificateErrorDetected += (s, e) =>
+        {
+            if (_viewModel.SkipSSLValidation)
+            {
+                e.Action = CoreWebView2ServerCertificateErrorAction.AlwaysAllow;
+                Logger.Log($"SSL validation is skipped. {e.ServerCertificate.DisplayName}.");
+            }
+            else
+            {
+                Logger.Log($"SSL validation error: {e.ServerCertificate.DisplayName}. You can skip SSL validation in settings.", "ERROR");
+            }
+        };
         _webView.CoreWebView2InitializationCompleted += CoreWebView2InitializationCompleted;
+
+        //_webView.CoreWebView2.AddHostObjectToScript("mcpHost", new McpProxyHost());
         //_webView.NavigationCompleted += (_, _) =>
         //{
         //    SafeExecuteJs(WebFunctions.ReloadThemeCss(WebAsset.IsDarkTheme));
@@ -107,6 +121,7 @@ public partial class ChatControl
         _webView.DefaultBackgroundColor = VSColorTheme.GetThemedColor(EnvironmentColors.ToolWindowBackgroundBrushKey);
         _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = true;
         _webView.CoreWebView2.Settings.AreHostObjectsAllowed = true;
+        _webView.CoreWebView2.Settings.UserAgent = "InvGen";
         try
         {
             _webView.CoreWebView2.MemoryUsageTargetLevel = CoreWebView2MemoryUsageTargetLevel.Low;
@@ -132,6 +147,13 @@ public partial class ChatControl
             var request = JsonSerializer.Deserialize<VsRequest>(e.WebMessageAsJson, JsonSerializerOptions.Web);
             if (request == null)
             {
+                return;
+            }
+
+            if (request.Action == "SkipSSL")
+            {
+                _viewModel.SkipSSLValidation = string.Equals(request.Payload, "true", StringComparison.OrdinalIgnoreCase);
+                Logger.Log($"SkipSSL set {_viewModel.SkipSSLValidation}");
                 return;
             }
 

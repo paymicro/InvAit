@@ -7,6 +7,11 @@
         <RadzenTextBox @bind-Value="@Options.Endpoint" Immediate />
     </RadzenFormField>
 
+    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+		<RadzenCheckBox @bind-Value=@Options.SkipSSL Name="SkipSSL" />
+		<RadzenLabel Text="Skip SSL validation" Component="SkipSSL" />
+    </RadzenStack>
+
     <RadzenFormField Text="ApiKey" Variant="Variant.Outlined">
         <RadzenPassword @bind-Value="@Options.ApiKey" Immediate />
     </RadzenFormField>
@@ -37,7 +42,7 @@
         <RadzenLabel Text="Max tokens" />
         <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
             <RadzenSlider @bind-Value="@Options.MaxTokens" Min=4000 Max=256000 Step="1000" Style="width: 100%; height: 20px;" />
-            <RadzenLabel Text="@Options.MaxTokens.ToString()" Style="text-align: right; width: 50px;" />
+            <RadzenLabel Text="@($"{Options.MaxTokens / 1000}K")" Style="text-align: right; width: 50px;" />
         </RadzenStack>
     </RadzenStack>
 
@@ -46,14 +51,6 @@
         <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
             <RadzenSlider @bind-Value="@Options.MaxMessages" Min=5 Max=100 Style="width: 100%; height: 20px;" />
             <RadzenLabel Text="@Options.MaxMessages.ToString()" Style="text-align: right; width: 50px;" />
-        </RadzenStack>
-    </RadzenStack>
-
-    <RadzenStack Gap="0.2rem">
-        <RadzenLabel Text="Max hours before cleanup conversation" />
-        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-            <RadzenSlider @bind-Value="@Options.SessionMaxAgeHours" Min=1 Max=2400 Style="width: 100%; height: 20px;" />
-            <RadzenLabel Text="@Options.SessionMaxAgeHours.ToString("0 H")" Style="text-align: right; width: 50px;" />
         </RadzenStack>
     </RadzenStack>
 
