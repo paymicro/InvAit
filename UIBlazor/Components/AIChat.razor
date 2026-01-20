@@ -77,6 +77,11 @@
                         <div class="rz-chat-message-text">
                             @if (message.IsStreaming)
                             {
+                                if (!string.IsNullOrEmpty(message.ReasoningContent))
+                                {
+                                    <details>
+                                    <summary>Поток сознания...</summary>@message.ReasoningContent</details>
+                                }
                                 @message.Content <RadzenIcon Icon="more_horiz" class="rz-chat-message-streaming-icon" />
                             }
                             else
@@ -87,6 +92,11 @@
                                 }
                                 else
                                 {
+                                    if (!string.IsNullOrEmpty(message.ReasoningContent))
+                                    {
+                                        <details>
+                                        <summary>Мыслишки</summary>@message.ReasoningContent</details>
+                                    }
                                     <RadzenMarkdown Text=@message.Content />
                                 }
                             }

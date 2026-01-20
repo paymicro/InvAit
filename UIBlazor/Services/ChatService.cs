@@ -6,6 +6,8 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using UIBlazor.Models;
 using UIBlazor.Options;
+using UIBlazor.Services.Models;
+using UIBlazor.Utils;
 
 namespace UIBlazor.Services;
 
@@ -64,7 +66,7 @@ public class ChatService(
         await localStorage.SetItemAsync(sessionId, session);
     }
 
-    public async IAsyncEnumerable<string> GetCompletionsAsync(string sessionId,
+    public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(string sessionId,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         // Get or create session
@@ -119,6 +121,10 @@ public class ChatService(
         var assistantResponse = new StringBuilder();
 
         string line;
+        var isReasoningContent = false;
+        var isStart = true;
+        const string thinkStart = "<think>";
+        const string thinkEnd = "</think>";
         while ((line = await reader.ReadLineAsync()) is not null && !cancellationToken.IsCancellationRequested)
         {
             if (string.IsNullOrWhiteSpace(line) || !line.StartsWith("data:"))
@@ -133,12 +139,63 @@ public class ChatService(
                 break;
             }
 
-            var content = ParseStreamingResponse(json);
-            if (!string.IsNullOrEmpty(content))
+            var chunk = JsonUtils.Deserialize<StreamChunk>(json);
+            if (chunk == null || chunk.Choices.Count != 1 || chunk.Choices[0].Delta == null)
             {
-                assistantResponse.Append(content);
-                yield return content;
+                break;
             }
+
+            var delta = chunk.Choices[0].Delta;
+            var content = delta.Content;
+
+            // Размышляющие модели по разному отдают размышления
+            //
+            //           ReasoningContent | Content
+            // GLM 4.6         +++        |   ---
+            // Kimi 2          +++        | <think>
+            // Deepseek R1     ---        | <think>
+            //
+            // обрабатываем размышления как Z.ai GLM.
+            // Все размышления идут в ReasoningContent с пустым Content
+
+            if (delta.ReasoningContent == null && !string.IsNullOrEmpty(content))
+            {
+                if (!isReasoningContent) // не думаем
+                {
+                    if (isStart && content.StartsWith(thinkStart))
+                    {
+                        // начать думать можно только в первом чанке
+                        isReasoningContent = true;
+                        delta.ReasoningContent = content.Replace(thinkStart, string.Empty);
+                        delta.Content = null;
+                    }
+                    else
+                    {
+                        // Не думали - нечего и начинать.
+                        // Пишем чистый контент в историю
+                        assistantResponse.Append(content);
+                    }
+                }
+                else // внутри <think> блока
+                {
+                    if (content.Contains(thinkEnd))
+                    {
+                        // если закончил думать, то можно в контент добавить часть чанка (актуально для Kimi2)
+                        isReasoningContent = false;
+                        delta.Content = content.Replace(thinkEnd, string.Empty);
+                    }
+                    else
+                    {
+                        // если не конец - то все пихаем в ReasoningContent
+                        delta.ReasoningContent = content;
+                        delta.Content = null;
+                    }
+                }
+            }
+
+            yield return delta;
+
+            isStart = false;
         }
 
         // Add assistant response to conversation history
@@ -224,38 +281,6 @@ public class ChatService(
         {
             sessions.RemoveAt(index);
             await SetSessionsListAsync(sessions);
-        }
-    }
-
-    private static string ParseStreamingResponse(string json)
-    {
-        try
-        {
-            var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            if (!root.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0)
-            {
-                return string.Empty;
-            }
-
-            var firstChoice = choices[0];
-
-            if (!firstChoice.TryGetProperty("delta", out var delta))
-            {
-                return string.Empty;
-            }
-
-            if (delta.TryGetProperty("content", out var contentElement))
-            {
-                return contentElement.GetString() ?? string.Empty;
-            }
-
-            return string.Empty;
-        }
-        catch
-        {
-            return string.Empty;
         }
     }
 

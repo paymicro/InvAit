@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Components;
+﻿using System.Text;
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using Radzen;
@@ -75,12 +76,6 @@ public partial class AIChat : RadzenComponent
     /// Gets or sets the text displayed in the assistant avatar.
     /// </summary>
     [Parameter]
-    public string AssistantAvatarText { get; set; } = "AI";
-
-    /// <summary>
-    /// Gets or sets the text displayed in the assistant avatar.
-    /// </summary>
-    [Parameter]
     public string ToolAvatarText { get; set; } = "T";
 
     /// <summary>
@@ -114,30 +109,6 @@ public partial class AIChat : RadzenComponent
     /// <value>The empty template.</value>
     [Parameter]
     public RenderFragment? EmptyTemplate { get; set; }
-
-    /// <summary>
-    /// Event callback that is invoked when a new message is added.
-    /// </summary>
-    [Parameter]
-    public EventCallback<ChatMessage> MessageAdded { get; set; }
-
-    /// <summary>
-    /// Event callback that is invoked when the chat is cleared.
-    /// </summary>
-    [Parameter]
-    public EventCallback ChatCleared { get; set; }
-
-    /// <summary>
-    /// Event callback that is invoked when a message is sent.
-    /// </summary>
-    [Parameter]
-    public EventCallback<string> MessageSent { get; set; }
-
-    /// <summary>
-    /// Event callback that is invoked when the AI response is received.
-    /// </summary>
-    [Parameter]
-    public EventCallback<string> ResponseReceived { get; set; }
 
     /// <summary>
     /// Gets the current list of messages.
@@ -183,7 +154,6 @@ public partial class AIChat : RadzenComponent
             await ChatService.ClearSessionAsync(_currentSessionId);
         }
 
-        await ChatCleared.InvokeAsync();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -202,8 +172,6 @@ public partial class AIChat : RadzenComponent
 
         // Add user message
         var userMessage = AddVisualMessage(content, ChatMessageRole.User);
-        await MessageAdded.InvokeAsync(userMessage);
-        await MessageSent.InvokeAsync(content);
 
         await ChatService.AddMessageAsync(_currentSessionId, ChatMessageRole.User, content);
 
@@ -261,21 +229,28 @@ public partial class AIChat : RadzenComponent
 
         try
         {
-            var response = "";
-            await foreach (var token in ChatService.GetCompletionsAsync(_currentSessionId, _cts.Token))
+            var reasoning = new StringBuilder();
+            var response = new StringBuilder();
+            await foreach (var delta  in ChatService.GetCompletionsAsync(_currentSessionId, _cts.Token))
             {
-                response += token;
-                assistantMessage.Content = response;
+                if (delta.ReasoningContent != null)
+                {
+                    reasoning.Append(delta.ReasoningContent);
+                    assistantMessage.ReasoningContent = reasoning.ToString();
+                }
+                else
+                {
+                    response.Append(delta.Content);
+                    assistantMessage.Content = response.ToString();
+                }
+
                 await InvokeAsync(StateHasChanged);
             }
 
             assistantMessage.IsStreaming = false;
-            await ResponseReceived.InvokeAsync(response);
-            await MessageAdded.InvokeAsync(assistantMessage);
 
-            var tools = ChatService.ParseToolBlock(response);
+            var tools = ChatService.ParseToolBlock(assistantMessage.Content);
             await HandleToolCallAsync(tools);
-
         }
         catch (Exception ex)
         {
