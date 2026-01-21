@@ -3,13 +3,10 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 using UIBlazor.Models;
 using UIBlazor.Options;
 using UIBlazor.Services.Models;
 using UIBlazor.Utils;
-using YamlDotNet.Serialization;
-using YamlDotNet.Serialization.NamingConventions;
 
 namespace UIBlazor.Services;
 
@@ -199,64 +196,6 @@ public class ChatService(
 
             isStart = false;
         }
-
-        // Add assistant response to conversation history
-        if (assistantResponse.Length > 0)
-        {
-            session.AddMessage("assistant", assistantResponse.ToString());
-        }
-    }
-
-    public List<AiTool> ParseToolBlock(string content)
-    {
-        var result = new List<AiTool>();
-
-        // Создаем десериализатор YAML
-        var yamlDeserializer = new DeserializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance) // Опционально
-            .Build();
-
-        // Регулярное выражение адаптировано под гибридный формат:
-        var callRegex = new Regex(
-            @"<\|tool_call_begin\|>\s*functions\.(\w+)(?::(\d+))?\s*(.*?)\s*<\|tool_call_end\|>",
-            RegexOptions.Singleline);
-
-        foreach (Match callMatch in callRegex.Matches(content))
-        {
-            var toolName = callMatch.Groups[1].Value;
-            var callId = callMatch.Groups[2].Success ? callMatch.Groups[2].Value : Guid.NewGuid().ToString();
-            var yamlArgs = callMatch.Groups[3].Value;
-
-            Dictionary<string, object> arguments = [];
-
-            if (!string.IsNullOrEmpty(yamlArgs))
-            {
-                try
-                {
-                    arguments = yamlDeserializer.Deserialize<Dictionary<string, object>>(yamlArgs) ?? [];
-                }
-                catch (Exception ex)
-                {
-                    // Если модель ошиблась в отступах, можно попробовать "спасти" данные 
-                    // или вернуть ошибку в LLM
-                    arguments = new Dictionary<string, object> { { "raw_error", yamlArgs } };
-                }
-            }
-
-            result.Add(new AiTool
-            {
-                Type = "function",
-                Id = callId,
-                Index = result.Count,
-                Function = new AiToolToCall
-                {
-                    Name = toolName,
-                    Arguments = arguments
-                }
-            });
-        }
-
-        return result;
     }
 
     public async Task<ConversationSession> GetOrCreateSessionAsync(string sessionId)

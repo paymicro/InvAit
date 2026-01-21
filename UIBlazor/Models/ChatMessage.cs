@@ -33,6 +33,10 @@ public class ChatMessage
     /// </summary>
     [JsonIgnore]
     public bool IsStreaming { get; set; }
+
+    [JsonIgnore]
+    public string ToolName { get; set; }
+
     /// <summary>
     /// Gets or sets the role associated with the message (e.g., "user", "assistant").
     /// </summary>

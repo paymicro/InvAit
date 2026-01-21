@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -382,13 +383,22 @@ public class BuiltInAgent
     private async Task<VsResponse> ApplyDiffAsync(IReadOnlyDictionary<string, object> args)
     {
         var solutionPath = await GetSolutionPathAsync();
-        var inputFileName = args.GetString("path");
+        var inputFileName = args.GetString("param1");
         var filepath = GetAbsolutePath(inputFileName, solutionPath);
-        var argsDifflines = args.GetString("diff").Split(["\r\n", "\r", "\n"], StringSplitOptions.None);
-        var parser = new UniversalDiffParser();
-        var replacements = parser.Parse(argsDifflines);
+        var replacements = new List<DiffReplacement>();
+        foreach (var item in args)
+        {
+            if (item.Key.StartsWith("diff") && item.Value is JsonElement jsonElement)
+            {
+                replacements.Add(jsonElement.GetObject<DiffReplacement>());
+            }
+        }
+
+        if (replacements.Count == 0)
+            return new VsResponse { Success = false, Error = "Failed to get replacements" };
 
         await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
         if (!File.Exists(filepath))
             return new VsResponse { Success = false, Error = "File doesn't exist." };
 
@@ -402,9 +412,11 @@ public class BuiltInAgent
         replacements = replacements.OrderByDescending(r => r.StartLine).ToList();
         var isError = false;
 
+        var parser = new UniversalDiffParser();
+
         foreach (var rep in replacements)
         {
-            var actualStart = parser.FindInFile(lines, rep.Search, rep.StartLine, 4);
+            var actualStart = parser.FindInFile(lines, rep.Search, rep.StartLine, 5);
             if (actualStart == -1)
             {
                 return new VsResponse
@@ -421,33 +433,6 @@ public class BuiltInAgent
             totalReplacements++;
         }
 
-        //foreach (var replacement in replacements)
-        //{
-        //    var startIndex = replacement.StartLine - 1;
-        //    var endLine = replacement.StartLine + replacement.Search.Count - 1;
-
-        //    if (replacement.StartLine < 1 || endLine > lines.Count)
-        //    {
-        //        continue;
-        //    }
-
-        //    var currentLines = lines.Skip(startIndex - 4).Take(replacement.Search.Count + 6).ToList();
-        //    var diffIndex = FindSubarrayIndex(currentLines, replacement.Search);
-        //    if (diffIndex == -1)
-        //    {
-        //        continue;
-        //    }
-
-        //    startIndex += diffIndex - 4;
-
-        //    // Replace lines
-        //    lines.RemoveRange(startIndex, currentLines.Count);
-        //    lines.InsertRange(startIndex, replacement.Replace);
-
-        //    totalReplacements++;
-        //    appliedReplacements.Insert(0, $"{startIndex}-{endLine}");
-        //}
-
         if (totalReplacements == 0)
         {
             return new VsResponse { Success = false, Error = "No valid replacements found." };
@@ -459,20 +444,20 @@ public class BuiltInAgent
             File.Copy(filepath, tempFile, true);
             File.WriteAllLines(filepath, lines);
             await FileDiffAsync(tempFile, filepath, "old", "new");
-            Logger.Log($"Applied {totalReplacements} replacements to {inputFileName}: {string.Join(", ", appliedReplacements)}");
+            Logger.Log($"{totalReplacements} changes successfully applied to {inputFileName}.\r\nLooks good!");
         }
         catch (Exception e)
         {
             await Logger.LogAsync(e.Message);
             return new VsResponse
             {
-                Payload = $"Changes successfully applied to {inputFileName}.\r\nLooks good!"
+                Payload = $"Changes to {inputFileName} is FAILED.\r\n{e.Message}"
             };
         }
 
         return new VsResponse
         {
-            Payload = $"Changes successfully applied to {inputFileName}.\r\nLooks good!. Applied {totalReplacements} replacements"
+            Payload = $"Changes successfully applied to {inputFileName}.\r\nLooks good!. Applied {totalReplacements}/{replacements.Count} replacements. Use read_files to get actual content."
         };
     }
 

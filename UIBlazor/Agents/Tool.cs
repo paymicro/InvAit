@@ -6,11 +6,6 @@ public class Tool
     {
     }
 
-    public Tool(Func<Tool, IReadOnlyDictionary<string, object>, Task<VsToolResult>> executeWithToolAsync)
-    {
-        ExecuteAsync = args => executeWithToolAsync(this, args);
-    }
-
     /// <summary>
     /// Name of tool
     /// </summary>
@@ -51,9 +46,4 @@ public class Tool
     /// Function to execute the tool
     /// </summary>
     public Func<IReadOnlyDictionary<string, object>, Task<VsToolResult>> ExecuteAsync { get; init; } = null!;
-
-    /// <summary>
-    /// Logging ResponseAndRequest
-    /// </summary>
-    public bool LogResponseAndRequest { get; set; }
 }

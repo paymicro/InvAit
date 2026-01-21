@@ -13,11 +13,11 @@ public class BuiltInAgent(IVsBridge vsBridge)
             Name = BuiltInToolEnum.ReadFiles,
             Description = "Request to read the contents of one or more files. The tool outputs line-numbered content (e.g. \"1 | const x = 1\") for easy reference when creating diffs or discussing code.",
             ExampleToSystemMessage = """
-                                     For example, to read 2 files, you would respond with this:
+                                     For example, to read 3 files, you would respond with this:
                                      <|tool_call_begin|> functions.read_files
-                                     files: 
-                                       - path/to/file1.txt
-                                       - path/to/file2.txt
+                                     path/to/file1.txt
+                                     C:\Users\UserService.cs
+                                     C:\Users\AuthService.cs
                                      <|tool_call_end|>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, args),
@@ -44,10 +44,9 @@ public class BuiltInAgent(IVsBridge vsBridge)
             ExampleToSystemMessage = """
                                      For example, to create a file located at 'path/to/file.txt', you would respond with:
                                      <|tool_call_begin|> functions.create_new_file
-                                     filepath: "path/to/file.txt"
-                                     contents: |
-                                       Contents
-                                       of the file
+                                     path/to/file.txt
+                                     Contents of the file.
+                                     And second line of this file.
                                      <|tool_call_end|>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.CreateFile, args)
@@ -62,20 +61,35 @@ public class BuiltInAgent(IVsBridge vsBridge)
                           If you're not confident in the exact content to search for, use the read_file tool first to get the exact content.
                           When applying the diffs, be extra careful to remember to change any closing brackets or other syntax that may be affected by the diff farther down in the file.
                           ALWAYS make as many changes in a single 'apply_diff' request as possible using multiple SEARCH/REPLACE blocks.
-                          An optional ":start_line:" + "-------".
+                          An optional ":start_line:". The search will be 5 lines up and down.
                           """,
             ExampleToSystemMessage = """
                                      For example:
                                      <|tool_call_begin|> functions.apply_diff
-                                     path: "path/to/file.txt"
-                                     diff: |
-                                       :start_line:10
-                                       -------
-                                       <<<<<<< SEARCH
-                                       old code
-                                       =======
-                                       new code
-                                       >>>>>>> REPLACE
+                                     path/to/file.cs
+                                     :start_line:10
+                                     <<<<<<< SEARCH
+                                     old code
+                                     =======
+                                     new code
+                                     >>>>>>> REPLACE
+                                     <|tool_call_end|>
+                                     
+                                     <|tool_call_begin|> functions.apply_diff
+                                     path/to/file222.cs
+                                     <<<<<<< SEARCH
+                                     old code
+                                     =======
+                                     new code
+                                     >>>>>>> REPLACE
+                                     
+                                     :start_line:40
+                                     <<<<<<< SEARCH
+                                         var z = "old code";
+                                     =======
+                                         var isNew = true;
+                                         var z = isNew ? "new code" : "old code";
+                                     >>>>>>> REPLACE
                                      <|tool_call_end|>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ApplyDiff, args)
@@ -89,7 +103,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
             ExampleToSystemMessage = """
                                      For example:
                                      <|tool_call_begin|> functions.search_files
-                                     regex: "^.*\.cs$"
+                                     ^.*\.cs$
                                      <|tool_call_end|>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.SearchFiles, args)
@@ -101,7 +115,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
             ExampleToSystemMessage = """
                                      For example:
                                      <|tool_call_begin|> functions.grep_search
-                                     regex: "^.*?main_services.*"
+                                     ^.*?main_services.*
                                      <|tool_call_end|>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GrepSearch, args)
@@ -113,8 +127,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
             ExampleToSystemMessage = """
                                      For example:
                                      <|tool_call_begin|> functions.ls
-                                     dirPath: "path/to/dir"
-                                     recursive: false
+                                     path/to/dir
+                                     false
                                      <|tool_call_end|>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Ls, args)
@@ -128,7 +142,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
             ExampleToSystemMessage = """
                                      For example:
                                      <|tool_call_begin|> functions.build_solution
-                                     action: build
+                                     build
                                      <|tool_call_end|>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Build, args)
@@ -170,8 +184,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
             ExampleToSystemMessage = $"""
                                       For example, to see the git log, you could respond with:
                                       <|tool_call_begin|> functions.{BuiltInToolEnum.Exec} 
-                                      exe: "dotnet"
-                                      command: "restore"
+                                      dotnet restore
                                       <|tool_call_end|>
                                       """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Exec, args)
@@ -183,7 +196,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
             ExampleToSystemMessage = """
                                      For example, to read the contents of a webpage, you might respond with:
                                      <|tool_call_begin|> functions.fetch_url_content
-                                     url: "https://example.com"
+                                     https://example.com
                                      <|tool_call_end|>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.FetchUrl, args)
@@ -207,7 +220,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
             ExampleToSystemMessage = """
                                      For example:
                                      <|tool_call_begin|> functions.git_log
-                                     limit: 10
+                                     10
                                      <|tool_call_end|>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitLog, args)
@@ -219,7 +232,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
             ExampleToSystemMessage = """
                                      For example:
                                      <|tool_call_begin|> functions.git_diff
-                                     staged: false
+                                     false
                                      <|tool_call_end|>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitDiff, args)

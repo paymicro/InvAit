@@ -30,15 +30,6 @@ public partial class AIChat : RadzenComponent
     private NotificationService NotificationService { get; set; } = null!;
 
     [Inject]
-    private LocalStorageService Storage { get; set; } = null!;
-
-    [Inject]
-    private IVsBridge VsBridge { get; set; } = null!;
-
-    [Inject]
-    private BuiltInAgent BuiltInAgent { get; set; } = null!;
-
-    [Inject]
     private ToolManager ToolManager { get; set; } = null!;
 
     /// <summary>
@@ -122,14 +113,16 @@ public partial class AIChat : RadzenComponent
     /// <returns>The created message.</returns>
     public ChatMessage AddVisualMessage(string content, string role)
     {
-        var message = new ChatMessage
+        return AddVisualMessage(new ChatMessage
         {
             Content = content,
-            Role = role,
-            Timestamp = DateTime.Now
-        };
+            Role = role
+        });
+    }
 
-        Messages.Add(message);
+    public ChatMessage AddVisualMessage(ChatMessage chatMessage)
+    {
+        Messages.Add(chatMessage);
 
         // Limit the number of messages
         if (Messages.Count > ChatService.Options.MaxMessages)
@@ -138,7 +131,7 @@ public partial class AIChat : RadzenComponent
         }
 
         InvokeAsync(StateHasChanged);
-        return message;
+        return chatMessage;
     }
 
     /// <summary>
@@ -249,7 +242,17 @@ public partial class AIChat : RadzenComponent
 
             assistantMessage.IsStreaming = false;
 
-            var tools = ChatService.ParseToolBlock(assistantMessage.Content);
+            var tools = ToolManager.ParseToolBlock(assistantMessage.Content);
+
+            // Меняем контент если там есть вызов тулзов
+            if (tools.Count > 0)
+            {
+                assistantMessage.Content = "Tool: " + string.Join(", ", tools.Select(t => t.Function.Name));
+            }
+
+            // Add assistant response to conversation history
+            await ChatService.AddMessageAsync(_currentSessionId, ChatMessageRole.Assistant, assistantMessage.Content);
+
             await HandleToolCallAsync(tools);
         }
         catch (Exception ex)
@@ -288,9 +291,61 @@ public partial class AIChat : RadzenComponent
                         ShowProgress = true
                     });
                 }
+#if DEBUG
+                // Безголовые тесты
+                if (!vsToolResult.Success && vsToolResult.ErrorMessage == "WebView2 API is`t find.")
+                {
+                    switch (vsToolResult.Name)
+                    {
+                        case BuiltInToolEnum.ReadOpenFile:
+                            vsToolResult = new VsToolResult
+                            {
+                                Result = """
+                                namespace UIBlazor.Components;
 
-                AddVisualMessage(vsToolResult.Result, vsToolResult.Role);
-                await ChatService.AddMessageAsync(_currentSessionId, vsToolResult.Role, vsToolResult.Result);
+                                public partial class AIChat : TestComponent
+                                {
+                                    private List<ChatMessage> Messages { get; set; } = [];
+                                }
+                                """
+                            };
+                            break;
+                        case BuiltInToolEnum.ApplyDiff:
+                            vsToolResult = new VsToolResult
+                            {
+                                Result = "All replacements is successful."
+                            };
+                            break;
+                    }
+                }
+#endif
+
+                AddVisualMessage(new ChatMessage
+                {
+                    Role = ChatMessageRole.Tool,
+                    Content = vsToolResult.Result,
+                    ToolName = tool.Name,
+                });
+                if (vsToolResult.Success)
+                {
+                    var result = $"""
+                        <tool_result name="{tool.Name}">
+                        {vsToolResult.Result}
+                        </tool_result>
+                        Инструкция: На основе полученных данных выше, реши, достигнута ли цель. Если нет - предложи следующее действие, НО не повторяй предыдущее.
+                        """ ;
+                    await ChatService.AddMessageAsync(_currentSessionId, vsToolResult.Role, result);
+                }
+                else
+                {
+                    var result = $"""
+                        <tool_result name="{tool.Name}">
+                        {vsToolResult.ErrorMessage}
+                        </tool_result>
+                        Инструкция: Во время выполнения возникла ошибка. Предложи следующее действие, НО не повторяй предыдущее.
+                        """;
+                    await ChatService.AddMessageAsync(_currentSessionId, ChatMessageRole.System, vsToolResult.ErrorMessage);
+                }
             }
         }
 
@@ -357,7 +412,7 @@ public partial class AIChat : RadzenComponent
         if (!firstRender && _messagesContainer.Context != null && JSRuntime != null)
         {
             // Scroll to bottom when new messages are added
-            await JSRuntime.InvokeVoidAsync("scrollToBottomIfNeeded", ".rz-chat-messages", 20);
+            await JSRuntime.InvokeVoidAsync("scrollToBottomIfNeeded", ".rz-chat-messages", 100);
         }
     }
 

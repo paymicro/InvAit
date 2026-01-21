@@ -87,7 +87,8 @@
                             {
                                 if (message.Role == ChatMessageRole.Tool)
                                 {
-                                    @message.Content
+                                    <details>
+                                    <summary>@message.ToolName</summary>@message.Content</details>
                                 }
                                 else
                                 {

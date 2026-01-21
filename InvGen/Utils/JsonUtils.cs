@@ -82,4 +82,16 @@ public static class JsonUtils
             return null;
         }
     }
+
+    public static T? GetObject<T>(this JsonElement jsonElement) where T : class
+    {
+        try
+        {
+            return jsonElement.Deserialize<T>(_jsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }

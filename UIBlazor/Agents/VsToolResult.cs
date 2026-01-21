@@ -9,7 +9,10 @@ public record VsToolResult
     /// </summary>
     public string Result { get; init; } = string.Empty;
 
-    public string Role { get; set; } = ChatMessageRole.Tool;
+    /// <summary>
+    /// Промпт-ориентированноый туллинг требует роли User или System для ответа на тулзу
+    /// </summary>
+    public string Role { get; set; } = ChatMessageRole.User;
 
     /// <summary>
     /// Tool arguments
