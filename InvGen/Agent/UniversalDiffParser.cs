@@ -1,17 +1,9 @@
 ﻿using System.Collections.Generic;
-using Shared.Contracts;
 
 namespace InvGen.Agent;
 
 public class UniversalDiffParser
 {
-    public List<DiffReplacement> Parse(IReadOnlyDictionary<string, object> args)
-    {
-        var list = new List<DiffReplacement>();
-
-        return list;
-    }
-
     public int FindInFile(List<string> target, List<string> search, int hint, int tol)
     {
         if (hint == -1) // поиск по всему файлу

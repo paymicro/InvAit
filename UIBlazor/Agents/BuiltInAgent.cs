@@ -40,11 +40,11 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.CreateFile,
-            Description = "To create a NEW file, use the create_new_file tool with the relative filepath and new contents.",
+            Description = "To create a NEW file, use the create_new_file tool with the relative or absolute filepath and new contents.",
             ExampleToSystemMessage = """
-                                     For example, to create a file located at 'path/to/file.txt', you would respond with:
+                                     For example, to create a file located at 'path\to\file.cs', you would respond with:
                                      <|tool_call_begin|> functions.create_new_file
-                                     path/to/file.txt
+                                     \path\to\file.cs
                                      Contents of the file.
                                      And second line of this file.
                                      <|tool_call_end|>
@@ -66,7 +66,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
             ExampleToSystemMessage = """
                                      For example:
                                      <|tool_call_begin|> functions.apply_diff
-                                     path/to/file.cs
+                                     C:\path\to\file.cs
                                      :start_line:10
                                      <<<<<<< SEARCH
                                      old code
@@ -76,7 +76,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
                                      <|tool_call_end|>
                                      
                                      <|tool_call_begin|> functions.apply_diff
-                                     path/to/file222.cs
+                                     C:\path\to\file222.cs
                                      <<<<<<< SEARCH
                                      old code
                                      =======
@@ -127,7 +127,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
             ExampleToSystemMessage = """
                                      For example:
                                      <|tool_call_begin|> functions.ls
-                                     path/to/dir
+                                     C:\path\to\dir
                                      false
                                      <|tool_call_end|>
                                      """,

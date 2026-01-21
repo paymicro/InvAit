@@ -83,9 +83,7 @@ public class BuiltInAgent
     private async Task<VsResponse> ReadFileAsync(IReadOnlyDictionary<string, object> args)
     {
         var solutionPath = await GetSolutionPathAsync();
-        var filesInString = args.GetString("files");
-        var files = JsonUtils.Deserialize<List<string>>(filesInString);
-
+        var files = args.Values.Select(x => x.ToString()).ToList();
         await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         var stingBuilder = new StringBuilder();
         var isSuccess = true;
@@ -126,8 +124,9 @@ public class BuiltInAgent
     private async Task<VsResponse> CreateNewFileAsync(IReadOnlyDictionary<string, object> args)
     {
         var solutionPath = await GetSolutionPathAsync();
-        var filepath = GetAbsolutePath(args.GetString("filepath"), solutionPath);
-        var contents = args.GetString("contents");
+        var fileParam = args.GetString("param1");
+        var filepath = GetAbsolutePath(fileParam, solutionPath);
+        var contents = args.Values.Skip(1).Select(x => x.ToString());
 
         await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         try
@@ -138,10 +137,10 @@ public class BuiltInAgent
                 Directory.CreateDirectory(directory);
             }
 
-            File.WriteAllText(filepath, contents);
+            File.WriteAllLines(filepath, contents);
             return new VsResponse
             {
-                Payload = $"File {args.GetString("filepath")} created successfully."
+                Payload = $"File {fileParam} created successfully."
             };
         }
         catch (Exception e)
@@ -157,8 +156,9 @@ public class BuiltInAgent
 
     private async Task<VsResponse> ExecAsync(IReadOnlyDictionary<string, object> args)
     {
-        var exe = args.GetString("exe").ToLower();
-        var command = args.GetString("command");
+        var param = args.GetString("param1");
+        var exe = param.Split(' ')[0];
+        var command = param.Remove(0, exe.Length).TrimStart();
         var waitForCompletion = !args.ContainsKey("waitForCompletion") || args.GetBool("waitForCompletion");
 
         var solutionPath = await GetSolutionPathAsync();
@@ -229,7 +229,7 @@ public class BuiltInAgent
 
     private async Task<VsResponse> SearchFilesAsync(IReadOnlyDictionary<string, object> args)
     {
-        var pattern = args.GetString("regex");
+        var pattern = args.GetString("param1");
         if (string.IsNullOrEmpty(pattern))
         {
             return new VsResponse
@@ -254,7 +254,7 @@ public class BuiltInAgent
 
     private async Task<VsResponse> GrepSearchAsync(IReadOnlyDictionary<string, object> args)
     {
-        var query = args.GetString("query");
+        var query = args.GetString("param1");
         if (string.IsNullOrEmpty(query))
         {
             return new VsResponse
@@ -297,8 +297,8 @@ public class BuiltInAgent
     private async Task<VsResponse> ListDirectoryAsync(IReadOnlyDictionary<string, object> args)
     {
         var solutionPath = await GetSolutionPathAsync();
-        var dirPath = GetAbsolutePath(args.GetString("dirPath"), solutionPath);
-        var recursive = args.GetBool("recursive");
+        var dirPath = GetAbsolutePath(args.GetString("param1"), solutionPath);
+        var recursive = args.GetBool("param2");
 
         await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         if (!Directory.Exists(dirPath))
@@ -320,7 +320,7 @@ public class BuiltInAgent
 
     private async Task<VsResponse> FetchUrlContentAsync(IReadOnlyDictionary<string, object> args)
     {
-        var url = args.GetString("url");
+        var url = args.GetString("param1");
         if (string.IsNullOrEmpty(url))
         {
             return new VsResponse
@@ -482,7 +482,12 @@ public class BuiltInAgent
 
     private async Task<VsResponse> BuildSolutionAsync(IReadOnlyDictionary<string, object> args)
     {
-        var buildAction = (Toolkit.BuildAction)args.GetInt("action");
+        var buildAction = args.GetString("param1").ToLower() switch
+        {
+            "clean" => Toolkit.BuildAction.Clean,
+            "rebuild" => Toolkit.BuildAction.Rebuild,
+            _ => Toolkit.BuildAction.Build,
+        };
         var result = await VS.Build.BuildSolutionAsync(buildAction);
 
         if (!result)
@@ -493,16 +498,16 @@ public class BuiltInAgent
             {
                 Success = false,
                 Error = $"""
-                          Build is failed.
+                         {buildAction} is failed.
 
-                          {errorList.Error}
-                          """
+                         {errorList.Error}
+                         """
             };
         }
 
         return new VsResponse
         {
-            Payload = "Build is successful."
+            Payload = $"{buildAction} is successful."
         };
     }
 
@@ -590,7 +595,7 @@ public class BuiltInAgent
 
     private async Task<VsResponse> ExecGitCommandAsync(string arguments)
     {
-        return await ExecAsync(new Dictionary<string, object>() { { "exe", "git" }, { "command", arguments } });
+        return await ExecAsync(new Dictionary<string, object>() { { "param1", $"git {arguments}" } });
     }
 
     private async Task FileDiffAsync(string file1, string file2, string file1Title, string file2Title)
