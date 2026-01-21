@@ -13,7 +13,7 @@ public class AiTool
     /// It will probably always be "function", indicating that the execution of a function is being requested.
     /// </summary>
     /// <returns>
-    public string Type { get; set; }
+    public string Type { get; set; } = "function";
 
     /// <summary>
     /// Gets or sets the function to call, represented by the <see cref="AiToolToCall"/> object.

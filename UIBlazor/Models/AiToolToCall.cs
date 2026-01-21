@@ -10,5 +10,5 @@ public class AiToolToCall
     /// <summary>
     /// Gets or sets the function's arguments.
     /// </summary>
-    public string Arguments { get; set; }
+    public Dictionary<string, object> Arguments { get; set; } = [];
 }

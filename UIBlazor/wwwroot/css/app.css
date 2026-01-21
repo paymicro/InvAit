@@ -33,15 +33,6 @@ details summary {
     cursor: pointer;
     user-select: none;
     transition: margin 150ms ease-out;
-    /* анимамции текста */
-    background: linear-gradient(90deg, var(--rz-base-400), var(--rz-base-500), var(--rz-base-400));
-    background-size: 200% auto;
-    color: transparent;
-    background-clip: text;
-    animation: gradient-shift 6s ease infinite;
-}
-
-details summary::marker {
     color: var(--rz-base-400);
 }
 
@@ -83,20 +74,6 @@ details summary::marker {
 
     50% {
         transform: translateY(-25px);
-    }
-}
-
-@keyframes gradient-shift {
-    0% {
-        background-position: 0% 50%;
-    }
-
-    50% {
-        background-position: 100% 50%;
-    }
-
-    100% {
-        background-position: 0% 50%;
     }
 }
 

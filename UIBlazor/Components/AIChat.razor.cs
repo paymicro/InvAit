@@ -277,7 +277,7 @@ public partial class AIChat : RadzenComponent
             var tool = ToolManager.GetTool(aiTool.Function.Name);
             if (tool != null)
             {
-                var vsToolResult = await tool.ExecuteAsync(JsonUtils.DeserializeParameters(aiTool.Function.Arguments));
+                var vsToolResult = await tool.ExecuteAsync(aiTool.Function.Arguments);
                 if (vsToolResult != null)
                 {
                     NotificationService.Notify(new NotificationMessage
@@ -351,29 +351,13 @@ public partial class AIChat : RadzenComponent
         });
     }
 
-    private async Task OnTestAsync()
-    {
-        var result = await VsBridge.ExecuteToolAsync(BuiltInToolEnum.GetErrors);
-        NotificationService.Notify(new NotificationMessage
-        {
-            Severity = NotificationSeverity.Info,
-            Summary = result.Result,
-            Duration = 15_000,
-            ShowProgress = true
-        });
-    }
-
     /// <inheritdoc />
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender && _messagesContainer.Context != null && JSRuntime != null)
         {
             // Scroll to bottom when new messages are added
-            await JSRuntime.InvokeVoidAsync("eval",
-                "setTimeout(() => { " +
-                "const container = document.querySelector('.rz-chat-messages'); " +
-                "if (container) container.scrollTop = container.scrollHeight; " +
-                "}, 100);");
+            await JSRuntime.InvokeVoidAsync("scrollToBottomIfNeeded", ".rz-chat-messages", 20);
         }
     }
 

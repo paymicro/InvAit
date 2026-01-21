@@ -4,6 +4,7 @@ using System.IO;
 using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Windows.Input;
 using InvGen.Agent;
 using InvGen.Utils;
 using Microsoft.VisualStudio.PlatformUI;
@@ -28,6 +29,24 @@ public partial class ChatControl
         _viewModel = (ChatViewModel)DataContext;
         _builtInAgent = new BuiltInAgent();
         Loaded += (_, _) => _ = HandleLoadedAsync();
+        PreviewKeyDown += ChatControl_PreviewKeyDown;
+    }
+
+    private void ChatControl_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        // фикс обработки Home или End
+        if (e.Key is Key.Home or Key.End && _webView2Installed)
+        {
+            e.Handled = true;
+
+            // Создаём JavaScript-код для эмуляции нажатия клавиши в браузере
+            var jsCode = e.Key == Key.Home
+                ? "document.activeElement.setSelectionRange(0, 0); document.activeElement.scrollIntoView(true);"
+                : "var len = document.activeElement.value.length; document.activeElement.setSelectionRange(len, len); document.activeElement.scrollIntoView(false);";
+
+            // Выполняем JavaScript в WebView2
+            _ = _webView.ExecuteScriptAsync(jsCode);
+        }
     }
 
     private async Task HandleLoadedAsync()
@@ -165,7 +184,8 @@ public partial class ChatControl
         }
         catch (Exception ex)
         {
-            await Logger.LogAsync($"WebMessage error: {ex.Message}", "ERROR");
+            // По идее сюда не должно дойди.
+            await Logger.LogAsync($"WebMessage error: {ex.Message}", "FATAL");
         }
     }
 

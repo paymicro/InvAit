@@ -24,11 +24,9 @@
         <StaticResource ResourceKey="Vm"/>
     </UserControl.DataContext>
     
-    <Grid>
-        <!-- WebView -->
-        <Grid>
-            <ContentPresenter x:Name="WebViewHost" />
-            <Image x:Name="ScreenshotImage" Visibility="Collapsed" Stretch="Fill"/>
-        </Grid>
-    </Grid>
+    <!-- WebView -->
+    <ContentPresenter x:Name="WebViewHost"
+                      Focusable="True"
+                      KeyboardNavigation.IsTabStop="True"
+                      KeyboardNavigation.TabNavigation="Once"/>
 </UserControl>

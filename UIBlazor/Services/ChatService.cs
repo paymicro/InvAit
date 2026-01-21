@@ -8,6 +8,8 @@ using UIBlazor.Models;
 using UIBlazor.Options;
 using UIBlazor.Services.Models;
 using UIBlazor.Utils;
+using YamlDotNet.Serialization;
+using YamlDotNet.Serialization.NamingConventions;
 
 namespace UIBlazor.Services;
 
@@ -209,18 +211,37 @@ public class ChatService(
     {
         var result = new List<AiTool>();
 
-        var clearContent = RemoveThinkBlock(content);
+        // Создаем десериализатор YAML
+        var yamlDeserializer = new DeserializerBuilder()
+            .WithNamingConvention(CamelCaseNamingConvention.Instance) // Опционально
+            .Build();
 
-        // tool calls inside
+        // Регулярное выражение адаптировано под гибридный формат:
         var callRegex = new Regex(
-            @"<\|tool_call_begin\|>\s*functions\.(\w+):(\d+)\s*<\|tool_call_argument_begin\|>\s*(.*?)\s*<\|tool_call_end\|>",
+            @"<\|tool_call_begin\|>\s*functions\.(\w+)(?::(\d+))?\s*(.*?)\s*<\|tool_call_end\|>",
             RegexOptions.Singleline);
 
-        foreach (Match callMatch in callRegex.Matches(clearContent))
+        foreach (Match callMatch in callRegex.Matches(content))
         {
             var toolName = callMatch.Groups[1].Value;
-            var callId = callMatch.Groups[2].Value;
-            var jsonArgs = callMatch.Groups[3].Value;
+            var callId = callMatch.Groups[2].Success ? callMatch.Groups[2].Value : Guid.NewGuid().ToString();
+            var yamlArgs = callMatch.Groups[3].Value;
+
+            Dictionary<string, object> arguments = [];
+
+            if (!string.IsNullOrEmpty(yamlArgs))
+            {
+                try
+                {
+                    arguments = yamlDeserializer.Deserialize<Dictionary<string, object>>(yamlArgs) ?? [];
+                }
+                catch (Exception ex)
+                {
+                    // Если модель ошиблась в отступах, можно попробовать "спасти" данные 
+                    // или вернуть ошибку в LLM
+                    arguments = new Dictionary<string, object> { { "raw_error", yamlArgs } };
+                }
+            }
 
             result.Add(new AiTool
             {
@@ -230,7 +251,7 @@ public class ChatService(
                 Function = new AiToolToCall
                 {
                     Name = toolName,
-                    Arguments = jsonArgs
+                    Arguments = arguments
                 }
             });
         }
@@ -283,7 +304,4 @@ public class ChatService(
             await SetSessionsListAsync(sessions);
         }
     }
-
-    private string RemoveThinkBlock(string input)
-        => Regex.Replace(input, @"<think>[\s\S]*?</think>", "", RegexOptions.Singleline);
 }

@@ -1,7 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
-using Microsoft.Extensions.Logging;
 using UIBlazor.Agents;
 using UIBlazor.Models;
 
@@ -49,18 +48,23 @@ public class ToolManager(BuiltInAgent builtInAgent)
                       You have access to several "tools" that you can use at any time to retrieve information and/or perform tasks for the User.
 
                       You MUST invoke tools exclusively with the following literal syntax; no other format is allowed:
-                      <|tool_call_begin|> functions.<toolName>:<index> <|tool_call_argument_begin|> {<arg1>:<val1>,<arg2>:<val2>} <|tool_call_end|>
+                      <|tool_call_begin|> functions.<toolName>
+                      YAML arguments
+                      <|tool_call_end|>
+                      <|tool_calls_section_end|>
+
                       Immediately after <|tool_calls_section_end|> - stop generation, no explanatory text.
 
                       Explanation:
-                        <|tool_call_begin|> functions.<toolName>:<index>    // function header. toolName - function name. index - index number from 0 in calls_section.
-                          <|tool_call_argument_begin|> {}                   // argument body JSON object
-                        <|tool_call_end|>                                   // end of first call
-                        <|tool_call_begin|> functions.<toolName>:<index>    // optional second function header. toolName - function name. index - index number in calls_section.
-                          <|tool_call_argument_begin|> {}                   // argument body JSON object
-                        <|tool_call_end|>                                   // end of second call
+                        <|tool_call_begin|> functions.<toolName>            # function header. toolName - function name.
+                        YAML arguments                                      # argument body in YAML
+                        <|tool_call_end|>                                   # end of first call
+                        <|tool_call_begin|> functions.<toolName>:<index>    # optional second function header. toolName - function name.
+                        YAML arguments                                      # argument body in YAML
+                        <|tool_call_end|>                                   # end of second call
+                        <|tool_calls_section_end|>                          # end of tool call section - end
 
-                      The following tools are available to you:
+                      The following tools/fuctions are available to you:
 
                       """);
 

@@ -54,3 +54,18 @@ if (window.chrome && window.chrome.webview) {
 } else {
     console.warn("Приложение запущено без WebView2");
 }
+
+function scrollToBottomIfNeeded(selector, threshold = 100) {
+    setTimeout(() => {
+        const container = document.querySelector(selector);
+        if (container) {
+            // Проверяем, находится ли пользователь близко к низу
+            const isNearBottom =
+                container.scrollHeight - container.scrollTop - container.clientHeight <= threshold;
+
+            if (isNearBottom) {
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+    }, 100);
+}

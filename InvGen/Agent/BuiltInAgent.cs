@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Windows.Documents;
 using EnvDTE;
 using EnvDTE80;
 using InvGen.Utils;
@@ -23,30 +24,43 @@ public class BuiltInAgent
 {
     public async Task<VsResponse> ExecuteAsync(VsRequest vsRequest)
     {
-        var response = vsRequest.Action switch
+        try
         {
-            BuiltInToolEnum.ReadFiles => await ReadFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-            BuiltInToolEnum.ReadOpenFile => await ReadCurrentlyOpenFileAsync(),
-            BuiltInToolEnum.CreateFile => await CreateNewFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-            BuiltInToolEnum.Exec => await ExecAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-            BuiltInToolEnum.SearchFiles => await SearchFilesAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-            BuiltInToolEnum.GrepSearch => await GrepSearchAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-            BuiltInToolEnum.Ls => await ListDirectoryAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-            BuiltInToolEnum.FetchUrl => await FetchUrlContentAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-            BuiltInToolEnum.ApplyDiff => await ApplyDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-            BuiltInToolEnum.Build => await BuildSolutionAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-            BuiltInToolEnum.GetErrors => await GetErrorListAsync(),
-            BuiltInToolEnum.GetProjectInfo => await GetProjectInfoAsync(),
-            BuiltInToolEnum.GitStatus => await GitStatusAsync(),
-            BuiltInToolEnum.GitLog => await GitLogAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-            BuiltInToolEnum.GitDiff => await GitDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-            BuiltInToolEnum.GitBranch => await GitBranchAsync(),
-            _ => new VsResponse { Success = false, Error = "Unknown action" }
-        };
+            var response = vsRequest.Action switch
+            {
+                BuiltInToolEnum.ReadFiles => await ReadFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.ReadOpenFile => await ReadCurrentlyOpenFileAsync(),
+                BuiltInToolEnum.CreateFile => await CreateNewFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.Exec => await ExecAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.SearchFiles => await SearchFilesAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.GrepSearch => await GrepSearchAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.Ls => await ListDirectoryAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.FetchUrl => await FetchUrlContentAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.ApplyDiff => await ApplyDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.Build => await BuildSolutionAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.GetErrors => await GetErrorListAsync(),
+                BuiltInToolEnum.GetProjectInfo => await GetProjectInfoAsync(),
+                BuiltInToolEnum.GitStatus => await GitStatusAsync(),
+                BuiltInToolEnum.GitLog => await GitLogAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.GitDiff => await GitDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.GitBranch => await GitBranchAsync(),
+                _ => new VsResponse { Success = false, Error = "Unknown action" }
+            };
 
-        response.CorrelationId = vsRequest.CorrelationId;
+            response.CorrelationId = vsRequest.CorrelationId;
 
-        return response;
+            return response;
+        }
+        catch (Exception ex)
+        {
+            await Logger.LogAsync($"BuiltInAgent execute exception {ex.Message}", "ERROR");
+            return new VsResponse
+            {
+                Success = false,
+                CorrelationId = vsRequest.CorrelationId,
+                Error = ex.Message
+            };
+        }
     }
 
     private async Task<VsResponse> ReadCurrentlyOpenFileAsync()
@@ -370,7 +384,9 @@ public class BuiltInAgent
         var solutionPath = await GetSolutionPathAsync();
         var inputFileName = args.GetString("path");
         var filepath = GetAbsolutePath(inputFileName, solutionPath);
-        var replacements = ParseDiff(args.GetString("diff"));
+        var argsDifflines = args.GetString("diff").Split(["\r\n", "\r", "\n"], StringSplitOptions.None);
+        var parser = new UniversalDiffParser();
+        var replacements = parser.Parse(argsDifflines);
 
         await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         if (!File.Exists(filepath))
@@ -384,30 +400,53 @@ public class BuiltInAgent
         var appliedReplacements = new List<string>();
 
         replacements = replacements.OrderByDescending(r => r.StartLine).ToList();
+        var isError = false;
 
-        foreach (var replacement in replacements)
+        foreach (var rep in replacements)
         {
-            var startIndex = replacement.StartLine;
-            var endLine = replacement.StartLine + replacement.Search.Count - 1;
-
-            if (replacement.StartLine < 1 || endLine > lines.Count)
+            var actualStart = parser.FindInFile(lines, rep.Search, rep.StartLine, 4);
+            if (actualStart == -1)
             {
-                continue;
+                return new VsResponse
+                {
+                    Success = false,
+                    Error = $"Failed to apply diff at line {rep.StartLine} in file {inputFileName}"
+                };
             }
 
-            var currentLines = lines.Skip(startIndex).Take(replacement.Search.Count).ToList();
-            if (!currentLines.SequenceEqual(replacement.Search))
-            {
-                continue;
-            }
-
-            // Replace lines
-            lines.RemoveRange(startIndex, currentLines.Count);
-            lines.InsertRange(startIndex, replacement.Replace);
+            // Replace from actualStart
+            lines.RemoveRange(actualStart, rep.Search.Count);
+            lines.InsertRange(actualStart, rep.Replace);
 
             totalReplacements++;
-            appliedReplacements.Insert(0, $"{startIndex}-{endLine}");
         }
+
+        //foreach (var replacement in replacements)
+        //{
+        //    var startIndex = replacement.StartLine - 1;
+        //    var endLine = replacement.StartLine + replacement.Search.Count - 1;
+
+        //    if (replacement.StartLine < 1 || endLine > lines.Count)
+        //    {
+        //        continue;
+        //    }
+
+        //    var currentLines = lines.Skip(startIndex - 4).Take(replacement.Search.Count + 6).ToList();
+        //    var diffIndex = FindSubarrayIndex(currentLines, replacement.Search);
+        //    if (diffIndex == -1)
+        //    {
+        //        continue;
+        //    }
+
+        //    startIndex += diffIndex - 4;
+
+        //    // Replace lines
+        //    lines.RemoveRange(startIndex, currentLines.Count);
+        //    lines.InsertRange(startIndex, replacement.Replace);
+
+        //    totalReplacements++;
+        //    appliedReplacements.Insert(0, $"{startIndex}-{endLine}");
+        //}
 
         if (totalReplacements == 0)
         {
@@ -420,20 +459,40 @@ public class BuiltInAgent
             File.Copy(filepath, tempFile, true);
             File.WriteAllLines(filepath, lines);
             await FileDiffAsync(tempFile, filepath, "old", "new");
+            Logger.Log($"Applied {totalReplacements} replacements to {inputFileName}: {string.Join(", ", appliedReplacements)}");
         }
         catch (Exception e)
         {
             await Logger.LogAsync(e.Message);
             return new VsResponse
             {
-                Payload = $"File {inputFileName} updated. Applied {totalReplacements} replacements: {string.Join(", ", appliedReplacements)}"
+                Payload = $"Changes successfully applied to {inputFileName}.\r\nLooks good!"
             };
         }
 
         return new VsResponse
         {
-            Payload = $"File {inputFileName} updated. Applied {totalReplacements} replacements: {string.Join(", ", appliedReplacements)}"
+            Payload = $"Changes successfully applied to {inputFileName}.\r\nLooks good!. Applied {totalReplacements} replacements"
         };
+    }
+
+    public int FindSubarrayIndex(List<string> bigArray, List<string> smallArray)
+    {
+        if (bigArray == null || smallArray == null || bigArray.Count < smallArray.Count)
+        {
+            return -1;
+        }
+
+        for (int i = 0; i <= bigArray.Count - smallArray.Count; i++)
+        {
+            // Берем часть bigArray, начиная с i, длиной как smallArray
+            // и сравниваем её с smallArray
+            if (bigArray.Skip(i).Take(smallArray.Count).SequenceEqual(smallArray))
+            {
+                return i; // Нашли, возвращаем индекс
+            }
+        }
+        return -1; // Не нашли
     }
 
     private async Task<VsResponse> BuildSolutionAsync(IReadOnlyDictionary<string, object> args)
@@ -549,96 +608,6 @@ public class BuiltInAgent
         return await ExecAsync(new Dictionary<string, object>() { { "exe", "git" }, { "command", arguments } });
     }
 
-    private List<DiffReplacement> ParseDiff(string diffContent)
-    {
-        var results = new List<DiffReplacement>();
-        var lines = diffContent.Split(["\r\n", "\r", "\n"], StringSplitOptions.None);
-
-        int i = 0;
-        while (i < lines.Length)
-        {
-            // Skip empty lines between blocks
-            while (i < lines.Length && string.IsNullOrWhiteSpace(lines[i]))
-            {
-                i++;
-            }
-
-            if (i >= lines.Length) break;
-
-            var block = ParseSingleBlock(lines, ref i);
-            if (block != null)
-            {
-                results.Add(block);
-            }
-        }
-
-        return results;
-    }
-
-    private DiffReplacement ParseSingleBlock(string[] lines, ref int i)
-    {
-        if (lines[i] != "<<<<<<< SEARCH")
-        {
-            throw new FormatException($"Expected '<<<<<<< SEARCH' at line {i + 1}, got: {lines[i]}");
-        }
-        i++;
-
-        // Parse start line
-        if (i >= lines.Length || !lines[i].StartsWith(":start_line:"))
-        {
-            throw new FormatException($"Expected ':start_line:' at line {i + 1}");
-        }
-
-        var startLineStr = lines[i].Substring(12).Trim();
-        if (!int.TryParse(startLineStr, out var startLine))
-        {
-            throw new FormatException($"Invalid start line format: {startLineStr}");
-        }
-        i++;
-
-        // Check separator
-        if (i >= lines.Length || lines[i] != "-------")
-        {
-            throw new FormatException($"Expected '-------' separator at line {i + 1}");
-        }
-        i++;
-
-        // Parse search content
-        var searchLines = new List<string>();
-        while (i < lines.Length && lines[i] != "=======")
-        {
-            searchLines.Add(lines[i]);
-            i++;
-        }
-
-        if (i >= lines.Length)
-        {
-            throw new FormatException("Unexpected end of input while searching for '======='");
-        }
-        i++; // Skip "======="
-
-        // Parse replace content
-        var replaceLines = new List<string>();
-        while (i < lines.Length && lines[i] != ">>>>>>> REPLACE")
-        {
-            replaceLines.Add(lines[i]);
-            i++;
-        }
-
-        if (i >= lines.Length)
-        {
-            throw new FormatException("Unexpected end of input while searching for '>>>>>>> REPLACE'");
-        }
-        i++; // Skip ">>>>>>> REPLACE"
-
-        return new DiffReplacement
-        {
-            StartLine = startLine,
-            Search = searchLines,
-            Replace = replaceLines
-        };
-    }
-
     private async Task FileDiffAsync(string file1, string file2, string file1Title, string file2Title)
     {
         if (string.IsNullOrEmpty(file1Title))
@@ -728,14 +697,5 @@ public class BuiltInAgent
 
         [JsonPropertyName("line")]
         public int Line { get; set; }
-    }
-
-    private class DiffReplacement
-    {
-        public int StartLine { get; set; } = -1;
-
-        public List<string> Search { get; set; } = [];
-
-        public List<string> Replace { get; set; } = [];
     }
 }
