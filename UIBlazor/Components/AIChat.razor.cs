@@ -8,8 +8,6 @@ using Shared.Contracts;
 using UIBlazor.Agents;
 using UIBlazor.Models;
 using UIBlazor.Services;
-using UIBlazor.Utils;
-using UIBlazor.VS;
 using ChatMessage = UIBlazor.Models.ChatMessage;
 
 namespace UIBlazor.Components;
@@ -224,14 +222,14 @@ public partial class AIChat : RadzenComponent
         {
             var reasoning = new StringBuilder();
             var response = new StringBuilder();
-            await foreach (var delta  in ChatService.GetCompletionsAsync(_currentSessionId, _cts.Token))
+            await foreach (var delta in ChatService.GetCompletionsAsync(_currentSessionId, _cts.Token))
             {
                 if (delta.ReasoningContent != null)
                 {
                     reasoning.Append(delta.ReasoningContent);
                     assistantMessage.ReasoningContent = reasoning.ToString();
                 }
-                else
+                if (delta.Content != null)
                 {
                     response.Append(delta.Content);
                     assistantMessage.Content = response.ToString();

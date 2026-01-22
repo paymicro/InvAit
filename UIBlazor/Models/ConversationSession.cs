@@ -1,16 +1,19 @@
-﻿namespace UIBlazor.Models;
+﻿using System.Text.Json.Serialization;
+
+namespace UIBlazor.Models;
 
 public class ConversationSession
 {
     /// <summary>
     /// Gets or sets the unique identifier for the conversation session.
     /// </summary>
+    [JsonIgnore]
     public string Id { get; set; } = Guid.NewGuid().ToString();
 
     /// <summary>
     /// Gets or sets the list of messages in the conversation.
     /// </summary>
-    public List<ChatMessage> Messages { get; set; } = new();
+    public List<ChatMessage> Messages { get; set; } = [];
 
     /// <summary>
     /// Gets or sets the timestamp when the conversation was created.
@@ -25,6 +28,7 @@ public class ConversationSession
     /// <summary>
     /// Gets or sets the maximum number of messages to keep in memory.
     /// </summary>
+    [JsonIgnore]
     public int MaxMessages { get; set; } = 50;
 
     /// <summary>

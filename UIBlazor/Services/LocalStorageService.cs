@@ -16,4 +16,12 @@ public class LocalStorageService(IJSRuntime js)
         var json = await js.InvokeAsync<string?>("localStorage.getItem", key);
         return json == null ? default : JsonSerializer.Deserialize<T>(json);
     }
+
+    public async Task RemoveItemAsync(string key)
+        => await js.InvokeAsync<string?>("localStorage.removeItem", key);
+
+    public async Task<List<string>> GetAllKeysAsync()
+    {
+        return await js.InvokeAsync<List<string>>("eval", "Object.keys(localStorage)");
+    }
 }

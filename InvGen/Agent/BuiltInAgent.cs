@@ -76,7 +76,7 @@ public class BuiltInAgent
 
         return await ReadFileAsync(new Dictionary<string, object>
         {
-            { "files", JsonUtils.Serialize(new List<string> { docView.Document.FilePath }) }
+            { "param1", docView.Document.FilePath }
         });
     }
 

@@ -15,9 +15,14 @@ pre {
     text-wrap: auto;
 }
 
+.tool-details {
+    padding: 0;
+    margin: 0;
+}
+
 details {
-    padding: 8px 8px 8px 8px;
-    margin: 8px;
+    padding: 0.3rem;
+    margin: 0.3rem;
     overflow: hidden;
     transition: height .3s ease;
     font-size: 1rem;

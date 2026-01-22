@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using UIBlazor.Models;
 using UIBlazor.Options;
 using UIBlazor.Services.Models;
@@ -11,12 +12,19 @@ using UIBlazor.Utils;
 namespace UIBlazor.Services;
 
 public class ChatService(
-    IServiceProvider serviceProvider,
+    HttpClient httpClient,
     AiSettingsProvider aiSettingsProvider,
     ToolManager toolManager,
     LocalStorageService localStorage
     )
 {
+    private const string _thinkStart = "<think>";
+    private const string _thinkEnd = "</think>";
+    private readonly JsonSerializerOptions _jsonSerializerOptions = new()
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
     public AiOptions Options => aiSettingsProvider.Current;
 
     public async Task<AiModelList> GetModelsAsync(CancellationToken cancellationToken)
@@ -45,7 +53,6 @@ public class ChatService(
             throw new InvalidOperationException("Endpoint must be specified.");
         }
         
-        var httpClient = serviceProvider.GetRequiredService<HttpClient>();
         var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken).ConfigureAwait(false);
         
         if (!response.IsSuccessStatusCode)
@@ -70,6 +77,7 @@ public class ChatService(
     {
         // Get or create session
         var session = await GetOrCreateSessionAsync(sessionId);
+        session.MaxMessages = Options.MaxMessages;
 
         // Use runtime parameters or fall back to configured options
         var url = $"{Options.Endpoint}/v1/chat/completions";
@@ -86,12 +94,15 @@ public class ChatService(
             messages = messages,
             temperature = Options.Temperature,
             max_tokens = Options.MaxTokens,
-            stream = true
+            stream = Options.Stream,
         };
 
         var request = new HttpRequestMessage(HttpMethod.Post, url)
         {
-            Content = new StringContent(JsonSerializer.Serialize(payload, new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull }), Encoding.UTF8, "application/json")
+            Content = new StringContent(
+                JsonSerializer.Serialize(payload, _jsonSerializerOptions),
+                Encoding.UTF8,
+                System.Net.Mime.MediaTypeNames.Application.Json)
         };
 
         if (!string.IsNullOrEmpty(effectiveApiKey))
@@ -106,24 +117,46 @@ public class ChatService(
             }
         }
 
-        var httpClient = serviceProvider.GetRequiredService<HttpClient>();
-        var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        var response = await httpClient.SendAsync(
+            request, 
+            Options.Stream ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead,
+            cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {
-            throw new Exception($"Chat stream failed: {await response.Content.ReadAsStringAsync(cancellationToken)}");
+            var message = Options.Stream ? "stream" : "request";
+            throw new Exception($"Chat {message} failed: {await response.Content.ReadAsStringAsync(cancellationToken)}");
         }
 
+        // если не стрим, то возвращаем как один чанк
+        if (!Options.Stream)
+        {
+            var chunk = await response.Content.ReadFromJsonAsync<StreamChunk>(cancellationToken);
+            var message = chunk?.Choice?.Message;
+            if (message?.Content != null)
+            {
+                // Удаление <think> блока из контента и перенос его в ReasoningContent если его там нет.
+                var regex = Regex.Match(message.Content, $"^{_thinkStart}(?<reason>.*){_thinkEnd}", RegexOptions.Singleline);
+                if (regex.Success)
+                {
+                    message.ReasoningContent ??= regex.Groups["reason"].Value;
+                    message.Content = message.Content.Remove(0, regex.Length);
+                }
+                yield return message;
+            }
+            yield break;
+        }
+
+        // стрим
         using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);
 
         var assistantResponse = new StringBuilder();
 
-        string line;
+        string? line;
         var isReasoningContent = false;
         var isStart = true;
-        const string thinkStart = "<think>";
-        const string thinkEnd = "</think>";
+        
         while ((line = await reader.ReadLineAsync()) is not null && !cancellationToken.IsCancellationRequested)
         {
             if (string.IsNullOrWhiteSpace(line) || !line.StartsWith("data:"))
@@ -150,7 +183,7 @@ public class ChatService(
             // Размышляющие модели по разному отдают размышления
             //
             //           ReasoningContent | Content
-            // GLM 4.6         +++        |   ---
+            // GLM 4.7         +++        |   ---
             // Kimi 2          +++        | <think>
             // Deepseek R1     ---        | <think>
             //
@@ -161,11 +194,11 @@ public class ChatService(
             {
                 if (!isReasoningContent) // не думаем
                 {
-                    if (isStart && content.StartsWith(thinkStart))
+                    if (isStart && content.StartsWith(_thinkStart))
                     {
                         // начать думать можно только в первом чанке
                         isReasoningContent = true;
-                        delta.ReasoningContent = content.Replace(thinkStart, string.Empty);
+                        delta.ReasoningContent = content.Replace(_thinkStart, string.Empty);
                         delta.Content = null;
                     }
                     else
@@ -177,11 +210,11 @@ public class ChatService(
                 }
                 else // внутри <think> блока
                 {
-                    if (content.Contains(thinkEnd))
+                    if (content.Contains(_thinkEnd))
                     {
                         // если закончил думать, то можно в контент добавить часть чанка (актуально для Kimi2)
                         isReasoningContent = false;
-                        delta.Content = content.Replace(thinkEnd, string.Empty);
+                        delta.Content = content.Replace(_thinkEnd, string.Empty);
                     }
                     else
                     {
@@ -198,49 +231,23 @@ public class ChatService(
         }
     }
 
+    private async Task<List<string>> GetAllSessionIdsAsync()
+    {
+        return [.. (await localStorage.GetAllKeysAsync()).Where(k => k.StartsWith("session_"))];
+    }
+
     public async Task<ConversationSession> GetOrCreateSessionAsync(string sessionId)
     {
-        var sessionList = await GetSessionsListAsync();
-        ConversationSession session;
-        if (sessionList.Contains(sessionId))
-        {
-            session = await localStorage.GetItemAsync<ConversationSession>(sessionId) ??
-                new ConversationSession
-                {
-                    Id = sessionId,
-                    MaxMessages = Options.MaxMessages
-                };
-        }
-        else
-        {
-            session = new ConversationSession
-            {
-                Id = sessionId,
-                MaxMessages = Options.MaxMessages
-            };
+        var sessionList = await GetAllSessionIdsAsync();
+        ConversationSession session = sessionList.Contains(sessionId)
+            ? await localStorage.GetItemAsync<ConversationSession>(sessionId) ?? new ()
+            : new ();
 
-            sessionList.Add(sessionId);
-        }
-
-        await SetSessionsListAsync(sessionList);
-
+        // не храним Id в базе
+        session.Id = sessionId;
         return session;
     }
 
-    private async Task<List<string>> GetSessionsListAsync()
-        => await localStorage.GetItemAsync<List<string>>("sessionList") ?? [];
-
-    private async Task SetSessionsListAsync(List<string> sessionList)
-        => await localStorage.SetItemAsync("sessionList", sessionList);
-
     public async Task ClearSessionAsync(string sessionId)
-    {
-        var sessions = await GetSessionsListAsync();
-        var index = sessions.FindIndex(s => s == sessionId);
-        if (index != -1)
-        {
-            sessions.RemoveAt(index);
-            await SetSessionsListAsync(sessions);
-        }
-    }
+        => await localStorage.RemoveItemAsync(sessionId);
 }

@@ -54,7 +54,7 @@ public class ToolManager(BuiltInAgent builtInAgent)
                       Parameters
                       <|tool_call_end|>
 
-                      Immediately after <|tool_calls_section_end|> - stop generation, no explanatory text.
+                      Immediately after using any toll - stop generation, no explanatory text.
 
                       Explanation:
                         <|tool_call_begin|> functions.<toolName>            # function header. toolName - function name.
