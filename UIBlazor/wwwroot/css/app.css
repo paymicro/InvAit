@@ -46,6 +46,10 @@ details summary {
     cursor: default;
 }
 
+.rz-dialog-side-content {
+    padding: 0;
+}
+
 .loading-container {
     position: fixed;
     inset: 0;

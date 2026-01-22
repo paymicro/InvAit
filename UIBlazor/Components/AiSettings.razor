@@ -1,65 +1,107 @@
 ﻿@using UIBlazor.Options
 @using UIBlazor.Services
+@using Radzen.Blazor
+@using Radzen
 @inherits RadzenComponent
 
-<RadzenStack Orientation="Orientation.Vertical">
-    <RadzenFormField Text="Endpoint" Variant="Variant.Outlined">
-        <RadzenTextBox @bind-Value="@Options.Endpoint" Immediate />
-    </RadzenFormField>
+<RadzenTabs RenderMode="TabRenderMode.Client">
+    <Tabs>
+    <RadzenTabsItem Text="Connection">
+        <RadzenStack Orientation="Orientation.Vertical">
+        <RadzenFormField Text="Endpoint" Variant="Variant.Outlined">
+            <RadzenTextBox @bind-Value="@Options.Endpoint" Immediate />
+        </RadzenFormField>
 
-    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
-		<RadzenCheckBox @bind-Value=@Options.SkipSSL Name="SkipSSL" />
-		<RadzenLabel Text="Skip SSL validation" Component="SkipSSL" />
-    </RadzenStack>
-
-    <RadzenFormField Text="ApiKey" Variant="Variant.Outlined">
-        <RadzenPassword @bind-Value="@Options.ApiKey" Immediate />
-    </RadzenFormField>
-
-    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-        <RadzenDropDown TValue="string"
-                        Data="@Options.AvailableModels"
-                        @bind-Value="@Options.Model"
-                        Placeholder="Select model"
-                        Style="width: 100%"/>
-        <RadzenButton Icon="autorenew" Click="() => UpdateModelsAsync(CancellationToken.None)" ButtonStyle="ButtonStyle.Light"/>
-    </RadzenStack>
-
-    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
-        <RadzenCheckBox @bind-Value=@Options.Stream Name="Stream" />
-        <RadzenLabel Text="Use stream" Component="Stream" />
-    </RadzenStack>
-
-    <RadzenStack Gap="0.2rem">
-        <RadzenLabel Text="Temperature" />
-        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-            <RadzenSlider @bind-Value="@Options.Temperature" Min="0" Max="2" Step="0.1" Style="width: 100%; height: 20px;" />
-            <RadzenLabel Text="@Math.Abs(Options.Temperature).ToString("0.0")" Style="text-align: right; width: 50px;" />
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+            <RadzenCheckBox @bind-Value=@Options.SkipSSL Name="SkipSSL" />
+            <RadzenLabel Text="Skip SSL validation" Component="SkipSSL" />
         </RadzenStack>
-    </RadzenStack>
 
-    <RadzenStack Gap="0.2rem">
-        <RadzenLabel Text="Max tokens" />
+        <RadzenFormField Text="ApiKey" Variant="Variant.Outlined">
+            <RadzenPassword @bind-Value="@Options.ApiKey" Immediate />
+        </RadzenFormField>
+
         <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-            <RadzenSlider @bind-Value="@Options.MaxTokens" Min=4000 Max=256000 Step="1000" Style="width: 100%; height: 20px;" />
-            <RadzenLabel Text="@($"{Options.MaxTokens / 1000}K")" Style="text-align: right; width: 50px;" />
+            <RadzenDropDown TValue="string"
+                            Data="@Options.AvailableModels"
+                            @bind-Value="@Options.Model"
+                            Placeholder="Select model"
+                            Style="width: 100%" />
+            <RadzenButton Icon="autorenew" Click="() => UpdateModelsAsync(CancellationToken.None)" ButtonStyle="ButtonStyle.Light" />
         </RadzenStack>
-    </RadzenStack>
 
-    <RadzenStack Gap="0.2rem">
-        <RadzenLabel Text="Max messages in memory" />
-        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-            <RadzenSlider @bind-Value="@Options.MaxMessages" Min=5 Max=100 Style="width: 100%; height: 20px;" />
-            <RadzenLabel Text="@Options.MaxMessages.ToString()" Style="text-align: right; width: 50px;" />
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+            <RadzenCheckBox @bind-Value=@Options.Stream Name="Stream" />
+            <RadzenLabel Text="Use stream" Component="Stream" />
         </RadzenStack>
-    </RadzenStack>
 
-    <RadzenFormField Text="System prompt" Variant="Variant.Outlined">
-        <RadzenTextArea @bind-Value="@Options.SystemPrompt" Style="min-height: 90px" />
-    </RadzenFormField>
+        <RadzenStack Gap="0.2rem">
+            <RadzenLabel Text="Temperature" />
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                <RadzenSlider @bind-Value="@Options.Temperature" Min="0" Max="2" Step="0.1" Style="width: 100%; height: 20px;" />
+                <RadzenLabel Text="@Math.Abs(Options.Temperature).ToString("0.0")" Style="text-align: right; width: 50px;" />
+            </RadzenStack>
+        </RadzenStack>
 
-    <RadzenButton Text="Reset tuning settings" Click="OnReset" />
-</RadzenStack>
+        <RadzenStack Gap="0.2rem">
+            <RadzenLabel Text="Max tokens" />
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                <RadzenSlider @bind-Value="@Options.MaxTokens" Min=4000 Max=256000 Step="1000" Style="width: 100%; height: 20px;" />
+                <RadzenLabel Text="@($"{Options.MaxTokens / 1000}K")" Style="text-align: right; width: 50px;" />
+            </RadzenStack>
+        </RadzenStack>
+
+        <RadzenStack Gap="0.2rem">
+            <RadzenLabel Text="Max messages in memory" />
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                <RadzenSlider @bind-Value="@Options.MaxMessages" Min=5 Max=100 Style="width: 100%; height: 20px;" />
+                <RadzenLabel Text="@Options.MaxMessages.ToString()" Style="text-align: right; width: 50px;" />
+            </RadzenStack>
+        </RadzenStack>
+
+        <RadzenStack Gap="0.2rem">
+            <RadzenLabel Text="Max retry attempts" />
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                <RadzenSlider @bind-Value="@Options.MaxRetryAttempts" Min=0 Max=10 Style="width: 100%; height: 20px;" />
+                <RadzenLabel Text="@Options.MaxRetryAttempts.ToString()" Style="text-align: right; width: 50px;" />
+            </RadzenStack>
+        </RadzenStack>
+
+        <RadzenStack Gap="0.2rem">
+            <RadzenLabel Text="Retry delay (seconds)" />
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                <RadzenSlider @bind-Value="@Options.RetryDelaySeconds" Min=1 Max=30 Style="width: 100%; height: 20px;" />
+                <RadzenLabel Text="@Options.RetryDelaySeconds.ToString()" Style="text-align: right; width: 50px;" />
+            </RadzenStack>
+        </RadzenStack>
+
+        <RadzenFormField Text="System prompt" Variant="Variant.Outlined">
+            <RadzenTextArea @bind-Value="@Options.SystemPrompt" Style="min-height: 90px" />
+        </RadzenFormField>
+
+        <RadzenButton Text="Reset tuning settings" Click="OnReset" />
+
+        </RadzenStack>
+    </RadzenTabsItem>
+    <RadzenTabsItem Text="Built-in Tools">
+        @foreach (var tool in ToolManager.GetAllTools())
+        {
+            <RadzenStack Gap="0.2rem" Style="margin-bottom:1rem">
+                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center" >
+                    <RadzenCheckBox @bind-Value="@tool.Enabled" @bind-Value:after="OnToolSettingChanged" Name="@($"tool_{tool.Name}")" />
+                    <RadzenLabel Text="@tool.Name" Component="@($"tool_{tool.Name}")" />
+                </RadzenStack>
+                <RadzenText Component="@($"tool_{tool.Name}")" Style="font-size: 0.875em; color: var(--rz-text-secondary-color); flex: 1;">
+                    @tool.Description.Split('.')[0]
+                </RadzenText>
+            </RadzenStack>
+        }
+    </RadzenTabsItem>
+    <RadzenTabsItem Text="MCP">
+
+    </RadzenTabsItem>
+    </Tabs>
+</RadzenTabs>
 
 @code
 {
@@ -71,6 +113,9 @@
 
     [Inject]
     NotificationService NotificationService { get; set; } = null!;
+
+    [Inject]
+    ToolManager ToolManager { get; set; } = null!;
 
     private AiOptions Options => AiSettingsProvider.Current;
 
@@ -108,5 +153,10 @@
     private async Task OnReset(MouseEventArgs args)
     {
         await AiSettingsProvider.ResetAsync();
+    }
+
+    private async Task OnToolSettingChanged()
+    {
+        await ToolManager.SaveToolSettingsAsync();
     }
 }

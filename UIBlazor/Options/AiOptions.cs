@@ -60,4 +60,14 @@ public class AiOptions : BaseOptions
     /// Gets or sets the maximum age in hours for conversation sessions before cleanup.
     /// </summary>
     public int SessionMaxAgeHours { get => field; set => SetIfChanged(ref field, value); } = 24;
+
+    /// <summary>
+    /// Gets or sets the maximum number of retry attempts for failed requests.
+    /// </summary>
+    public int MaxRetryAttempts { get => field; set => SetIfChanged(ref field, value); } = 3;
+
+    /// <summary>
+    /// Gets or sets the delay in seconds between retry attempts.
+    /// </summary>
+    public int RetryDelaySeconds { get => field; set => SetIfChanged(ref field, value); } = 2;
 }

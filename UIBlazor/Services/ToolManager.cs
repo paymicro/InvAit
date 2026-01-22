@@ -8,12 +8,13 @@ using UIBlazor.Models;
 
 namespace UIBlazor.Services;
 
-public class ToolManager(BuiltInAgent builtInAgent)
+public class ToolManager(BuiltInAgent builtInAgent, LocalStorageService localStorage)
 {
     private readonly ConcurrentDictionary<string, Tool> _registeredTools = new();
     private readonly ConcurrentDictionary<string, AiToolToCall> _pendingTools = new();
     private CancellationTokenSource? _approvalCancellationTokenSource;
     private TaskCompletionSource<bool> _approvalTcs;
+    private const string ToolSettingsKey = "tool_settings";
 
     public void RegisterAllTools()
     {
@@ -21,9 +22,52 @@ public class ToolManager(BuiltInAgent builtInAgent)
         {
             RegisterTool(tool);
         }
+
+        // Load tool settings after registration
+        _ = LoadToolSettingsAsync();
+    }
+
+    public async Task LoadToolSettingsAsync()
+    {
+        try
+        {
+            var settings = await localStorage.GetItemAsync<ToolSettings>(ToolSettingsKey);
+            if (settings?.ToolEnabledStates != null)
+            {
+                foreach (var tool in _registeredTools.Values)
+                {
+                    if (settings.ToolEnabledStates.TryGetValue(tool.Name, out var enabled))
+                    {
+                        tool.Enabled = enabled;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to load tool settings: {ex.Message}");
+        }
+    }
+
+    public async Task SaveToolSettingsAsync()
+    {
+        try
+        {
+            var settings = new ToolSettings
+            {
+                ToolEnabledStates = _registeredTools.ToDictionary(t => t.Key, t => t.Value.Enabled)
+            };
+            await localStorage.SetItemAsync(ToolSettingsKey, settings);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to save tool settings: {ex.Message}");
+        }
     }
 
     public IEnumerable<Tool> GetEnabledTools() => _registeredTools.Values.Where(t => t.Enabled);
+
+    public IEnumerable<Tool> GetAllTools() => _registeredTools.Values;
 
     public Tool? GetTool(string name)
     {

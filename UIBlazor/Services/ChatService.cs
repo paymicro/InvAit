@@ -27,6 +27,47 @@ public class ChatService(
 
     public AiOptions Options => aiSettingsProvider.Current;
 
+    /// <summary>
+    /// Determines if an exception is retryable (network errors, timeouts, etc.)
+    /// </summary>
+    private static bool IsRetryableException(Exception ex)
+    {
+        return ex is HttpRequestException ||
+               ex is TaskCanceledException ||
+               ex is TimeoutException ||
+               (ex is JsonException && ex.Message.Contains("deserialization", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Executes an async operation with retry logic
+    /// </summary>
+    private async Task<T> ExecuteWithRetryAsync<T>(
+        Func<CancellationToken, Task<T>> operation,
+        CancellationToken cancellationToken,
+        string operationName = "operation")
+    {
+        var maxRetries = Options.MaxRetryAttempts;
+        var retryDelay = TimeSpan.FromSeconds(Options.RetryDelaySeconds);
+
+        for (int attempt = 0; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                return await operation(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (attempt < maxRetries && IsRetryableException(ex) && !cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(retryDelay, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (attempt == maxRetries || !IsRetryableException(ex))
+            {
+                throw new Exception($"{operationName} failed after {attempt + 1} attempts: {ex.Message}", ex);
+            }
+        }
+
+        throw new InvalidOperationException("Unexpected end of retry loop");
+    }
+
     public async Task<AiModelList> GetModelsAsync(CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, $"{aiSettingsProvider.Current.Endpoint}/v1/models");
@@ -121,10 +162,13 @@ public class ChatService(
             }
         }
 
-        var response = await httpClient.SendAsync(
-            request, 
-            Options.Stream ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead,
-            cancellationToken);
+        HttpResponseMessage response = await ExecuteWithRetryAsync(async (ct) =>
+        {
+            return await httpClient.SendAsync(
+                request,
+                Options.Stream ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead,
+                ct);
+        }, cancellationToken, "Chat completion").ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
         {
