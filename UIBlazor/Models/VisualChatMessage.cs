@@ -4,8 +4,9 @@ namespace UIBlazor.Models;
 
 /// <summary>
 /// Represents a chat message.
+/// Saved in session history
 /// </summary>
-public class ChatMessage
+public class VisualChatMessage
 {
     /// <summary>
     /// Gets or sets the unique identifier for the message.
@@ -35,7 +36,10 @@ public class ChatMessage
     public bool IsStreaming { get; set; }
 
     [JsonIgnore]
-    public string ToolName { get; set; }
+    public string ToolName { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string? Model { get; set; }
 
     /// <summary>
     /// Gets or sets the role associated with the message (e.g., "user", "assistant").

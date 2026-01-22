@@ -13,7 +13,7 @@ public class ConversationSession
     /// <summary>
     /// Gets or sets the list of messages in the conversation.
     /// </summary>
-    public List<ChatMessage> Messages { get; set; } = [];
+    public List<VisualChatMessage> Messages { get; set; } = [];
 
     /// <summary>
     /// Gets or sets the timestamp when the conversation was created.
@@ -38,7 +38,7 @@ public class ConversationSession
     /// <param name="content">The message content.</param>
     public void AddMessage(string role, string content)
     {
-        Messages.Add(new ChatMessage
+        Messages.Add(new VisualChatMessage
         {
             Role = role,
             Content = content,

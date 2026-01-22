@@ -72,12 +72,16 @@ public class ChatService(
         await localStorage.SetItemAsync(sessionId, session);
     }
 
+    public string? LastCompletionsModel { get; private set; }
+
     public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(string sessionId,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         // Get or create session
         var session = await GetOrCreateSessionAsync(sessionId);
         session.MaxMessages = Options.MaxMessages;
+
+        LastCompletionsModel = null;
 
         // Use runtime parameters or fall back to configured options
         var url = $"{Options.Endpoint}/v1/chat/completions";
@@ -142,6 +146,7 @@ public class ChatService(
                     message.ReasoningContent ??= regex.Groups["reason"].Value;
                     message.Content = message.Content.Remove(0, regex.Length);
                 }
+                LastCompletionsModel ??= chunk?.Model;
                 yield return message;
             }
             yield break;
@@ -177,6 +182,7 @@ public class ChatService(
                 break;
             }
 
+            LastCompletionsModel ??= chunk.Model;
             var delta = chunk.Choices[0].Delta;
             var content = delta.Content;
 

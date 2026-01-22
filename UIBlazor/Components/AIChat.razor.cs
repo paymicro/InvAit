@@ -8,13 +8,12 @@ using Shared.Contracts;
 using UIBlazor.Agents;
 using UIBlazor.Models;
 using UIBlazor.Services;
-using ChatMessage = UIBlazor.Models.ChatMessage;
 
 namespace UIBlazor.Components;
 
 public partial class AIChat : RadzenComponent
 {
-    private List<ChatMessage> Messages { get; set; } = [];
+    private List<VisualChatMessage> Messages { get; set; } = [];
     private string CurrentInput { get; set; } = string.Empty;
     private bool IsLoading { get; set; }
 
@@ -62,12 +61,6 @@ public partial class AIChat : RadzenComponent
     public string UserAvatarText { get; set; } = "U";
 
     /// <summary>
-    /// Gets or sets the text displayed in the assistant avatar.
-    /// </summary>
-    [Parameter]
-    public string ToolAvatarText { get; set; } = "T";
-
-    /// <summary>
     /// Gets or sets whether to show the clear chat button.
     /// </summary>
     [Parameter]
@@ -86,39 +79,9 @@ public partial class AIChat : RadzenComponent
     public bool ReadOnly { get; set; }
 
     /// <summary>
-    /// Gets or sets the message template.
-    /// </summary>
-    /// <value>The message template.</value>
-    [Parameter]
-    public RenderFragment<ChatMessage>? MessageTemplate { get; set; }
-
-    /// <summary>
-    /// Gets or sets the empty template shown when there are no messages.
-    /// </summary>
-    /// <value>The empty template.</value>
-    [Parameter]
-    public RenderFragment? EmptyTemplate { get; set; }
-
-    /// <summary>
-    /// Gets the current list of messages.
-    /// </summary>
-    public IReadOnlyList<ChatMessage> GetMessages() => Messages.AsReadOnly();
-
-    /// <summary>
     /// Adds a message to the chat.
     /// </summary>
-    /// <param name="content">The message content.</param>
-    /// <returns>The created message.</returns>
-    public ChatMessage AddVisualMessage(string content, string role)
-    {
-        return AddVisualMessage(new ChatMessage
-        {
-            Content = content,
-            Role = role
-        });
-    }
-
-    public ChatMessage AddVisualMessage(ChatMessage chatMessage)
+    public VisualChatMessage AddVisualMessage(VisualChatMessage chatMessage)
     {
         Messages.Add(chatMessage);
 
@@ -162,8 +125,11 @@ public partial class AIChat : RadzenComponent
         await InvokeAsync(StateHasChanged);
 
         // Add user message
-        var userMessage = AddVisualMessage(content, ChatMessageRole.User);
-
+        AddVisualMessage(new VisualChatMessage
+        {
+            Content = content,
+            Role = ChatMessageRole.User
+        });
         await ChatService.AddMessageAsync(_currentSessionId, ChatMessageRole.User, content);
 
         // Get AI response
@@ -215,8 +181,10 @@ public partial class AIChat : RadzenComponent
         }
 
         // Add assistant message placeholder
-        var assistantMessage = AddVisualMessage("", ChatMessageRole.Assistant);
-        assistantMessage.IsStreaming = true;
+        var assistantMessage = AddVisualMessage(new VisualChatMessage {
+            Role = ChatMessageRole.Assistant,
+            IsStreaming = true
+        });
 
         try
         {
@@ -234,6 +202,7 @@ public partial class AIChat : RadzenComponent
                     response.Append(delta.Content);
                     assistantMessage.Content = response.ToString();
                 }
+                assistantMessage.Model ??= ChatService.LastCompletionsModel;
 
                 await InvokeAsync(StateHasChanged);
             }
@@ -318,7 +287,7 @@ public partial class AIChat : RadzenComponent
                 }
 #endif
 
-                AddVisualMessage(new ChatMessage
+                AddVisualMessage(new VisualChatMessage
                 {
                     Role = ChatMessageRole.Tool,
                     Content = vsToolResult.Result,
