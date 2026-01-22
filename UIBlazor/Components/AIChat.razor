@@ -37,10 +37,11 @@
             @foreach (var message in Messages)
             {
                 var isUser = message.Role == ChatMessageRole.User;
+                var isTool = message.Role == ChatMessageRole.Tool;
                 <div class="rz-chat-message rz-chat-message-@message.Role" @key="message.Id">
                     <RadzenStack class="rz-chat-message-avatar" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0">
                         <span class="rz-chat-avatar-initials" >
-                            @if (message.Role == ChatMessageRole.User)
+                            @if (isUser)
                             {
                                 @UserAvatarText
                             }
@@ -48,7 +49,7 @@
                             {
                                 <RadzenIcon Icon="robot_2" IconStyle="IconStyle.Info" />
                             }
-                            else if (message.Role == ChatMessageRole.Tool)
+                            else if (isTool)
                             {
                                 <RadzenIcon Icon="design_services" />
                             }
@@ -64,34 +65,33 @@
                                 <div class="rz-chat-message-time"> @message.Model </div>
                             }
                         </RadzenStack>
-                        <div class="rz-chat-message-text">
+                        @if (isTool)
+                        {
+                            <details class="tool-details">
+                            <summary>@message.ToolName</summary>
+                            <pre>
+                            @message.Content
+                            </pre>
+                            </details>
+                        }
+                        else
+                        {
+                            <div class="rz-chat-message-text">
+                            @if (!string.IsNullOrEmpty(message.ReasoningContent))
+                            {
+                                <details>
+                                <summary>Поток сознания...</summary>@message.ReasoningContent</details>
+                            }
                             @if (message.IsStreaming)
                             {
-                                if (!string.IsNullOrEmpty(message.ReasoningContent))
-                                {
-                                    <details>
-                                    <summary>Поток сознания...</summary>@message.ReasoningContent</details>
-                                }
                                 @message.Content <RadzenIcon Icon="more_horiz" class="rz-chat-message-streaming-icon" />
                             }
                             else
                             {
-                                if (message.Role == ChatMessageRole.Tool)
-                                {
-                                    <details class="tool-details">
-                                    <summary>@message.ToolName</summary>@message.Content</details>
-                                }
-                                else
-                                {
-                                    if (!string.IsNullOrEmpty(message.ReasoningContent))
-                                    {
-                                        <details>
-                                        <summary>Мыслишки</summary>@message.ReasoningContent</details>
-                                    }
-                                    <RadzenMarkdown Text=@message.Content />
-                                }
+                                <RadzenMarkdown Text=@message.Content />
                             }
-                        </div>
+                            </div>
+                        }
                     </RadzenStack>
                 </div>
             }

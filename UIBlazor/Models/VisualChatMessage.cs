@@ -11,6 +11,7 @@ public class VisualChatMessage
     /// <summary>
     /// Gets or sets the unique identifier for the message.
     /// </summary>
+    [JsonIgnore]
     public string Id { get; set; } = Guid.NewGuid().ToString();
 
     /// <summary>

@@ -21,10 +21,10 @@ public class ToolManagerTests
     {
         // Arrange
         var content = """
-                      <|tool_call_begin|> functions.read_files
+                      <tool_call_begin> functions.read_files
                       C:\Users\user.txt
                       path/to/file2.txt
-                      <|tool_call_end|>
+                      <tool_call_end>
                       """;
 
         // Act
@@ -42,7 +42,7 @@ public class ToolManagerTests
     {
         // Arrange
         var content = """
-                      <|tool_call_begin|> functions.apply_diff
+                      <tool_call_begin> functions.apply_diff
                       path/to/file.txt
                       :start_line:10
                       <<<<<<< SEARCH
@@ -52,7 +52,7 @@ public class ToolManagerTests
                           with new lines
                       }
                       >>>>>>> REPLACE
-                      <|tool_call_end|>
+                      <tool_call_end>
                       """;
         var expectedDiff = new DiffReplacement
         {
@@ -76,7 +76,7 @@ public class ToolManagerTests
     {
         // Arrange
         var content = """
-                      <|tool_call_begin|> functions.apply_diff
+                      <tool_call_begin> functions.apply_diff
                       path/to/file.txt
                       :start_line:10
                       <<<<<<< SEARCH
@@ -101,7 +101,7 @@ public class ToolManagerTests
                       /// <summary>Хех</summary>
                       public class Super
                       >>>>>>> REPLACE
-                      <|tool_call_end|>
+                      <tool_call_end>
                       """;
 
         // Act
