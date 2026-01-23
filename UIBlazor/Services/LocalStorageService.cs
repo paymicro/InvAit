@@ -3,7 +3,7 @@ using Microsoft.JSInterop;
 
 namespace UIBlazor.Services;
 
-public class LocalStorageService(IJSRuntime js)
+public class LocalStorageService(IJSRuntime js) : ILocalStorageService
 {
     public async Task SetItemAsync<T>(string key, T value)
     {

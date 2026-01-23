@@ -8,7 +8,7 @@ using UIBlazor.Models;
 
 namespace UIBlazor.Services;
 
-public class ToolManager(BuiltInAgent builtInAgent, LocalStorageService localStorage)
+public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localStorage) : IToolManager
 {
     private readonly ConcurrentDictionary<string, Tool> _registeredTools = new();
     private readonly ConcurrentDictionary<string, AiToolToCall> _pendingTools = new();
@@ -164,7 +164,7 @@ public class ToolManager(BuiltInAgent builtInAgent, LocalStorageService localSto
         return result;
     }
 
-    public Dictionary<string, object> Parse(string input)
+    private Dictionary<string, object> Parse(string input)
     {
         var result = new Dictionary<string, object>();
         var reader = new StringReader(input);

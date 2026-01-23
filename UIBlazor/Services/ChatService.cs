@@ -13,9 +13,9 @@ namespace UIBlazor.Services;
 
 public class ChatService(
     HttpClient httpClient,
-    AiSettingsProvider aiSettingsProvider,
-    ToolManager toolManager,
-    LocalStorageService localStorage
+    IAiSettingsProvider aiSettingsProvider,
+    IToolManager toolManager,
+    ILocalStorageService localStorage
     )
 {
     private const string _thinkStart = "<think>";

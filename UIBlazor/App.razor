@@ -20,7 +20,7 @@
 @code
 {
 	[Inject]
-	private AiSettingsProvider AiSettingsProvider { get; set; } = null!;
+	private IAiSettingsProvider AiSettingsProvider { get; set; } = null!;
 
     protected override async Task OnInitializedAsync()
     {

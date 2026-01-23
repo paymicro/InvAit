@@ -1,6 +1,7 @@
-﻿using Moq;
+using Moq;
 using Shared.Contracts;
 using UIBlazor.Agents;
+using UIBlazor.Models;
 using UIBlazor.Services;
 using UIBlazor.VS;
 
@@ -8,12 +9,26 @@ namespace UIBlazor.Tests;
 
 public class ToolManagerTests
 {
-    private readonly ToolManager _toolManager;
+    private readonly IToolManager _toolManager;
+    private readonly BuiltInAgent _builtInAgent;
+    private readonly Mock<ILocalStorageService> _localStorageMock;
 
     public ToolManagerTests()
     {
-        var agent = new BuiltInAgent(Mock.Of<IVsBridge>());
-        _toolManager = new ToolManager(agent);
+        
+        _localStorageMock = new Mock<ILocalStorageService>();
+
+        // Setup default tool
+        var tool = new Tool
+        {
+            Name = "test_tool",
+            Description = "Test tool",
+            Enabled = true,
+            ExecuteAsync = _ => Task.FromResult(new VsToolResult { Success = true, Result = "test result" })
+        };
+        _builtInAgent = new BuiltInAgent(Mock.Of<IVsBridge>()) { Tools = [tool] };
+
+        _toolManager = new ToolManager(_builtInAgent, _localStorageMock.Object);
     }
 
     [Fact]
@@ -132,5 +147,135 @@ public class ToolManagerTests
         Assert.Equivalent(expectedDiff1, args["diff1"]);
         Assert.Equivalent(expectedDiff2, args["diff2"]);
         Assert.Equivalent(expectedDiff3, args["diff3"]);
+    }
+
+    [Fact]
+    public void RegisterAllTools_RegistersToolsFromAgent()
+    {
+        // Arrange
+        var tool1 = new Tool { Name = "tool1", ExecuteAsync = _ => Task.FromResult(new VsToolResult { Success = true, Result = "result1" })};
+        var tool2 = new Tool { Name = "tool2", ExecuteAsync = _ => Task.FromResult(new VsToolResult { Success = true, Result = "result2" })};
+        _builtInAgent.Tools = [tool1, tool2];
+
+        // Act
+        _toolManager.RegisterAllTools();
+
+        // Assert
+        Assert.Equal(2, _toolManager.GetAllTools().Count());
+        Assert.Contains(_toolManager.GetAllTools(), t => t.Name == "tool1");
+        Assert.Contains(_toolManager.GetAllTools(), t => t.Name == "tool2");
+    }
+
+    [Fact]
+    public void RegisterAllTools_IgnoresToolsWithoutExecuteAsync()
+    {
+        // Arrange
+        var validTool = new Tool { Name = "valid", ExecuteAsync = _ => Task.FromResult(new VsToolResult { Success = true, Result = "result" })};
+        var invalidTool = new Tool { Name = "invalid" }; // No ExecuteAsync
+        _builtInAgent.Tools = [validTool, invalidTool];
+
+        // Act
+        _toolManager.RegisterAllTools();
+
+        // Assert
+        Assert.Single(_toolManager.GetAllTools());
+        Assert.Equal("valid", _toolManager.GetAllTools().First().Name);
+    }
+
+    [Fact]
+    public async Task LoadToolSettingsAsync_HandlesExceptionGracefully()
+    {
+        // Arrange
+        _localStorageMock.Setup(ls => ls.GetItemAsync<ToolSettings>(It.IsAny<string>()))
+            .ThrowsAsync(new Exception("Storage error"));
+
+        // Act & Assert - should not throw
+        await _toolManager.LoadToolSettingsAsync();
+    }
+
+    [Fact]
+    public async Task SaveToolSettingsAsync_HandlesExceptionGracefully()
+    {
+        // Arrange
+        _localStorageMock.Setup(ls => ls.SetItemAsync(It.IsAny<string>(), It.IsAny<ToolSettings>()))
+            .ThrowsAsync(new Exception("Storage error"));
+
+        // Act & Assert - should not throw
+        await _toolManager.SaveToolSettingsAsync();
+    }
+
+    [Fact]
+    public void GetEnabledTools_ReturnsOnlyEnabledTools()
+    {
+        // Arrange
+        _toolManager.RegisterAllTools();
+        _toolManager.GetTool("test_tool")?.Enabled = false;
+
+        // Act
+        var enabledTools = _toolManager.GetEnabledTools();
+
+        // Assert
+        Assert.Empty(enabledTools);
+    }
+
+    [Fact]
+    public void GetAllTools_ReturnsAllRegisteredTools()
+    {
+        // Arrange
+        _toolManager.RegisterAllTools();
+
+        // Act
+        var allTools = _toolManager.GetAllTools().ToList();
+
+        // Assert
+        Assert.Single(allTools);
+        Assert.Equal("test_tool", allTools.First().Name);
+    }
+
+    [Fact]
+    public void GetTool_ReturnsToolByName()
+    {
+        // Arrange
+        _toolManager.RegisterAllTools();
+
+        // Act
+        var tool = _toolManager.GetTool("test_tool");
+        var nonexistentTool = _toolManager.GetTool("nonexistent");
+
+        // Assert
+        Assert.NotNull(tool);
+        Assert.Equal("test_tool", tool.Name);
+        Assert.Null(nonexistentTool);
+    }
+
+    [Fact]
+    public void GetToolUseSystemInstructions_ReturnsFormattedInstructions()
+    {
+        // Arrange
+        _toolManager.RegisterAllTools();
+        var prompt = "Test system prompt";
+
+        // Act
+        var instructions = _toolManager.GetToolUseSystemInstructions(prompt);
+
+        // Assert
+        Assert.Contains(prompt, instructions);
+        Assert.Contains("test_tool", instructions);
+        Assert.Contains("Test tool", instructions);
+        Assert.Contains("function-calling assistant", instructions);
+    }
+
+    [Fact]
+    public void GetToolUseSystemInstructions_ReturnsEmptyWhenNoEnabledTools()
+    {
+        // Arrange
+        _toolManager.RegisterAllTools();
+        _toolManager.GetTool("test_tool")?.Enabled = false;
+
+        // Act
+        var instructions = _toolManager.GetToolUseSystemInstructions("prompt");
+
+        // Assert
+        Assert.Equal(string.Empty, instructions);
     }
 }

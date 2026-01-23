@@ -2,5 +2,9 @@
 
 public class CommonOptions : BaseOptions
 {
-    public int ToolTimeoutMs { get => field; set => SetIfChanged(ref field, value); } = 30_000;
+    public int ToolTimeoutMs
+    {
+        get;
+        set => SetIfChanged(ref field, value);
+    } = 3_000;
 }

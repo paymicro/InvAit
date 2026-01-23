@@ -13,12 +13,12 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 builder.Services
     .AddRadzenComponents()
     .AddScoped<ChatService>()
-    .AddScoped<LocalStorageService>()
-    .AddScoped<AiSettingsProvider>()
+    .AddScoped<ILocalStorageService, LocalStorageService>()
+    .AddScoped<IAiSettingsProvider, AiSettingsProvider>()
     .AddScoped<CommonSettingsProvider>()
     .AddScoped<IVsBridge, VsBridge>()
     .AddScoped<BuiltInAgent>()
-    .AddScoped<ToolManager>()
+    .AddScoped<IToolManager, ToolManager>()
     .AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 
 WebAssemblyHost app = builder.Build();

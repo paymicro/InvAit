@@ -27,7 +27,7 @@ public partial class AIChat : RadzenComponent
     private NotificationService NotificationService { get; set; } = null!;
 
     [Inject]
-    private ToolManager ToolManager { get; set; } = null!;
+    private IToolManager ToolManager { get; set; } = null!;
 
     /// <summary>
     /// Specifies additional custom attributes that will be rendered by the input.

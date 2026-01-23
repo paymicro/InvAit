@@ -7,9 +7,6 @@ root = true
 [*]
 indent_style = space
 end_of_line  = crlf
-
-# Code files
-[*.{cs,csx,vb,vbx}]
 indent_size = 4
 
 # Xml project files
@@ -25,7 +22,7 @@ indent_size = 2
 indent_size = 2
 
 # Dotnet code style settings:
-[*.{cs,vb}]
+[*.{cs,razor}]
 # Sort using and Import directives with System.* appearing first
 dotnet_sort_system_directives_first                             = true
 dotnet_separate_import_directive_groups                         = false
@@ -70,11 +67,10 @@ dotnet_naming_style.start_underscore_style.capitalization       = camel_case
 dotnet_naming_style.start_underscore_style.required_prefix      = _
 
 # CSharp code style settings:
-[*.cs]
 # Prefer "var" everywhere
 csharp_style_var_for_built_in_types                   = true : suggestion
 csharp_style_var_when_type_is_apparent                = true : suggestion
-csharp_style_var_elsewhere                            = false : suggestion
+csharp_style_var_elsewhere                            = true : suggestion
 
 # Prefer method-like constructs to have a block body
 csharp_style_expression_bodied_methods                = false : none

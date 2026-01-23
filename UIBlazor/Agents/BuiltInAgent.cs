@@ -5,7 +5,7 @@ namespace UIBlazor.Agents;
 
 public class BuiltInAgent(IVsBridge vsBridge)
 {
-    public readonly IReadOnlyList<Tool> Tools =
+    public IReadOnlyList<Tool> Tools =
     [
         // File operations
         new()

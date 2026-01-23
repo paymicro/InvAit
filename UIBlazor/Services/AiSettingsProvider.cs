@@ -5,20 +5,18 @@ using UIBlazor.Options;
 
 namespace UIBlazor.Services;
 
-public class AiSettingsProvider : IDisposable
+public class AiSettingsProvider : IAiSettingsProvider, IDisposable
 {
-    private readonly LocalStorageService _storage;
+    private readonly ILocalStorageService _storage;
     private readonly IJSRuntime _jSRuntime;
     private const string _storageKey = "AiSettings";
     private readonly PeriodicTimer _debounceTimer = new (TimeSpan.FromMilliseconds(750));
     private bool _savePending;
     private readonly CancellationTokenSource _cts = new ();
 
-    public AiOptions Current { get; private set; } = new ();
+    public AiOptions Current { get; } = new ();
 
-    public event Action? OnChange;
-
-    public AiSettingsProvider(LocalStorageService storage, IJSRuntime jSRuntime)
+    public AiSettingsProvider(ILocalStorageService storage, IJSRuntime jSRuntime)
     {
         _storage = storage;
         _jSRuntime = jSRuntime;
@@ -40,8 +38,6 @@ public class AiSettingsProvider : IDisposable
                     Payload = Current.SkipSSL.ToString()
                 });
         }
-
-        OnChange?.Invoke();
     }
 
     private async Task DebounceSaveLoopAsync()
@@ -72,7 +68,7 @@ public class AiSettingsProvider : IDisposable
         {
             Current.ApiKey = saved.ApiKey;
             Current.ApiKeyHeader = saved.ApiKeyHeader;
-            Current.AvailableModels = saved.AvailableModels ?? [];
+            Current.AvailableModels = saved.AvailableModels;
             Current.Endpoint = saved.Endpoint;
             Current.MaxMessages = saved.MaxMessages;
             Current.MaxTokens = saved.MaxTokens;
@@ -84,7 +80,6 @@ public class AiSettingsProvider : IDisposable
             Current.SystemPrompt = saved.SystemPrompt;
             Current.Temperature = saved.Temperature;
         }
-        OnChange?.Invoke();
     }
 
     public async Task ResetAsync()

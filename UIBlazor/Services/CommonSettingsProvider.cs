@@ -7,7 +7,7 @@ namespace UIBlazor.Services;
 
 public class CommonSettingsProvider : IDisposable
 {
-    private readonly LocalStorageService _storage;
+    private readonly ILocalStorageService _storage;
     private readonly IJSRuntime _jSRuntime;
     private const string _storageKey = "CommonSettings";
     private readonly PeriodicTimer _debounceTimer = new (TimeSpan.FromMilliseconds(750));
@@ -18,7 +18,7 @@ public class CommonSettingsProvider : IDisposable
 
     public event Action? OnChange;
 
-    public CommonSettingsProvider(LocalStorageService storage, IJSRuntime jSRuntime)
+    public CommonSettingsProvider(ILocalStorageService storage, IJSRuntime jSRuntime)
     {
         _storage = storage;
         _jSRuntime = jSRuntime;

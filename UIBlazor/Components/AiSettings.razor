@@ -109,13 +109,13 @@
     ChatService ChatService { get; set; } = null!;
 
     [Inject]
-    AiSettingsProvider AiSettingsProvider { get; set; } = null!;
+    IAiSettingsProvider AiSettingsProvider { get; set; } = null!;
 
     [Inject]
     NotificationService NotificationService { get; set; } = null!;
 
     [Inject]
-    ToolManager ToolManager { get; set; } = null!;
+    IToolManager ToolManager { get; set; } = null!;
 
     private AiOptions Options => AiSettingsProvider.Current;
 
