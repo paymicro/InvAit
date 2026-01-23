@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
@@ -376,11 +376,21 @@ public partial class AIChat : RadzenComponent
     /// <inheritdoc />
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender && _messagesContainer.Context != null && JSRuntime != null)
+        if (firstRender)
+            return;
+
+        if (_messagesContainer.Context != null && JSRuntime != null)
         {
             // Scroll to bottom when new messages are added
             await JSRuntime.InvokeVoidAsync("scrollToBottomIfNeeded", ".rz-chat-messages", 100);
         }
+
+        //// Render markdown for all messages
+        //if (JSRuntime != null && Messages.Count > 0)
+        //{
+        //    var message = Messages.Last();
+        //    await JSRuntime.InvokeVoidAsync("renderMarkdownToElement", $"message-{message.Id}", message.Content);
+        //}
     }
 
     /// <inheritdoc />

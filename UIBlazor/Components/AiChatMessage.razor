@@ -1,0 +1,23 @@
+﻿@inject IJSRuntime JS
+
+<div id="@_messageId" class="markdown-content">
+    @Content
+</div>
+
+@code {
+    [Parameter] public string Content { get; set; } = string.Empty;
+
+    private string _messageId = $"msg-{Guid.NewGuid()}";
+    private string _lastRenderedContent = "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Рендерим только если контент реально изменился (стриминг)
+        if (!firstRender && Content != _lastRenderedContent)
+        {
+            _lastRenderedContent = Content;
+            await JS.InvokeVoidAsync("renderMarkdownToElement", _messageId, Content);
+            await JS.InvokeVoidAsync("scrollToBottomIfNeeded", $"#{_messageId}");
+        }
+    }
+}

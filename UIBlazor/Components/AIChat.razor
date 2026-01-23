@@ -1,4 +1,4 @@
-﻿@using UIBlazor.Models
+@using UIBlazor.Models
 @using UIBlazor.Services
 @inherits RadzenComponent
 
@@ -82,13 +82,10 @@
                                 <details>
                                 <summary>Поток сознания...</summary>@message.ReasoningContent</details>
                             }
+                                <AiChatMessage Content=@message.Content />
                             @if (message.IsStreaming)
                             {
-                                @message.Content <RadzenIcon Icon="more_horiz" class="rz-chat-message-streaming-icon" />
-                            }
-                            else
-                            {
-                                <RadzenMarkdown Text=@message.Content />
+                                <RadzenIcon Icon="more_horiz" class="rz-chat-message-streaming-icon" />
                             }
                             </div>
                         }

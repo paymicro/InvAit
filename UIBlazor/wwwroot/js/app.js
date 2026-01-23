@@ -1,4 +1,4 @@
-﻿let vsBridgeHandler;
+let vsBridgeHandler;
 
 // Функция для установки .NET обработчика UIBlazor
 window.setVsBridgeHandler = function (dotNetRef) {
