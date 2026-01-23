@@ -6,6 +6,7 @@
 
 @code {
     [Parameter] public string Content { get; set; } = string.Empty;
+    [Parameter] public bool ScroolBootom { get; set; } = true;
 
     private string _messageId = $"msg-{Guid.NewGuid()}";
     private string _lastRenderedContent = "";
@@ -17,7 +18,10 @@
         {
             _lastRenderedContent = Content;
             await JS.InvokeVoidAsync("renderMarkdownToElement", _messageId, Content);
-            await JS.InvokeVoidAsync("scrollToBottomIfNeeded", $"#{_messageId}");
+            if (ScroolBootom)
+            {
+                await JS.InvokeVoidAsync("scrollToBottomIfNeeded", $"#{_messageId}");
+            }
         }
     }
 }

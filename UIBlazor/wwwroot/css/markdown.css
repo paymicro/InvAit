@@ -1,3 +1,7 @@
+.markdown-content {
+    line-height: normal;
+}
+
 .markdown-content h1,
 .markdown-content h2,
 .markdown-content h3,
@@ -21,7 +25,7 @@
 .markdown-content ul,
 .markdown-content ol {
     margin: 0.2em 0;
-    padding-left: 1em;
+    padding-left: 2em;
 }
 
 .markdown-content li {
