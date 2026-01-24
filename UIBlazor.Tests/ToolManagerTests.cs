@@ -249,6 +249,33 @@ public class ToolManagerTests
     }
 
     [Fact]
+    public void ParseToolBlock_MultipleDifferentTools()
+    {
+        // Arrange
+        var content = """
+                      <tool_call_begin> functions.read_files
+                      file1.txt
+                      <tool_call_end>
+                      Some text in between.
+                      <tool_call_begin> functions.ls
+                      C:\
+                      true
+                      <tool_call_end>
+                      """;
+
+        // Act
+        var result = _toolManager.ParseToolBlock(content);
+
+        // Assert
+        Assert.Equal(2, result.Count);
+        Assert.Equal("read_files", result[0].Function.Name);
+        Assert.Equal("ls", result[1].Function.Name);
+        Assert.Equal("file1.txt", result[0].Function.Arguments["param1"]);
+        Assert.Equal("C:\\", result[1].Function.Arguments["param1"]);
+        Assert.Equal("true", result[1].Function.Arguments["param2"]);
+    }
+
+    [Fact]
     public void GetToolUseSystemInstructions_ReturnsFormattedInstructions()
     {
         // Arrange

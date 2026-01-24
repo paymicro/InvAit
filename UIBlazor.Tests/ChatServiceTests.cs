@@ -1,4 +1,4 @@
-using Moq;
+﻿using Moq;
 using UIBlazor.Models;
 using UIBlazor.Options;
 using UIBlazor.Services;
@@ -35,6 +35,9 @@ public class ChatServiceTests
         _aiSettingsProviderMock.SetupGet(p => p.Current).Returns(options);
         _toolManagerMock.Setup(tm => tm.GetToolUseSystemInstructions(It.IsAny<string>()))
             .Returns("Tool instructions");
+        
+        // Default setup for session listing
+        _localStorageMock.Setup(ls => ls.GetAllKeysAsync()).ReturnsAsync(new List<string>());
     }
 
     private ChatService CreateChatService(HttpClient? httpClient = null)
@@ -74,19 +77,18 @@ public class ChatServiceTests
     public async Task AddMessageAsync_AddsMessageToSession()
     {
         // Arrange
-        var sessionId = "test-session";
-        var session = new ConversationSession { Id = sessionId };
-        _localStorageMock.Setup(ls => ls.GetItemAsync<ConversationSession>(sessionId))
-            .ReturnsAsync(session);
-        _localStorageMock.Setup(ls => ls.GetAllKeysAsync())
-            .ReturnsAsync(new List<string> { sessionId });
-
         var chatService = CreateChatService();
+        await chatService.LoadLastSessionOrGenerateNewAsync();
+        var sessionId = chatService.Session.Id;
 
         // Act
-        await chatService.AddMessageAsync(sessionId, "user", "Hello");
+        await chatService.AddMessageAsync("user", "Hello");
 
         // Assert
+        Assert.Single(chatService.Session.Messages);
+        Assert.Equal("user", chatService.Session.Messages[0].Role);
+        Assert.Equal("Hello", chatService.Session.Messages[0].Content);
+        
         _localStorageMock.Verify(ls => ls.SetItemAsync(sessionId, It.Is<ConversationSession>(s =>
             s.Messages.Count == 1 &&
             s.Messages[0].Role == "user" &&
@@ -94,11 +96,11 @@ public class ChatServiceTests
     }
 
     [Fact]
-    public async Task GetOrCreateSessionAsync_ExistingSession_ReturnsExisting()
+    public async Task LoadLastSessionOrGenerateNewAsync_ExistingSession_LoadsIt()
     {
         // Arrange
-        var sessionId = "session_test";
-        var existingSession = new ConversationSession { Id = sessionId };
+        var sessionId = "session_2024-01-01T12:00:00";
+        var existingSession = new ConversationSession { Id = sessionId, Messages = [new() { Content = "Hi" }] };
         _localStorageMock.Setup(ls => ls.GetAllKeysAsync())
             .ReturnsAsync([sessionId]);
         _localStorageMock.Setup(ls => ls.GetItemAsync<ConversationSession>(sessionId))
@@ -107,42 +109,45 @@ public class ChatServiceTests
         var chatService = CreateChatService();
 
         // Act
-        var result = await chatService.GetOrCreateSessionAsync(sessionId);
+        await chatService.LoadLastSessionOrGenerateNewAsync();
 
         // Assert
-        Assert.Equal(sessionId, result.Id);
-        Assert.Equal(existingSession, result);
+        Assert.Equal(sessionId, chatService.Session.Id);
+        Assert.Single(chatService.Session.Messages);
     }
 
     [Fact]
-    public async Task GetOrCreateSessionAsync_NewSession_ReturnsNew()
+    public async Task LoadLastSessionOrGenerateNewAsync_NoSession_CreatesNew()
     {
         // Arrange
-        var sessionId = "new-session";
         _localStorageMock.Setup(ls => ls.GetAllKeysAsync())
             .ReturnsAsync(new List<string>());
 
         var chatService = CreateChatService();
 
         // Act
-        var result = await chatService.GetOrCreateSessionAsync(sessionId);
+        await chatService.LoadLastSessionOrGenerateNewAsync();
 
         // Assert
-        Assert.Equal(sessionId, result.Id);
-        Assert.Empty(result.Messages);
+        Assert.NotNull(chatService.Session);
+        Assert.StartsWith("session_", chatService.Session.Id);
+        Assert.Empty(chatService.Session.Messages);
     }
 
     [Fact]
-    public async Task ClearSessionAsync_RemovesSession()
+    public async Task ClearSessionAsync_RemovesSessionAndCreatesNew()
     {
         // Arrange
-        var sessionId = "test-session";
         var chatService = CreateChatService();
+        await chatService.LoadLastSessionOrGenerateNewAsync();
+        var oldSessionId = chatService.Session.Id;
+        await chatService.AddMessageAsync("user", "Hello");
 
         // Act
-        await chatService.ClearSessionAsync(sessionId);
+        await chatService.ClearSessionAsync();
 
         // Assert
-        _localStorageMock.Verify(ls => ls.RemoveItemAsync(sessionId), Times.Once);
+        _localStorageMock.Verify(ls => ls.RemoveItemAsync(oldSessionId), Times.Once);
+        Assert.Empty(chatService.Session.Messages);
     }
 }
