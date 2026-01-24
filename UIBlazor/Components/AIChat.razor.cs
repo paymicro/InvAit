@@ -28,6 +28,12 @@ public partial class AIChat : RadzenComponent
     [Inject]
     private IToolManager ToolManager { get; set; } = null!;
 
+    [Inject]
+    private IProfileService ProfileService { get; set; } = null!;
+
+    private List<ConnectionProfile> Profiles { get; set; } = [];
+    private string? ActiveProfileId { get; set; }
+
     /// <summary>
     /// Specifies additional custom attributes that will be rendered by the input.
     /// </summary>
@@ -317,6 +323,7 @@ public partial class AIChat : RadzenComponent
     {
         await base.OnInitializedAsync();
         ToolManager.RegisterAllTools();
+        await LoadProfilesAsync();
 
         await ChatService.LoadLastSessionOrGenerateNewAsync();
         foreach (var chatMessage in ChatService.Session.Messages)
@@ -324,6 +331,38 @@ public partial class AIChat : RadzenComponent
             AddVisualMessage(chatMessage);
         }
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadProfilesAsync()
+    {
+        Profiles = await ProfileService.GetProfilesAsync();
+        ActiveProfileId = await ProfileService.GetActiveProfileIdAsync();
+        
+        // If no active profile is set but we have profiles, set the first one?
+        // Or keep it as is (using default/global settings).
+        // Let's rely on what's in ProfileService or just reflect current state.
+        if (string.IsNullOrEmpty(ActiveProfileId) && Profiles.Count > 0)
+        {
+             // Optional: Auto-select first profile if none selected?
+             // For now, let's just leave it empty or select if match found.
+        }
+    }
+
+    private async Task OnProfileChange(object value)
+    {
+        var profileId = value as string;
+        if (!string.IsNullOrEmpty(profileId))
+        {
+            await ProfileService.ActivateProfileAsync(profileId);
+            ActiveProfileId = profileId;
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Info,
+                Summary = "Profile Changed",
+                Detail = $"Active profile updated.",
+                Duration = 2000
+            });
+        }
     }
 
     private async Task OnInputAsync(ChangeEventArgs e)
@@ -365,6 +404,10 @@ public partial class AIChat : RadzenComponent
             MinHeight = 250.0,
             MinWidth = 400.0
         });
+        
+        // Reload profiles in case they were changed
+        await LoadProfilesAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     /// <inheritdoc />

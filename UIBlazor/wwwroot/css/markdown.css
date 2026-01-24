@@ -42,26 +42,79 @@
 }
 
 .markdown-content code {
-    background-color: var(--rz-body-background-color);
+    background-color: var(--rz-base-600);
     border-radius: 3px;
     padding: 0.2em 0.4em;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 0.9em;
 }
 
+/* Code Block Wrapper */
+.code-block-wrapper {
+    margin: 0.8em 0;
+    border: 1px solid var(--rz-border-color);
+    border-radius: 6px;
+    background-color: var(--rz-base-background-color);
+    overflow: hidden;
+}
+
+.code-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.4rem 0.8rem;
+    background-color: var(--rz-base-600);
+    border-bottom: 1px solid var(--rz-border-color);
+    font-family: sans-serif;
+    font-size: 0.8rem;
+    color: var(--rz-text-title-color);
+}
+
+.code-lang {
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+}
+
+.code-copy-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--rz-text-secondary-color);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    transition: all 0.2s;
+}
+
+.code-copy-btn:hover {
+    background-color: var(--rz-base-300);
+    color: var(--rz-primary);
+}
+
+.code-copy-btn .material-icons, 
+.code-copy-btn .rzi {
+    font-size: 1rem;
+}
+
+/* Override existing pre styles */
 .markdown-content pre {
-    background-color: var(--rz-body-background-color);
-    border: 1px solid #ddd;
-    border-radius: 0.5em;
+    background-color: var(--rz-base-background-color); /* Match wrapper */
+    border: none;
+    border-radius: 0;
+    margin: 0;
+    padding: 0.8em;
     overflow-x: auto;
-    margin: 0.5em 0;
-    padding: 0.5em;
 }
 
 .markdown-content pre code {
     background: none;
     padding: 0;
     border-radius: 0;
+    color: var(--rz-text-color);
 }
 
 /* Mermaid diagrams */

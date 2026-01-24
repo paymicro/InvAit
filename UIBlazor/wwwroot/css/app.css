@@ -49,3 +49,7 @@ details summary {
 .rz-dialog-side-content {
     padding: 0;
 }
+
+.rz-dialog-wrapper {
+    z-index: 2000;
+}

@@ -1,4 +1,4 @@
-﻿let markdownRenderer = null;
+let markdownRenderer = null;
 
 const highlightExt = markedHighlight.markedHighlight({
     langPrefix: 'hljs language-',
@@ -7,6 +7,38 @@ const highlightExt = markedHighlight.markedHighlight({
         return hljs.highlight(code, { language }).value;
     }
 });
+
+// Global copy function
+window.copyCode = function(btn, elementId) {
+    const codeElement = document.getElementById(elementId);
+    if (!codeElement) return;
+
+    // Get text content (removes HTML tags inserted by syntax highlighter)
+    const text = codeElement.textContent;
+
+    navigator.clipboard.writeText(text).then(() => {
+        const icon = btn.querySelector('i');
+        const span = btn.querySelector('span');
+        
+        if (icon) {
+            icon.className = 'fas fa-check';
+        }
+        if (span) {
+            span.textContent = 'Copied!';
+        }
+
+        setTimeout(() => {
+            if (icon) {
+                icon.className = 'fas fa-copy';
+            }
+            if (span) {
+                span.textContent = 'Copy';
+            }
+        }, 2000);
+    }).catch(err => {
+        console.error('Failed to copy:', err);
+    });
+};
 
 function initializeMarkdownRenderer() {
     if (markdownRenderer) return markdownRenderer;
@@ -21,7 +53,7 @@ function initializeMarkdownRenderer() {
                     keywords: 'abstract as base bool break byte case catch char checked class const continue decimal default delegate do double else enum event explicit extern false finally fixed float for foreach goto if implicit in int interface internal is lock long namespace new null object operator out override params private protected public readonly ref return sbyte sealed short sizeof stackalloc static string struct switch this throw true try typeof uint ulong unchecked unsafe ushort using virtual void volatile while',
                     contains: [
                         hljs.COMMENT('//', '$'),
-                        hljs.COMMENT('/\\*', '\\*/'),
+                        hljs.COMMENT('/\*', '\*/'),
                         hljs.C_LINE_COMMENT_MODE,
                         hljs.C_BLOCK_COMMENT_MODE,
                         {
@@ -69,16 +101,42 @@ function initializeMarkdownRenderer() {
         // Use marked-highlight extension
         markdownRenderer.use(highlightExt);
 
-        // Custom renderer for mermaid code blocks
+        // Custom renderer for mermaid code blocks and copy button
         const renderer = new window.marked.Renderer();
-        const originalCode = renderer.code.bind(renderer);
+        // const originalCode = renderer.code.bind(renderer); // Not needed if we fully override
 
-        renderer.code = function (code) {
-            if (code?.lang === 'mermaid' && code?.text !== undefined) {
-                const id = 'mermaid-' + Math.random().toString(36).substr(2, 9);
-                return `<div class="mermaid" id="${id}">${code.text}</div>`;
+        renderer.code = function (code, infostring, escaped) {
+            let textContent = code;
+            let language = infostring;
+            
+            // Check if code is an object (Token) - handling legacy/mermaid logic
+            if (typeof code === 'object') {
+                 if (code.lang === 'mermaid' && code.text !== undefined) {
+                    const id = 'mermaid-' + Math.random().toString(36).substr(2, 9);
+                    return `<div class="mermaid" id="${id}">${code.text}</div>`;
+                 }
+                 textContent = code.text;
+                 language = code.lang;
             }
-            return originalCode(code);
+
+            const lang = (language || '').match(/\S*/)[0];
+            const id = 'code-' + Math.random().toString(36).substr(2, 9);
+            const label = lang ? lang.toUpperCase() : '';
+
+            // Note: textContent here is already highlighted HTML by marked-highlight
+            
+            return `\
+            <div class=\"code-block-wrapper\">
+                <div class=\"code-header\">
+                    <span class=\"code-lang\">${label}</span>
+                    <button class=\"code-copy-btn\" onclick=\"window.copyCode(this, '${id}')\" title=\"Copy code\">
+                        <i class=\"fas fa-copy\"></i>
+                        <span>Copy</span>
+                    </button>
+                </div>
+                <pre><code id=\"${id}\" class=\"hljs language-${lang}\">${textContent}</code></pre>
+            </div>\
+            `;
         };
 
         markdownRenderer.use({ renderer });

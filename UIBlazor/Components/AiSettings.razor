@@ -1,86 +1,86 @@
 ﻿@using UIBlazor.Options
 @using UIBlazor.Services
+@using UIBlazor.Models
 @using Radzen.Blazor
 @using Radzen
 @inherits RadzenComponent
 
 <RadzenTabs RenderMode="TabRenderMode.Client">
     <Tabs>
-    <RadzenTabsItem Text="Connection">
-        <RadzenStack Orientation="Orientation.Vertical">
-        <RadzenFormField Text="Endpoint" Variant="Variant.Outlined">
-            <RadzenTextBox @bind-Value="@Options.Endpoint" Immediate />
-        </RadzenFormField>
-
-        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
-            <RadzenCheckBox @bind-Value=@Options.SkipSSL Name="SkipSSL" />
-            <RadzenLabel Text="Skip SSL validation" Component="SkipSSL" />
-        </RadzenStack>
-
-        <RadzenFormField Text="ApiKey" Variant="Variant.Outlined">
-            <RadzenPassword @bind-Value="@Options.ApiKey" Immediate />
-        </RadzenFormField>
-
-        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-            <RadzenDropDown TValue="string"
-                            Data="@Options.AvailableModels"
-                            @bind-Value="@Options.Model"
-                            Placeholder="Select model"
-                            Style="width: 100%" />
-            <RadzenButton Icon="autorenew" Click="() => UpdateModelsAsync(CancellationToken.None)" ButtonStyle="ButtonStyle.Light" />
-        </RadzenStack>
-
-        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
-            <RadzenCheckBox @bind-Value=@Options.Stream Name="Stream" />
-            <RadzenLabel Text="Use stream" Component="Stream" />
-        </RadzenStack>
-
-        <RadzenStack Gap="0.2rem">
-            <RadzenLabel Text="Temperature" />
-            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                <RadzenSlider @bind-Value="@Options.Temperature" Min="0" Max="2" Step="0.1" Style="width: 100%; height: 20px;" />
-                <RadzenLabel Text="@Math.Abs(Options.Temperature).ToString("0.0")" Style="text-align: right; width: 50px;" />
+    <RadzenTabsItem Text="General">
+        <RadzenStack Gap="1rem">
+            
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                <RadzenLabel Text="Profile:" Style="margin-right: 0.5rem;" />
+                <RadzenDropDown Data="@_profiles" TextProperty="Name" ValueProperty="Id" 
+                                @bind-Value="@_selectedProfileId" @bind-Value:after="@OnProfileChanged"
+                                Style="flex: 1;" />
+                <RadzenButton Icon="add" ButtonStyle="ButtonStyle.Success" Variant="Variant.Flat" Click="@OnAddProfile" ToolTip="Create new profile" />
+                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Flat" Click="@OnDeleteProfile" 
+                              Disabled="@(_profiles.Count <= 1)" ToolTip="Delete current profile" />
             </RadzenStack>
-        </RadzenStack>
 
-        <RadzenStack Gap="0.2rem">
-            <RadzenLabel Text="Max tokens" />
-            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                <RadzenSlider @bind-Value="@Options.MaxTokens" Min=4000 Max=256000 Step="1000" Style="width: 100%; height: 20px;" />
-                <RadzenLabel Text="@($"{Options.MaxTokens / 1000}K")" Style="text-align: right; width: 50px;" />
-            </RadzenStack>
-        </RadzenStack>
+            @if (_selectedProfile != null)
+            {
+                 <RadzenStack Gap="1rem">
+                    <RadzenFormField Text="Profile Name" Variant="Variant.Outlined">
+                        <RadzenTextBox @bind-Value="@_selectedProfile.Name" @bind-Value:after="@OnFieldChanged" Style="width: 100%" />
+                    </RadzenFormField>
 
-        <RadzenStack Gap="0.2rem">
-            <RadzenLabel Text="Max messages in memory" />
-            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                <RadzenSlider @bind-Value="@Options.MaxMessages" Min=5 Max=100 Style="width: 100%; height: 20px;" />
-                <RadzenLabel Text="@Options.MaxMessages.ToString()" Style="text-align: right; width: 50px;" />
-            </RadzenStack>
-        </RadzenStack>
+                    <RadzenFormField Text="Provider" Variant="Variant.Outlined">
+                        <RadzenDropDown @bind-Value="@_selectedProfile.Provider" Data="@_providers" @bind-Value:after="@OnProviderChanged" Style="width: 100%" />
+                    </RadzenFormField>
 
-        <RadzenStack Gap="0.2rem">
-            <RadzenLabel Text="Max retry attempts" />
-            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                <RadzenSlider @bind-Value="@Options.MaxRetryAttempts" Min=0 Max=10 Style="width: 100%; height: 20px;" />
-                <RadzenLabel Text="@Options.MaxRetryAttempts.ToString()" Style="text-align: right; width: 50px;" />
-            </RadzenStack>
-        </RadzenStack>
+                    <RadzenFormField Text="Endpoint" Variant="Variant.Outlined">
+                        <RadzenTextBox @bind-Value="@_selectedProfile.Endpoint" @bind-Value:after="@OnFieldChanged" Style="width: 100%" />
+                    </RadzenFormField>
 
-        <RadzenStack Gap="0.2rem">
-            <RadzenLabel Text="Retry delay (seconds)" />
-            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                <RadzenSlider @bind-Value="@Options.RetryDelaySeconds" Min=1 Max=30 Style="width: 100%; height: 20px;" />
-                <RadzenLabel Text="@Options.RetryDelaySeconds.ToString()" Style="text-align: right; width: 50px;" />
-            </RadzenStack>
-        </RadzenStack>
+                    <RadzenFormField Text="ApiKey" Variant="Variant.Outlined">
+                        <RadzenPassword @bind-Value="@_selectedProfile.ApiKey" @bind-Value:after="@OnFieldChanged" Style="width: 100%" />
+                    </RadzenFormField>
 
-        <RadzenFormField Text="System prompt" Variant="Variant.Outlined">
-            <RadzenTextArea @bind-Value="@Options.SystemPrompt" Style="min-height: 90px" />
-        </RadzenFormField>
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                        <RadzenDropDown TValue="string"
+                                        Data="@AiSettingsProvider.Current.AvailableModels"
+                                        @bind-Value="@_selectedProfile.Model"
+                                        @bind-Value:after="@OnFieldChanged"
+                                        Placeholder="Select model (type to add custom)"
+                                        AllowCustomText="true"
+                                        Style="width: 100%" />
+                         <RadzenButton Icon="autorenew" Click="() => UpdateModelsAsync(CancellationToken.None)" ButtonStyle="ButtonStyle.Light" ToolTip="Refresh models from endpoint" />
+                    </RadzenStack>
 
-        <RadzenButton Text="Reset tuning settings" Click="OnReset" />
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                        <RadzenCheckBox @bind-Value=@_selectedProfile.Stream Name="Stream" @bind-Value:after="@OnFieldChanged" />
+                        <RadzenLabel Text="Use stream" Component="Stream" />
+                    </RadzenStack>
 
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                        <RadzenCheckBox @bind-Value=@_selectedProfile.SkipSSL Name="SkipSSL" @bind-Value:after="@OnFieldChanged" />
+                        <RadzenLabel Text="Skip SSL validation" Component="SkipSSL" />
+                    </RadzenStack>
+
+                    <RadzenStack Gap="0.2rem">
+                        <RadzenLabel Text="Temperature" />
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                            <RadzenSlider @bind-Value="@_selectedProfile.Temperature" Min="0" Max="2" Step="0.1" @bind-Value:after="@OnFieldChanged" Style="width: 100%; height: 20px;" />
+                            <RadzenLabel Text="@Math.Abs(_selectedProfile.Temperature).ToString("0.0")" Style="text-align: right; width: 50px;" />
+                        </RadzenStack>
+                    </RadzenStack>
+
+                    <RadzenStack Gap="0.2rem">
+                        <RadzenLabel Text="Max tokens" />
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                            <RadzenSlider @bind-Value="@_selectedProfile.MaxTokens" Min=1000 Max=100000 Step="1000" @bind-Value:after="@OnFieldChanged" Style="width: 100%; height: 20px;" />
+                            <RadzenLabel Text="@($"{_selectedProfile.MaxTokens / 1000}K")" Style="text-align: right; width: 50px;" />
+                        </RadzenStack>
+                    </RadzenStack>
+
+                    <RadzenFormField Text="System prompt" Variant="Variant.Outlined">
+                        <RadzenTextArea @bind-Value="@_selectedProfile.SystemPrompt" @bind-Value:after="@OnFieldChanged" Style="min-height: 90px" />
+                    </RadzenFormField>
+                </RadzenStack>
+            }
         </RadzenStack>
     </RadzenTabsItem>
     <RadzenTabsItem Text="Built-in Tools">
@@ -105,27 +105,129 @@
 
 @code
 {
-    [Inject]
-    ChatService ChatService { get; set; } = null!;
+    [Inject] ChatService ChatService { get; set; } = null!;
+    [Inject] IAiSettingsProvider AiSettingsProvider { get; set; } = null!;
+    [Inject] NotificationService NotificationService { get; set; } = null!;
+    [Inject] IToolManager ToolManager { get; set; } = null!;
+    [Inject] IProfileService ProfileService { get; set; } = null!;
+    [Inject] DialogService DialogService { get; set; } = null!;
 
-    [Inject]
-    IAiSettingsProvider AiSettingsProvider { get; set; } = null!;
+    private List<ConnectionProfile> _profiles = [];
+    private ConnectionProfile? _selectedProfile;
+    private string _selectedProfileId = string.Empty;
+    private readonly List<string> _providers = ["OpenAI Compatible"];
 
-    [Inject]
-    NotificationService NotificationService { get; set; } = null!;
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProfilesAsync();
+    }
 
-    [Inject]
-    IToolManager ToolManager { get; set; } = null!;
+    private async Task LoadProfilesAsync()
+    {
+        _profiles = await ProfileService.GetProfilesAsync();
+        var activeId = await ProfileService.GetActiveProfileIdAsync();
 
-    private AiOptions Options => AiSettingsProvider.Current;
+        if (string.IsNullOrEmpty(activeId) || !_profiles.Any(p => p.Id == activeId))
+        {
+            _selectedProfile = _profiles.FirstOrDefault();
+        }
+        else
+        {
+            _selectedProfile = _profiles.First(p => p.Id == activeId);
+        }
+
+        if (_selectedProfile != null)
+        {
+            _selectedProfileId = _selectedProfile.Id;
+            // Ensure global settings match selected profile initially
+            if (activeId != _selectedProfileId)
+            {
+                 await ProfileService.ActivateProfileAsync(_selectedProfileId);
+            }
+        }
+    }
+
+    private async Task OnProfileChanged()
+    {
+        var id = _selectedProfileId;
+        if (!string.IsNullOrEmpty(id))
+        {
+            _selectedProfile = _profiles.FirstOrDefault(p => p.Id == id);
+            if (_selectedProfile != null)
+            {
+                await ProfileService.ActivateProfileAsync(id);
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task OnAddProfile()
+    {
+        var newProfile = new ConnectionProfile();
+        await ProfileService.SaveProfileAsync(newProfile);
+        await LoadProfilesAsync();
+        
+        // Select the new profile
+        _selectedProfileId = newProfile.Id;
+        await OnProfileChanged();
+    }
+
+    private async Task OnDeleteProfile()
+    {
+         if (_profiles.Count <= 1) return;
+
+         var confirm = await DialogService.Confirm($"Are you sure you want to delete '{_selectedProfile?.Name}'?", "Delete Profile", 
+            new ConfirmOptions() { OkButtonText = "Yes", CancelButtonText = "No" });
+
+         if (confirm == true && _selectedProfile != null)
+         {
+             await ProfileService.DeleteProfileAsync(_selectedProfile.Id);
+             await LoadProfilesAsync();
+             // LoadProfilesAsync picks a default
+         }
+    }
+
+    private async Task OnFieldChanged()
+    {
+        if (_selectedProfile != null)
+        {
+            await ProfileService.SaveProfileAsync(_selectedProfile);
+        }
+    }
+
+    private async Task OnProviderChanged()
+    {
+        if (_selectedProfile != null)
+        {
+             switch (_selectedProfile.Provider)
+            {
+                case "OpenAI Compatible":
+                    _selectedProfile.Endpoint = "https://api.openai.com";
+                    break;
+            }
+            await OnFieldChanged();
+        }
+    }
 
     private async Task UpdateModelsAsync(CancellationToken cancellationToken)
     {
         List<string> list = ["---"];
         try
         {
+            // Note: This uses the CURRENT options in AiSettingsProvider. 
+            // Since we call ActivateProfileAsync/SaveProfileAsync on change, 
+            // the settings are already active.
             var models = await ChatService.GetModelsAsync(cancellationToken);
             list = models.Data.Select(m => m.Id).ToList();
+            
+            // Allow Custom Models logic?
+            AiSettingsProvider.Current.AvailableModels = list;
+             
+             if (!list.Contains(_selectedProfile!.Model))
+             {
+                 _selectedProfile.Model = list.FirstOrDefault() ?? "";
+                 await OnFieldChanged();
+             }
         }
         catch (Exception ex)
         {
@@ -138,21 +240,7 @@
                 ShowProgress = true,
             });
         }
-
-        await InvokeAsync(() =>
-        {
-            Options.AvailableModels = list;
-            if (!list.Contains(Options.Model))
-            {
-                Options.Model = list.First();
-            }
-        });
         StateHasChanged();
-    }
-
-    private async Task OnReset(MouseEventArgs args)
-    {
-        await AiSettingsProvider.ResetAsync();
     }
 
     private async Task OnToolSettingChanged()

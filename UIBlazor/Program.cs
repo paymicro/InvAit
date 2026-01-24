@@ -15,6 +15,7 @@ builder.Services
     .AddScoped<ChatService>()
     .AddScoped<ILocalStorageService, LocalStorageService>()
     .AddScoped<IAiSettingsProvider, AiSettingsProvider>()
+    .AddScoped<IProfileService, ProfileService>()
     .AddScoped<CommonSettingsProvider>()
     .AddScoped<IVsBridge, VsBridge>()
     .AddScoped<BuiltInAgent>()

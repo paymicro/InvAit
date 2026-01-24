@@ -16,6 +16,13 @@
         <RadzenAppearanceToggle Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" />
 
         <RadzenStack class="rz-chat-header-actions" Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.5rem">
+            @if (Profiles != null && Profiles.Count > 0)
+            {
+                <RadzenDropDown TValue="string" Data="@Profiles" TextProperty="Name" ValueProperty="Id" 
+                                Value="@ActiveProfileId" Change="@OnProfileChange"
+                                Placeholder="Select Profile"
+                                Style="width: 180px;" />
+            }
             <RadzenButton Icon="delete_history" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
                             Click="@OnClearChatAsync" Title="Clear chat history" class="rz-chat-header-clear" />
             <RadzenButton Icon="settings" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
