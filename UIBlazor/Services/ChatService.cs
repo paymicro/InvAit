@@ -1,5 +1,9 @@
-﻿using System.Net.Http.Headers;
+﻿using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Runtime.CompilerServices;
+using System.Runtime.Serialization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -18,14 +22,19 @@ public class ChatService(
     ILocalStorageService localStorage
     )
 {
-    private const string _thinkStart = "<think>";
-    private const string _thinkEnd = "</think>";
+    private const string _thinkStart    = "<think>";
+    private const string _thinkEnd      = "</think>";
+    private const string _complitions   = "/v1/chat/completions";
+    private const string _models        = "/v1/models";
     private readonly JsonSerializerOptions _jsonSerializerOptions = new()
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
     public AiOptions Options => aiSettingsProvider.Current;
+
+    [AllowNull]
+    public ConversationSession Session { get; private set; }
 
     /// <summary>
     /// Determines if an exception is retryable (network errors, timeouts, etc.)
@@ -68,28 +77,34 @@ public class ChatService(
         throw new InvalidOperationException("Unexpected end of retry loop");
     }
 
+    /// <summary>
+    /// Получение списка моделей по API
+    /// </summary>
+    /// <exception cref="InvalidOperationException"></exception>
+    /// <exception cref="HttpRequestException"></exception>
+    /// <exception cref="JsonException"></exception>
     public async Task<AiModelList> GetModelsAsync(CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"{aiSettingsProvider.Current.Endpoint}/v1/models");
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{Options.Endpoint}{_models}");
         
-        if (!string.IsNullOrEmpty(aiSettingsProvider.Current.ApiKey))
+        if (!string.IsNullOrEmpty(Options.ApiKey))
         {
-            if (string.IsNullOrWhiteSpace(aiSettingsProvider.Current.ApiKeyHeader))
+            if (string.IsNullOrWhiteSpace(Options.ApiKeyHeader))
             {
                 throw new InvalidOperationException("API key header must be specified when an API key is provided.");
             }
 
-            if (string.Equals(aiSettingsProvider.Current.ApiKeyHeader, "Authorization", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(Options.ApiKeyHeader, "Authorization", StringComparison.OrdinalIgnoreCase))
             {
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", aiSettingsProvider.Current.ApiKey);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Options.ApiKey);
             }
             else
             {
-                request.Headers.Add(aiSettingsProvider.Current.ApiKeyHeader, aiSettingsProvider.Current.ApiKey);
+                request.Headers.Add(Options.ApiKeyHeader, Options.ApiKey);
             }
         }
 
-        if (string.IsNullOrEmpty(aiSettingsProvider.Current.Endpoint))
+        if (string.IsNullOrEmpty(Options.Endpoint))
         {
             throw new InvalidOperationException("Endpoint must be specified.");
         }
@@ -105,27 +120,29 @@ public class ChatService(
                ?? throw new JsonException("Models deserialization exception");
     }
 
-    public async Task AddMessageAsync(string sessionId, string role, string content)
+    public async Task AddMessageAsync(string role, string content)
     {
         // Get or create session
-        var session = await GetOrCreateSessionAsync(sessionId);
-        session.AddMessage(role, content);
-        await localStorage.SetItemAsync(sessionId, session);
+        await GetOrCreateSessionAsync();
+        Session.AddMessage(role, content);
+        await localStorage.SetItemAsync(Session.Id, Session);
     }
 
+    /// <summary>
+    /// Модель, которая последняя отвечала
+    /// </summary>
     public string? LastCompletionsModel { get; private set; }
 
-    public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(string sessionId,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync([EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // Get or create session
-        var session = await GetOrCreateSessionAsync(sessionId);
+        var session = await GetOrCreateSessionAsync();
         session.MaxMessages = Options.MaxMessages;
 
         LastCompletionsModel = null;
 
         // Use runtime parameters or fall back to configured options
-        var url = $"{Options.Endpoint}/v1/chat/completions";
+        var url = $"{Options.Endpoint}{_complitions}";
         var effectiveApiKey = Options.ApiKey;
         var effectiveApiKeyHeader = Options.ApiKeyHeader;
 
@@ -162,7 +179,7 @@ public class ChatService(
             }
         }
 
-        HttpResponseMessage response = await ExecuteWithRetryAsync(async (ct) =>
+        var response = await ExecuteWithRetryAsync(async (ct) =>
         {
             return await httpClient.SendAsync(
                 request,
@@ -286,18 +303,50 @@ public class ChatService(
         return [.. (await localStorage.GetAllKeysAsync()).Where(k => k.StartsWith("session_"))];
     }
 
-    public async Task<ConversationSession> GetOrCreateSessionAsync(string sessionId)
+    private string GenerateSessionId() => $"session_{DateTime.Now:s}";
+
+    private ConversationSession CreateNewSession() => new() { Id = GenerateSessionId() };
+
+    public async Task<ConversationSession> GetOrCreateSessionAsync()
     {
         var sessionList = await GetAllSessionIdsAsync();
-        ConversationSession session = sessionList.Contains(sessionId)
-            ? await localStorage.GetItemAsync<ConversationSession>(sessionId) ?? new ()
+        ConversationSession session = sessionList.Contains(Session.Id)
+            ? await localStorage.GetItemAsync<ConversationSession>(Session.Id) ?? new ()
             : new ();
 
         // не храним Id в базе
-        session.Id = sessionId;
+        session.Id = Session.Id;
         return session;
     }
 
-    public async Task ClearSessionAsync(string sessionId)
-        => await localStorage.RemoveItemAsync(sessionId);
+    public async Task LoadLastSessionOrGenerateNewAsync()
+    {
+        var sessionList = await GetAllSessionIdsAsync();
+        // сортируем сессии по времени создания и берем самую свежую
+        var lastSessionId = sessionList.OrderByDescending(id =>
+        { 
+            if (DateTime.TryParseExact(id.Substring(8), "s", CultureInfo.InvariantCulture, DateTimeStyles.None, out var result))
+            {
+                return result;
+            }
+            return DateTime.MinValue;
+        }).FirstOrDefault();
+        if (lastSessionId != default)
+        {
+            var fromStorage = await localStorage.GetItemAsync<ConversationSession>(lastSessionId);
+            fromStorage?.Id = lastSessionId;
+            Session = fromStorage ?? CreateNewSession();
+        }
+        else
+        {
+            Session = CreateNewSession();
+        }
+        Session.MaxMessages = Options.MaxMessages;
+    }
+
+    public async Task ClearSessionAsync()
+    {
+        await localStorage.RemoveItemAsync(Session.Id);
+        Session = CreateNewSession();
+    }
 }

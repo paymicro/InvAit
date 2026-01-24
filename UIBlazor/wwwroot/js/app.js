@@ -55,6 +55,9 @@ if (window.chrome && window.chrome.webview) {
     console.warn("Приложение запущено без WebView2");
 }
 
+//определение темы
+const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
 function scrollToBottomIfNeeded(selector, threshold = 100) {
     setTimeout(() => {
         const container = document.querySelector(selector);

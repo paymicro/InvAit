@@ -1,5 +1,6 @@
 .markdown-content {
     line-height: normal;
+    white-space: wrap;
 }
 
 .markdown-content h1,

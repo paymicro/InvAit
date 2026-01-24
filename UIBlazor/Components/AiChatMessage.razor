@@ -14,7 +14,7 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         // Рендерим только если контент реально изменился (стриминг)
-        if (!firstRender && Content != _lastRenderedContent)
+        if (Content != _lastRenderedContent)
         {
             _lastRenderedContent = Content;
             await JS.InvokeVoidAsync("renderMarkdownToElement", _messageId, Content);

@@ -21,7 +21,6 @@ public partial class AIChat : RadzenComponent
     private ElementReference _inputElement;
     private ElementReference _messagesContainer;
     private CancellationTokenSource _cts = new();
-    private string? _currentSessionId;
 
     [Inject]
     private NotificationService NotificationService { get; set; } = null!;
@@ -103,10 +102,7 @@ public partial class AIChat : RadzenComponent
         Messages.Clear();
 
         // Clear the session in the AI service
-        if (!string.IsNullOrEmpty(_currentSessionId))
-        {
-            await ChatService.ClearSessionAsync(_currentSessionId);
-        }
+        await ChatService.ClearSessionAsync();
 
         await InvokeAsync(StateHasChanged);
     }
@@ -130,7 +126,7 @@ public partial class AIChat : RadzenComponent
             Content = content,
             Role = ChatMessageRole.User
         });
-        await ChatService.AddMessageAsync(_currentSessionId, ChatMessageRole.User, content);
+        await ChatService.AddMessageAsync(ChatMessageRole.User, content);
 
         // Get AI response
         await GetAIResponseAsync();
@@ -139,32 +135,30 @@ public partial class AIChat : RadzenComponent
     /// <summary>
     /// Loads conversation history from the AI service session.
     /// </summary>
-    public async Task LoadConversationHistoryAsync()
-    {
-        if (string.IsNullOrEmpty(_currentSessionId))
-            return;
+    //public async Task LoadConversationHistoryAsync()
+    //{
+    //    if (string.IsNullOrEmpty(_currentSessionId))
+    //        return;
 
-        var session = await ChatService.GetOrCreateSessionAsync(_currentSessionId);
+    //    var session = await ChatService.GetOrCreateSessionAsync(_currentSessionId);
 
-        // Clear current messages
-        Messages.Clear();
+    //    // Clear current messages
+    //    Messages.Clear();
 
-        // Add messages from session history
-        foreach (var message in session.Messages)
-        {
-            Messages.Add(message);
+    //    // Add messages from session history
+    //    foreach (var message in session.Messages)
+    //    {
+    //        Messages.Add(message);
 
-            // Limit the number of messages
-            if (Messages.Count > ChatService.Options.MaxMessages)
-            {
-                Messages.RemoveAt(0);
-            }
-        }
+    //        // Limit the number of messages
+    //        if (Messages.Count > ChatService.Options.MaxMessages)
+    //        {
+    //            Messages.RemoveAt(0);
+    //        }
+    //    }
 
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private string GenerateSessionId() => $"session_{DateTime.Now:s}";
+    //    await InvokeAsync(StateHasChanged);
+    //}
 
     private async Task GetAIResponseAsync()
     {
@@ -173,12 +167,6 @@ public partial class AIChat : RadzenComponent
         await _cts.CancelAsync();
 
         _cts = new CancellationTokenSource();
-
-        // Ensure we have a session ID
-        if (string.IsNullOrEmpty(_currentSessionId))
-        {
-            _currentSessionId = GenerateSessionId();
-        }
 
         // Add assistant message placeholder
         var assistantMessage = AddVisualMessage(new VisualChatMessage {
@@ -190,7 +178,7 @@ public partial class AIChat : RadzenComponent
         {
             var reasoning = new StringBuilder();
             var response = new StringBuilder();
-            await foreach (var delta in ChatService.GetCompletionsAsync(_currentSessionId, _cts.Token))
+            await foreach (var delta in ChatService.GetCompletionsAsync(_cts.Token))
             {
                 if (delta.ReasoningContent != null)
                 {
@@ -214,11 +202,11 @@ public partial class AIChat : RadzenComponent
             // Меняем контент если там есть вызов тулзов
             if (tools.Count > 0)
             {
-                assistantMessage.Content = "Tool: " + string.Join(", ", tools.Select(t => t.Function.Name));
+                assistantMessage.Content = "Calling tool: " + string.Join(", ", tools.Select(t => t.Function.Name));
             }
 
             // Add assistant response to conversation history
-            await ChatService.AddMessageAsync(_currentSessionId, ChatMessageRole.Assistant, assistantMessage.Content);
+            await ChatService.AddMessageAsync(ChatMessageRole.Assistant, assistantMessage.Content);
 
             await HandleToolCallAsync(tools);
         }
@@ -301,7 +289,7 @@ public partial class AIChat : RadzenComponent
                         </tool_result>
                         Инструкция: На основе полученных данных выше, реши, достигнута ли цель. Если нет - предложи следующее действие, НО не повторяй предыдущее.
                         """ ;
-                    await ChatService.AddMessageAsync(_currentSessionId, vsToolResult.Role, result);
+                    await ChatService.AddMessageAsync(vsToolResult.Role, result);
                 }
                 else
                 {
@@ -311,7 +299,7 @@ public partial class AIChat : RadzenComponent
                         </tool_result>
                         Инструкция: Во время выполнения возникла ошибка. Предложи следующее действие, НО не повторяй предыдущее.
                         """;
-                    await ChatService.AddMessageAsync(_currentSessionId, ChatMessageRole.System, vsToolResult.ErrorMessage);
+                    await ChatService.AddMessageAsync(ChatMessageRole.System, vsToolResult.ErrorMessage);
                 }
             }
         }
@@ -328,8 +316,14 @@ public partial class AIChat : RadzenComponent
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
-        _currentSessionId = GenerateSessionId();
         ToolManager.RegisterAllTools();
+
+        await ChatService.LoadLastSessionOrGenerateNewAsync();
+        foreach (var chatMessage in ChatService.Session.Messages)
+        {
+            AddVisualMessage(chatMessage);
+        }
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task OnInputAsync(ChangeEventArgs e)

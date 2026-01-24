@@ -1,4 +1,5 @@
 ﻿using System.Text.Json.Serialization;
+using UIBlazor.Services;
 
 namespace UIBlazor.Models;
 
@@ -8,7 +9,7 @@ public class ConversationSession
     /// Gets or sets the unique identifier for the conversation session.
     /// </summary>
     [JsonIgnore]
-    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string Id { get; set; } = string.Empty;
 
     /// <summary>
     /// Gets or sets the list of messages in the conversation.

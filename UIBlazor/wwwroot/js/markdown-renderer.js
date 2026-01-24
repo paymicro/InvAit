@@ -73,12 +73,12 @@ function initializeMarkdownRenderer() {
         const renderer = new window.marked.Renderer();
         const originalCode = renderer.code.bind(renderer);
 
-        renderer.code = function (code, language, escaped) {
-            if (language === 'mermaid') {
+        renderer.code = function (code) {
+            if (code?.lang === 'mermaid' && code?.text !== undefined) {
                 const id = 'mermaid-' + Math.random().toString(36).substr(2, 9);
-                return `<div class="mermaid" id="${id}">${code}</div>`;
+                return `<div class="mermaid" id="${id}">${code.text}</div>`;
             }
-            return originalCode(code, language, escaped);
+            return originalCode(code);
         };
 
         markdownRenderer.use({ renderer });
@@ -106,17 +106,23 @@ function renderMarkdownToElement(elementId, text) {
 
         // Initialize mermaid diagrams
         if (window.mermaid) {
-            window.mermaid.initialize({ startOnLoad: false });
+            window.mermaid.initialize({
+                startOnLoad: false,
+                suppressErrorRendering: true,
+                theme: isDarkMode ? 'dark' : 'base'
+            });
             const diagrams = element.querySelectorAll('.mermaid');
             diagrams.forEach((diagram, index) => {
                 const id = diagram.id;
                 const text = diagram.textContent;
-                window.mermaid.render('mermaid-render-' + index, text).then((result) => {
-                    diagram.innerHTML = result.svg;
-                }).catch((error) => {
-                    console.error('Mermaid render error:', error);
-                    diagram.innerHTML = '<pre>' + text + '</pre>';
-                });
+                window.mermaid.render('mermaid-render-' + index, text)
+                    .then((result) => {
+                        diagram.innerHTML = result.svg;
+                    })
+                    .catch((error) => {
+                        console.error('Mermaid render error:', error);
+                        diagram.innerHTML = '<pre>' + text + '</pre>';
+                    });
             });
         }
     }
