@@ -1,8 +1,8 @@
-using UIBlazor.Models;
+﻿using UIBlazor.Models;
 
 namespace UIBlazor.Services;
 
-public interface IProfileService
+public interface IProfileService : IDisposable
 {
     Task<List<ConnectionProfile>> GetProfilesAsync();
     Task SaveProfileAsync(ConnectionProfile profile);

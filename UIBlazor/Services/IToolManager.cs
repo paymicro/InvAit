@@ -3,7 +3,7 @@ using UIBlazor.Models;
 
 namespace UIBlazor.Services;
 
-public interface IToolManager
+public interface IToolManager : IDisposable
 {
     void RegisterAllTools();
 

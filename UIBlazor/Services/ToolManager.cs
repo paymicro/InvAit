@@ -8,17 +8,66 @@ using UIBlazor.Models;
 
 namespace UIBlazor.Services;
 
-public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localStorage) : IToolManager
+public class ToolManager : IToolManager, IDisposable
 {
+    private readonly BuiltInAgent _builtInAgent;
+    private readonly ILocalStorageService _localStorage;
     private readonly ConcurrentDictionary<string, Tool> _registeredTools = new();
     private readonly ConcurrentDictionary<string, AiToolToCall> _pendingTools = new();
     private CancellationTokenSource? _approvalCancellationTokenSource;
     private TaskCompletionSource<bool> _approvalTcs;
     private const string ToolSettingsKey = "tool_settings";
 
+    private readonly PeriodicTimer _debounceTimer = new(TimeSpan.FromMilliseconds(500));
+    private bool _savePending;
+    private readonly CancellationTokenSource _cts = new();
+
+    public ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localStorage)
+    {
+        _builtInAgent = builtInAgent;
+        _localStorage = localStorage;
+        _ = DebounceSaveLoopAsync();
+    }
+
+    private async Task DebounceSaveLoopAsync()
+    {
+        try
+        {
+            while (await _debounceTimer.WaitForNextTickAsync(_cts.Token))
+            {
+                if (_savePending)
+                {
+                    _savePending = false;
+                    await SaveNowAsync();
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task SaveNowAsync()
+    {
+        try
+        {
+            var settings = new ToolSettings
+            {
+                ToolStates = _registeredTools.ToDictionary(t => t.Key, t => new ToolModeSettings 
+                { 
+                    IsEnabled = t.Value.Enabled, 
+                    ApprovalMode = t.Value.ApprovalMode 
+                })
+            };
+            await _localStorage.SetItemAsync(ToolSettingsKey, settings);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to save tool settings: {ex.Message}");
+        }
+    }
+
     public void RegisterAllTools()
     {
-        foreach (var tool in builtInAgent.Tools)
+        foreach (var tool in _builtInAgent.Tools)
         {
             RegisterTool(tool);
         }
@@ -31,7 +80,7 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
     {
         try
         {
-            var settings = await localStorage.GetItemAsync<ToolSettings>(ToolSettingsKey);
+            var settings = await _localStorage.GetItemAsync<ToolSettings>(ToolSettingsKey);
             if (settings?.ToolStates != null)
             {
                 foreach (var tool in _registeredTools.Values)
@@ -52,21 +101,19 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
 
     public async Task SaveToolSettingsAsync()
     {
-        try
+        _savePending = true;
+        await Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+        _debounceTimer.Dispose();
+
+        if (_savePending)
         {
-            var settings = new ToolSettings
-            {
-                ToolStates = _registeredTools.ToDictionary(t => t.Key, t => new ToolModeSettings 
-                { 
-                    IsEnabled = t.Value.Enabled, 
-                    ApprovalMode = t.Value.ApprovalMode 
-                })
-            };
-            await localStorage.SetItemAsync(ToolSettingsKey, settings);
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Failed to save tool settings: {ex.Message}");
+            _ = SaveNowAsync();
         }
     }
 
