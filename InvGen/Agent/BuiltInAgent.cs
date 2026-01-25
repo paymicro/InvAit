@@ -41,6 +41,7 @@ public class BuiltInAgent
                 BuiltInToolEnum.Build => await BuildSolutionAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GetErrors => await GetErrorListAsync(),
                 BuiltInToolEnum.GetProjectInfo => await GetProjectInfoAsync(),
+                BuiltInToolEnum.GetSolutionStructure => await GetSolutionStructureAsync(),
                 BuiltInToolEnum.GitStatus => await GitStatusAsync(),
                 BuiltInToolEnum.GitLog => await GitLogAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GitDiff => await GitDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
@@ -83,7 +84,12 @@ public class BuiltInAgent
     private async Task<VsResponse> ReadFileAsync(IReadOnlyDictionary<string, object> args)
     {
         var solutionPath = await GetSolutionPathAsync();
-        var files = args.Values.Select(x => x.ToString()).ToList();
+        var files = args.Values.TakeWhile(x => !x.ToString().StartsWith(":")).Select(x => x.ToString()).ToList();
+        
+        // Support for range-based reading if only one file is requested
+        int? startLine = args.ContainsKey("start_line") ? int.Parse(args.GetString("start_line")) : null;
+        int? lineCount = args.ContainsKey("line_count") ? int.Parse(args.GetString("line_count")) : null;
+
         await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         var stingBuilder = new StringBuilder();
         var isSuccess = true;
@@ -93,15 +99,30 @@ public class BuiltInAgent
             if (!File.Exists(filepath))
             {
                 stingBuilder.AppendLine($"File \"{fileName}\" doesn't exist.");
-                break;
+                isSuccess = false;
+                continue;
             }
 
             stingBuilder.AppendLine($"\"{fileName}\" content");
 
             try
             {
+                var allLines = File.ReadLines(filepath);
                 var lineNum = 0;
-                foreach (var readLine in File.ReadLines(filepath))
+                
+                if (startLine.HasValue)
+                {
+                    var linesToSkip = Math.Max(0, startLine.Value - 1);
+                    allLines = allLines.Skip(linesToSkip);
+                    lineNum = linesToSkip;
+                }
+
+                if (lineCount.HasValue)
+                {
+                    allLines = allLines.Take(lineCount.Value);
+                }
+
+                foreach (var readLine in allLines)
                 {
                     stingBuilder.AppendLine($"{++lineNum} | {readLine}");
                 }
@@ -109,7 +130,7 @@ public class BuiltInAgent
             catch (Exception e)
             {
                 Logger.Log(e.Message);
-                stingBuilder.AppendLine($"Error {e.Message}");
+                stingBuilder.AppendLine($"Error reading {fileName}: {e.Message}");
                 isSuccess = false;
             }
         }
@@ -549,6 +570,44 @@ public class BuiltInAgent
         {
             Payload = JsonUtils.Serialize(errors)
         };
+    }
+
+    private async Task<VsResponse> GetSolutionStructureAsync()
+    {
+        var sb = new StringBuilder();
+        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        var projects = await VS.Solutions.GetAllProjectsAsync();
+        
+        foreach (var project in projects)
+        {
+            sb.AppendLine($"Project: {project.Name}");
+            await WalkSolutionItemsAsync(project.Children, sb, 1);
+        }
+
+        return new VsResponse
+        {
+            Payload = sb.ToString()
+        };
+    }
+
+    private async Task WalkSolutionItemsAsync(IEnumerable<Toolkit.SolutionItem> items, StringBuilder sb, int indent)
+    {
+        var indentString = new string(' ', indent * 2);
+        foreach (var item in items)
+        {
+            if (item.Type == Toolkit.SolutionItemType.PhysicalFile)
+            {
+                var ext = Path.GetExtension(item.FullPath).ToLower();
+                if (ext is ".zip" or ".bin" or ".dll" or ".exe" or ".png" or ".jpg" or ".obj" or ".pdb") continue;
+                
+                sb.AppendLine($"{indentString}📄 {item.Name}");
+            }
+            else if (item.Type == Toolkit.SolutionItemType.PhysicalFolder || item.Type == Toolkit.SolutionItemType.Project)
+            {
+                sb.AppendLine($"{indentString}📁 {item.Name}");
+                await WalkSolutionItemsAsync(item.Children, sb, indent + 1);
+            }
+        }
     }
 
     private async Task<VsResponse> GetProjectInfoAsync()

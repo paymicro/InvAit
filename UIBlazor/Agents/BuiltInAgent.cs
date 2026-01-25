@@ -11,21 +11,26 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.ReadFiles,
-            Description = "Request to read the contents of one or more files. The tool outputs line-numbered content (e.g. \"1 | const x = 1\") for easy reference when creating diffs or discussing code.",
+            Category = ToolCategory.FileSystem,
+            ApprovalMode = ToolApprovalMode.Always,
+            Description = "Request to read the contents of one or more files. Use start_line and line_count to read specific parts of large files.",
             ExampleToSystemMessage = """
-                                     For example, to read 3 files, you would respond with this:
+                                     For example, to read a specific range:
                                      <tool_call_begin> functions.read_files
-                                     path/to/file1.txt
-                                     C:\Users\UserService.cs
-                                     C:\Users\AuthService.cs
+                                     path/to/large_file.cs
+                                     start_line
+                                     100
+                                     line_count
+                                     50
                                      <tool_call_end>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, args),
-            ApprovalNeeded = false
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, args)
         },
         new()
         {
             Name = BuiltInToolEnum.ReadOpenFile,
+            Category = ToolCategory.FileSystem,
+            ApprovalMode = ToolApprovalMode.Always,
             Description = """
                           To view the user's currently open file, use the read_currently_open_file tool. The tool outputs line-numbered content (e.g. "1 | const x = 1")
                           If the user is asking about a file and you don't see any code, use this to check the current file
@@ -34,12 +39,13 @@ public class BuiltInAgent(IVsBridge vsBridge)
                                      For example
                                      <tool_call_begin> functions.read_currently_open_file <tool_call_end>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ReadOpenFile, args),
-            ApprovalNeeded = false
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ReadOpenFile, args)
         },
         new()
         {
             Name = BuiltInToolEnum.CreateFile,
+            Category = ToolCategory.FileSystem,
+            ApprovalMode = ToolApprovalMode.Manual,
             Description = "To create a NEW file, use the create_new_file tool with the relative or absolute filepath and new contents.",
             ExampleToSystemMessage = """
                                      For example, to create a file located at 'path\to\file.cs', you would respond with:
@@ -54,6 +60,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.ApplyDiff,
+            Category = ToolCategory.FileSystem,
+            ApprovalMode = ToolApprovalMode.Manual,
             Description = """
                           Request to apply PRECISE, TARGETED modifications to an existing file by searching for specific sections of content and replacing them. This tool is for SURGICAL EDITS ONLY - specific changes to existing code.
                           You can perform multiple distinct search and replace operations within a single `apply_diff` call by providing multiple SEARCH/REPLACE blocks in the `diff` parameter. This is the preferred way to make several targeted changes efficiently.
@@ -99,6 +107,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.SearchFiles,
+            Category = ToolCategory.Search,
+            ApprovalMode = ToolApprovalMode.Always,
             Description = "To return a list of files with patches in solution directory based on a search regex pattern, use the search_files tool.",
             ExampleToSystemMessage = """
                                      For example:
@@ -111,6 +121,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GrepSearch,
+            Category = ToolCategory.Search,
+            ApprovalMode = ToolApprovalMode.Always,
             Description = "To perform a grep search within the project, call the grep_search tool with the regex pattern to match.",
             ExampleToSystemMessage = """
                                      For example:
@@ -123,6 +135,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.Ls,
+            Category = ToolCategory.Search,
+            ApprovalMode = ToolApprovalMode.Always,
             Description = "To list files and folders in a given directory, call the ls tool with \"dirPath\" and \"recursive\".",
             ExampleToSystemMessage = """
                                      For example:
@@ -138,6 +152,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.Build,
+            Category = ToolCategory.Build,
+            ApprovalMode = ToolApprovalMode.Always,
             Description = "To build solution in Visual Studio. With action - Build, Rebuild or Clean. When any errors returns errors list.",
             ExampleToSystemMessage = """
                                      For example:
@@ -150,6 +166,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GetErrors,
+            Category = ToolCategory.Build,
+            ApprovalMode = ToolApprovalMode.Always,
             Description = "To get error list of current solution and current file from Visual Studio.",
             ExampleToSystemMessage = """
                                      For example:
@@ -160,6 +178,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GetProjectInfo,
+            Category = ToolCategory.Build,
+            ApprovalMode = ToolApprovalMode.Always,
             Description = "Get information about the solution and projects. Returns list of projects, their types, target frameworks, and file structure.",
             ExampleToSystemMessage = """
                                      For example:
@@ -167,11 +187,25 @@ public class BuiltInAgent(IVsBridge vsBridge)
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetProjectInfo, args)
         },
+        new()
+        {
+            Name = BuiltInToolEnum.GetSolutionStructure,
+            Category = ToolCategory.Build,
+            ApprovalMode = ToolApprovalMode.Always,
+            Description = "Get a tree-like structure of the entire solution, including projects, folders, and files.",
+            ExampleToSystemMessage = """
+                                     For example:
+                                     <tool_call_begin> functions.get_solution_structure <tool_call_end>
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetSolutionStructure)
+        },
         
         // Execution
         new()
         {
             Name = BuiltInToolEnum.Exec,
+            Category = ToolCategory.Terminal,
+            ApprovalMode = ToolApprovalMode.Manual,
             Description = """
                           To run a terminal command, use the execute_command tool in
                           The shell is not stateful and will not remember any previous commands.
@@ -192,6 +226,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.FetchUrl,
+            Category = ToolCategory.Terminal,
+            ApprovalMode = ToolApprovalMode.Always,
             Description = "To fetch the content of a URL, use the fetch_url_content tool.",
             ExampleToSystemMessage = """
                                      For example, to read the contents of a webpage, you might respond with:
@@ -206,6 +242,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GitStatus,
+            Category = ToolCategory.Git,
+            ApprovalMode = ToolApprovalMode.Always,
             Description = "Check git status of the current repository. Shows modified, staged, and untracked files.",
             ExampleToSystemMessage = """
                                      For example:
@@ -216,6 +254,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GitLog,
+            Category = ToolCategory.Git,
+            ApprovalMode = ToolApprovalMode.Always,
             Description = "View git commit history. Can specify number of commits to display.",
             ExampleToSystemMessage = """
                                      For example:
@@ -228,6 +268,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GitDiff,
+            Category = ToolCategory.Git,
+            ApprovalMode = ToolApprovalMode.Always,
             Description = "View git diff for files. Can compare working directory with staged or specific commits.",
             ExampleToSystemMessage = """
                                      For example:
@@ -240,6 +282,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GitBranch,
+            Category = ToolCategory.Git,
+            ApprovalMode = ToolApprovalMode.Always,
             Description = "List git branches or get current branch information.",
             ExampleToSystemMessage = """
                                      For example:

@@ -1,6 +1,7 @@
 ﻿@using UIBlazor.Options
 @using UIBlazor.Services
 @using UIBlazor.Models
+@using Shared.Contracts
 @using Radzen.Blazor
 @using Radzen
 @inherits RadzenComponent
@@ -84,21 +85,36 @@
         </RadzenStack>
     </RadzenTabsItem>
     <RadzenTabsItem Text="Built-in Tools">
-        @foreach (var tool in ToolManager.GetAllTools())
-        {
-            <RadzenStack Gap="0.2rem" Style="margin-bottom:1rem">
-                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center" >
-                    <RadzenCheckBox @bind-Value="@tool.Enabled" @bind-Value:after="OnToolSettingChanged" Name="@($"tool_{tool.Name}")" />
-                    <RadzenLabel Text="@tool.Name" Component="@($"tool_{tool.Name}")" />
-                </RadzenStack>
-                <RadzenText Component="@($"tool_{tool.Name}")" Style="font-size: 0.875em; color: var(--rz-text-secondary-color); flex: 1;">
-                    @tool.Description.Split('.')[0]
-                </RadzenText>
-            </RadzenStack>
-        }
+        <RadzenStack Gap="1rem">
+            @foreach (var categoryGroup in ToolManager.GetAllTools().GroupBy(t => t.Category))
+            {
+                <RadzenCard Variant="Variant.Flat" Style="background: var(--rz-base-background-color);">
+                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="margin-bottom: 0.5rem; font-weight: bold;">@categoryGroup.Key</RadzenText>
+                    <RadzenStack Gap="0.5rem">
+                        @foreach (var tool in categoryGroup)
+                        {
+                            <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" >
+                                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                                    <RadzenCheckBox @bind-Value="@tool.Enabled" @bind-Value:after="OnToolSettingChanged" Name="@($"tool_{tool.Name}")" />
+                                    <RadzenLabel Text="@tool.Name" Component="@($"tool_{tool.Name}")" Style="font-weight: 500;" />
+                                </RadzenStack>
+
+                                <RadzenDropDown TValue="ToolApprovalMode" Data="@(Enum.GetValues<ToolApprovalMode>())"
+                                                @bind-Value="@tool.ApprovalMode" @bind-Value:after="OnToolSettingChanged"
+                                                Style="width: 100px; flex-shrink: 0;" />
+
+                            </RadzenStack>
+                            <RadzenText Style="font-size: 0.875em; color: var(--rz-text-secondary-color); margin: 0; overflow: hidden; text-overflow: ellipsis;">
+                                @tool.Description.Split('.')[0]
+                            </RadzenText>
+                        }
+                    </RadzenStack>
+                </RadzenCard>
+            }
+        </RadzenStack>
     </RadzenTabsItem>
     <RadzenTabsItem Text="MCP">
-
+        <RadzenText TextStyle="TextStyle.Subtitle1">TODO... еще в работе... наверное</RadzenText>
     </RadzenTabsItem>
     </Tabs>
 </RadzenTabs>

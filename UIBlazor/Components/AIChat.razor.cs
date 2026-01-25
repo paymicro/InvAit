@@ -241,6 +241,32 @@ public partial class AIChat : RadzenComponent
             var tool = ToolManager.GetTool(aiTool.Function.Name);
             if (tool != null)
             {
+                if (tool.ApprovalMode == ToolApprovalMode.Disabled)
+                {
+                    await ChatService.AddMessageAsync(ChatMessageRole.System, $"Tool '{tool.Name}' is disabled.");
+                    continue;
+                }
+
+                if (tool.ApprovalMode == ToolApprovalMode.Manual)
+                {
+                    var confirmed = await DialogService.Confirm(
+                        $"The AI wants to use the tool '{tool.Name}' with the following parameters:\n\n" +
+                        string.Join("\n", aiTool.Function.Arguments.Select(a => $"{a.Key}: {a.Value}")),
+                        "Approval Required",
+                        new ConfirmOptions { OkButtonText = "Allow", CancelButtonText = "Deny" });
+
+                    if (confirmed != true)
+                    {
+                        await ChatService.AddMessageAsync(ChatMessageRole.System, $"Execution of '{tool.Name}' was denied by user.");
+                        AddVisualMessage(new VisualChatMessage
+                        {
+                            Role = ChatMessageRole.System,
+                            Content = $"Execution of '{tool.Name}' denied."
+                        });
+                        continue;
+                    }
+                }
+
                 var vsToolResult = await tool.ExecuteAsync(aiTool.Function.Arguments);
                 if (vsToolResult != null)
                 {
@@ -402,7 +428,7 @@ public partial class AIChat : RadzenComponent
             Resizable = false,
             Position = DialogPosition.Right,
             MinHeight = 250.0,
-            MinWidth = 400.0
+            MinWidth = 450.0
         });
         
         // Reload profiles in case they were changed

@@ -32,13 +32,14 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
         try
         {
             var settings = await localStorage.GetItemAsync<ToolSettings>(ToolSettingsKey);
-            if (settings?.ToolEnabledStates != null)
+            if (settings?.ToolStates != null)
             {
                 foreach (var tool in _registeredTools.Values)
                 {
-                    if (settings.ToolEnabledStates.TryGetValue(tool.Name, out var enabled))
+                    if (settings.ToolStates.TryGetValue(tool.Name, out var modeSettings))
                     {
-                        tool.Enabled = enabled;
+                        tool.Enabled = modeSettings.IsEnabled;
+                        tool.ApprovalMode = modeSettings.ApprovalMode;
                     }
                 }
             }
@@ -55,7 +56,11 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
         {
             var settings = new ToolSettings
             {
-                ToolEnabledStates = _registeredTools.ToDictionary(t => t.Key, t => t.Value.Enabled)
+                ToolStates = _registeredTools.ToDictionary(t => t.Key, t => new ToolModeSettings 
+                { 
+                    IsEnabled = t.Value.Enabled, 
+                    ApprovalMode = t.Value.ApprovalMode 
+                })
             };
             await localStorage.SetItemAsync(ToolSettingsKey, settings);
         }
@@ -65,7 +70,7 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
         }
     }
 
-    public IEnumerable<Tool> GetEnabledTools() => _registeredTools.Values.Where(t => t.Enabled);
+    public IEnumerable<Tool> GetEnabledTools() => _registeredTools.Values.Where(t => t.Enabled && t.ApprovalMode != ToolApprovalMode.Disabled);
 
     public IEnumerable<Tool> GetAllTools() => _registeredTools.Values;
 

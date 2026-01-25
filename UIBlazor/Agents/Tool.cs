@@ -1,4 +1,6 @@
-﻿namespace UIBlazor.Agents;
+﻿using Shared.Contracts;
+
+namespace UIBlazor.Agents;
 
 public class Tool
 {
@@ -23,7 +25,6 @@ public class Tool
 
     /// <summary>
     /// Description for user for Approval request
-    /// TODO
     /// </summary>
     public string ApprovalDescription { get; init; }
 
@@ -35,12 +36,12 @@ public class Tool
     /// <summary>
     /// Approval behavior
     /// </summary>
-    public bool ApprovalNeeded { get; init; } = true;
+    public ToolApprovalMode ApprovalMode { get; set; } = ToolApprovalMode.Always;
 
     /// <summary>
     /// Category for grouping tools in UI
     /// </summary>
-    public string Category { get; init; } = "General";
+    public ToolCategory Category { get; init; } = ToolCategory.FileSystem;
 
     /// <summary>
     /// Function to execute the tool
