@@ -34,6 +34,14 @@ public partial class AIChat : RadzenComponent
     private List<ConnectionProfile> Profiles { get; set; } = [];
     private string? ActiveProfileId { get; set; }
 
+    private double MessageProgress => ChatService.Session != null && ChatService.Options.MaxMessages > 0 
+        ? Math.Min(100, (double)Messages.Count / ChatService.Options.MaxMessages * 100) 
+        : 0;
+
+    private double TokenProgress => ChatService.Session != null && ChatService.Options.MaxTokens > 0 
+        ? Math.Min(100, (double)ChatService.Session.TotalTokens / ChatService.Options.MaxTokens * 100) 
+        : 0;
+
     /// <summary>
     /// Specifies additional custom attributes that will be rendered by the input.
     /// </summary>

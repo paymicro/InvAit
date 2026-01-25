@@ -25,7 +25,7 @@
             {
                  <RadzenStack Gap="1rem">
                     <RadzenFormField Text="Profile Name" Variant="Variant.Outlined">
-                        <RadzenTextBox @bind-Value="@_selectedProfile.Name" @bind-Value:after="@OnFieldChanged" Style="width: 100%" />
+                        <RadzenTextBox @bind-Value="@_selectedProfile.Name" @bind-Value:after="@OnFieldChanged" Immediate Style="width: 100%" />
                     </RadzenFormField>
 
                     <RadzenFormField Text="Provider" Variant="Variant.Outlined">
@@ -115,6 +115,12 @@
     </RadzenTabsItem>
     <RadzenTabsItem Text="MCP">
         <RadzenText TextStyle="TextStyle.Subtitle1">TODO... еще в работе... наверное</RadzenText>
+    </RadzenTabsItem>
+    <RadzenTabsItem Text="UI">
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+            <RadzenLabel Text="Theme" Style="margin-right: 0.5rem;" />
+            <RadzenAppearanceToggle Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" />
+        </RadzenStack>
     </RadzenTabsItem>
     </Tabs>
 </RadzenTabs>

@@ -33,6 +33,11 @@ public class ConversationSession
     public int MaxMessages { get; set; } = 50;
 
     /// <summary>
+    /// Gets or sets the total tokens used in the conversation.
+    /// </summary>
+    public int TotalTokens { get; set; }
+
+    /// <summary>
     /// Adds a message to the conversation and manages memory limits.
     /// </summary>
     /// <param name="role">The role of the message sender.</param>

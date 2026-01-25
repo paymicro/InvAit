@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
 namespace UIBlazor.Services.Models;
 
@@ -22,6 +22,12 @@ public class StreamChunk
     /// </summary>
     [JsonPropertyName("choices")]
     public List<ChatChoice> Choices { get; set; } = [];
+
+    /// <summary>
+    /// Usage information. Usually provided in the last chunk if stream_options: { include_usage: true } is set.
+    /// </summary>
+    [JsonPropertyName("usage")]
+    public UsageInfo? Usage { get; set; }
 
     [JsonIgnore]
     public ChatChoice? Choice => Choices.FirstOrDefault();

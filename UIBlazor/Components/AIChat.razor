@@ -13,7 +13,27 @@
         {
             <span class="rz-chat-header-title">@Title</span>
         }
-        <RadzenAppearanceToggle Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" />
+
+        <div class="rz-chat-usage-indicators" style="flex: 1; display: flex; flex-direction: column; gap: 4px; margin: 0 1rem; min-width: 100px; max-width: 300px;">
+            <div class="usage-item" title="Messages: @Messages.Count / @ChatService.Options.MaxMessages">
+                <div class="usage-label" style="font-size: 9px; line-height: 1; display: flex; justify-content: space-between; color: var(--rz-text-secondary-color);">
+                    <span>Messages</span>
+                    <span>@Messages.Count / @ChatService.Options.MaxMessages</span>
+                </div>
+                <div class="usage-bar-container" style="height: 3px; background: rgba(0,0,0,0.1); border-radius: 1.5px; overflow: hidden;">
+                    <div class="usage-bar" style="height: 100%; width: @(MessageProgress)%; background: var(--rz-primary); transition: width 0.3s;"></div>
+                </div>
+            </div>
+            <div class="usage-item" title="Tokens: @ChatService.Session?.TotalTokens / @ChatService.Options.MaxTokens">
+                <div class="usage-label" style="font-size: 9px; line-height: 1; display: flex; justify-content: space-between; color: var(--rz-text-secondary-color);">
+                    <span>Tokens</span>
+                    <span>@(ChatService.Session?.TotalTokens ?? 0) / @ChatService.Options.MaxTokens</span>
+                </div>
+                <div class="usage-bar-container" style="height: 3px; background: rgba(0,0,0,0.1); border-radius: 1.5px; overflow: hidden;">
+                    <div class="usage-bar" style="height: 100%; width: @(TokenProgress)%; background: var(--rz-secondary); transition: width 0.3s;"></div>
+                </div>
+            </div>
+        </div>
 
         <RadzenStack class="rz-chat-header-actions" Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.5rem">
             @if (Profiles != null && Profiles.Count > 0)

@@ -122,8 +122,6 @@ public class ChatService(
 
     public async Task AddMessageAsync(string role, string content)
     {
-        // Get or create session
-        await GetOrCreateSessionAsync();
         Session.AddMessage(role, content);
         await localStorage.SetItemAsync(Session.Id, Session);
     }
@@ -133,13 +131,15 @@ public class ChatService(
     /// </summary>
     public string? LastCompletionsModel { get; private set; }
 
+    /// <summary>
+    /// Последнее использование токенов
+    /// </summary>
+    public UsageInfo? LastUsage { get; private set; }
+
     public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync([EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        // Get or create session
-        var session = await GetOrCreateSessionAsync();
-        session.MaxMessages = Options.MaxMessages;
-
         LastCompletionsModel = null;
+        LastUsage = null;
 
         // Use runtime parameters or fall back to configured options
         var url = $"{Options.Endpoint}{_complitions}";
@@ -148,7 +148,7 @@ public class ChatService(
 
         var systemPrompt = toolManager.GetToolUseSystemInstructions(Options.SystemPrompt);
         // Get formatted messages including conversation history
-        var messages = session.GetFormattedMessages(systemPrompt);
+        var messages = Session.GetFormattedMessages(systemPrompt);
 
         var payload = new
         {
@@ -157,6 +157,7 @@ public class ChatService(
             temperature = Options.Temperature,
             max_tokens = Options.MaxTokens,
             stream = Options.Stream,
+            stream_options = Options.Stream ? new { include_usage = true } : null
         };
 
         var request = new HttpRequestMessage(HttpMethod.Post, url)
@@ -208,6 +209,11 @@ public class ChatService(
                     message.Content = message.Content.Remove(0, regex.Length);
                 }
                 LastCompletionsModel ??= chunk?.Model;
+                if (chunk?.Usage != null)
+                {
+                    LastUsage = chunk.Usage;
+                    Session.TotalTokens = chunk.Usage.TotalTokens;
+                }
                 yield return message;
             }
             yield break;
@@ -238,9 +244,20 @@ public class ChatService(
             }
 
             var chunk = JsonUtils.Deserialize<StreamChunk>(json);
-            if (chunk == null || chunk.Choices.Count != 1 || chunk.Choices[0].Delta == null)
+            if (chunk == null)
             {
-                break;
+                continue;
+            }
+
+            if (chunk.Usage != null)
+            {
+                LastUsage = chunk.Usage;
+                Session.TotalTokens = chunk.Usage.TotalTokens;
+            }
+
+            if (chunk.Choices.Count != 1 || chunk.Choices[0].Delta == null)
+            {
+                continue;
             }
 
             LastCompletionsModel ??= chunk.Model;
@@ -306,18 +323,6 @@ public class ChatService(
     private string GenerateSessionId() => $"session_{DateTime.Now:s}";
 
     private ConversationSession CreateNewSession() => new() { Id = GenerateSessionId() };
-
-    public async Task<ConversationSession> GetOrCreateSessionAsync()
-    {
-        var sessionList = await GetAllSessionIdsAsync();
-        ConversationSession session = sessionList.Contains(Session.Id)
-            ? await localStorage.GetItemAsync<ConversationSession>(Session.Id) ?? new ()
-            : new ();
-
-        // не храним Id в базе
-        session.Id = Session.Id;
-        return session;
-    }
 
     public async Task LoadLastSessionOrGenerateNewAsync()
     {
