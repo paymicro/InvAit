@@ -7,7 +7,8 @@ public enum ToolCategory
     Build,
     Terminal,
     Git,
-    Planning
+    Planning,
+    Skills
 }
 
 public enum ToolApprovalMode

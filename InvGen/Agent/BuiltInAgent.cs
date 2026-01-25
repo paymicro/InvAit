@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -9,7 +10,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using System.Windows.Documents;
 using EnvDTE;
 using EnvDTE80;
 using InvGen.Utils;
@@ -23,6 +23,8 @@ namespace InvGen.Agent;
 
 public class BuiltInAgent
 {
+    private FileSystemWatcher? _skillWatcher;
+    private readonly ConcurrentDictionary<string, DateTime> _skillsCache = new();
     public async Task<VsResponse> ExecuteAsync(VsRequest vsRequest)
     {
         try
@@ -46,6 +48,8 @@ public class BuiltInAgent
                 BuiltInToolEnum.GitLog => await GitLogAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GitDiff => await GitDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GitBranch => await GitBranchAsync(),
+                BuiltInToolEnum.GetSkillsMetadata => await GetSkillsMetadataAsync(),
+                BuiltInToolEnum.ReadSkillContent => await ReadSkillContentAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 _ => new VsResponse { Success = false, Error = "Unknown action" }
             };
 
@@ -651,6 +655,245 @@ public class BuiltInAgent
     {
         return await ExecGitCommandAsync("branch --show-current");
     }
+
+    #region Skills Support
+
+    /// <summary>
+    /// Инициализация FileSystemWatcher для отслеживания изменений SKILL.md файлов
+    /// </summary>
+    public void InitializeSkillWatcher(string solutionPath)
+    {
+        var skillsPath = Path.Combine(solutionPath, ".agent", "skills");
+        if (!Directory.Exists(skillsPath))
+        {
+            return;
+        }
+
+        _skillWatcher = new FileSystemWatcher(skillsPath)
+        {
+            Filter = "SKILL.md",
+            IncludeSubdirectories = true,
+            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.CreationTime
+        };
+
+        _skillWatcher.Changed += OnSkillFileChanged;
+        _skillWatcher.Created += OnSkillFileChanged;
+        _skillWatcher.Deleted += OnSkillFileChanged;
+        _skillWatcher.Renamed += OnSkillFileRenamed;
+        _skillWatcher.EnableRaisingEvents = true;
+        
+        Logger.Log($"FileSystemWatcher initialized for skills at: {skillsPath}");
+    }
+
+    private void OnSkillFileChanged(object sender, FileSystemEventArgs e)
+    {
+        _skillsCache.AddOrUpdate(e.FullPath, DateTime.UtcNow, (k, v) => DateTime.UtcNow);
+        Logger.Log($"Skill file changed: {e.Name}");
+        // TODO: Уведомить UIBlazor через WebView2 о необходимости обновления
+    }
+
+    private void OnSkillFileRenamed(object sender, RenamedEventArgs e)
+    {
+        _skillsCache.TryRemove(e.OldFullPath, out _);
+        _skillsCache.AddOrUpdate(e.FullPath, DateTime.UtcNow, (k, v) => DateTime.UtcNow);
+        Logger.Log($"Skill file renamed: {e.OldName} -> {e.Name}");
+    }
+
+    /// <summary>
+    /// Получить метаданные всех скиллов (только название + описание для системного промпта)
+    /// </summary>
+    private async Task<VsResponse> GetSkillsMetadataAsync()
+    {
+        var solutionPath = await GetSolutionPathAsync();
+        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+        // на .Net Framework EnumerateFileSystemEntries не чувствителен к регистру, так что будут все скиллы
+        var skillFiles = Directory.EnumerateFileSystemEntries(solutionPath, "*SKILL.md", SearchOption.AllDirectories)
+            .Where(path => path.Split(Path.DirectorySeparatorChar).Contains("skills"))
+            .ToArray();
+
+        var metadataList = new List<Dictionary<string, string>>();
+
+        foreach (var file in skillFiles)
+        {
+            try
+            {
+                var firstFiveLines = File.ReadLines(file).Take(5).ToList();
+                var (name, description) = ParseYamlFrontmatter(firstFiveLines);
+                var relativePath = MakeRelativeToSolution(file, solutionPath);
+                
+                if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(description))
+                {
+                    continue;
+                }
+
+                metadataList.Add(new Dictionary<string, string>
+                {
+                    { "name", name },
+                    { "description", description },
+                    { "filePath", relativePath }
+                });
+                Logger.Log($"Added skill metadata. {name} - {file}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Error reading skill metadata {file}: {ex.Message}");
+            }
+        }
+
+        return new VsResponse
+        {
+            Payload = JsonSerializer.Serialize(metadataList)
+        };
+    }
+
+    /// <summary>
+    /// Читать полное содержимое скилла (вызывается только при активации)
+    /// </summary>
+    private async Task<VsResponse> ReadSkillContentAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var skillPath = args.GetString("param1");
+        var solutionPath = await GetSolutionPathAsync();
+        var fullPath = GetAbsolutePath(skillPath, solutionPath);
+
+        if (!File.Exists(fullPath))
+        {
+            return new VsResponse
+            {
+                Success = false,
+                Error = $"Skill file not found: {skillPath}"
+            };
+        }
+
+        try
+        {
+            var content = File.ReadAllText(fullPath);
+            var (name, description) = ParseYamlFrontmatter(content);
+            var markdownContent = StripYamlFrontmatter(content);
+            var resources = ExtractResources(markdownContent);
+
+            var skillContent = new Dictionary<string, object>
+            {
+                { "name", name },
+                { "description", description },
+                { "filePath", skillPath },
+                { "content", markdownContent },
+                { "resources", resources }
+            };
+
+            return new VsResponse
+            {
+                Payload = JsonSerializer.Serialize(skillContent)
+            };
+        }
+        catch (Exception ex)
+        {
+            return new VsResponse
+            {
+                Success = false,
+                Error = $"Error reading skill content: {ex.Message}"
+            };
+        }
+    }
+
+    private (string name, string description) ParseYamlFrontmatter(IEnumerable<string> lines)
+    {
+        var inFrontmatter = false;
+        var name = string.Empty;
+        var description = string.Empty;
+
+        foreach (var line in lines)
+        {
+            if (line.Trim() == "---")
+            {
+                if (!inFrontmatter)
+                {
+                    inFrontmatter = true;
+                    continue;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            if (inFrontmatter)
+            {
+                if (line.StartsWith("name:", StringComparison.OrdinalIgnoreCase))
+                {
+                    name = line.Substring(5).Trim();
+                }
+                else if (line.StartsWith("description:", StringComparison.OrdinalIgnoreCase))
+                {
+                    description = line.Substring(12).Trim();
+                }
+            }
+        }
+
+        return (name, description);
+    }
+
+    private (string name, string description) ParseYamlFrontmatter(string content)
+    {
+        return ParseYamlFrontmatter(content.Split('\n'));
+    }
+
+    private string StripYamlFrontmatter(string content)
+    {
+        var lines = content.Split('\n');
+        var inFrontmatter = false;
+        var resultLines = new List<string>();
+
+        foreach (var line in lines)
+        {
+            if (line.Trim() == "---")
+            {
+                inFrontmatter = !inFrontmatter;
+                continue;
+            }
+
+            if (!inFrontmatter)
+            {
+                resultLines.Add(line);
+            }
+        }
+
+        return string.Join("\n", resultLines).Trim();
+    }
+
+    private List<string> ExtractResources(string content)
+    {
+        var resources = new List<string>();
+        var lines = content.Split('\n');
+        var inResourcesSection = false;
+
+        foreach (var line in lines)
+        {
+            if (line.Trim().StartsWith("## Resources", StringComparison.OrdinalIgnoreCase))
+            {
+                inResourcesSection = true;
+                continue;
+            }
+
+            if (inResourcesSection && line.Trim().StartsWith("##"))
+            {
+                break;
+            }
+
+            if (inResourcesSection && line.Trim().StartsWith("-"))
+            {
+                var resource = line.Trim().TrimStart('-').Trim();
+                if (!string.IsNullOrEmpty(resource))
+                {
+                    resources.Add(resource);
+                }
+            }
+        }
+
+        return resources;
+    }
+
+    #endregion
 
     private async Task<VsResponse> ExecGitCommandAsync(string arguments)
     {

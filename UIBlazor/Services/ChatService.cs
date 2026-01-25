@@ -18,7 +18,8 @@ public class ChatService(
     HttpClient httpClient,
     IAiSettingsProvider aiSettingsProvider,
     IToolManager toolManager,
-    ILocalStorageService localStorage
+    ILocalStorageService localStorage,
+    ISkillService skillService
     )
 {
     private const string _thinkStart    = "<think>";
@@ -156,7 +157,15 @@ public class ChatService(
         var effectiveApiKey = Options.ApiKey;
         var effectiveApiKeyHeader = Options.ApiKeyHeader;
 
-        var systemPrompt = string.Join(Environment.NewLine, Options.SystemPrompt, toolManager.GetToolUseSystemInstructions(Session.Mode));
+        // Загружаем метаданные скиллов и добавляем в системный промпт
+        var skillsMetadata = await skillService.GetSkillsMetadataAsync();
+        var skillsSection = skillService.FormatSkillsForSystemPrompt(skillsMetadata);
+        
+        var systemPrompt = string.Join(Environment.NewLine, 
+            Options.SystemPrompt, 
+            toolManager.GetToolUseSystemInstructions(Session.Mode),
+            skillsSection);
+        
         // Get formatted messages including conversation history
         var messages = Session.GetFormattedMessages(systemPrompt);
 

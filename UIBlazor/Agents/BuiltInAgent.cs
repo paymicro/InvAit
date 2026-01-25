@@ -304,6 +304,26 @@ public class BuiltInAgent(IVsBridge vsBridge)
                                      <tool_call_end>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.SwitchMode, args)
+        },
+        
+        // Skills operations
+        new()
+        {
+            Name = BuiltInToolEnum.ReadSkillContent,
+            Category = ToolCategory.Skills,
+            ApprovalMode = ToolApprovalMode.Always,
+            Description = """
+                          Load the full content of a skill when you need detailed instructions.
+                          Skills are pre-listed in your system prompt with name and description.
+                          Use this tool only when you determine a skill is relevant to the current task.
+                          """,
+            ExampleToSystemMessage = """
+                                     For example, to load a specific skill:
+                                     <tool_call_begin> functions.read_skill_content
+                                     .agent/skills/debugging/SKILL.md
+                                     <tool_call_end>
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ReadSkillContent, args)
         }
     ];
 }

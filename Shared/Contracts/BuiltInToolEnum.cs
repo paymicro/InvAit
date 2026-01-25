@@ -32,6 +32,10 @@ public static class BuiltInToolEnum
     // App state
     public const string SwitchMode      = "switch_mode";
     
+    // Skills operations
+    public const string GetSkillsMetadata   = "get_skills_metadata";   // Только метаданные (кеш)
+    public const string ReadSkillContent    = "read_skill_content";    // Полное содержимое по требованию
+    
     // Agent planning (for agent's internal task breakdown)
     public const string Plan                = "plan";
     public const string UpdatePlanProgress  = "update_plan_progress";

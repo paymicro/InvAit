@@ -18,6 +18,7 @@ builder.Services
     .AddScoped<IProfileService, ProfileService>()
     .AddScoped<CommonSettingsProvider>()
     .AddScoped<IVsBridge, VsBridge>()
+    .AddScoped<ISkillService, SkillService>()
     .AddScoped<BuiltInAgent>()
     .AddScoped<IToolManager, ToolManager>()
     .AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
