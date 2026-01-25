@@ -283,26 +283,25 @@ public class ToolManagerTests
         var prompt = "Test system prompt";
 
         // Act
-        var instructions = _toolManager.GetToolUseSystemInstructions(prompt);
+        var instructions = _toolManager.GetToolUseSystemInstructions(AppMode.Agent);
 
         // Assert
-        Assert.Contains(prompt, instructions);
         Assert.Contains("test_tool", instructions);
         Assert.Contains("Test tool", instructions);
-        Assert.Contains("function-calling assistant", instructions);
+        Assert.Contains("function-calling agent", instructions);
     }
 
     [Fact]
-    public void GetToolUseSystemInstructions_ReturnsEmptyWhenNoEnabledTools()
+    public void GetToolUseSystemInstructions_ReturnsNoInstructionsWhenNoEnabledTools()
     {
         // Arrange
         _toolManager.RegisterAllTools();
         _toolManager.GetTool("test_tool")?.Enabled = false;
 
         // Act
-        var instructions = _toolManager.GetToolUseSystemInstructions("prompt");
+        var instructions = _toolManager.GetToolUseSystemInstructions(AppMode.Agent);
 
         // Assert
-        Assert.Equal(string.Empty, instructions);
+        Assert.DoesNotContain("Tool use instructions", instructions);
     }
 }

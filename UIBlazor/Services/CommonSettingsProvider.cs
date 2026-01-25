@@ -1,6 +1,5 @@
 ﻿using System.ComponentModel;
 using Microsoft.JSInterop;
-using Shared.Contracts;
 using UIBlazor.Options;
 
 namespace UIBlazor.Services;

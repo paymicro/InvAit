@@ -57,3 +57,33 @@ details summary {
 .rz-dialog-wrapper {
     z-index: 2000;
 }
+
+.usage-indicators {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0 1rem;
+    min-width: 100px;
+    max-width: 300px;
+}
+
+    .usage-indicators .usage-label {
+        font-size: 9px;
+        line-height: 1;
+        display: flex;
+        justify-content: space-between;
+        color: var(--rz-text-secondary-color);
+    }
+
+    .usage-indicators .usage-bar-container {
+        height: 3px;
+        background: rgba(0,0,0,0.1);
+        border-radius: 1.5px;
+        overflow: hidden;
+    }
+        .usage-indicators .usage-bar-container .usage-bar {
+            height: 100%;
+            background: var(--rz-primary);
+            transition: width 0.3s;
+        }

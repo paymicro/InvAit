@@ -7,7 +7,7 @@ public class AiTool
     /// <summary>
     /// Used later to submit the function result back to the AI.
     /// </summary>
-    public string Id { get; set; }
+    public string Id { get; set; } = string.Empty;
 
     /// <summary>
     /// It will probably always be "function", indicating that the execution of a function is being requested.

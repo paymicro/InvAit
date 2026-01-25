@@ -11,11 +11,11 @@ public class ToolCallFunction
     /// The name of the function to be executed.
     /// </summary>
     [JsonPropertyName("name")]
-    public string Name { get; set; }
+    public string Name { get; set; } = string.Empty;
 
     /// <summary>
     /// Gets or sets the function's arguments.
     /// </summary>
     [JsonPropertyName("arguments")]
-    public string Arguments { get; set; }
+    public string Arguments { get; set; } = string.Empty;
 }

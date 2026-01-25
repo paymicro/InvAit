@@ -1,4 +1,5 @@
 ﻿using Moq;
+using Shared.Contracts;
 using UIBlazor.Models;
 using UIBlazor.Options;
 using UIBlazor.Services;
@@ -33,11 +34,11 @@ public class ChatServiceTests
             MaxMessages = 50
         };
         _aiSettingsProviderMock.SetupGet(p => p.Current).Returns(options);
-        _toolManagerMock.Setup(tm => tm.GetToolUseSystemInstructions(It.IsAny<string>()))
+        _toolManagerMock.Setup(tm => tm.GetToolUseSystemInstructions(It.IsAny<AppMode>()))
             .Returns("Tool instructions");
         
         // Default setup for session listing
-        _localStorageMock.Setup(ls => ls.GetAllKeysAsync()).ReturnsAsync(new List<string>());
+        _localStorageMock.Setup(ls => ls.GetAllKeysAsync()).ReturnsAsync([]);
     }
 
     private ChatService CreateChatService(HttpClient? httpClient = null)

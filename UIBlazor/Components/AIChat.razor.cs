@@ -14,6 +14,7 @@ namespace UIBlazor.Components;
 
 public partial class AIChat : RadzenComponent
 {
+    // TODO использовать из ChatService.Session.Messages
     private List<VisualChatMessage> Messages { get; set; } = [];
     private string CurrentInput { get; set; } = string.Empty;
     private bool IsLoading { get; set; }
@@ -39,14 +40,6 @@ public partial class AIChat : RadzenComponent
     private string? ActiveProfileId { get; set; }
 
     private List<AppMode> AppModeValues { get; } = Enum.GetValues<AppMode>().ToList();
-
-    private double MessageProgress => ChatService.Session != null && ChatService.Options.MaxMessages > 0 
-        ? Math.Min(100, (double)Messages.Count / ChatService.Options.MaxMessages * 100) 
-        : 0;
-
-    private double TokenProgress => ChatService.Session != null && ChatService.Options.MaxTokens > 0 
-        ? Math.Min(100, (double)ChatService.Session.TotalTokens / ChatService.Options.MaxTokens * 100) 
-        : 0;
 
     /// <summary>
     /// Specifies additional custom attributes that will be rendered by the input.

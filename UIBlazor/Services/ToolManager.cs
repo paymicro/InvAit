@@ -126,14 +126,14 @@ public class ToolManager : IToolManager, IDisposable
         return _registeredTools.TryGetValue(name, out var tool) ? tool : null;
     }
 
-    public string GetToolUseSystemInstructions(string promptFromOptions, AppMode mode)
+    public string GetToolUseSystemInstructions(AppMode mode)
     {
         var enabledTools = GetEnabledTools().ToList();
         
         // Filter tools based on mode
         enabledTools = mode switch
         {
-            AppMode.Chat => enabledTools.Where(t => t.Name is 
+            AppMode.Chat => [.. enabledTools.Where(t => t.Name is 
                 BuiltInToolEnum.ReadFiles or 
                 BuiltInToolEnum.ReadOpenFile or 
                 BuiltInToolEnum.Ls or 
@@ -142,14 +142,13 @@ public class ToolManager : IToolManager, IDisposable
                 BuiltInToolEnum.GetSolutionStructure or 
                 BuiltInToolEnum.GetProjectInfo or 
                 BuiltInToolEnum.FetchUrl or
-                BuiltInToolEnum.SwitchMode).ToList(),
+                BuiltInToolEnum.SwitchMode)],
             AppMode.Agent => enabledTools,
             AppMode.Plan => enabledTools.Where(t => t.Name is BuiltInToolEnum.SwitchMode).ToList(), // Placeholder for Plan mode
             _ => enabledTools
         };
 
         var sb = new StringBuilder();
-        sb.AppendLine(promptFromOptions);
         sb.AppendLine($"Current date: {DateTime.Now:f}");
         sb.AppendLine($"Current Application Mode: {mode}");
         sb.AppendLine("Available modes: Chat (for discussion, reading and explanations), Agent (for taking actions and applying changes), Plan (for planning).");
