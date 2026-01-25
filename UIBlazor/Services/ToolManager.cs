@@ -152,7 +152,8 @@ public class ToolManager : IToolManager, IDisposable
         sb.AppendLine(promptFromOptions);
         sb.AppendLine($"Current date: {DateTime.Now:f}");
         sb.AppendLine($"Current Application Mode: {mode}");
-        sb.AppendLine("Available modes: Chat (for discussion and reading), Agent (for taking actions and applying changes), Plan (for planning).");
+        sb.AppendLine("Available modes: Chat (for discussion, reading and explanations), Agent (for taking actions and applying changes), Plan (for planning).");
+        sb.AppendLine("Use Mermaid diagrams for clarity in explanations. This will help you better visualize the answer formula.");
         sb.AppendLine($"You can use '{BuiltInToolEnum.SwitchMode}' tool to change current mode if you need more tools or want to switch context.");
         
         if (enabledTools.Count == 0)
@@ -160,10 +161,12 @@ public class ToolManager : IToolManager, IDisposable
             return sb.ToString();
         }
 
+        if (mode == AppMode.Agent)
+        {
+            sb.AppendLine("You are a function-calling agent.");
+        }
+
         sb.AppendLine("""
-
-                      You are a function-calling assistant.
-
                       ## Tool use instructions
 
                       You have access to several "tools" that you can use at any time to retrieve information and/or perform tasks for the User.

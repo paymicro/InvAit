@@ -1,4 +1,4 @@
-let markdownRenderer = null;
+﻿let markdownRenderer = null;
 
 const highlightExt = markedHighlight.markedHighlight({
     langPrefix: 'hljs language-',
@@ -120,21 +120,27 @@ function initializeMarkdownRenderer() {
             }
 
             const lang = (language || '').match(/\S*/)[0];
+            
+            if (lang === 'mermaid') {
+                const id = 'mermaid-' + Math.random().toString(36).substr(2, 9);
+                return `<div class="mermaid" id="${id}">${textContent}</div>`;
+            }
+
             const id = 'code-' + Math.random().toString(36).substr(2, 9);
             const label = lang ? lang.toUpperCase() : '';
 
             // Note: textContent here is already highlighted HTML by marked-highlight
             
             return `\
-            <div class=\"code-block-wrapper\">
-                <div class=\"code-header\">
-                    <span class=\"code-lang\">${label}</span>
-                    <button class=\"code-copy-btn\" onclick=\"window.copyCode(this, '${id}')\" title=\"Copy code\">
-                        <i class=\"fas fa-copy\"></i>
+            <div class="code-block-wrapper">
+                <div class="code-header">
+                    <span class="code-lang">${label}</span>
+                    <button class="code-copy-btn" onclick="window.copyCode(this, '${id}')" title="Copy code">
+                        <i class="fas fa-copy"></i>
                         <span>Copy</span>
                     </button>
                 </div>
-                <pre><code id=\"${id}\" class=\"hljs language-${lang}\">${textContent}</code></pre>
+                <pre><code id="${id}" class="hljs language-${lang}">${textContent}</code></pre>
             </div>\
             `;
         };
@@ -167,19 +173,22 @@ function renderMarkdownToElement(elementId, text) {
             window.mermaid.initialize({
                 startOnLoad: false,
                 suppressErrorRendering: true,
+                // isDarkMode берется из app.js
                 theme: isDarkMode ? 'dark' : 'base'
             });
+
             const diagrams = element.querySelectorAll('.mermaid');
             diagrams.forEach((diagram, index) => {
-                const id = diagram.id;
-                const text = diagram.textContent;
-                window.mermaid.render('mermaid-render-' + index, text)
+                const content = diagram.textContent;
+                // Use a globally unique ID for rendering to avoid conflicts
+                const renderId = 'mermaid-svg-' + elementId.replace(/[^a-zA-Z0-9]/g, '') + '-' + index;                
+
+                window.mermaid.render(renderId, content)
                     .then((result) => {
                         diagram.innerHTML = result.svg;
                     })
                     .catch((error) => {
                         console.error('Mermaid render error:', error);
-                        diagram.innerHTML = '<pre>' + text + '</pre>';
                     });
             });
         }

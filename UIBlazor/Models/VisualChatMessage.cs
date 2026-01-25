@@ -36,6 +36,18 @@ public class VisualChatMessage
     [JsonIgnore]
     public bool IsStreaming { get; set; }
 
+    /// <summary>
+    /// Gets or sets whether this message is currently being edited.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsEditing { get; set; }
+
+    /// <summary>
+    /// Temporary storage for content during editing.
+    /// </summary>
+    [JsonIgnore]
+    public string TempContent { get; set; } = string.Empty;
+
     [JsonIgnore]
     public string ToolName { get; set; } = string.Empty;
 

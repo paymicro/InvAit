@@ -15,6 +15,10 @@ pre {
     text-wrap: auto;
 }
 
+.rz-chat-message:hover .rz-chat-message-actions {
+    opacity: 1 !important;
+}
+
 .tool-details {
     padding: 0;
     margin: 0;

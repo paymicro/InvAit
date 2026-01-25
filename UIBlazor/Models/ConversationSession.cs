@@ -49,19 +49,52 @@ public class ConversationSession
     /// <param name="content">The message content.</param>
     public void AddMessage(string role, string content)
     {
-        Messages.Add(new VisualChatMessage
+        AddMessage(new VisualChatMessage
         {
             Role = role,
             Content = content,
             Timestamp = DateTime.Now
         });
+    }
 
+    /// <summary>
+    /// Adds a message object to the conversation and manages memory limits.
+    /// </summary>
+    public void AddMessage(VisualChatMessage message)
+    {
+        Messages.Add(message);
         LastUpdated = DateTime.Now;
 
         // Remove oldest messages if we exceed the limit
         while (Messages.Count > MaxMessages)
         {
             Messages.RemoveAt(0);
+        }
+    }
+
+    /// <summary>
+    /// Removes a message from the conversation.
+    /// </summary>
+    public void RemoveMessage(string id)
+    {
+        var message = Messages.FirstOrDefault(m => m.Id == id);
+        if (message != null)
+        {
+            Messages.Remove(message);
+            LastUpdated = DateTime.Now;
+        }
+    }
+
+    /// <summary>
+    /// Updates the content of a message.
+    /// </summary>
+    public void UpdateMessage(string id, string content)
+    {
+        var message = Messages.FirstOrDefault(m => m.Id == id);
+        if (message != null)
+        {
+            message.Content = content;
+            LastUpdated = DateTime.Now;
         }
     }
 

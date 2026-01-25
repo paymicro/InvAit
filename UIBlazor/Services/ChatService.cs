@@ -124,6 +124,17 @@ public class ChatService(
     public async Task AddMessageAsync(string role, string content)
     {
         Session.AddMessage(role, content);
+        await SaveSessionAsync();
+    }
+
+    public async Task AddMessageAsync(VisualChatMessage message)
+    {
+        Session.AddMessage(message);
+        await SaveSessionAsync();
+    }
+
+    public async Task SaveSessionAsync()
+    {
         await localStorage.SetItemAsync(Session.Id, Session);
     }
 

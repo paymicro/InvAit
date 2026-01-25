@@ -141,44 +141,17 @@ public partial class AIChat : RadzenComponent
         await InvokeAsync(StateHasChanged);
 
         // Add user message
-        AddVisualMessage(new VisualChatMessage
+        var userMessage = new VisualChatMessage
         {
             Content = content,
             Role = ChatMessageRole.User
-        });
-        await ChatService.AddMessageAsync(ChatMessageRole.User, content);
+        };
+        AddVisualMessage(userMessage);
+        await ChatService.AddMessageAsync(userMessage);
 
         // Get AI response
         await GetAIResponseAsync();
     }
-
-    /// <summary>
-    /// Loads conversation history from the AI service session.
-    /// </summary>
-    //public async Task LoadConversationHistoryAsync()
-    //{
-    //    if (string.IsNullOrEmpty(_currentSessionId))
-    //        return;
-
-    //    var session = await ChatService.GetOrCreateSessionAsync(_currentSessionId);
-
-    //    // Clear current messages
-    //    Messages.Clear();
-
-    //    // Add messages from session history
-    //    foreach (var message in session.Messages)
-    //    {
-    //        Messages.Add(message);
-
-    //        // Limit the number of messages
-    //        if (Messages.Count > ChatService.Options.MaxMessages)
-    //        {
-    //            Messages.RemoveAt(0);
-    //        }
-    //    }
-
-    //    await InvokeAsync(StateHasChanged);
-    //}
 
     private async Task GetAIResponseAsync()
     {
@@ -226,7 +199,7 @@ public partial class AIChat : RadzenComponent
             }
 
             // Add assistant response to conversation history
-            await ChatService.AddMessageAsync(ChatMessageRole.Assistant, assistantMessage.Content);
+            await ChatService.AddMessageAsync(assistantMessage);
 
             await HandleToolCallAsync(tools);
         }
@@ -257,7 +230,8 @@ public partial class AIChat : RadzenComponent
             {
                 if (tool.ApprovalMode == ToolApprovalMode.Disabled)
                 {
-                    await ChatService.AddMessageAsync(ChatMessageRole.System, $"Tool '{tool.Name}' is disabled.");
+                    var disabledMsg = new VisualChatMessage { Role = ChatMessageRole.System, Content = $"Tool '{tool.Name}' is disabled." };
+                    await ChatService.AddMessageAsync(disabledMsg);
                     continue;
                 }
 
@@ -271,12 +245,9 @@ public partial class AIChat : RadzenComponent
 
                     if (confirmed != true)
                     {
-                        await ChatService.AddMessageAsync(ChatMessageRole.System, $"Execution of '{tool.Name}' was denied by user.");
-                        AddVisualMessage(new VisualChatMessage
-                        {
-                            Role = ChatMessageRole.System,
-                            Content = $"Execution of '{tool.Name}' denied."
-                        });
+                        var deniedMsg = new VisualChatMessage { Role = ChatMessageRole.System, Content = $"Execution of '{tool.Name}' was denied by user." };
+                        AddVisualMessage(deniedMsg);
+                        await ChatService.AddMessageAsync(deniedMsg);
                         continue;
                     }
                 }
@@ -321,12 +292,15 @@ public partial class AIChat : RadzenComponent
                 }
 #endif
 
-                AddVisualMessage(new VisualChatMessage
+                var toolResultMessage = new VisualChatMessage
                 {
                     Role = ChatMessageRole.Tool,
                     Content = vsToolResult.Result,
                     ToolName = tool.Name,
-                });
+                };
+                AddVisualMessage(toolResultMessage);
+                await ChatService.AddMessageAsync(toolResultMessage);
+                
                 if (vsToolResult.Success)
                 {
                     var result = $"""
@@ -335,7 +309,8 @@ public partial class AIChat : RadzenComponent
                         </tool_result>
                         Инструкция: На основе полученных данных выше, реши, достигнута ли цель. Если нет - предложи следующее действие, НО не повторяй предыдущее.
                         """ ;
-                    await ChatService.AddMessageAsync(vsToolResult.Role, result);
+                    var systemFollowup = new VisualChatMessage { Role = vsToolResult.Role, Content = result };
+                    await ChatService.AddMessageAsync(systemFollowup);
                 }
                 else
                 {
@@ -345,7 +320,8 @@ public partial class AIChat : RadzenComponent
                         </tool_result>
                         Инструкция: Во время выполнения возникла ошибка. Предложи следующее действие, НО не повторяй предыдущее.
                         """;
-                    await ChatService.AddMessageAsync(ChatMessageRole.System, vsToolResult.ErrorMessage);
+                    var systemError = new VisualChatMessage { Role = ChatMessageRole.System, Content = result };
+                    await ChatService.AddMessageAsync(systemError);
                 }
             }
         }
@@ -428,7 +404,6 @@ public partial class AIChat : RadzenComponent
     {
         if (e.Key == "Enter" && !e.ShiftKey && JSRuntime != null)
         {
-            // await JSRuntime.InvokeAsync<string>("Radzen.setInputValue", inputElement, "");
             _preventDefault = true;
             await OnSendMessageAsync();
         }
@@ -446,6 +421,46 @@ public partial class AIChat : RadzenComponent
     private async Task OnClearChatAsync()
     {
         await ClearChatAsync();
+    }
+
+    private void OnEditMessage(VisualChatMessage message)
+    {
+        message.TempContent = message.Content;
+        message.IsEditing = true;
+    }
+
+    private void OnCancelEdit(VisualChatMessage message)
+    {
+        message.IsEditing = false;
+        message.TempContent = string.Empty;
+    }
+
+    private async Task OnSaveEditAsync(VisualChatMessage message)
+    {
+        message.Content = message.TempContent;
+        message.IsEditing = false;
+        ChatService.Session.UpdateMessage(message.Id, message.Content);
+        await ChatService.SaveSessionAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnDeleteMessageAsync(VisualChatMessage message)
+    {
+        Messages.Remove(message);
+        ChatService.Session.RemoveMessage(message.Id);
+        await ChatService.SaveSessionAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnRegenerateLastAsync()
+    {
+        var lastAssistantMessage = Messages.LastOrDefault(m => m.Role == ChatMessageRole.Assistant);
+        if (lastAssistantMessage != null)
+        {
+            Messages.Remove(lastAssistantMessage);
+            ChatService.Session.RemoveMessage(lastAssistantMessage.Id);
+            await GetAIResponseAsync();
+        }
     }
 
     private async Task OnShowSettingsAsync()
@@ -474,13 +489,6 @@ public partial class AIChat : RadzenComponent
             // Scroll to bottom when new messages are added
             await JSRuntime.InvokeVoidAsync("scrollToBottomIfNeeded", ".rz-chat-messages", 100);
         }
-
-        //// Render markdown for all messages
-        //if (JSRuntime != null && Messages.Count > 0)
-        //{
-        //    var message = Messages.Last();
-        //    await JSRuntime.InvokeVoidAsync("renderMarkdownToElement", $"message-{message.Id}", message.Content);
-        //}
     }
 
     /// <inheritdoc />
