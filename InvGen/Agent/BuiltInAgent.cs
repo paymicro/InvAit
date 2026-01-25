@@ -699,6 +699,13 @@ public class BuiltInAgent
         Logger.Log($"Skill file renamed: {e.OldName} -> {e.Name}");
     }
 
+    private IEnumerable<string> GetSkillsPaths(string solutionPath)
+    {
+        // на .Net Framework EnumerateFileSystemEntries не чувствителен к регистру, так что будут все скиллы
+        return Directory.EnumerateFileSystemEntries(solutionPath, "*SKILL.md", SearchOption.AllDirectories)
+            .Where(path => path.Split(Path.DirectorySeparatorChar).Contains("skills"));
+    }
+
     /// <summary>
     /// Получить метаданные всех скиллов (только название + описание для системного промпта)
     /// </summary>
@@ -706,11 +713,7 @@ public class BuiltInAgent
     {
         var solutionPath = await GetSolutionPathAsync();
         await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-
-        // на .Net Framework EnumerateFileSystemEntries не чувствителен к регистру, так что будут все скиллы
-        var skillFiles = Directory.EnumerateFileSystemEntries(solutionPath, "*SKILL.md", SearchOption.AllDirectories)
-            .Where(path => path.Split(Path.DirectorySeparatorChar).Contains("skills"))
-            .ToArray();
+        var skillFiles = GetSkillsPaths(solutionPath);
 
         var metadataList = new List<Dictionary<string, string>>();
 
@@ -752,16 +755,18 @@ public class BuiltInAgent
     /// </summary>
     private async Task<VsResponse> ReadSkillContentAsync(IReadOnlyDictionary<string, object> args)
     {
-        var skillPath = args.GetString("param1");
+        var skillName = args.GetString("param1");
         var solutionPath = await GetSolutionPathAsync();
-        var fullPath = GetAbsolutePath(skillPath, solutionPath);
+        var fullPath = GetSkillsPaths(solutionPath)
+            .FirstOrDefault(path => path.Split(Path.DirectorySeparatorChar).Last().Equals(skillName, StringComparison.OrdinalIgnoreCase)) 
+            ?? string.Empty;
 
         if (!File.Exists(fullPath))
         {
             return new VsResponse
             {
                 Success = false,
-                Error = $"Skill file not found: {skillPath}"
+                Error = $"Skill file not found: {skillName}"
             };
         }
 
@@ -776,7 +781,6 @@ public class BuiltInAgent
             {
                 { "name", name },
                 { "description", description },
-                { "filePath", skillPath },
                 { "content", markdownContent },
                 { "resources", resources }
             };
@@ -933,7 +937,7 @@ public class BuiltInAgent
             return relativePath;
         }
 
-        var path = relativePath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar).TrimStart('.', Path.DirectorySeparatorChar);
+        var path = relativePath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar).TrimStart(Path.DirectorySeparatorChar);
         return path.StartsWith(solutionPath) ? path : $"{solutionPath}{Path.DirectorySeparatorChar}{path}";
     }
 

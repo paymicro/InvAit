@@ -5,21 +5,6 @@ using UIBlazor.VS;
 
 namespace UIBlazor.Services;
 
-public interface ISkillService
-{
-    /// <summary>Получить метаданные всех скиллов (только название + описание для системного промпта)</summary>
-    Task<List<SkillMetadata>> GetSkillsMetadataAsync();
-    
-    /// <summary>Загрузить полное содержимое скилла (только при активации)</summary>
-    Task<SkillContent?> LoadSkillContentAsync(string filePath);
-    
-    /// <summary>Форматировать метаданные скиллов для системного промпта</summary>
-    string FormatSkillsForSystemPrompt(List<SkillMetadata> skills);
-    
-    /// <summary>Обновить кеш скиллов</summary>
-    Task RefreshCacheAsync();
-}
-
 public class SkillService : ISkillService
 {
     private readonly IVsBridge _vsBridge;
@@ -101,7 +86,6 @@ public class SkillService : ISkillService
             {
                 Name = contentJson.GetValueOrDefault("name", default).GetString() ?? "",
                 Description = contentJson.GetValueOrDefault("description", default).GetString() ?? "",
-                FilePath = filePath,
                 Content = contentJson.GetValueOrDefault("content", default).GetString() ?? "",
                 Resources = contentJson.GetValueOrDefault("resources", default)
                     .EnumerateArray()
@@ -145,12 +129,17 @@ public class SkillService : ISkillService
         
         foreach (var skill in skills)
         {
-            sb.AppendLine($"- **{skill.Name}**: {skill.Description}");
-            sb.AppendLine($"  _Activate with: `read_skill_content({skill.FilePath})`_");
+            sb.AppendLine($"");
+            sb.AppendLine($"""
+                           - **{skill.Name}**: {skill.Description}
+                           Activate with: `<tool_call_begin> functions.{BuiltInToolEnum.ReadSkillContent}
+                                           {skill.FilePath}
+                                           <tool_call_end>`
+                           """);
             sb.AppendLine();
         }
         
-        sb.AppendLine("When you need detailed instructions from a skill, use `read_skill_content` tool to load it.");
+        sb.AppendLine($"When you need detailed instructions from a skill, use `{BuiltInToolEnum.ReadSkillContent}` tool to load it.");
         
         return sb.ToString();
     }
