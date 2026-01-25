@@ -8,6 +8,7 @@ using Shared.Contracts;
 using UIBlazor.Agents;
 using UIBlazor.Models;
 using UIBlazor.Services;
+using UIBlazor.VS;
 
 namespace UIBlazor.Components;
 
@@ -31,8 +32,13 @@ public partial class AIChat : RadzenComponent
     [Inject]
     private IProfileService ProfileService { get; set; } = null!;
 
+    [Inject]
+    private IVsBridge VsBridge { get; set; } = null!;
+
     private List<ConnectionProfile> Profiles { get; set; } = [];
     private string? ActiveProfileId { get; set; }
+
+    private List<AppMode> AppModeValues { get; } = Enum.GetValues<AppMode>().ToList();
 
     private double MessageProgress => ChatService.Session != null && ChatService.Options.MaxMessages > 0 
         ? Math.Min(100, (double)Messages.Count / ChatService.Options.MaxMessages * 100) 
@@ -364,7 +370,20 @@ public partial class AIChat : RadzenComponent
         {
             AddVisualMessage(chatMessage);
         }
+
+        VsBridge.OnModeSwitched += HandleModeSwitched;
+
         await InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleModeSwitched(AppMode mode)
+    {
+        if (ChatService.Session != null)
+        {
+            ChatService.Session.Mode = mode;
+            _ = ChatService.AddMessageAsync(ChatMessageRole.System, $"Mode switched to {mode}");
+        }
+        InvokeAsync(StateHasChanged);
     }
 
     private async Task LoadProfilesAsync()
@@ -474,6 +493,8 @@ public partial class AIChat : RadzenComponent
     public override void Dispose()
     {
         base.Dispose();
+
+        VsBridge.OnModeSwitched -= HandleModeSwitched;
 
         _cts?.Cancel();
         _cts?.Dispose();

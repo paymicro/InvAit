@@ -28,6 +28,9 @@ public static class BuiltInToolEnum
     public const string GitDiff         = "git_diff";
     public const string GitStatus       = "git_status";
     public const string GitBranch       = "git_branch";
+
+    // App state
+    public const string SwitchMode      = "switch_mode";
     
     // Agent planning (for agent's internal task breakdown)
     public const string Plan                = "plan";

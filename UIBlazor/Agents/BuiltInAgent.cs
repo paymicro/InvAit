@@ -290,6 +290,20 @@ public class BuiltInAgent(IVsBridge vsBridge)
                                      <tool_call_begin> functions.git_branch <tool_call_end>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitBranch, args)
+        },
+        new()
+        {
+            Name = BuiltInToolEnum.SwitchMode,
+            Category = ToolCategory.Planning,
+            ApprovalMode = ToolApprovalMode.Always,
+            Description = "Switch the current application mode. Available modes: Chat, Agent, Plan. Use this when you need tools from another mode.",
+            ExampleToSystemMessage = """
+                                     For example, to switch to Agent mode:
+                                     <tool_call_begin> functions.switch_mode
+                                     Agent
+                                     <tool_call_end>
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.SwitchMode, args)
         }
     ];
 }

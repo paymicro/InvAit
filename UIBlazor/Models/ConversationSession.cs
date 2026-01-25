@@ -38,6 +38,11 @@ public class ConversationSession
     public int TotalTokens { get; set; }
 
     /// <summary>
+    /// Gets or sets the current application mode for this session.
+    /// </summary>
+    public Shared.Contracts.AppMode Mode { get; set; } = Shared.Contracts.AppMode.Chat;
+
+    /// <summary>
     /// Adds a message to the conversation and manages memory limits.
     /// </summary>
     /// <param name="role">The role of the message sender.</param>

@@ -79,17 +79,40 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
         return _registeredTools.TryGetValue(name, out var tool) ? tool : null;
     }
 
-    public string GetToolUseSystemInstructions(string promptFromOptions)
+    public string GetToolUseSystemInstructions(string promptFromOptions, AppMode mode)
     {
         var enabledTools = GetEnabledTools().ToList();
-        if (enabledTools.Count == 0)
+        
+        // Filter tools based on mode
+        enabledTools = mode switch
         {
-            return string.Empty;
-        }
+            AppMode.Chat => enabledTools.Where(t => t.Name is 
+                BuiltInToolEnum.ReadFiles or 
+                BuiltInToolEnum.ReadOpenFile or 
+                BuiltInToolEnum.Ls or 
+                BuiltInToolEnum.SearchFiles or 
+                BuiltInToolEnum.GrepSearch or 
+                BuiltInToolEnum.GetSolutionStructure or 
+                BuiltInToolEnum.GetProjectInfo or 
+                BuiltInToolEnum.FetchUrl or
+                BuiltInToolEnum.SwitchMode).ToList(),
+            AppMode.Agent => enabledTools,
+            AppMode.Plan => enabledTools.Where(t => t.Name is BuiltInToolEnum.SwitchMode).ToList(), // Placeholder for Plan mode
+            _ => enabledTools
+        };
 
         var sb = new StringBuilder();
         sb.AppendLine(promptFromOptions);
-        sb.AppendLine($"Current date: {DateTime.Now.ToString("F")}");
+        sb.AppendLine($"Current date: {DateTime.Now:f}");
+        sb.AppendLine($"Current Application Mode: {mode}");
+        sb.AppendLine("Available modes: Chat (for discussion and reading), Agent (for taking actions and applying changes), Plan (for planning).");
+        sb.AppendLine($"You can use '{BuiltInToolEnum.SwitchMode}' tool to change current mode if you need more tools or want to switch context.");
+        
+        if (enabledTools.Count == 0)
+        {
+            return sb.ToString();
+        }
+
         sb.AppendLine("""
 
                       You are a function-calling assistant.

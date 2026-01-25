@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using Shared.Contracts;
 using UIBlazor.Models;
 using UIBlazor.Options;
 using UIBlazor.Services.Models;
@@ -146,7 +147,7 @@ public class ChatService(
         var effectiveApiKey = Options.ApiKey;
         var effectiveApiKeyHeader = Options.ApiKeyHeader;
 
-        var systemPrompt = toolManager.GetToolUseSystemInstructions(Options.SystemPrompt);
+        var systemPrompt = toolManager.GetToolUseSystemInstructions(Options.SystemPrompt, Session.Mode);
         // Get formatted messages including conversation history
         var messages = Session.GetFormattedMessages(systemPrompt);
 

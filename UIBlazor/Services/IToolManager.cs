@@ -17,7 +17,7 @@ public interface IToolManager
 
     Tool? GetTool(string name);
 
-    string GetToolUseSystemInstructions(string promptFromOptions);
+    string GetToolUseSystemInstructions(string promptFromOptions, Shared.Contracts.AppMode mode);
 
     List<AiTool> ParseToolBlock(string content);
 }
