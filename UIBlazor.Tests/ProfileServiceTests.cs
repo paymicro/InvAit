@@ -1,4 +1,6 @@
 ﻿using Moq;
+using Microsoft.JSInterop;
+using Shared.Contracts;
 using UIBlazor.Models;
 using UIBlazor.Options;
 using UIBlazor.Services.Settings;
@@ -8,19 +10,15 @@ namespace UIBlazor.Tests;
 public class ProfileServiceTests
 {
     private readonly Mock<ILocalStorageService> _localStorageMock;
-    private readonly Mock<IAiSettingsProvider> _aiSettingsProviderMock;
+    private readonly Mock<IJSRuntime> _jsRuntimeMock;
     private readonly ProfileService _service;
-    private readonly AiOptions _currentOptions;
 
     public ProfileServiceTests()
     {
         _localStorageMock = new Mock<ILocalStorageService>();
-        _aiSettingsProviderMock = new Mock<IAiSettingsProvider>();
+        _jsRuntimeMock = new Mock<IJSRuntime>();
         
-        _currentOptions = new AiOptions();
-        _aiSettingsProviderMock.SetupGet(p => p.Current).Returns(_currentOptions);
-
-        _service = new ProfileService(_localStorageMock.Object, _aiSettingsProviderMock.Object);
+        _service = new ProfileService(_localStorageMock.Object, _jsRuntimeMock.Object);
     }
 
     [Fact]
@@ -117,7 +115,7 @@ public class ProfileServiceTests
         await Task.Delay(800, TestContext.Current.CancellationToken); // Wait for debounce
 
         // Assert
-        Assert.Equal("http://new", _currentOptions.Endpoint); // Should be updated in options
+        Assert.Equal("http://new", _service.ActiveProfile.Endpoint); // Should be updated in options
     }
 
     [Fact]
@@ -164,15 +162,54 @@ public class ProfileServiceTests
         await _service.ActivateProfileAsync("test-profile");
 
         // Assert
-        Assert.Equal("http://test", _currentOptions.Endpoint);
-        Assert.Equal("key", _currentOptions.ApiKey);
-        Assert.Equal("gpt-4", _currentOptions.Model);
-        Assert.Equal(0.5, _currentOptions.Temperature);
-        Assert.Equal(2000, _currentOptions.MaxTokens);
-        Assert.False(_currentOptions.Stream);
-        Assert.True(_currentOptions.SkipSSL);
-        Assert.Equal("prompt", _currentOptions.SystemPrompt);
+        Assert.Equal("http://test", _service.ActiveProfile.Endpoint);
+        Assert.Equal("key", _service.ActiveProfile.ApiKey);
+        Assert.Equal("gpt-4", _service.ActiveProfile.Model);
+        Assert.Equal(0.5, _service.ActiveProfile.Temperature);
+        Assert.Equal(2000, _service.ActiveProfile.MaxTokens);
+        Assert.False(_service.ActiveProfile.Stream);
+        Assert.True(_service.ActiveProfile.SkipSSL);
+        Assert.Equal("prompt", _service.ActiveProfile.SystemPrompt);
 
         _localStorageMock.Verify(ls => ls.SetItemAsync("ProfileSettings", It.Is<ProfileOptions>(o => o.ActiveProfileId == "test-profile")), Times.Once);
+    }
+
+    [Fact]
+    public async Task PropertyChanged_SkipSSL_InvokesJs()
+    {
+        // Arrange
+        var profile = new ConnectionProfile { Id = "active", SkipSSL = false };
+        var options = new ProfileOptions { Profiles = [profile], ActiveProfileId = "active" };
+        _localStorageMock.Setup(ls => ls.GetItemAsync<ProfileOptions>("ProfileSettings"))
+            .ReturnsAsync(options);
+        await _service.InitializeAsync();
+
+        // Act
+        _service.ActiveProfile.SkipSSL = true;
+
+        // Assert
+        _jsRuntimeMock.Verify(js => js.InvokeAsync<string>("postVsMessage", It.Is<object[]>(args => 
+            CheckSkipSslRequest(args)
+        )), Times.Once);
+    }
+
+    private static bool CheckSkipSslRequest(object[] args)
+    {
+        if (args.Length != 1) return false;
+        if (args[0] is not VsRequest req) return false;
+        return req.Action == nameof(ConnectionProfile.SkipSSL) && req.Payload == "True";
+    }
+
+    [Fact]
+    public async Task ResetAsync_ResetsToDefaultsAndSaves()
+    {
+        // Act
+        await _service.ResetAsync();
+
+        // Assert
+        Assert.Single(_service.Current.Profiles);
+        Assert.Equal(0.7, _service.ActiveProfile.Temperature);
+        Assert.Equal("You are a helpful AI code assistant.", _service.ActiveProfile.SystemPrompt);
+        _localStorageMock.Verify(ls => ls.SetItemAsync("ProfileSettings", _service.Current), Times.AtLeastOnce);
     }
 }

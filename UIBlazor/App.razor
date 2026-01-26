@@ -22,9 +22,6 @@
 @code
 {
 	[Inject]
-	private IAiSettingsProvider AiSettingsProvider { get; set; } = null!;
-
-	[Inject]
 	private IMcpSettingsProvider McpSettingsProvider { get; set; } = null!;
 
     [Inject]
@@ -35,7 +32,6 @@
         await base.OnInitializedAsync();
 
         // инициализация всех настроек
-        await AiSettingsProvider.InitializeAsync();
         await McpSettingsProvider.InitializeAsync();
         await ProfileService.InitializeAsync();
     }

@@ -9,34 +9,39 @@ namespace UIBlazor.Tests;
 
 public class ChatServiceTests
 {
-    private readonly Mock<IAiSettingsProvider> _aiSettingsProviderMock;
+    private readonly Mock<IProfileManager> _profileManagerMock;
     private readonly Mock<IToolManager> _toolManagerMock;
     private readonly Mock<ILocalStorageService> _localStorageMock;
     private readonly Mock<ISkillService> _skillServiceMock;
 
     public ChatServiceTests()
     {
-        _aiSettingsProviderMock = new Mock<IAiSettingsProvider>();
+        _profileManagerMock = new Mock<IProfileManager>();
         _toolManagerMock = new Mock<IToolManager>();
         _localStorageMock = new Mock<ILocalStorageService>();
         _skillServiceMock = new Mock<ISkillService>();
 
         // Setup default options
-        var options = new AiOptions
+        var options = new ProfileOptions
+        {
+            Profiles = [],
+            ActiveProfileId = "test"
+        };
+        _profileManagerMock.SetupGet(p => p.Current).Returns(options);
+        _profileManagerMock.SetupGet(p => p.ActiveProfile).Returns(new ConnectionProfile
         {
             Endpoint = "https://api.test.com",
             ApiKey = "test-key",
             ApiKeyHeader = "Authorization",
             Model = "test-model",
-            Temperature = 0.7f,
+            Temperature = 0.7,
             MaxTokens = 1000,
             Stream = true,
             SystemPrompt = "Test system prompt",
             MaxRetryAttempts = 3,
             RetryDelaySeconds = 1,
             MaxMessages = 50
-        };
-        _aiSettingsProviderMock.SetupGet(p => p.Current).Returns(options);
+        });
         _toolManagerMock.Setup(tm => tm.GetToolUseSystemInstructions(It.IsAny<AppMode>()))
             .Returns("Tool instructions");
         
@@ -48,7 +53,7 @@ public class ChatServiceTests
     {
         return new ChatService(
             httpClient ?? new HttpClient(),
-            _aiSettingsProviderMock.Object,
+            _profileManagerMock.Object,
             _toolManagerMock.Object,
             _localStorageMock.Object,
             _skillServiceMock.Object);
@@ -58,7 +63,7 @@ public class ChatServiceTests
     public async Task GetModelsAsync_MissingEndpoint_ThrowsException()
     {
         // Arrange
-        _aiSettingsProviderMock.Setup(p => p.Current).Returns(new AiOptions { Endpoint = "" });
+        _profileManagerMock.SetupGet(p => p.ActiveProfile).Returns(new ConnectionProfile { Endpoint = "" });
         var chatService = CreateChatService();
 
         // Act & Assert
@@ -66,7 +71,7 @@ public class ChatServiceTests
     }
 
     [Fact]
-    public void ChatService_Options_ReturnsAiSettingsProviderCurrent()
+    public void ChatService_Options_ReturnsProfileManagerActiveProfile()
     {
         // Arrange
         var chatService = CreateChatService();
@@ -75,7 +80,7 @@ public class ChatServiceTests
         var options = chatService.Options;
 
         // Assert
-        Assert.Equal(_aiSettingsProviderMock.Object.Current, options);
+        Assert.Equal(_profileManagerMock.Object.ActiveProfile, options);
     }
 
     [Fact]

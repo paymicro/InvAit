@@ -34,14 +34,9 @@ public class Tool
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// Approval behavior
-    /// </summary>
-    public ToolApprovalMode ApprovalMode { get; set; } = ToolApprovalMode.AutoApprove;
-
-    /// <summary>
     /// Category for grouping tools in UI
     /// </summary>
-    public ToolCategory Category { get; init; } = ToolCategory.FileSystem;
+    public ToolCategory Category { get; init; } = ToolCategory.ReadFiles;
 
     /// <summary>
     /// Function to execute the tool

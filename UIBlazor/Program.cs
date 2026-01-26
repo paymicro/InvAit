@@ -15,7 +15,6 @@ builder.Services
     .AddRadzenComponents()
     .AddScoped<ChatService>()
     .AddScoped<ILocalStorageService, LocalStorageService>()
-    .AddScoped<IAiSettingsProvider, AiSettingsProvider>()
     .AddScoped<IMcpSettingsProvider, McpSettingsProvider>()
     .AddScoped<IProfileManager, ProfileService>()
     .AddScoped<ICommonSettingsProvider, CommonSettingsProvider>()

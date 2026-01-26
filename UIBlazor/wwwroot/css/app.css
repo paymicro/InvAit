@@ -45,6 +45,14 @@ details summary {
     color: var(--rz-base-400);
 }
 
+.rz-chat-message-assistant {
+    min-width: 100%;
+}
+
+.rz-justify-content-normal {
+    flex-grow: 1;
+}
+
 .rz-chat-avatar-initials i {
     height: 100%;
     cursor: default;
@@ -60,6 +68,18 @@ details summary {
 
 .rz-tabview-panels {
     border: 0;
+}
+
+.category-tools-hidden {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: all 0.3s ease-out;
+}
+
+.category-tools-visible {
+    max-height: 500px;
+    opacity: 1;
 }
 
 .usage-indicators {

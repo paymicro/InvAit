@@ -254,7 +254,7 @@ InvGen/
 │   └── Utils/            # Утилиты логирования и JSON
 ├── UIBlazor/             # Blazor WASM интерфейс чата (.NET 10)
 │   ├── Agents/           # Определение инструментов агента
-│   ├── Services/         # Сервисы (ChatService, AiSettingsProvider)
+│   ├── Services/         # Сервисы (ChatService, ProfileService)
 │   ├── Components/       # Razor компоненты
 │   └── Models/           # Модели данных
 └── Shared/               # Общие контракты (.NET Standard 2.0)

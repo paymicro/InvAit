@@ -112,8 +112,6 @@ public class VsBridge : IVsBridge, IDisposable
                 };
             }
 
-            // Устанавливаем таймаут 30 секунд
-            // TODO в опции запихать CommonO
             var timeOut = TimeSpan.FromSeconds(_commonOptions.Current.ToolTimeoutMs);
 #if DEBUG
             // Дебаг не быстрый)

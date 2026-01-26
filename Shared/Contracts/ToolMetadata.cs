@@ -2,13 +2,13 @@
 
 public enum ToolCategory
 {
-    FileSystem,
-    Search,
-    Build,
-    Terminal,
-    Git,
-    Planning,
-    Skills
+    ReadFiles,
+    WriteFiles,
+    DeleteFiles,
+    Browser,
+    Mcp,
+    ModeSwitch,
+    Execution
 }
 
 public enum ToolApprovalMode

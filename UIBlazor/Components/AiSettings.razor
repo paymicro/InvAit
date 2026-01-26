@@ -2,6 +2,7 @@
 @using Radzen.Blazor
 @using Shared.Contracts
 @using Shared.Contracts.Mcp
+@using UIBlazor.Agents
 @using UIBlazor.Models
 @using UIBlazor.Options
 @using UIBlazor.Services
@@ -43,7 +44,7 @@
 
                     <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
                         <RadzenDropDown TValue="string"
-                                        Data="@AiSettingsProvider.Current.AvailableModels"
+                                        Data="@ProfileManager.ActiveProfile.AvailableModels"
                                         @bind-Value="@_selectedProfile.Model"
                                         @bind-Value:after="@OnFieldChanged"
                                         Placeholder="Select model (type to add custom)"
@@ -73,7 +74,7 @@
                     <RadzenStack Gap="0.2rem">
                         <RadzenLabel Text="Max tokens" />
                         <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                            <RadzenSlider @bind-Value="@_selectedProfile.MaxTokens" Min=1000 Max=100000 Step="1000" @bind-Value:after="@OnFieldChanged" Style="width: 100%; height: 20px;" />
+                            <RadzenSlider @bind-Value="@_selectedProfile.MaxTokens" Min=1000 Max=1000000 Step="1000" @bind-Value:after="@OnFieldChanged" Style="width: 100%; height: 20px;" />
                             <RadzenLabel Text="@($"{_selectedProfile.MaxTokens / 1000}K")" Style="text-align: right; width: 50px;" />
                         </RadzenStack>
                     </RadzenStack>
@@ -87,32 +88,54 @@
     </RadzenTabsItem>
     <RadzenTabsItem Text="Built-in Tools">
         <RadzenStack Gap="1rem">
-            @foreach (var categoryGroup in ToolManager.GetAllTools().GroupBy(t => t.Category))
+            @foreach (var category in Enum.GetValues<ToolCategory>())
             {
-                <RadzenText TextStyle="TextStyle.Subtitle1">@categoryGroup.Key</RadzenText>
+                var state = ToolManager.Current.CategoryStates.ContainsKey(category) 
+                    ? ToolManager.Current.CategoryStates[category] 
+                    : new ToolModeSettings();
+
                 <RadzenStack Gap="0.5rem">
-                    @foreach (var tool in categoryGroup)
-                    {
-                        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" >
-                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
-                                <RadzenLabel Text="@tool.Name" Component="@($"tool_{tool.Name}")" Style="font-weight: 500;" />
-                                <RadzenSwitch @bind-Value="@tool.Enabled" @bind-Value:after="OnToolSettingChanged" Name="@($"tool_{tool.Name}")" />
-                            </RadzenStack>
-
-                            <RadzenDropDown TValue="ToolApprovalMode" Data="@(Enum.GetValues<ToolApprovalMode>())"
-                                            @bind-Value="@tool.ApprovalMode" @bind-Value:after="OnToolSettingChanged"
-                                            Style="width: 100px; flex-shrink: 0;" />
-
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" >
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                            <RadzenLabel Text="@GetCategoryName(category)" Component="@($"cat_{category}")" Style="font-weight: 500; min-width: 150px;" />
+                            <RadzenSwitch @bind-Value="@state.IsEnabled" @bind-Value:after="() => OnCategorySettingChanged(category, state)" Name="@($"cat_{category}")" />
                         </RadzenStack>
-                        <RadzenText Style="font-size: 0.875em; color: var(--rz-text-secondary-color); margin: 0;">
-                            @tool.Description.Split('.')[0]
-                        </RadzenText>
-                    }
+
+                        <RadzenDropDown TValue="ToolApprovalMode" Data="@(Enum.GetValues<ToolApprovalMode>())"
+                                        @bind-Value="@state.ApprovalMode" @bind-Value:after="() => OnCategorySettingChanged(category, state)"
+                                        Style="width: 150px; flex-shrink: 0;" />
+                    </RadzenStack>
+
+                    <div class="@(state.IsEnabled ? "category-tools-visible" : "category-tools-hidden")">
+                        @if (state.IsEnabled)
+                        {
+                            var categoryTools = ToolManager.GetAllTools().Where(t => t.Category == category).ToList();
+                            if (categoryTools.Count > 1)
+                            {
+                                <RadzenAccordion>
+                                    <Items>
+                                        <RadzenAccordionItem Text="@($"Specific Tools ({categoryTools.Count(t => t.Enabled)}/{categoryTools.Count})")" Icon="build">
+                                            <RadzenStack Gap="0.5rem">
+                                                @foreach (var tool in categoryTools)
+                                                {
+                                                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                                                        <RadzenCheckBox @bind-Value="@tool.Enabled" @bind-Value:after="() => OnToolSettingChanged(tool)" Name="@($"tool_{tool.Name}")" />
+                                                        <RadzenLabel Text="@tool.Name" Component="@($"tool_{tool.Name}")" Style="font-size: 0.9rem; opacity: 0.8;" />
+                                                    </RadzenStack>
+                                                }
+                                            </RadzenStack>
+                                        </RadzenAccordionItem>
+                                    </Items>
+                                </RadzenAccordion>
+                            }
+                        }
+                    </div>
                 </RadzenStack>
             }
         </RadzenStack>
     </RadzenTabsItem>
-    <RadzenTabsItem Text="MCP" Icon="">
+
+    <RadzenTabsItem Text="MCP">
         <RadzenStack Gap="0.5rem">
             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
                 <RadzenLabel Text="Enable MCP" Component="McpGlobalEnabled" />
@@ -189,7 +212,6 @@
 @code
 {
     [Inject] ChatService ChatService { get; set; } = null!;
-    [Inject] IAiSettingsProvider AiSettingsProvider { get; set; } = null!;
     [Inject] NotificationService NotificationService { get; set; } = null!;
     [Inject] IToolManager ToolManager { get; set; } = null!;
     [Inject] IProfileManager ProfileManager { get; set; } = null!;
@@ -353,14 +375,14 @@
         List<string> list = ["---"];
         try
         {
-            // Note: This uses the CURRENT options in AiSettingsProvider. 
+            // Note: This uses the CURRENT options in ProfileManager. 
             // Since we call ActivateProfileAsync/SaveProfileAsync on change, 
             // the settings are already active.
             var models = await ChatService.GetModelsAsync(cancellationToken);
             list = models.Data.Select(m => m.Id).ToList();
             
             // Allow Custom Models logic?
-            AiSettingsProvider.Current.AvailableModels = list;
+            ProfileManager.ActiveProfile.AvailableModels = list;
              
              if (!list.Contains(_selectedProfile!.Model))
              {
@@ -382,9 +404,31 @@
         StateHasChanged();
     }
 
-    private async Task OnToolSettingChanged()
+    private string GetCategoryName(ToolCategory category)
     {
-        await ToolManager.SaveToolSettingsAsync();
+        return category switch
+        {
+            ToolCategory.ReadFiles => "Чтение файлов",
+            ToolCategory.WriteFiles => "Запись файлов",
+            ToolCategory.DeleteFiles => "Удаление файлов",
+            ToolCategory.Browser => "Браузер",
+            ToolCategory.Mcp => "MCP",
+            ToolCategory.ModeSwitch => "Смена режима",
+            ToolCategory.Execution => "Выполнение",
+            _ => category.ToString()
+        };
+    }
+
+    private async Task OnCategorySettingChanged(ToolCategory category, ToolModeSettings state)
+    {
+        ToolManager.UpdateCategorySettings(category, state.IsEnabled, state.ApprovalMode);
+        await Task.CompletedTask;
+    }
+
+    private async Task OnToolSettingChanged(Tool tool)
+    {
+        ToolManager.ToggleTool(tool.Name, tool.Enabled);
+        await Task.CompletedTask;
     }
 
     private async Task OnMcpToolSettingChanged()

@@ -219,7 +219,11 @@ public partial class AIChat : RadzenComponent
             var tool = ToolManager.GetTool(aiTool.Function.Name);
             if (tool != null)
             {
-                if (tool.ApprovalMode == ToolApprovalMode.Manual)
+                var approvalMode = ToolManager.Current.CategoryStates.TryGetValue(tool.Category, out var state)
+                    ? state.ApprovalMode
+                    : ToolApprovalMode.AutoApprove;
+
+                if (approvalMode == ToolApprovalMode.Manual)
                 {
                     var confirmed = await DialogService.Confirm(
                         $"The AI wants to use the tool '{tool.Name}' with the following parameters:\n\n" +

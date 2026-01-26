@@ -14,7 +14,7 @@ public class ToolManager : BaseSettingsProvider<ToolSettings>, IToolManager
     private readonly ConcurrentDictionary<string, Tool> _registeredTools = new();
 
     public ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localStorage)
-        : base(localStorage, "tool_settings")
+        : base(localStorage, "ToolSettings")
     {
         _builtInAgent = builtInAgent;
     }
@@ -23,16 +23,50 @@ public class ToolManager : BaseSettingsProvider<ToolSettings>, IToolManager
     {
         try
         {
-            Current.ToolStates = _registeredTools.ToDictionary(t => t.Key, t => new ToolModeSettings 
+            foreach (var group in _registeredTools.Values.GroupBy(t => t.Category))
             {
-                IsEnabled = t.Value.Enabled, 
-                ApprovalMode = t.Value.ApprovalMode 
-            });
+                if (!Current.CategoryStates.TryGetValue(group.Key, out var state))
+                {
+                    state = new ToolModeSettings
+                    {
+                        IsEnabled = true,
+                        ApprovalMode = ToolApprovalMode.AutoApprove
+                    };
+                    Current.CategoryStates[group.Key] = state;
+                }
+            }
+
+            foreach (var tool in _registeredTools.Values)
+            {
+                Current.ToolStates[tool.Name] = tool.Enabled;
+            }
+
             await base.SaveAsync();
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"Failed to save tool settings: {ex.Message}");
+        }
+    }
+
+    public void UpdateCategorySettings(ToolCategory category, bool isEnabled, ToolApprovalMode approvalMode)
+    {
+        if (!Current.CategoryStates.TryGetValue(category, out var state))
+        {
+            state = new ToolModeSettings();
+            Current.CategoryStates[category] = state;
+        }
+        state.IsEnabled = isEnabled;
+        state.ApprovalMode = approvalMode;
+        _ = SaveAsync();
+    }
+
+    public void ToggleTool(string toolName, bool isEnabled)
+    {
+        if (_registeredTools.TryGetValue(toolName, out var tool))
+        {
+            tool.Enabled = isEnabled;
+            _ = SaveAsync();
         }
     }
 
@@ -51,10 +85,9 @@ public class ToolManager : BaseSettingsProvider<ToolSettings>, IToolManager
     {
         foreach (var tool in _registeredTools.Values)
         {
-            if (Current.ToolStates.TryGetValue(tool.Name, out var modeSettings))
+            if (Current.ToolStates.TryGetValue(tool.Name, out var isEnabled))
             {
-                tool.Enabled = modeSettings.IsEnabled;
-                tool.ApprovalMode = modeSettings.ApprovalMode;
+                tool.Enabled = isEnabled;
             }
         }
     }
@@ -70,8 +103,15 @@ public class ToolManager : BaseSettingsProvider<ToolSettings>, IToolManager
         foreach (var tool in _registeredTools.Values)
         {
             tool.Enabled = true;
-            tool.ApprovalMode = ToolApprovalMode.AutoApprove;
         }
+
+        foreach (var state in Current.CategoryStates.Values)
+        {
+            state.IsEnabled = true;
+            state.ApprovalMode = ToolApprovalMode.AutoApprove;
+        }
+
+        Current.ToolStates.Clear();
         return SaveAsync();
     }
 
@@ -79,7 +119,14 @@ public class ToolManager : BaseSettingsProvider<ToolSettings>, IToolManager
     {
         base.Dispose();
     }
-    public IEnumerable<Tool> GetEnabledTools() => _registeredTools.Values.Where(t => t.Enabled);
+    public IEnumerable<Tool> GetEnabledTools() => _registeredTools.Values.Where(t => 
+    {
+        if (Current.CategoryStates.TryGetValue(t.Category, out var state))
+        {
+            return state.IsEnabled && t.Enabled;
+        }
+        return false;
+    });
 
     public IEnumerable<Tool> GetAllTools() => _registeredTools.Values;
 
@@ -95,18 +142,9 @@ public class ToolManager : BaseSettingsProvider<ToolSettings>, IToolManager
         // Filter tools based on mode
         enabledTools = mode switch
         {
-            AppMode.Chat => [.. enabledTools.Where(t => t.Name is 
-                BuiltInToolEnum.ReadFiles or 
-                BuiltInToolEnum.ReadOpenFile or 
-                BuiltInToolEnum.Ls or 
-                BuiltInToolEnum.SearchFiles or 
-                BuiltInToolEnum.GrepSearch or 
-                BuiltInToolEnum.GetSolutionStructure or 
-                BuiltInToolEnum.GetProjectInfo or 
-                BuiltInToolEnum.FetchUrl or
-                BuiltInToolEnum.SwitchMode)],
+            AppMode.Chat => [.. enabledTools.Where(t => t.Category is ToolCategory.ModeSwitch or ToolCategory.Browser)],
             AppMode.Agent => enabledTools,
-            AppMode.Plan => enabledTools.Where(t => t.Name is BuiltInToolEnum.SwitchMode).ToList(), // Placeholder for Plan mode
+            AppMode.Plan => [.. enabledTools.Where(t => t.Category is ToolCategory.ReadFiles or ToolCategory.ModeSwitch or ToolCategory.Browser)], // Placeholder for Plan mode
             _ => enabledTools
         };
 

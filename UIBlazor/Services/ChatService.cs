@@ -17,7 +17,7 @@ namespace UIBlazor.Services;
 
 public class ChatService(
     HttpClient httpClient,
-    IAiSettingsProvider aiSettingsProvider,
+    IProfileManager profileManager,
     IToolManager toolManager,
     ILocalStorageService localStorage,
     ISkillService skillService
@@ -32,7 +32,7 @@ public class ChatService(
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    public AiOptions Options => aiSettingsProvider.Current;
+    public ConnectionProfile Options => profileManager.ActiveProfile;
 
     [AllowNull]
     public ConversationSession Session { get; private set; }

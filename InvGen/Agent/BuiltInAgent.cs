@@ -35,6 +35,7 @@ public class BuiltInAgent
                 BuiltInToolEnum.ReadFiles => await ReadFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.ReadOpenFile => await ReadCurrentlyOpenFileAsync(),
                 BuiltInToolEnum.CreateFile => await CreateNewFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.DeleteFile => await DeleteFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.Exec => await ExecAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.SearchFiles => await SearchFilesAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GrepSearch => await GrepSearchAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
@@ -173,6 +174,41 @@ public class BuiltInAgent
             return new VsResponse
             {
                 Payload = $"File {fileParam} created successfully."
+            };
+        }
+        catch (Exception e)
+        {
+            await Logger.LogAsync(e.Message);
+            return new VsResponse
+            {
+                Success = false,
+                Error = e.Message
+            };
+        }
+    }
+
+    private async Task<VsResponse> DeleteFileAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var solutionPath = await GetSolutionPathAsync();
+        var fileParam = args.GetString("param1");
+        var filepath = GetAbsolutePath(fileParam, solutionPath);
+
+        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        try
+        {
+            if (File.Exists(filepath))
+            {
+                File.Delete(filepath);
+                return new VsResponse
+                {
+                    Payload = $"File {fileParam} deleted successfully."
+                };
+            }
+            
+            return new VsResponse
+            {
+                Success = false,
+                Error = $"File {fileParam} does not exist."
             };
         }
         catch (Exception e)
