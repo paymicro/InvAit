@@ -219,13 +219,6 @@ public partial class AIChat : RadzenComponent
             var tool = ToolManager.GetTool(aiTool.Function.Name);
             if (tool != null)
             {
-                if (tool.ApprovalMode == ToolApprovalMode.Disabled)
-                {
-                    var disabledMsg = new VisualChatMessage { Role = ChatMessageRole.System, Content = $"Tool '{tool.Name}' is disabled." };
-                    await ChatService.AddMessageAsync(disabledMsg);
-                    continue;
-                }
-
                 if (tool.ApprovalMode == ToolApprovalMode.Manual)
                 {
                     var confirmed = await DialogService.Confirm(

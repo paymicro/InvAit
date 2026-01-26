@@ -36,7 +36,7 @@ public class Tool
     /// <summary>
     /// Approval behavior
     /// </summary>
-    public ToolApprovalMode ApprovalMode { get; set; } = ToolApprovalMode.Always;
+    public ToolApprovalMode ApprovalMode { get; set; } = ToolApprovalMode.AutoApprove;
 
     /// <summary>
     /// Category for grouping tools in UI

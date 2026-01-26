@@ -13,7 +13,6 @@ public enum ToolCategory
 
 public enum ToolApprovalMode
 {
-    Always,
-    Manual,
-    Disabled
+    AutoApprove,
+    Manual
 }

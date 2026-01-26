@@ -70,7 +70,7 @@ public class ToolManager : BaseSettingsProvider<ToolSettings>, IToolManager
         foreach (var tool in _registeredTools.Values)
         {
             tool.Enabled = true;
-            tool.ApprovalMode = ToolApprovalMode.Always;
+            tool.ApprovalMode = ToolApprovalMode.AutoApprove;
         }
         return SaveAsync();
     }
@@ -79,7 +79,7 @@ public class ToolManager : BaseSettingsProvider<ToolSettings>, IToolManager
     {
         base.Dispose();
     }
-    public IEnumerable<Tool> GetEnabledTools() => _registeredTools.Values.Where(t => t.Enabled && t.ApprovalMode != ToolApprovalMode.Disabled);
+    public IEnumerable<Tool> GetEnabledTools() => _registeredTools.Values.Where(t => t.Enabled);
 
     public IEnumerable<Tool> GetAllTools() => _registeredTools.Values;
 

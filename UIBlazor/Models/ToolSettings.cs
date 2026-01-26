@@ -11,5 +11,5 @@ public class ToolSettings : BaseOptions
 public class ToolModeSettings
 {
     public bool IsEnabled { get; set; } = true;
-    public ToolApprovalMode ApprovalMode { get; set; } = ToolApprovalMode.Always;
+    public ToolApprovalMode ApprovalMode { get; set; } = ToolApprovalMode.AutoApprove;
 }

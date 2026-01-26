@@ -12,7 +12,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         {
             Name = BuiltInToolEnum.ReadFiles,
             Category = ToolCategory.FileSystem,
-            ApprovalMode = ToolApprovalMode.Always,
+            ApprovalMode = ToolApprovalMode.AutoApprove,
             Description = "Request to read the contents of one or more files. Use start_line and line_count to read specific parts of large files.",
             ExampleToSystemMessage = """
                                      For example, to read a specific range:
@@ -30,7 +30,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         {
             Name = BuiltInToolEnum.ReadOpenFile,
             Category = ToolCategory.FileSystem,
-            ApprovalMode = ToolApprovalMode.Always,
+            ApprovalMode = ToolApprovalMode.AutoApprove,
             Description = """
                           To view the user's currently open file, use the read_currently_open_file tool. The tool outputs line-numbered content (e.g. "1 | const x = 1")
                           If the user is asking about a file and you don't see any code, use this to check the current file
@@ -108,7 +108,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         {
             Name = BuiltInToolEnum.SearchFiles,
             Category = ToolCategory.Search,
-            ApprovalMode = ToolApprovalMode.Always,
+            ApprovalMode = ToolApprovalMode.AutoApprove,
             Description = "To return a list of files with patches in solution directory based on a search regex pattern, use the search_files tool.",
             ExampleToSystemMessage = """
                                      For example:
@@ -122,7 +122,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         {
             Name = BuiltInToolEnum.GrepSearch,
             Category = ToolCategory.Search,
-            ApprovalMode = ToolApprovalMode.Always,
+            ApprovalMode = ToolApprovalMode.AutoApprove,
             Description = "To perform a grep search within the project, call the grep_search tool with the regex pattern to match.",
             ExampleToSystemMessage = """
                                      For example:
@@ -136,7 +136,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         {
             Name = BuiltInToolEnum.Ls,
             Category = ToolCategory.Search,
-            ApprovalMode = ToolApprovalMode.Always,
+            ApprovalMode = ToolApprovalMode.AutoApprove,
             Description = "To list files and folders in a given directory, call the ls tool with \"dirPath\" and \"recursive\".",
             ExampleToSystemMessage = """
                                      For example:
@@ -153,7 +153,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         {
             Name = BuiltInToolEnum.Build,
             Category = ToolCategory.Build,
-            ApprovalMode = ToolApprovalMode.Always,
+            ApprovalMode = ToolApprovalMode.AutoApprove,
             Description = "To build solution in Visual Studio. With action - Build, Rebuild or Clean. When any errors returns errors list.",
             ExampleToSystemMessage = """
                                      For example:
@@ -167,7 +167,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         {
             Name = BuiltInToolEnum.GetErrors,
             Category = ToolCategory.Build,
-            ApprovalMode = ToolApprovalMode.Always,
+            ApprovalMode = ToolApprovalMode.AutoApprove,
             Description = "To get error list of current solution and current file from Visual Studio.",
             ExampleToSystemMessage = """
                                      For example:
@@ -179,7 +179,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         {
             Name = BuiltInToolEnum.GetProjectInfo,
             Category = ToolCategory.Build,
-            ApprovalMode = ToolApprovalMode.Always,
+            ApprovalMode = ToolApprovalMode.AutoApprove,
             Description = "Get information about the solution and projects. Returns list of projects, their types, target frameworks, and file structure.",
             ExampleToSystemMessage = """
                                      For example:
@@ -191,7 +191,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         {
             Name = BuiltInToolEnum.GetSolutionStructure,
             Category = ToolCategory.Build,
-            ApprovalMode = ToolApprovalMode.Always,
+            ApprovalMode = ToolApprovalMode.AutoApprove,
             Description = "Get a tree-like structure of the entire solution, including projects, folders, and files.",
             ExampleToSystemMessage = """
                                      For example:
@@ -227,7 +227,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         {
             Name = BuiltInToolEnum.FetchUrl,
             Category = ToolCategory.Terminal,
-            ApprovalMode = ToolApprovalMode.Always,
+            ApprovalMode = ToolApprovalMode.AutoApprove,
             Description = "To fetch the content of a URL, use the fetch_url_content tool.",
             ExampleToSystemMessage = """
                                      For example, to read the contents of a webpage, you might respond with:
@@ -243,7 +243,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         {
             Name = BuiltInToolEnum.GitStatus,
             Category = ToolCategory.Git,
-            ApprovalMode = ToolApprovalMode.Always,
+            ApprovalMode = ToolApprovalMode.AutoApprove,
             Description = "Check git status of the current repository. Shows modified, staged, and untracked files.",
             ExampleToSystemMessage = """
                                      For example:
@@ -255,7 +255,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         {
             Name = BuiltInToolEnum.GitLog,
             Category = ToolCategory.Git,
-            ApprovalMode = ToolApprovalMode.Always,
+            ApprovalMode = ToolApprovalMode.AutoApprove,
             Description = "View git commit history. Can specify number of commits to display.",
             ExampleToSystemMessage = """
                                      For example:
@@ -269,7 +269,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         {
             Name = BuiltInToolEnum.GitDiff,
             Category = ToolCategory.Git,
-            ApprovalMode = ToolApprovalMode.Always,
+            ApprovalMode = ToolApprovalMode.AutoApprove,
             Description = "View git diff for files. Can compare working directory with staged or specific commits.",
             ExampleToSystemMessage = """
                                      For example:
@@ -283,7 +283,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         {
             Name = BuiltInToolEnum.GitBranch,
             Category = ToolCategory.Git,
-            ApprovalMode = ToolApprovalMode.Always,
+            ApprovalMode = ToolApprovalMode.AutoApprove,
             Description = "List git branches or get current branch information.",
             ExampleToSystemMessage = """
                                      For example:
@@ -295,7 +295,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         {
             Name = BuiltInToolEnum.SwitchMode,
             Category = ToolCategory.Planning,
-            ApprovalMode = ToolApprovalMode.Always,
+            ApprovalMode = ToolApprovalMode.AutoApprove,
             Description = "Switch the current application mode. Available modes: Chat, Agent, Plan. Use this when you need tools from another mode.",
             ExampleToSystemMessage = """
                                      For example, to switch to Agent mode:
@@ -311,7 +311,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         {
             Name = BuiltInToolEnum.ReadSkillContent,
             Category = ToolCategory.Skills,
-            ApprovalMode = ToolApprovalMode.Always,
+            ApprovalMode = ToolApprovalMode.AutoApprove,
             Description = """
                           Load the full content of a skill when you need detailed instructions.
                           Skills are pre-listed in your system prompt with name and description.

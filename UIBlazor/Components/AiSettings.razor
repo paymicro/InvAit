@@ -12,9 +12,8 @@
     <Tabs>
     <RadzenTabsItem Text="General">
         <RadzenStack Gap="1rem">
-            
             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
-                <RadzenLabel Text="Profile:" Style="margin-right: 0.5rem;" />
+                <RadzenText TextStyle="TextStyle.Subtitle1">Profile:</RadzenText>
                 <RadzenDropDown Data="@_profiles" TextProperty="Name" ValueProperty="Id" 
                                 @bind-Value="@_selectedProfileId" @bind-Value:after="@OnProfileChanged"
                                 Style="flex: 1;" />
@@ -90,95 +89,90 @@
         <RadzenStack Gap="1rem">
             @foreach (var categoryGroup in ToolManager.GetAllTools().GroupBy(t => t.Category))
             {
-                <RadzenCard Variant="Variant.Flat" Style="background: var(--rz-base-background-color);">
-                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="margin-bottom: 0.5rem; font-weight: bold;">@categoryGroup.Key</RadzenText>
-                    <RadzenStack Gap="0.5rem">
-                        @foreach (var tool in categoryGroup)
-                        {
-                            <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" >
-                                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
-                                    <RadzenCheckBox @bind-Value="@tool.Enabled" @bind-Value:after="OnToolSettingChanged" Name="@($"tool_{tool.Name}")" />
-                                    <RadzenLabel Text="@tool.Name" Component="@($"tool_{tool.Name}")" Style="font-weight: 500;" />
-                                </RadzenStack>
-
-                                <RadzenDropDown TValue="ToolApprovalMode" Data="@(Enum.GetValues<ToolApprovalMode>())"
-                                                @bind-Value="@tool.ApprovalMode" @bind-Value:after="OnToolSettingChanged"
-                                                Style="width: 100px; flex-shrink: 0;" />
-
+                <RadzenText TextStyle="TextStyle.Subtitle1">@categoryGroup.Key</RadzenText>
+                <RadzenStack Gap="0.5rem">
+                    @foreach (var tool in categoryGroup)
+                    {
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" >
+                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                                <RadzenLabel Text="@tool.Name" Component="@($"tool_{tool.Name}")" Style="font-weight: 500;" />
+                                <RadzenSwitch @bind-Value="@tool.Enabled" @bind-Value:after="OnToolSettingChanged" Name="@($"tool_{tool.Name}")" />
                             </RadzenStack>
-                            <RadzenText Style="font-size: 0.875em; color: var(--rz-text-secondary-color); margin: 0; overflow: hidden; text-overflow: ellipsis;">
-                                @tool.Description.Split('.')[0]
-                            </RadzenText>
-                        }
-                    </RadzenStack>
-                </RadzenCard>
+
+                            <RadzenDropDown TValue="ToolApprovalMode" Data="@(Enum.GetValues<ToolApprovalMode>())"
+                                            @bind-Value="@tool.ApprovalMode" @bind-Value:after="OnToolSettingChanged"
+                                            Style="width: 100px; flex-shrink: 0;" />
+
+                        </RadzenStack>
+                        <RadzenText Style="font-size: 0.875em; color: var(--rz-text-secondary-color); margin: 0;">
+                            @tool.Description.Split('.')[0]
+                        </RadzenText>
+                    }
+                </RadzenStack>
             }
         </RadzenStack>
     </RadzenTabsItem>
-    <RadzenTabsItem Text="MCP">
-        <RadzenStack Gap="1rem">
-            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" Style="padding: 0.5rem 1rem; background: var(--rz-base-background-color); border-radius: 8px;">
-                <RadzenCheckBox @bind-Value="@McpSettingsProvider.Current.Enabled" Name="McpGlobalEnabled" />
-                <RadzenLabel Text="Enable MCP" Component="McpGlobalEnabled" Style="font-weight: bold;" />
-                <RadzenButton Icon="add" Text="Add Server" Click="@OnAddMcpServer" ButtonStyle="ButtonStyle.Success" Disabled="@(!McpSettingsProvider.Current.Enabled)" />
+    <RadzenTabsItem Text="MCP" Icon="">
+        <RadzenStack Gap="0.5rem">
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+                <RadzenLabel Text="Enable MCP" Component="McpGlobalEnabled" />
+                <RadzenSwitch @bind-Value="@McpSettingsProvider.Current.Enabled" Name="McpGlobalEnabled" />
             </RadzenStack>
-
+            <RadzenButton Icon="add" Click="@OnAddMcpServer" ButtonStyle="ButtonStyle.Success" Disabled="@(!McpSettingsProvider.Current.Enabled)" />
             @if (McpSettingsProvider.Current.Enabled)
             {
                 @foreach (var server in McpSettingsProvider.Current.Servers)
                 {
-                    <RadzenCard Variant="Variant.Flat" Style="background: var(--rz-base-background-color); margin-bottom: 0.5rem;">
-                        <RadzenStack Gap="0.5rem">
-                            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
-                                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
-                                    <RadzenCheckBox @bind-Value="@server.Enabled" Name="@($"mcp_server_{server.Id}")" />
-                                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="margin: 0; font-weight: bold;">@server.Name</RadzenText>
-                                    @if (string.IsNullOrEmpty(server.Name))
-                                    {
-                                        <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="New Server" />
-                                    }
-                                </RadzenStack>
-                                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                                    <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => OnEditMcpServer(server))" />
-                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => OnDeleteMcpServer(server))" />
-                                </RadzenStack>
-                            </RadzenStack>
-
-                            <RadzenStack Gap="0.2rem" Style="font-size: 0.8rem; color: var(--rz-text-secondary-color); padding-left: 2rem;">
-                                <div>Transport: @server.Transport</div>
-                                @if (server.Transport == "stdio")
+                    <RadzenStack Gap="0.5rem">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                                <RadzenCheckBox @bind-Value="@server.Enabled" Name="@($"mcp_server_{server.Id}")" />
+                                <RadzenText TextStyle="TextStyle.Subtitle1" Style="margin: 0; font-weight: bold;">@server.Name</RadzenText>
+                                @if (string.IsNullOrEmpty(server.Name))
                                 {
-                                    <div>Command: @server.Command @server.Args</div>
-                                }
-                                else
-                                {
-                                    <div>Endpoint: @server.Endpoint</div>
+                                    <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="New Server" />
                                 }
                             </RadzenStack>
+                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                                <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => OnEditMcpServer(server))" />
+                                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => OnDeleteMcpServer(server))" />
+                            </RadzenStack>
+                        </RadzenStack>
 
-                            @if (server.Tools != null && server.Tools.Any())
+                        <RadzenStack Gap="0.2rem" Style="font-size: 0.8rem; color: var(--rz-text-secondary-color); padding-left: 2rem;">
+                            <div>Transport: @server.Transport</div>
+                            @if (server.Transport == "stdio")
                             {
-                                <RadzenAccordion Style="margin-top: 0.5rem; border: none;">
-                                    <Items>
-                                        <RadzenAccordionItem Text="@($"Tools ({server.Tools.Count(t => t.Enabled)}/{server.Tools.Count})")" Icon="build">
-                                            <RadzenStack Gap="0.5rem">
-                                                @foreach (var tool in server.Tools)
-                                                {
-                                                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
-                                                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
-                                                            <RadzenCheckBox @bind-Value="@tool.Enabled" @bind-Value:after="OnMcpToolSettingChanged" Name="@($"mcp_tool_{server.Id}_{tool.Name}")" />
-                                                            <RadzenLabel Text="@tool.Name" Component="@($"mcp_tool_{server.Id}_{tool.Name}")" />
-                                                        </RadzenStack>
-                                                        <RadzenText TextStyle="TextStyle.Caption" Style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%;">@tool.Description</RadzenText>
-                                                    </RadzenStack>
-                                                }
-                                            </RadzenStack>
-                                        </RadzenAccordionItem>
-                                    </Items>
-                                </RadzenAccordion>
+                                <div>Command: @server.Command @server.Args</div>
+                            }
+                            else
+                            {
+                                <div>Endpoint: @server.Endpoint</div>
                             }
                         </RadzenStack>
-                    </RadzenCard>
+
+                        @if (server.Tools != null && server.Tools.Any())
+                        {
+                            <RadzenAccordion Style="margin-top: 0.5rem; border: none;">
+                                <Items>
+                                    <RadzenAccordionItem Text="@($"Tools ({server.Tools.Count(t => t.Enabled)}/{server.Tools.Count})")" Icon="build">
+                                        <RadzenStack Gap="0.5rem">
+                                            @foreach (var tool in server.Tools)
+                                            {
+                                                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+                                                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                                                        <RadzenCheckBox @bind-Value="@tool.Enabled" @bind-Value:after="OnMcpToolSettingChanged" Name="@($"mcp_tool_{server.Id}_{tool.Name}")" />
+                                                        <RadzenLabel Text="@tool.Name" Component="@($"mcp_tool_{server.Id}_{tool.Name}")" />
+                                                    </RadzenStack>
+                                                    <RadzenText TextStyle="TextStyle.Caption" Style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%;">@tool.Description</RadzenText>
+                                                </RadzenStack>
+                                            }
+                                        </RadzenStack>
+                                    </RadzenAccordionItem>
+                                </Items>
+                            </RadzenAccordion>
+                        }
+                    </RadzenStack>
                 }
             }
         </RadzenStack>

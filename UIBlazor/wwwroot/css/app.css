@@ -58,6 +58,10 @@ details summary {
     z-index: 2000;
 }
 
+.rz-tabview-panels {
+    border: 0;
+}
+
 .usage-indicators {
     flex: 1;
     display: flex;
