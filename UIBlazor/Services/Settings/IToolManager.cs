@@ -1,13 +1,11 @@
 ﻿using UIBlazor.Agents;
 using UIBlazor.Models;
 
-namespace UIBlazor.Services;
+namespace UIBlazor.Services.Settings;
 
-public interface IToolManager : IDisposable
+public interface IToolManager : IBaseSettingsProvider, IDisposable
 {
     void RegisterAllTools();
-
-    Task LoadToolSettingsAsync();
 
     Task SaveToolSettingsAsync();
 

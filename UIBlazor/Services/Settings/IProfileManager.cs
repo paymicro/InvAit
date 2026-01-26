@@ -1,9 +1,11 @@
 ﻿using UIBlazor.Models;
+using UIBlazor.Options;
 
-namespace UIBlazor.Services;
+namespace UIBlazor.Services.Settings;
 
-public interface IProfileService : IDisposable
+public interface IProfileManager : IBaseSettingsProvider, IDisposable
 {
+    ProfileOptions Current { get; }
     Task<List<ConnectionProfile>> GetProfilesAsync();
     Task SaveProfileAsync(ConnectionProfile profile);
     Task DeleteProfileAsync(string profileId);

@@ -24,7 +24,6 @@ namespace InvGen.Agent;
 
 public class BuiltInAgent
 {
-    private FileSystemWatcher? _skillWatcher;
     private readonly ConcurrentDictionary<string, DateTime> _skillsCache = new();
     private readonly McpProcessManager _mcpProcessManager = new();
     public async Task<VsResponse> ExecuteAsync(VsRequest vsRequest)
@@ -50,6 +49,7 @@ public class BuiltInAgent
                 BuiltInToolEnum.GitLog => await GitLogAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GitDiff => await GitDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GitBranch => await GitBranchAsync(),
+                BuiltInToolEnum.SwitchMode => new VsResponse { Success = true, Payload = "Mode switched" },
                 BuiltInToolEnum.GetSkillsMetadata => await GetSkillsMetadataAsync(),
                 BuiltInToolEnum.ReadSkillContent => await ReadSkillContentAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.McpStartProcess => await McpStartProcessAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
@@ -442,7 +442,6 @@ public class BuiltInAgent
         var appliedReplacements = new List<string>();
 
         replacements = replacements.OrderByDescending(r => r.StartLine).ToList();
-        var isError = false;
 
         var parser = new UniversalDiffParser();
 
@@ -664,34 +663,6 @@ public class BuiltInAgent
     }
 
     #region Skills Support
-
-    /// <summary>
-    /// Инициализация FileSystemWatcher для отслеживания изменений SKILL.md файлов
-    /// </summary>
-    public void InitializeSkillWatcher(string solutionPath)
-    {
-        var skillsPath = Path.Combine(solutionPath, ".agent", "skills");
-        if (!Directory.Exists(skillsPath))
-        {
-            return;
-        }
-
-        _skillWatcher = new FileSystemWatcher(skillsPath)
-        {
-            Filter = "SKILL.md",
-            IncludeSubdirectories = true,
-            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.CreationTime
-        };
-
-        _skillWatcher.Changed += OnSkillFileChanged;
-        _skillWatcher.Created += OnSkillFileChanged;
-        _skillWatcher.Deleted += OnSkillFileChanged;
-        _skillWatcher.Renamed += OnSkillFileRenamed;
-        _skillWatcher.EnableRaisingEvents = true;
-        
-        Logger.Log($"FileSystemWatcher initialized for skills at: {skillsPath}");
-    }
-
     private void OnSkillFileChanged(object sender, FileSystemEventArgs e)
     {
         _skillsCache.AddOrUpdate(e.FullPath, DateTime.UtcNow, (k, v) => DateTime.UtcNow);

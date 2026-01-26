@@ -1,8 +1,9 @@
 using Shared.Contracts;
+using UIBlazor.Options;
 
 namespace UIBlazor.Models;
 
-public class ToolSettings
+public class ToolSettings : BaseOptions
 {
     public Dictionary<string, ToolModeSettings> ToolStates { get; set; } = new();
 }

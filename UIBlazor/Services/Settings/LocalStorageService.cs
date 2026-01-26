@@ -1,7 +1,7 @@
 ﻿using System.Text.Json;
 using Microsoft.JSInterop;
 
-namespace UIBlazor.Services;
+namespace UIBlazor.Services.Settings;
 
 public class LocalStorageService(IJSRuntime js) : ILocalStorageService
 {

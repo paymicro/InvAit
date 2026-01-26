@@ -10,6 +10,7 @@ using System.Text.RegularExpressions;
 using UIBlazor.Models;
 using UIBlazor.Options;
 using UIBlazor.Services.Models;
+using UIBlazor.Services.Settings;
 using UIBlazor.Utils;
 
 namespace UIBlazor.Services;

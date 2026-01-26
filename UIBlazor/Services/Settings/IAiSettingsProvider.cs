@@ -1,6 +1,6 @@
 ﻿using UIBlazor.Options;
 
-namespace UIBlazor.Services;
+namespace UIBlazor.Services.Settings;
 
 public interface IAiSettingsProvider
 {

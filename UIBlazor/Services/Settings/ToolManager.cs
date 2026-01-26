@@ -6,58 +6,29 @@ using Shared.Contracts;
 using UIBlazor.Agents;
 using UIBlazor.Models;
 
-namespace UIBlazor.Services;
+namespace UIBlazor.Services.Settings;
 
-public class ToolManager : IToolManager, IDisposable
+public class ToolManager : BaseSettingsProvider<ToolSettings>, IToolManager
 {
     private readonly BuiltInAgent _builtInAgent;
-    private readonly ILocalStorageService _localStorage;
     private readonly ConcurrentDictionary<string, Tool> _registeredTools = new();
-    private readonly ConcurrentDictionary<string, AiToolToCall> _pendingTools = new();
-    private CancellationTokenSource? _approvalCancellationTokenSource;
-    private TaskCompletionSource<bool> _approvalTcs;
-    private const string ToolSettingsKey = "tool_settings";
-
-    private readonly PeriodicTimer _debounceTimer = new(TimeSpan.FromMilliseconds(500));
-    private bool _savePending;
-    private readonly CancellationTokenSource _cts = new();
 
     public ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localStorage)
+        : base(localStorage, "tool_settings")
     {
         _builtInAgent = builtInAgent;
-        _localStorage = localStorage;
-        _ = DebounceSaveLoopAsync();
     }
 
-    private async Task DebounceSaveLoopAsync()
+    public override async Task SaveAsync()
     {
         try
         {
-            while (await _debounceTimer.WaitForNextTickAsync(_cts.Token))
+            Current.ToolStates = _registeredTools.ToDictionary(t => t.Key, t => new ToolModeSettings 
             {
-                if (_savePending)
-                {
-                    _savePending = false;
-                    await SaveNowAsync();
-                }
-            }
-        }
-        catch (OperationCanceledException) { }
-    }
-
-    private async Task SaveNowAsync()
-    {
-        try
-        {
-            var settings = new ToolSettings
-            {
-                ToolStates = _registeredTools.ToDictionary(t => t.Key, t => new ToolModeSettings 
-                { 
-                    IsEnabled = t.Value.Enabled, 
-                    ApprovalMode = t.Value.ApprovalMode 
-                })
-            };
-            await _localStorage.SetItemAsync(ToolSettingsKey, settings);
+                IsEnabled = t.Value.Enabled, 
+                ApprovalMode = t.Value.ApprovalMode 
+            });
+            await base.SaveAsync();
         }
         catch (Exception ex)
         {
@@ -73,50 +44,41 @@ public class ToolManager : IToolManager, IDisposable
         }
 
         // Load tool settings after registration
-        _ = LoadToolSettingsAsync();
+        _ = InitializeAsync();
     }
 
-    public async Task LoadToolSettingsAsync()
+    protected override void OnInitialized()
     {
-        try
+        foreach (var tool in _registeredTools.Values)
         {
-            var settings = await _localStorage.GetItemAsync<ToolSettings>(ToolSettingsKey);
-            if (settings?.ToolStates != null)
+            if (Current.ToolStates.TryGetValue(tool.Name, out var modeSettings))
             {
-                foreach (var tool in _registeredTools.Values)
-                {
-                    if (settings.ToolStates.TryGetValue(tool.Name, out var modeSettings))
-                    {
-                        tool.Enabled = modeSettings.IsEnabled;
-                        tool.ApprovalMode = modeSettings.ApprovalMode;
-                    }
-                }
+                tool.Enabled = modeSettings.IsEnabled;
+                tool.ApprovalMode = modeSettings.ApprovalMode;
             }
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Failed to load tool settings: {ex.Message}");
         }
     }
 
     public async Task SaveToolSettingsAsync()
     {
-        _savePending = true;
+        this.Debouncer.Trigger();
         await Task.CompletedTask;
     }
 
-    public void Dispose()
+    public override Task ResetAsync()
     {
-        _cts.Cancel();
-        _cts.Dispose();
-        _debounceTimer.Dispose();
-
-        if (_savePending)
+        foreach (var tool in _registeredTools.Values)
         {
-            _ = SaveNowAsync();
+            tool.Enabled = true;
+            tool.ApprovalMode = ToolApprovalMode.Always;
         }
+        return SaveAsync();
     }
 
+    public override void Dispose()
+    {
+        base.Dispose();
+    }
     public IEnumerable<Tool> GetEnabledTools() => _registeredTools.Values.Where(t => t.Enabled && t.ApprovalMode != ToolApprovalMode.Disabled);
 
     public IEnumerable<Tool> GetAllTools() => _registeredTools.Values;

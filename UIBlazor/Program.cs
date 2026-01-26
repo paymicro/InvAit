@@ -4,6 +4,7 @@ using Radzen;
 using UIBlazor;
 using UIBlazor.Agents;
 using UIBlazor.Services;
+using UIBlazor.Services.Settings;
 using UIBlazor.VS;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
@@ -16,8 +17,8 @@ builder.Services
     .AddScoped<ILocalStorageService, LocalStorageService>()
     .AddScoped<IAiSettingsProvider, AiSettingsProvider>()
     .AddScoped<IMcpSettingsProvider, McpSettingsProvider>()
-    .AddScoped<IProfileService, ProfileService>()
-    .AddScoped<CommonSettingsProvider>()
+    .AddScoped<IProfileManager, ProfileService>()
+    .AddScoped<ICommonSettingsProvider, CommonSettingsProvider>()
     .AddScoped<IVsBridge, VsBridge>()
     .AddScoped<ISkillService, SkillService>()
     .AddScoped<BuiltInAgent>()

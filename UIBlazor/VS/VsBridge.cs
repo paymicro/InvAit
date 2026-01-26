@@ -5,7 +5,7 @@ using Radzen;
 using Shared.Contracts;
 using UIBlazor.Agents;
 using UIBlazor.Options;
-using UIBlazor.Services;
+using UIBlazor.Services.Settings;
 using UIBlazor.Utils;
 
 namespace UIBlazor.VS;
@@ -14,14 +14,14 @@ public class VsBridge : IVsBridge, IDisposable
 {
     private readonly IJSRuntime _jsRuntime;
     private readonly NotificationService _notificationService;
-    private readonly CommonSettingsProvider _commonOptions;
+    private readonly ICommonSettingsProvider _commonOptions;
     private DotNetObjectReference<VsBridge> _dotNetRef;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<VsResponse>> _pendingRequests;
     private bool _isInitialized;
 
     public event Action<AppMode>? OnModeSwitched;
 
-    public VsBridge(IJSRuntime jsRuntime, NotificationService notificationService, CommonSettingsProvider commonSettingsProvider)
+    public VsBridge(IJSRuntime jsRuntime, NotificationService notificationService, ICommonSettingsProvider commonSettingsProvider)
     {
         _jsRuntime = jsRuntime;
         _notificationService = notificationService;

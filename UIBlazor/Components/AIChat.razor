@@ -12,10 +12,10 @@
     <RadzenStack class="rz-chat-header" Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem">
         <UsageIndicators Messages="@Messages" />
         <RadzenStack class="rz-chat-header-actions" Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.5rem">
-            @if (Profiles != null && Profiles.Count > 0)
+            @if (ProfileManager.Current.Profiles.Count > 0)
             {
-                <RadzenDropDown TValue="string" Data="@Profiles" TextProperty="Name" ValueProperty="Id" 
-                                Value="@ActiveProfileId" Change="@OnProfileChange"
+                <RadzenDropDown TValue="string" Data="@ProfileManager.Current.Profiles" TextProperty="Name" ValueProperty="Id"
+                                Value="@ProfileManager.Current.ActiveProfileId" Change="@OnProfileChange"
                                 Placeholder="Select Profile"
                                 Style="width: 180px;" />
             }

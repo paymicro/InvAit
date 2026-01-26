@@ -3,6 +3,7 @@ using Shared.Contracts;
 using UIBlazor.Agents;
 using UIBlazor.Models;
 using UIBlazor.Services;
+using UIBlazor.Services.Settings;
 using UIBlazor.VS;
 
 namespace UIBlazor.Tests;
@@ -190,7 +191,7 @@ public class ToolManagerTests
             .ThrowsAsync(new Exception("Storage error"));
 
         // Act & Assert - should not throw
-        await _toolManager.LoadToolSettingsAsync();
+        await _toolManager.InitializeAsync();
     }
 
     [Fact]

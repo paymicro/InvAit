@@ -3,6 +3,7 @@ using Shared.Contracts;
 using UIBlazor.Models;
 using UIBlazor.Options;
 using UIBlazor.Services;
+using UIBlazor.Services.Settings;
 
 namespace UIBlazor.Tests;
 

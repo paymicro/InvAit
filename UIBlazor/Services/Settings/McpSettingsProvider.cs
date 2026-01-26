@@ -1,80 +1,25 @@
-﻿using System.ComponentModel;
-using System.Text.Json;
+﻿using System.Text.Json;
 using Shared.Contracts;
 using Shared.Contracts.Mcp;
 using UIBlazor.Options;
 using UIBlazor.Utils;
 using UIBlazor.VS;
 
-namespace UIBlazor.Services;
+namespace UIBlazor.Services.Settings;
 
-public interface IMcpSettingsProvider
+public class McpSettingsProvider : BaseSettingsProvider<McpOptions>, IMcpSettingsProvider
 {
-    McpOptions Current { get; }
-    Task InitializeAsync();
-    Task SaveAsync();
-    Task ResetAsync();
-    Task<string> RefreshToolsAsync(string serverId);
-}
-
-public class McpSettingsProvider : IMcpSettingsProvider, IDisposable
-{
-    private readonly ILocalStorageService _storage;
     private readonly IVsBridge _vsBridge;
     private readonly HttpClient _httpClient;
-    private const string _storageKey = "McpSettings";
-    private readonly PeriodicTimer _debounceTimer = new(TimeSpan.FromMilliseconds(750));
-    private bool _savePending;
-    private readonly CancellationTokenSource _cts = new();
 
-    public McpOptions Current { get; } = new();
-
-    public McpSettingsProvider(ILocalStorageService storage, IVsBridge vsBridge, HttpClient httpClient)
+    public McpSettingsProvider(ILocalStorageService storage, IVsBridge vsBridge, HttpClient httpClient) 
+        : base(storage, "McpSettings")
     {
-        _storage = storage;
         _vsBridge = vsBridge;
         _httpClient = httpClient;
-        Current.PropertyChanged += OnAnyPropertyChanged;
-        _ = DebounceSaveLoopAsync();
     }
 
-    private void OnAnyPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        _savePending = true;
-    }
-
-    private async Task DebounceSaveLoopAsync()
-    {
-        try
-        {
-            while (await _debounceTimer.WaitForNextTickAsync(_cts.Token))
-            {
-                if (_savePending)
-                {
-                    _savePending = false;
-                    await SaveAsync();
-                }
-            }
-        }
-        catch (OperationCanceledException) { }
-    }
-
-    public async Task SaveAsync()
-    {
-        await _storage.SetItemAsync(_storageKey, Current);
-    }
-
-    public async Task InitializeAsync()
-    {
-        var saved = await _storage.GetItemAsync<McpOptions>(_storageKey);
-        if (saved != null)
-        {
-            Current.Enabled = saved.Enabled;
-            Current.Servers = saved.Servers ?? new();
-        }
-    }
-
-    public async Task ResetAsync()
+    public override async Task ResetAsync()
     {
         Current.Enabled = true;
         Current.Servers = new();
@@ -214,13 +159,5 @@ public class McpSettingsProvider : IMcpSettingsProvider, IDisposable
         {
             return $"Error: {ex.Message}";
         }
-    }
-
-    public void Dispose()
-    {
-        _cts.Cancel();
-        _cts.Dispose();
-        _debounceTimer.Dispose();
-        Current.PropertyChanged -= OnAnyPropertyChanged;
     }
 }

@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Services;
+﻿namespace UIBlazor.Services.Settings;
 
 public interface ILocalStorageService
 {

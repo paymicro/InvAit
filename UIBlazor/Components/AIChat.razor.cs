@@ -8,6 +8,7 @@ using Shared.Contracts;
 using UIBlazor.Agents;
 using UIBlazor.Models;
 using UIBlazor.Services;
+using UIBlazor.Services.Settings;
 using UIBlazor.VS;
 
 namespace UIBlazor.Components;
@@ -31,13 +32,10 @@ public partial class AIChat : RadzenComponent
     private IToolManager ToolManager { get; set; } = null!;
 
     [Inject]
-    private IProfileService ProfileService { get; set; } = null!;
+    private IProfileManager ProfileManager { get; set; } = null!;
 
     [Inject]
     private IVsBridge VsBridge { get; set; } = null!;
-
-    private List<ConnectionProfile> Profiles { get; set; } = [];
-    private string? ActiveProfileId { get; set; }
 
     private List<AppMode> AppModeValues { get; } = Enum.GetValues<AppMode>().ToList();
 
@@ -332,7 +330,7 @@ public partial class AIChat : RadzenComponent
     {
         await base.OnInitializedAsync();
         ToolManager.RegisterAllTools();
-        await LoadProfilesAsync();
+        ProfileManager.InitializeAsync();
 
         await ChatService.LoadLastSessionOrGenerateNewAsync();
         foreach (var chatMessage in ChatService.Session.Messages)
@@ -355,28 +353,12 @@ public partial class AIChat : RadzenComponent
         InvokeAsync(StateHasChanged);
     }
 
-    private async Task LoadProfilesAsync()
-    {
-        Profiles = await ProfileService.GetProfilesAsync();
-        ActiveProfileId = await ProfileService.GetActiveProfileIdAsync();
-        
-        // If no active profile is set but we have profiles, set the first one?
-        // Or keep it as is (using default/global settings).
-        // Let's rely on what's in ProfileService or just reflect current state.
-        if (string.IsNullOrEmpty(ActiveProfileId) && Profiles.Count > 0)
-        {
-             // Optional: Auto-select first profile if none selected?
-             // For now, let's just leave it empty or select if match found.
-        }
-    }
-
     private async Task OnProfileChange(object value)
     {
         var profileId = value as string;
         if (!string.IsNullOrEmpty(profileId))
         {
-            await ProfileService.ActivateProfileAsync(profileId);
-            ActiveProfileId = profileId;
+            await ProfileManager.ActivateProfileAsync(profileId);
             NotificationService.Notify(new NotificationMessage
             {
                 Severity = NotificationSeverity.Info,
@@ -467,7 +449,6 @@ public partial class AIChat : RadzenComponent
         });
         
         // Reload profiles in case they were changed
-        await LoadProfilesAsync();
         await InvokeAsync(StateHasChanged);
     }
 
