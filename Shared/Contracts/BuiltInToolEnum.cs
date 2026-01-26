@@ -36,6 +36,13 @@ public static class BuiltInToolEnum
     public const string GetSkillsMetadata   = "get_skills_metadata";   // Только метаданные (кеш)
     public const string ReadSkillContent    = "read_skill_content";    // Полное содержимое по требованию
     
+    // MCP Process Management
+    public const string McpStartProcess     = "mcp_start_process";
+    public const string McpStopProcess      = "mcp_stop_process";
+    public const string McpSendMessage      = "mcp_send_message";
+    public const string McpReadMessage      = "mcp_read_message";
+    public const string McpGetTools         = "mcp_get_tools";
+
     // Agent planning (for agent's internal task breakdown)
     public const string Plan                = "plan";
     public const string UpdatePlanProgress  = "update_plan_progress";

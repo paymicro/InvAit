@@ -23,9 +23,13 @@
 	[Inject]
 	private IAiSettingsProvider AiSettingsProvider { get; set; } = null!;
 
+	[Inject]
+	private IMcpSettingsProvider McpSettingsProvider { get; set; } = null!;
+
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
         await AiSettingsProvider.InitializeAsync();
+        await McpSettingsProvider.InitializeAsync();
     }
 }

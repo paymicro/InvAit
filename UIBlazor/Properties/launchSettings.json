@@ -2,6 +2,7 @@
   "profiles": {
     "http": {
       "commandName": "Project",
+      "commandLineArgs": "--disable-web-security",
       "launchBrowser": true,
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"

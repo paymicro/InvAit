@@ -11,12 +11,14 @@ public class ChatServiceTests
     private readonly Mock<IAiSettingsProvider> _aiSettingsProviderMock;
     private readonly Mock<IToolManager> _toolManagerMock;
     private readonly Mock<ILocalStorageService> _localStorageMock;
+    private readonly Mock<ISkillService> _skillServiceMock;
 
     public ChatServiceTests()
     {
         _aiSettingsProviderMock = new Mock<IAiSettingsProvider>();
         _toolManagerMock = new Mock<IToolManager>();
         _localStorageMock = new Mock<ILocalStorageService>();
+        _skillServiceMock = new Mock<ISkillService>();
 
         // Setup default options
         var options = new AiOptions
@@ -47,7 +49,8 @@ public class ChatServiceTests
             httpClient ?? new HttpClient(),
             _aiSettingsProviderMock.Object,
             _toolManagerMock.Object,
-            _localStorageMock.Object);
+            _localStorageMock.Object,
+            _skillServiceMock.Object);
     }
 
     [Fact]

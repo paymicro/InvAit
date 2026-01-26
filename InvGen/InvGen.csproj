@@ -48,6 +48,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Agent\BuiltInAgent.cs" />
+    <Compile Include="Agent\McpProcessManager.cs" />
     <Compile Include="Agent\UniversalDiffParser.cs" />
     <Compile Include="Commands\ChatWindowCommand.cs" />
     <Compile Include="Utils\Logger.cs" />

@@ -14,6 +14,7 @@ using EnvDTE;
 using EnvDTE80;
 using InvGen.Utils;
 using Shared.Contracts;
+using Shared.Contracts.Mcp;
 using Process = System.Diagnostics.Process;
 using Shell = Microsoft.VisualStudio.Shell;
 using Toolkit = Community.VisualStudio.Toolkit;
@@ -25,6 +26,7 @@ public class BuiltInAgent
 {
     private FileSystemWatcher? _skillWatcher;
     private readonly ConcurrentDictionary<string, DateTime> _skillsCache = new();
+    private readonly McpProcessManager _mcpProcessManager = new();
     public async Task<VsResponse> ExecuteAsync(VsRequest vsRequest)
     {
         try
@@ -50,6 +52,11 @@ public class BuiltInAgent
                 BuiltInToolEnum.GitBranch => await GitBranchAsync(),
                 BuiltInToolEnum.GetSkillsMetadata => await GetSkillsMetadataAsync(),
                 BuiltInToolEnum.ReadSkillContent => await ReadSkillContentAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.McpStartProcess => await McpStartProcessAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.McpStopProcess => await McpStopProcessAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.McpSendMessage => await McpSendMessageAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.McpReadMessage => await McpReadMessageAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.McpGetTools => await McpGetToolsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 _ => new VsResponse { Success = false, Error = "Unknown action" }
             };
 
@@ -994,4 +1001,97 @@ public class BuiltInAgent
         [JsonPropertyName("line")]
         public int Line { get; set; }
     }
+
+    #region MCP Process Management
+
+    private async Task<VsResponse> McpStartProcessAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var serverId = args.GetString("param1");
+        var command = args.GetString("param2");
+        var arguments = args.GetString("param3");
+        var result = await _mcpProcessManager.StartProcessAsync(serverId, command, arguments);
+        return new VsResponse { Success = result.StartsWith("OK"), Payload = result, Error = result.StartsWith("ERROR") ? result : null };
+    }
+
+    private async Task<VsResponse> McpStopProcessAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var serverId = args.GetString("param1");
+        var result = await _mcpProcessManager.StopProcessAsync(serverId);
+        return new VsResponse { Success = result.StartsWith("OK"), Payload = result, Error = result.StartsWith("ERROR") ? result : null };
+    }
+
+    private async Task<VsResponse> McpSendMessageAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var serverId = args.GetString("param1");
+        var message = args.GetString("param2");
+        var result = await _mcpProcessManager.SendMessageAsync(serverId, message);
+        return new VsResponse { Success = result == "OK", Payload = result, Error = result != "OK" ? result : null };
+    }
+
+    private async Task<VsResponse> McpReadMessageAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var serverId = args.GetString("param1");
+        var timeout = args.ContainsKey("param2") ? int.Parse(args.GetString("param2")) : 5000;
+        var result = await _mcpProcessManager.ReadMessageAsync(serverId, timeout);
+        return new VsResponse { Success = !result.StartsWith("ERROR"), Payload = result, Error = result.StartsWith("ERROR") ? result : null };
+    }
+
+    private async Task<VsResponse> McpGetToolsAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var serverId = args.GetString("serverId");
+        if (string.IsNullOrEmpty(serverId))
+        {
+            serverId = "temp_" + Guid.NewGuid().ToString("N").Substring(0, 8);
+        }
+
+        var isStartedHere = false;
+        if (!_mcpProcessManager.IsProcessRunning(serverId))
+        {
+            var command = args.GetString("command");
+            var arguments = args.GetString("args");
+            if (string.IsNullOrEmpty(command)) return new VsResponse { Success = false, Error = "Command is required to start MCP server" };
+            
+            var startResult = await _mcpProcessManager.StartProcessAsync(serverId, command, arguments);
+            if (!startResult.StartsWith("OK")) return new VsResponse { Success = false, Error = startResult };
+            isStartedHere = true;
+        }
+
+        try
+        {
+            var requestId = Guid.NewGuid().ToString("N");
+            var request = new McpRequest
+            {
+                Id = requestId,
+                Method = "tools/list",
+                Params = new { }
+            };
+
+            await _mcpProcessManager.SendMessageAsync(serverId, JsonSerializer.Serialize(request));
+            var responseJson = await _mcpProcessManager.ReadMessageAsync(serverId, 10000); // 10s timeout
+
+            if (responseJson.StartsWith("ERROR"))
+            {
+                return new VsResponse { Success = false, Error = responseJson };
+            }
+
+            // We expect a McpResponse. Some servers might send notifications first, but ReadMessageAsync 
+            // from McpProcessManager just takes the next line. This might be fragile if there's noise.
+            // But for a fresh process it should be fine.
+            
+            return new VsResponse { Success = true, Payload = responseJson };
+        }
+        catch (Exception ex)
+        {
+            return new VsResponse { Success = false, Error = ex.Message };
+        }
+        finally
+        {
+            if (isStartedHere)
+            {
+                await _mcpProcessManager.StopProcessAsync(serverId);
+            }
+        }
+    }
+
+    #endregion
 }

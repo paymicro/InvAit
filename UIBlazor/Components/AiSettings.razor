@@ -1,4 +1,5 @@
-﻿@using UIBlazor.Options
+﻿@using Shared.Contracts.Mcp
+@using UIBlazor.Options
 @using UIBlazor.Services
 @using UIBlazor.Models
 @using Shared.Contracts
@@ -114,7 +115,73 @@
         </RadzenStack>
     </RadzenTabsItem>
     <RadzenTabsItem Text="MCP">
-        <RadzenText TextStyle="TextStyle.Subtitle1">TODO... еще в работе... наверное</RadzenText>
+        <RadzenStack Gap="1rem">
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" Style="padding: 0.5rem 1rem; background: var(--rz-base-background-color); border-radius: 8px;">
+                <RadzenCheckBox @bind-Value="@McpSettingsProvider.Current.Enabled" Name="McpGlobalEnabled" />
+                <RadzenLabel Text="Enable MCP" Component="McpGlobalEnabled" Style="font-weight: bold;" />
+                <RadzenSpacer />
+                <RadzenButton Icon="add" Text="Add Server" Click="@OnAddMcpServer" ButtonStyle="ButtonStyle.Success" Disabled="@(!McpSettingsProvider.Current.Enabled)" />
+            </RadzenStack>
+
+            @if (McpSettingsProvider.Current.Enabled)
+            {
+                @foreach (var server in McpSettingsProvider.Current.Servers)
+                {
+                    <RadzenCard Variant="Variant.Flat" Style="background: var(--rz-base-background-color); margin-bottom: 0.5rem;">
+                        <RadzenStack Gap="0.5rem">
+                            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+                                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                                    <RadzenCheckBox @bind-Value="@server.Enabled" Name="@($"mcp_server_{server.Id}")" />
+                                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="margin: 0; font-weight: bold;">@server.Name</RadzenText>
+                                    @if (string.IsNullOrEmpty(server.Name))
+                                    {
+                                        <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="New Server" />
+                                    }
+                                </RadzenStack>
+                                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                                    <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => OnEditMcpServer(server))" />
+                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => OnDeleteMcpServer(server))" />
+                                </RadzenStack>
+                            </RadzenStack>
+
+                            <RadzenStack Gap="0.2rem" Style="font-size: 0.8rem; color: var(--rz-text-secondary-color); padding-left: 2rem;">
+                                <div>Transport: @server.Transport</div>
+                                @if (server.Transport == "stdio")
+                                {
+                                    <div>Command: @server.Command @server.Args</div>
+                                }
+                                else
+                                {
+                                    <div>Endpoint: @server.Endpoint</div>
+                                }
+                            </RadzenStack>
+
+                            @if (server.Tools != null && server.Tools.Any())
+                            {
+                                <RadzenAccordion Style="margin-top: 0.5rem; border: none;">
+                                    <Items>
+                                        <RadzenAccordionItem Text="@($"Tools ({server.Tools.Count(t => t.Enabled)}/{server.Tools.Count})")" Icon="build">
+                                            <RadzenStack Gap="0.5rem">
+                                                @foreach (var tool in server.Tools)
+                                                {
+                                                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+                                                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                                                            <RadzenCheckBox @bind-Value="@tool.Enabled" @bind-Value:after="OnMcpToolSettingChanged" Name="@($"mcp_tool_{server.Id}_{tool.Name}")" />
+                                                            <RadzenLabel Text="@tool.Name" Component="@($"mcp_tool_{server.Id}_{tool.Name}")" />
+                                                        </RadzenStack>
+                                                        <RadzenText TextStyle="TextStyle.Caption" Style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%;">@tool.Description</RadzenText>
+                                                    </RadzenStack>
+                                                }
+                                            </RadzenStack>
+                                        </RadzenAccordionItem>
+                                    </Items>
+                                </RadzenAccordion>
+                            }
+                        </RadzenStack>
+                    </RadzenCard>
+                }
+            }
+        </RadzenStack>
     </RadzenTabsItem>
     <RadzenTabsItem Text="UI">
         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
@@ -133,6 +200,7 @@
     [Inject] IToolManager ToolManager { get; set; } = null!;
     [Inject] IProfileService ProfileService { get; set; } = null!;
     [Inject] DialogService DialogService { get; set; } = null!;
+    [Inject] IMcpSettingsProvider McpSettingsProvider { get; set; } = null!;
 
     private List<ConnectionProfile> _profiles = [];
     private ConnectionProfile? _selectedProfile;
@@ -142,6 +210,61 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadProfilesAsync();
+    }
+
+    private async Task OnAddMcpServer()
+    {
+        var newServer = new McpServerConfig { Name = "New MCP Server" };
+        var result = await DialogService.OpenAsync<McpServerDialog>("Add MCP Server", 
+            new Dictionary<string, object> { { "Server", newServer } });
+
+        if (result == true)
+        {
+            McpSettingsProvider.Current.Servers.Add(newServer);
+            await McpSettingsProvider.SaveAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnEditMcpServer(McpServerConfig server)
+    {
+        // Clone for editing
+        var editServer = new McpServerConfig
+        {
+            Id = server.Id,
+            Name = server.Name,
+            Transport = server.Transport,
+            Command = server.Command,
+            Args = server.Args,
+            Endpoint = server.Endpoint,
+            Enabled = server.Enabled,
+            Tools = server.Tools
+        };
+
+        var result = await DialogService.OpenAsync<McpServerDialog>("Edit MCP Server", 
+            new Dictionary<string, object> { { "Server", editServer } });
+
+        if (result == true)
+        {
+            server.Name = editServer.Name;
+            server.Transport = editServer.Transport;
+            server.Command = editServer.Command;
+            server.Args = editServer.Args;
+            server.Endpoint = editServer.Endpoint;
+            await McpSettingsProvider.SaveAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnDeleteMcpServer(McpServerConfig server)
+    {
+        var confirm = await DialogService.Confirm($"Are you sure you want to delete '{server.Name}'?", "Delete MCP Server");
+        if (confirm == true)
+        {
+            McpSettingsProvider.Current.Servers.Remove(server);
+            await McpSettingsProvider.SaveAsync();
+            StateHasChanged();
+        }
     }
 
     private async Task LoadProfilesAsync()
@@ -268,5 +391,11 @@
     private async Task OnToolSettingChanged()
     {
         await ToolManager.SaveToolSettingsAsync();
+    }
+
+    private async Task OnMcpToolSettingChanged()
+    {
+        // TODO сделать отложенное сохранение как в ToolManager выше
+        await McpSettingsProvider.SaveAsync();
     }
 }
