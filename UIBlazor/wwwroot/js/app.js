@@ -4,6 +4,7 @@ let vsBridgeHandler;
 window.setVsBridgeHandler = function (dotNetRef) {
     vsBridgeHandler = dotNetRef;
     console.log('Visual Studio bridge handler initialized');
+    return "OK";
 };
 
 // сообщение UIBlazor -> InvGen

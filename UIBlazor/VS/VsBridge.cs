@@ -1,210 +1,241 @@
 ﻿using System.Collections.Concurrent;
-using Microsoft.JSInterop;
-using Radzen;
-using Shared.Contracts;
-using UIBlazor.Agents;
-using UIBlazor.Models;
-using UIBlazor.Services.Settings;
-using UIBlazor.Utils;
-
-namespace UIBlazor.VS;
-
-public class VsBridge : IVsBridge, IDisposable
-{
-    private readonly IJSRuntime _jsRuntime;
-    private readonly NotificationService _notificationService;
-    private readonly ICommonSettingsProvider _commonOptions;
-    private DotNetObjectReference<VsBridge> _dotNetRef;
-    private readonly ConcurrentDictionary<string, TaskCompletionSource<VsResponse>> _pendingRequests;
-    private bool _isInitialized;
-
-    public event Action<AppMode>? OnModeSwitched;
-
-    public VsBridge(IJSRuntime jsRuntime, NotificationService notificationService, ICommonSettingsProvider commonSettingsProvider)
-    {
-        _jsRuntime = jsRuntime;
-        _notificationService = notificationService;
-        _commonOptions = commonSettingsProvider;
-        _pendingRequests = new ConcurrentDictionary<string, TaskCompletionSource<VsResponse>>();
-    }
-
-    public async Task InitializeAsync()
-    {
-        if (!_isInitialized)
-        {
-            _dotNetRef = DotNetObjectReference.Create(this);
-            await _jsRuntime.InvokeVoidAsync("setVsBridgeHandler", _dotNetRef);
-            _isInitialized = true;
-        }
-    }
-
-    public async Task<VsToolResult> ExecuteToolAsync(string name, IReadOnlyDictionary<string, object>? args = null)
-    {
-        if (name == BuiltInToolEnum.SwitchMode && args != null && args.TryGetValue("param1", out var modeObj))
-        {
-            if (Enum.TryParse<AppMode>(modeObj.ToString(), true, out var mode))
-            {
-                await SwitchModeAsync(mode);
-                return new VsToolResult
-                {
-                    Role = ChatMessageRole.System,
-                    Success = true,
-                    Result = $"Switched to {mode} mode successfully. Now you have access to different set of tools."
-                };
-            }
-        }
-
-        var request = new VsRequest
-        {
-            Action = name,
-            Payload = args != null ? JsonUtils.Serialize(args) : null
-        };
-
-        var response = await SendRequestAsync(request);
-
-        if (!response.Success)
-        {
-            _notificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = $"Error getting response '{request.Action}'",
-                Detail = response.Error ?? string.Empty,
-                Duration = 6_000,
-                ShowProgress = true
-            });
-        }
-
-        return Convert(request, response);
-    }
-
-    public Task SwitchModeAsync(AppMode mode)
-    {
-        OnModeSwitched?.Invoke(mode);
-        return Task.CompletedTask;
-    }
-
-    private VsToolResult Convert(VsRequest vsRequest, VsResponse vsResponse)
-    {
-        return new VsToolResult
-        {
-            Args = vsRequest.Payload ?? string.Empty,
-            ErrorMessage = vsResponse.Error ?? string.Empty,
-            Name = vsRequest.Action,
-            Result = vsResponse.Payload ?? vsResponse.Error ?? string.Empty,
-            Success = vsResponse.Success
-        };
-    }
-
-    private async Task<VsResponse> SendRequestAsync(VsRequest request)
-    {
-        await EnsureInitializedAsync();
-
-        var tcs = new TaskCompletionSource<VsResponse>();
-        _pendingRequests.TryAdd(request.CorrelationId, tcs);
-
-        try
-        {
-            // Отправляем запрос
-            var result = await _jsRuntime.InvokeAsync<string>("postVsMessage", request);
-
-            if (result != "OK")
-            {
-                return new VsResponse
-                {
-                    Success = false,
-                    Error = $"WebView2 API is`t find."
-                };
-            }
-
-            var timeOut = TimeSpan.FromSeconds(_commonOptions.Current.ToolTimeoutMs);
-#if DEBUG
-            // Дебаг не быстрый)
-            timeOut = TimeSpan.FromDays(1);
-#endif
-            using var timeoutCts = new CancellationTokenSource(timeOut);
-            timeoutCts.Token.Register(() =>
-                tcs.TrySetException(new TimeoutException("Request timed out")));
-
-            // Ждем ответа
-            return await tcs.Task;
-        }
-        catch (Exception ex)
-        {
-            return new VsResponse
-            {
-                Success = false,
-                Error = $"Error getting response: {ex.Message}"
-            };
-        }
-        finally
-        {
-            // Удаляем из ожидающих запросов
-            _pendingRequests.TryRemove(request.CorrelationId, out _);
-        }
-    }
-
-    [JSInvokable("HandleVsMessage")]
-    public async Task HandleVsMessageAsync(VsMessage message)
-    {
-        if (message == null || string.IsNullOrEmpty(message.CorrelationId))
-        {
-            Console.WriteLine("Invalid message received");
-            return;
-        }
-
-        // TODO: обработка сообщений (выделение, выбран документ ...)
-    }
-
-    [JSInvokable("HandleVsResponse")]
-    public async Task HandleVsResponseAsync(VsResponse response)
-    {
-        try
-        {
-            if (response == null || string.IsNullOrEmpty(response.CorrelationId))
-            {
-                Console.WriteLine("Invalid response received");
-                return;
-            }
-
-            if (_pendingRequests.TryRemove(response.CorrelationId, out var tcs))
-            {
-                if (response.Success)
-                {
-                    tcs.SetResult(response);
-                }
-                else
-                {
-                    tcs.SetException(new Exception(response.Error ?? "Request failed"));
-                }
-            }
-            else
-            {
-                Console.WriteLine($"No pending request found for correlationId: {response.CorrelationId}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error handling VS response: {ex.Message}");
-        }
-    }
-
-    private async Task EnsureInitializedAsync()
-    {
-        if (!_isInitialized)
-        {
-            await InitializeAsync();
-        }
-    }
-
-    public void Dispose()
-    {
-        _dotNetRef?.Dispose();
-
-        // Отменяем все ожидающие запросы
-        foreach (var tcs in _pendingRequests.Values)
-        {
-            tcs.TrySetCanceled();
-        }
-        _pendingRequests.Clear();
-    }
-}
+﻿using Microsoft.JSInterop;
+﻿using Radzen;
+﻿using Shared.Contracts;
+﻿using UIBlazor.Agents;
+﻿using UIBlazor.Models;
+﻿using UIBlazor.Services;
+﻿using UIBlazor.Services.Settings;
+﻿using UIBlazor.Utils;
+﻿
+﻿namespace UIBlazor.VS;
+﻿
+﻿public class VsBridge : IVsBridge, IDisposable
+﻿{
+﻿    private readonly IJSRuntime _jsRuntime;
+﻿    private readonly NotificationService _notificationService;
+﻿    private readonly ICommonSettingsProvider _commonOptions;
+﻿    private readonly IVsCodeContextService _vsCodeContextService;
+﻿    private DotNetObjectReference<VsBridge> _dotNetRef;
+﻿    private readonly ConcurrentDictionary<string, TaskCompletionSource<VsResponse>> _pendingRequests;
+﻿    private bool _isInitialized;
+﻿
+﻿    public event Action<AppMode>? OnModeSwitched;
+﻿
+﻿    public VsBridge(IJSRuntime jsRuntime,
+         NotificationService notificationService,
+         ICommonSettingsProvider commonSettingsProvider,
+         IVsCodeContextService vsCodeContextService)
+﻿    {
+﻿        _jsRuntime = jsRuntime;
+﻿        _notificationService = notificationService;
+﻿        _commonOptions = commonSettingsProvider;
+﻿        _vsCodeContextService = vsCodeContextService;
+﻿        _pendingRequests = new ConcurrentDictionary<string, TaskCompletionSource<VsResponse>>();
+﻿    }
+﻿
+﻿    public async Task InitializeAsync()
+﻿    {
+﻿        if (!_isInitialized)
+﻿        {
+﻿            _dotNetRef = DotNetObjectReference.Create(this);
+﻿            var result = await _jsRuntime.InvokeAsync<string>("setVsBridgeHandler", _dotNetRef);
+            _isInitialized = result == "OK";
+﻿        }
+﻿    }
+﻿
+﻿    public async Task<VsToolResult> ExecuteToolAsync(string name, IReadOnlyDictionary<string, object>? args = null)
+﻿    {
+﻿        if (name == BuiltInToolEnum.SwitchMode && args != null && args.TryGetValue("param1", out var modeObj))
+﻿        {
+﻿            if (Enum.TryParse<AppMode>(modeObj.ToString(), true, out var mode))
+﻿            {
+﻿                await SwitchModeAsync(mode);
+﻿                return new VsToolResult
+﻿                {
+﻿                    Role = ChatMessageRole.System,
+﻿                    Success = true,
+﻿                    Result = $"Switched to {mode} mode successfully. Now you have access to different set of tools."
+﻿                };
+﻿            }
+﻿        }
+﻿
+﻿        var request = new VsRequest
+﻿        {
+﻿            Action = name,
+﻿            Payload = args != null ? JsonUtils.Serialize(args) : null
+﻿        };
+﻿
+﻿        var response = await SendRequestAsync(request);
+﻿
+﻿        if (!response.Success)
+﻿        {
+﻿            _notificationService.Notify(new NotificationMessage
+﻿            {
+﻿                Severity = NotificationSeverity.Error,
+﻿                Summary = $"Error getting response '{request.Action}'",
+﻿                Detail = response.Error ?? string.Empty,
+﻿                Duration = 6_000,
+﻿                ShowProgress = true
+﻿            });
+﻿        }
+﻿
+﻿        return Convert(request, response);
+﻿    }
+﻿
+﻿    public Task SwitchModeAsync(AppMode mode)
+﻿    {
+﻿        OnModeSwitched?.Invoke(mode);
+﻿        return Task.CompletedTask;
+﻿    }
+﻿
+﻿    private VsToolResult Convert(VsRequest vsRequest, VsResponse vsResponse)
+﻿    {
+﻿        return new VsToolResult
+﻿        {
+﻿            Args = vsRequest.Payload ?? string.Empty,
+﻿            ErrorMessage = vsResponse.Error ?? string.Empty,
+﻿            Name = vsRequest.Action,
+﻿            Result = vsResponse.Payload ?? vsResponse.Error ?? string.Empty,
+﻿            Success = vsResponse.Success
+﻿        };
+﻿    }
+﻿
+﻿    private async Task<VsResponse> SendRequestAsync(VsRequest request)
+﻿    {
+﻿        await EnsureInitializedAsync();
+﻿
+﻿        var tcs = new TaskCompletionSource<VsResponse>();
+﻿        _pendingRequests.TryAdd(request.CorrelationId, tcs);
+﻿
+﻿        try
+﻿        {
+﻿            // Отправляем запрос
+﻿            var result = await _jsRuntime.InvokeAsync<string>("postVsMessage", request);
+﻿
+﻿            if (result != "OK")
+﻿            {
+﻿                return new VsResponse
+﻿                {
+﻿                    Success = false,
+﻿                    Error = $"WebView2 API is`t find."
+﻿                };
+﻿            }
+﻿
+﻿            var timeOut = TimeSpan.FromSeconds(_commonOptions.Current.ToolTimeoutMs);
+﻿#if DEBUG
+﻿            // Дебаг не быстрый)
+﻿            timeOut = TimeSpan.FromDays(1);
+﻿#endif
+﻿            using var timeoutCts = new CancellationTokenSource(timeOut);
+﻿            timeoutCts.Token.Register(() =>
+﻿                tcs.TrySetException(new TimeoutException("Request timed out")));
+﻿
+﻿            // Ждем ответа
+﻿            return await tcs.Task;
+﻿        }
+﻿        catch (Exception ex)
+﻿        {
+﻿            return new VsResponse
+﻿            {
+﻿                Success = false,
+﻿                Error = $"Error getting response: {ex.Message}"
+﻿            };
+﻿        }
+﻿        finally
+﻿        {
+﻿            // Удаляем из ожидающих запросов
+﻿            _pendingRequests.TryRemove(request.CorrelationId, out _);
+﻿        }
+﻿    }
+﻿
+﻿    [JSInvokable("HandleVsMessage")]
+﻿    public Task HandleVsMessageAsync(VsMessage message)
+﻿    {
+﻿        if (message == null)
+﻿        {
+﻿            Console.WriteLine("Invalid message received: message is null");
+﻿            return Task.CompletedTask;
+﻿        }
+﻿
+﻿        switch (message.Action)
+﻿        {
+﻿            case "UpdateCodeContext":
+﻿                if (!string.IsNullOrEmpty(message.Payload))
+﻿                {
+﻿                    try
+﻿                    {
+﻿                        var context = JsonUtils.Deserialize<VsCodeContext>(message.Payload);
+﻿                        if (context != null)
+﻿                        {
+﻿                            _vsCodeContextService.UpdateContext(context);
+﻿                        }
+﻿                    }
+﻿                    catch (Exception ex)
+﻿                    {
+﻿                        Console.WriteLine($"Error deserializing VsCodeContext: {ex.Message}");
+﻿                    }
+﻿                }
+﻿                break;
+﻿            default:
+﻿                Console.WriteLine($"Unknown message action: {message.Action}");
+﻿                break;
+﻿        }
+﻿
+﻿        return Task.CompletedTask;
+﻿    }
+﻿
+﻿    [JSInvokable("HandleVsResponse")]
+﻿    public async Task HandleVsResponseAsync(VsResponse response)
+﻿    {
+﻿        try
+﻿        {
+﻿            if (response == null || string.IsNullOrEmpty(response.CorrelationId))
+﻿            {
+﻿                Console.WriteLine("Invalid response received");
+﻿                return;
+﻿            }
+﻿
+﻿            if (_pendingRequests.TryRemove(response.CorrelationId, out var tcs))
+﻿            {
+﻿                if (response.Success)
+﻿                {
+﻿                    tcs.SetResult(response);
+﻿                }
+﻿                else
+﻿                {
+﻿                    tcs.SetException(new Exception(response.Error ?? "Request failed"));
+﻿                }
+﻿            }
+﻿            else
+﻿            {
+﻿                Console.WriteLine($"No pending request found for correlationId: {response.CorrelationId}");
+﻿            }
+﻿        }
+﻿        catch (Exception ex)
+﻿        {
+﻿            Console.WriteLine($"Error handling VS response: {ex.Message}");
+﻿        }
+﻿    }
+﻿
+﻿    private async Task EnsureInitializedAsync()
+﻿    {
+﻿        if (!_isInitialized)
+﻿        {
+﻿            await InitializeAsync();
+﻿        }
+﻿    }
+﻿
+﻿    public void Dispose()
+﻿    {
+﻿        _dotNetRef?.Dispose();
+﻿
+﻿        // Отменяем все ожидающие запросы
+﻿        foreach (var tcs in _pendingRequests.Values)
+﻿        {
+﻿            tcs.TrySetCanceled();
+﻿        }
+﻿        _pendingRequests.Clear();
+﻿    }
+﻿}
+﻿

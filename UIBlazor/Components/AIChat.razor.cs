@@ -14,7 +14,7 @@ using UIBlazor.VS;
 
 namespace UIBlazor.Components;
 
-public partial class AIChat : RadzenComponent
+public partial class AIChat : RadzenComponent, IDisposable
 {
     // TODO использовать из ChatService.Session.Messages
     private List<VisualChatMessage> Messages { get; set; } = [];
@@ -24,6 +24,7 @@ public partial class AIChat : RadzenComponent
     private bool _preventDefault;
     private ElementReference _inputElement;
     private ElementReference _messagesContainer;
+    private ContextSuggestions _suggestions;
     private CancellationTokenSource _cts = new();
 
     [Inject]
@@ -349,10 +350,11 @@ public partial class AIChat : RadzenComponent
         ToolManager.RegisterAllTools();
         await ProfileManager.InitializeAsync();
 
+        await VsBridge.InitializeAsync();
+        VsBridge.OnModeSwitched += HandleModeSwitched;
+
         await ChatService.LoadLastSessionOrGenerateNewAsync();
         SyncSessionMessageWithUi();
-
-        VsBridge.OnModeSwitched += HandleModeSwitched;
 
         await InvokeAsync(StateHasChanged);
     }
@@ -386,7 +388,30 @@ public partial class AIChat : RadzenComponent
     private async Task OnInputAsync(ChangeEventArgs e)
     {
         CurrentInput = e.Value?.ToString() ?? "";
+
+        var match = Regex.Match(CurrentInput, @"@(\w*)$");
+        if (match.Success)
+        {
+            _suggestions.Show(5, 40); 
+            _suggestions.SetFilter(match.Groups[1].Value);
+        }
+        else
+        {
+            _suggestions.Hide();
+        }
+        
         await InvokeAsync(StateHasChanged);
+    }
+    
+    private void OnSuggestionSelected(string path)
+    {
+        var match = Regex.Match(CurrentInput, @"(.*)@\w*");
+        if (match.Success)
+        {
+            CurrentInput = match.Groups[1].Value + $"\"{path}\" ";
+        }
+        _suggestions.Hide();
+        StateHasChanged();
     }
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
@@ -490,6 +515,7 @@ public partial class AIChat : RadzenComponent
     {
         base.Dispose();
 
+        _suggestions?.Dispose();
         VsBridge.OnModeSwitched -= HandleModeSwitched;
 
         _cts?.Cancel();

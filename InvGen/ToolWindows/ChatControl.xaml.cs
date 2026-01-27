@@ -8,6 +8,7 @@ using System.Windows.Input;
 using InvGen.Agent;
 using InvGen.Utils;
 using Microsoft.VisualStudio.PlatformUI;
+using Microsoft.VisualStudio.Shell;
 using Microsoft.Web.WebView2.Core;
 using Shared.Contracts;
 using MessageBox = System.Windows.MessageBox;
@@ -22,6 +23,8 @@ public partial class ChatControl
     private readonly ChatViewModel _viewModel;
     private WV.IWebView2 _webView;
     private BuiltInAgent _builtInAgent;
+
+    public event Func<WV.IWebView2, Task> WebViewInitialized;
 
     public ChatControl()
     {
@@ -79,6 +82,8 @@ public partial class ChatControl
 
         WebViewHost.Content = _webView = new WV.WebView2();
 
+        _webView.CoreWebView2InitializationCompleted += CoreWebView2InitializationCompleted;
+
         var userDataFolder = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "InvGenChatWebView2");
@@ -90,7 +95,6 @@ public partial class ChatControl
 
         SetupVirtualHost();
 
-
         _webView.WebMessageReceived += (sender, e) => _ = HandleWebMessageAsync(e);
         _webView.CoreWebView2.NavigationStarting += (_, _) => SetupVirtualHost();
         _webView.CoreWebView2.ServerCertificateErrorDetected += (s, e) =>
@@ -98,14 +102,13 @@ public partial class ChatControl
             if (_viewModel.SkipSSLValidation)
             {
                 e.Action = CoreWebView2ServerCertificateErrorAction.AlwaysAllow;
-                Logger.Log($"SSL validation is skipped. {e.ServerCertificate.DisplayName}.");
+                Logger.Log($"SSL validation is skipped.");
             }
             else
             {
-                Logger.Log($"SSL validation error: {e.ServerCertificate.DisplayName}. You can skip SSL validation in settings.", "ERROR");
+                Logger.Log($"SSL validation error. You can skip SSL validation in settings.", "ERROR");
             }
         };
-        _webView.CoreWebView2InitializationCompleted += CoreWebView2InitializationCompleted;
 
         //_webView.CoreWebView2.AddHostObjectToScript("mcpHost", new McpProxyHost());
         //_webView.NavigationCompleted += (_, _) =>
@@ -140,7 +143,7 @@ public partial class ChatControl
         _webView.DefaultBackgroundColor = VSColorTheme.GetThemedColor(EnvironmentColors.ToolWindowBackgroundBrushKey);
         _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = true;
         _webView.CoreWebView2.Settings.AreHostObjectsAllowed = true;
-        _webView.CoreWebView2.Settings.UserAgent = "InvGen";
+        _webView.CoreWebView2.Settings.UserAgent = "InvGen VisualStudio plugin";
         try
         {
             _webView.CoreWebView2.MemoryUsageTargetLevel = CoreWebView2MemoryUsageTargetLevel.Low;
@@ -149,6 +152,8 @@ public partial class ChatControl
         {
             Debug.WriteLine($"WebView MemoryUsageTargetLevel error: {ex}");
         }
+        
+        WebViewInitialized?.Invoke(_webView).FireAndForget();
     }
 
     private async Task HandleWebMessageAsync(CoreWebView2WebMessageReceivedEventArgs e)
@@ -157,6 +162,7 @@ public partial class ChatControl
         {
             // Ожидаем вызов тулзов только из правильных мест.
             // Чтобы левые сайты (если будет поиск в вебе) не могли получить доступ к тулзам.
+            // И поиск браузером должен быть на стороне UI, т.к. там и так браузер.
             Logger.Log($"Wrong source {e.Source}", "ERROR");
             return;
         }

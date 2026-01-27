@@ -1,4 +1,4 @@
-namespace Shared.Contracts;
+﻿namespace Shared.Contracts;
 
 /// <summary>
 /// Метаданные скилла для системного промпта (название + описание).

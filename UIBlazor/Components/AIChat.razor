@@ -127,41 +127,44 @@
 
     <!-- Chat Input -->
     <div class="rz-chat-input">
-        <div class="rz-chat-input-inner" style="display: flex; align-items: flex-end; gap: 0.5rem;">
-            <textarea @ref="_inputElement" 
-                        value="@CurrentInput"
-                        @oninput="OnInputAsync" 
-                        @onkeydown="OnKeyDownAsync" 
-                        @onkeydown:preventDefault="_preventDefault"
-                        class="rz-textarea rz-chat-textarea"
-                        placeholder="@Placeholder"
-                        disabled="@Disabled"
-                        readonly="@ReadOnly"
-                        rows="1"
-                        style="flex: 1;"
-                        @attributes="@InputAttributes"></textarea>
-                
-                @if (ChatService.Session != null)
-                {
-                    <RadzenDropDown TValue="AppMode" Data="@AppModeValues" @bind-Value="@ChatService.Session.Mode"
-                                    Style="width: 100px; height: 35px; font-size: 12px;" />
-                }
+        <div style="position: relative; width: 100%;">
+            <ContextSuggestions @ref="_suggestions" OnItemSelected="OnSuggestionSelected" />
+            <div class="rz-chat-input-inner" style="display: flex; align-items: flex-end; gap: 0.5rem;">
+                <textarea @ref="_inputElement" 
+                            value="@CurrentInput"
+                            @oninput="OnInputAsync" 
+                            @onkeydown="OnKeyDownAsync" 
+                            @onkeydown:preventDefault="_preventDefault"
+                            class="rz-textarea rz-chat-textarea"
+                            placeholder="@Placeholder"
+                            disabled="@Disabled"
+                            readonly="@ReadOnly"
+                            rows="1"
+                            style="flex: 1;"
+                            @attributes="@InputAttributes"></textarea>
+                    
+                    @if (ChatService.Session != null)
+                    {
+                        <RadzenDropDown TValue="AppMode" Data="@AppModeValues" @bind-Value="@ChatService.Session.Mode"
+                                        Style="width: 100px; height: 35px; font-size: 12px;" />
+                    }
 
-                <RadzenButton Icon="send"
-                            ButtonStyle="ButtonStyle.Primary" 
-                            Variant="Variant.Text"
-                            Visible="@(!IsLoading)"
-                            Disabled="@(string.IsNullOrWhiteSpace(CurrentInput) || IsLoading || Disabled)"
-                            Click="@OnSendMessageAsync"
-                            Title="Send message"
-                            class="rz-chat-send-btn" />
-                <RadzenButton Icon="dangerous"
-                            ButtonStyle="ButtonStyle.Danger"
-                            Variant="Variant.Text"
-                            Visible="@IsLoading"
-                            Click="@CancelResponceAsync"
-                            Title="Cancel"
-                            class="rz-chat-cancel-btn" />
+                    <RadzenButton Icon="send"
+                                ButtonStyle="ButtonStyle.Primary" 
+                                Variant="Variant.Text"
+                                Visible="@(!IsLoading)"
+                                Disabled="@(string.IsNullOrWhiteSpace(CurrentInput) || IsLoading || Disabled)"
+                                Click="@OnSendMessageAsync"
+                                Title="Send message"
+                                class="rz-chat-send-btn" />
+                    <RadzenButton Icon="dangerous"
+                                ButtonStyle="ButtonStyle.Danger"
+                                Variant="Variant.Text"
+                                Visible="@IsLoading"
+                                Click="@CancelResponceAsync"
+                                Title="Cancel"
+                                class="rz-chat-cancel-btn" />
+            </div>
         </div>
     </div>
 </div>

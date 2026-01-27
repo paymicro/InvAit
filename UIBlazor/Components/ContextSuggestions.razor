@@ -1,0 +1,143 @@
+@using Shared.Contracts
+@using UIBlazor.Services
+
+@inject IVsCodeContextService VsCodeContextService
+
+@if (_show)
+{
+    <div class="context-suggestions" style="@_style">
+        <ul>
+            @if (!string.IsNullOrEmpty(VsCodeContextService.CurrentContext?.ActiveDocument) && string.IsNullOrEmpty(_filter))
+            {
+                <li class="category">Current File</li>
+                <li @onclick="() => Select(VsCodeContextService.CurrentContext.ActiveDocument)">
+                    @System.IO.Path.GetFileName(VsCodeContextService.CurrentContext.ActiveDocument)
+                </li>
+            }
+
+            @if (_filteredFiles != null && _filteredFiles.Any())
+            {
+                <li class="category">Files</li>
+                @foreach (var file in _filteredFiles.Take(10))
+                {
+                    <li @onclick="() => Select(file.Path)">@file.Name</li>
+                }
+            }
+            
+            @if (_filteredFolders != null && _filteredFolders.Any())
+            {
+                <li class="category">Folders</li>
+                @foreach (var folder in _filteredFolders.Take(10))
+                {
+                    <li @onclick="() => Select(folder.Path)">@folder.Name</li>
+                }
+            }
+        </ul>
+    </div>
+}
+
+@code {
+    [Parameter] public EventCallback<string> OnItemSelected { get; set; }
+
+    private bool _show = false;
+    private string _filter = "";
+    private string _style = "";
+    private List<SolutionNode> _allFiles;
+    private List<SolutionNode> _allFolders;
+    private List<SolutionNode> _filteredFiles;
+    private List<SolutionNode> _filteredFolders;
+
+    public void Show(int x, int y)
+    {
+        _style = $"position: absolute; left: {x}px; bottom: {y}px;";
+        _show = true;
+        UpdateLists();
+        StateHasChanged();
+    }
+
+    public void Hide()
+    {
+        if (!_show) return;
+        _show = false;
+        _filter = "";
+        StateHasChanged();
+    }
+
+    public void SetFilter(string filter)
+    {
+        _filter = filter;
+        UpdateFilteredLists();
+        StateHasChanged();
+    }
+
+    private void UpdateLists()
+    {
+        _allFiles = new List<SolutionNode>();
+        _allFolders = new List<SolutionNode>();
+        if (VsCodeContextService.CurrentContext?.Solution != null)
+        {
+            FlattenTree(VsCodeContextService.CurrentContext.Solution, _allFiles, _allFolders);
+        }
+        UpdateFilteredLists();
+    }
+
+    private void FlattenTree(SolutionNode node, List<SolutionNode> files, List<SolutionNode> folders)
+    {
+        if (node.Type == "file")
+        {
+            files.Add(node);
+        }
+        else
+        {
+            if (node.Type == "folder" || node.Type == "project")
+            {
+                folders.Add(node);
+            }
+        }
+
+        foreach (var child in node.Children)
+        {
+            FlattenTree(child, files, folders);
+        }
+    }
+
+    private void UpdateFilteredLists()
+    {
+        var filter = _filter.Trim();
+        if (string.IsNullOrWhiteSpace(filter))
+        {
+            _filteredFiles = _allFiles;
+            _filteredFolders = _allFolders;
+        }
+        else
+        {
+            _filteredFiles = _allFiles.Where(f => f.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToList();
+            _filteredFolders = _allFolders.Where(f => f.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+    }
+
+    private async Task Select(string path)
+    {
+        await OnItemSelected.InvokeAsync(path);
+        Hide();
+    }
+
+    protected override void OnInitialized()
+    {
+        VsCodeContextService.OnContextChanged += OnContextChanged;
+    }
+
+    private void OnContextChanged()
+    {
+        UpdateLists();
+        if(_show)
+        {
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose()
+    {
+        VsCodeContextService.OnContextChanged -= OnContextChanged;
+    }
+}

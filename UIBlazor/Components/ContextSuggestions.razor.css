@@ -1,0 +1,41 @@
+.context-suggestions {
+    position: absolute;
+    z-index: 1000;
+    background-color: var(--rz-base-background-color);
+    border: 1px solid var(--rz-grid-cell-border);
+    border-radius: var(--rz-border-radius);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    max-height: 300px;
+    overflow-y: auto;
+    width: 300px;
+}
+
+.context-suggestions ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.context-suggestions li {
+    padding: 8px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.context-suggestions li:hover {
+    background-color: var(--rz-grid-hover-background-color);
+}
+
+.context-suggestions li.category {
+    font-weight: bold;
+    color: var(--rz-text-tertiary-color);
+    padding-top: 10px;
+    padding-bottom: 5px;
+    cursor: default;
+}
+
+.context-suggestions li.category:hover {
+    background-color: transparent;
+}
