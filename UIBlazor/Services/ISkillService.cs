@@ -1,6 +1,4 @@
-﻿using Shared.Contracts;
-
-namespace UIBlazor.Services;
+﻿namespace UIBlazor.Services;
 
 public interface ISkillService
 {

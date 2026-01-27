@@ -1,11 +1,7 @@
-@using UIBlazor.Models
-@using UIBlazor.Services
-@using Shared.Contracts
 @inherits RadzenComponent
 
 @inject ChatService ChatService
 @inject DialogService DialogService
-@inject IJSRuntime JS
 
 <div @ref="@Element" @attributes="Attributes" class="@GetCssClass()" style="@Style" id="@GetId()" >
     <!-- Chat Header -->
@@ -130,8 +126,7 @@
         <div style="position: relative; width: 100%;">
             <ContextSuggestions @ref="_suggestions" OnItemSelected="OnSuggestionSelected" />
             <div class="rz-chat-input-inner" style="display: flex; align-items: flex-end; gap: 0.5rem;">
-                <textarea @ref="_inputElement" 
-                            value="@CurrentInput"
+                <textarea   value="@CurrentInput"
                             @oninput="OnInputAsync" 
                             @onkeydown="OnKeyDownAsync" 
                             @onkeydown:preventDefault="_preventDefault"
@@ -143,11 +138,8 @@
                             style="flex: 1;"
                             @attributes="@InputAttributes"></textarea>
                     
-                    @if (ChatService.Session != null)
-                    {
-                        <RadzenDropDown TValue="AppMode" Data="@AppModeValues" @bind-Value="@ChatService.Session.Mode"
+                    <RadzenDropDown TValue="AppMode" Data="@AppModeValues" @bind-Value="@ChatService.Session.Mode"
                                         Style="width: 100px; height: 35px; font-size: 12px;" />
-                    }
 
                     <RadzenButton Icon="send"
                                 ButtonStyle="ButtonStyle.Primary" 

@@ -2,15 +2,11 @@
 using System.Globalization;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Net.Mime;
 using System.Runtime.CompilerServices;
-using System.Text;
-using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
-using UIBlazor.Models;
 using UIBlazor.Services.Models;
 using UIBlazor.Services.Settings;
-using UIBlazor.Utils;
 
 namespace UIBlazor.Services;
 
@@ -58,7 +54,7 @@ public class ChatService(
         var maxRetries = Options.MaxRetryAttempts;
         var retryDelay = TimeSpan.FromSeconds(Options.RetryDelaySeconds);
 
-        for (int attempt = 0; attempt <= maxRetries; attempt++)
+        for (var attempt = 0; attempt <= maxRetries; attempt++)
         {
             try
             {
@@ -184,7 +180,7 @@ public class ChatService(
             Content = new StringContent(
                 JsonSerializer.Serialize(payload, _jsonSerializerOptions),
                 Encoding.UTF8,
-                System.Net.Mime.MediaTypeNames.Application.Json)
+                MediaTypeNames.Application.Json)
         };
 
         if (!string.IsNullOrEmpty(effectiveApiKey))
@@ -199,13 +195,9 @@ public class ChatService(
             }
         }
 
-        var response = await ExecuteWithRetryAsync(async (ct) =>
-        {
-            return await httpClient.SendAsync(
-                request,
-                Options.Stream ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead,
-                ct);
-        }, cancellationToken, "Chat completion").ConfigureAwait(false);
+        var response = await ExecuteWithRetryAsync(async ct => 
+            await httpClient.SendAsync(request, Options.Stream ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead, ct), 
+            cancellationToken, "Chat completion").ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -239,7 +231,7 @@ public class ChatService(
         }
 
         // стрим
-        using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);
 
         var assistantResponse = new StringBuilder();
@@ -281,7 +273,7 @@ public class ChatService(
 
             LastCompletionsModel ??= chunk.Model;
             var delta = chunk.Choices[0].Delta;
-            var content = delta.Content;
+            var content = delta!.Content;
 
             // Размышляющие модели по разному отдают размышления
             //

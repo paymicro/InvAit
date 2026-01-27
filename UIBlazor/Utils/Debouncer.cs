@@ -38,18 +38,4 @@ public sealed class Debouncer : IDisposable
         _cts.Dispose();
         _timer.Dispose();
     }
-
-    public async Task FlushAsync()
-    {
-        if (_pending)
-        {
-            _pending = false;
-            await _action();
-        }
-    }
-
-    public async Task FinalizeAsync()
-    {
-        await FlushAsync();
-    }
 }

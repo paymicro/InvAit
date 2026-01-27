@@ -1,32 +1,21 @@
-﻿using Shared.Contracts;
-
-namespace UIBlazor.Agents;
+﻿namespace UIBlazor.Agents;
 
 public class Tool
 {
-    public Tool()
-    {
-    }
-
     /// <summary>
     /// Name of tool
     /// </summary>
-    public string Name { get; init; }
+    public required string Name { get; init; }
 
     /// <summary>
     /// Description for LLM
     /// </summary>
-    public string Description { get; init; }
+    public string Description { get; init; } = string.Empty;
 
     /// <summary>
     /// Example in system message
     /// </summary>
-    public string ExampleToSystemMessage { get; init; }
-
-    /// <summary>
-    /// Description for user for Approval request
-    /// </summary>
-    public string ApprovalDescription { get; init; }
+    public string ExampleToSystemMessage { get; init; } = string.Empty;
 
     /// <summary>
     /// Enabled for use

@@ -11,8 +11,6 @@ using Microsoft.VisualStudio.PlatformUI;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.Web.WebView2.Core;
 using Shared.Contracts;
-using MessageBox = System.Windows.MessageBox;
-using Package = Microsoft.VisualStudio.Shell.Package;
 using WV = Microsoft.Web.WebView2.Wpf;
 
 namespace InvGen.ToolWindows;
@@ -20,16 +18,15 @@ namespace InvGen.ToolWindows;
 public partial class ChatControl
 {
     private bool _webView2Installed;
-    private readonly ChatViewModel _viewModel;
     private WV.IWebView2 _webView;
-    private BuiltInAgent _builtInAgent;
+    private readonly BuiltInAgent _builtInAgent;
+    private bool _skipSslValidation;
 
     public event Func<WV.IWebView2, Task> WebViewInitialized;
 
     public ChatControl()
     {
         InitializeComponent();
-        _viewModel = (ChatViewModel)DataContext;
         _builtInAgent = new BuiltInAgent();
         Loaded += (_, _) => _ = HandleLoadedAsync();
         PreviewKeyDown += ChatControl_PreviewKeyDown;
@@ -99,7 +96,7 @@ public partial class ChatControl
         _webView.CoreWebView2.NavigationStarting += (_, _) => SetupVirtualHost();
         _webView.CoreWebView2.ServerCertificateErrorDetected += (s, e) =>
         {
-            if (_viewModel.SkipSSLValidation)
+            if (_skipSslValidation)
             {
                 e.Action = CoreWebView2ServerCertificateErrorAction.AlwaysAllow;
                 Logger.Log($"SSL validation is skipped.");
@@ -177,8 +174,8 @@ public partial class ChatControl
 
             if (request.Action == "SkipSSL")
             {
-                _viewModel.SkipSSLValidation = string.Equals(request.Payload, "true", StringComparison.OrdinalIgnoreCase);
-                Logger.Log($"SkipSSL set {_viewModel.SkipSSLValidation}");
+                _skipSslValidation = string.Equals(request.Payload, "true", StringComparison.OrdinalIgnoreCase);
+                Logger.Log($"SkipSSL set {_skipSslValidation}");
                 return;
             }
 

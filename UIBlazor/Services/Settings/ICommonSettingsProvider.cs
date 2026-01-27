@@ -1,12 +1,6 @@
-﻿using UIBlazor.Options;
+﻿namespace UIBlazor.Services.Settings;
 
-namespace UIBlazor.Services.Settings;
-
-public interface ICommonSettingsProvider
+public interface ICommonSettingsProvider : IBaseSettingsProvider
 {
     CommonOptions Current { get; }
-
-    Task InitializeAsync();
-    
-    Task ResetAsync();
 }

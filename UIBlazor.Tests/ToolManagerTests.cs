@@ -168,22 +168,6 @@ public class ToolManagerTests
     }
 
     [Fact]
-    public void RegisterAllTools_IgnoresToolsWithoutExecuteAsync()
-    {
-        // Arrange
-        var validTool = new Tool { Name = "valid", ExecuteAsync = _ => Task.FromResult(new VsToolResult { Success = true, Result = "result" })};
-        var invalidTool = new Tool { Name = "invalid" }; // No ExecuteAsync
-        _builtInAgent.Tools = [validTool, invalidTool];
-
-        // Act
-        _toolManager.RegisterAllTools();
-
-        // Assert
-        Assert.Single(_toolManager.GetAllTools());
-        Assert.Equal("valid", _toolManager.GetAllTools().First().Name);
-    }
-
-    [Fact]
     public async Task LoadToolSettingsAsync_HandlesExceptionGracefully()
     {
         // Arrange
@@ -281,7 +265,6 @@ public class ToolManagerTests
     {
         // Arrange
         _toolManager.RegisterAllTools();
-        var prompt = "Test system prompt";
 
         // Act
         var instructions = _toolManager.GetToolUseSystemInstructions(AppMode.Agent);

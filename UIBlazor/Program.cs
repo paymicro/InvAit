@@ -2,10 +2,8 @@
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Radzen;
 using UIBlazor;
-using UIBlazor.Agents;
 using UIBlazor.Services;
 using UIBlazor.Services.Settings;
-using UIBlazor.VS;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
@@ -20,11 +18,11 @@ builder.Services
     .AddScoped<ICommonSettingsProvider, CommonSettingsProvider>()
     .AddScoped<IVsBridge, VsBridge>()
     .AddScoped<ISkillService, SkillService>()
-    .AddSingleton<IVsCodeContextService, VsCodeContextService>()
+    .AddScoped<IVsCodeContextService, VsCodeContextService>()
     .AddScoped<BuiltInAgent>()
     .AddScoped<IToolManager, ToolManager>()
     .AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 
-WebAssemblyHost app = builder.Build();
+var app = builder.Build();
 
 await app.RunAsync();

@@ -8,13 +8,12 @@ using Radzen.Blazor.Rendering;
 using Shared.Contracts;
 using UIBlazor.Agents;
 using UIBlazor.Models;
-using UIBlazor.Services;
 using UIBlazor.Services.Settings;
 using UIBlazor.VS;
 
 namespace UIBlazor.Components;
 
-public partial class AIChat : RadzenComponent, IDisposable
+public partial class AiChat : RadzenComponent, IDisposable
 {
     // TODO использовать из ChatService.Session.Messages
     private List<VisualChatMessage> Messages { get; set; } = [];
@@ -22,7 +21,6 @@ public partial class AIChat : RadzenComponent, IDisposable
     private bool IsLoading { get; set; }
 
     private bool _preventDefault;
-    private ElementReference _inputElement;
     private ElementReference _messagesContainer;
     private ContextSuggestions _suggestions;
     private CancellationTokenSource _cts = new();
@@ -143,10 +141,10 @@ public partial class AIChat : RadzenComponent, IDisposable
         await ChatService.AddMessageAsync(userMessage);
 
         // Get AI response
-        await GetAIResponseAsync();
+        await GetAiResponseAsync();
     }
 
-    private async Task GetAIResponseAsync()
+    private async Task GetAiResponseAsync()
     {
         IsLoading = true;
 
@@ -312,7 +310,7 @@ public partial class AIChat : RadzenComponent, IDisposable
             }
         }
 
-        await GetAIResponseAsync();
+        await GetAiResponseAsync();
     }
 
     private void SyncSessionMessageWithUi()
@@ -361,11 +359,7 @@ public partial class AIChat : RadzenComponent, IDisposable
 
     private void HandleModeSwitched(AppMode mode)
     {
-        if (ChatService.Session != null)
-        {
-            ChatService.Session.Mode = mode;
-            // _ = ChatService.AddMessageAsync(ChatMessageRole.System, $"Mode switched to {mode}");
-        }
+        ChatService.Session.Mode = mode;
         InvokeAsync(StateHasChanged);
     }
 
@@ -416,7 +410,7 @@ public partial class AIChat : RadzenComponent, IDisposable
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter" && !e.ShiftKey && JSRuntime != null)
+        if (e is { Key: "Enter", ShiftKey: false } && JSRuntime != null)
         {
             _preventDefault = true;
             await OnSendMessageAsync();
@@ -437,13 +431,13 @@ public partial class AIChat : RadzenComponent, IDisposable
         await ClearChatAsync();
     }
 
-    private void OnEditMessage(VisualChatMessage message)
+    private static void OnEditMessage(VisualChatMessage message)
     {
         message.TempContent = message.Content;
         message.IsEditing = true;
     }
 
-    private void OnCancelEdit(VisualChatMessage message)
+    private static void OnCancelEdit(VisualChatMessage message)
     {
         message.IsEditing = false;
         message.TempContent = string.Empty;
@@ -473,7 +467,7 @@ public partial class AIChat : RadzenComponent, IDisposable
         {
             Messages.Remove(lastAssistantMessage);
             ChatService.Session.RemoveMessage(lastAssistantMessage.Id);
-            await GetAIResponseAsync();
+            await GetAiResponseAsync();
         }
     }
 

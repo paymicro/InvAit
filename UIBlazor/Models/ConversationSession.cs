@@ -98,15 +98,6 @@ public class ConversationSession
     }
 
     /// <summary>
-    /// Clears all messages from the conversation.
-    /// </summary>
-    public void Clear()
-    {
-        Messages.Clear();
-        LastUpdated = DateTime.Now;
-    }
-
-    /// <summary>
     /// Gets the conversation messages formatted for the AI API.
     /// </summary>
     /// <param name="systemPrompt">The system prompt to include.</param>

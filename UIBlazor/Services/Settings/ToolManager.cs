@@ -1,23 +1,12 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Text;
-using System.Text.RegularExpressions;
-using Shared.Contracts;
-using UIBlazor.Agents;
-using UIBlazor.Models;
 
 namespace UIBlazor.Services.Settings;
 
-public class ToolManager : BaseSettingsProvider<ToolSettings>, IToolManager
+public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localStorage)
+    : BaseSettingsProvider<ToolSettings>(localStorage, "ToolSettings"), IToolManager
 {
-    private readonly BuiltInAgent _builtInAgent;
     private readonly ConcurrentDictionary<string, Tool> _registeredTools = new();
-
-    public ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localStorage)
-        : base(localStorage, "ToolSettings")
-    {
-        _builtInAgent = builtInAgent;
-    }
 
     public override async Task SaveAsync()
     {
@@ -72,9 +61,9 @@ public class ToolManager : BaseSettingsProvider<ToolSettings>, IToolManager
 
     public void RegisterAllTools()
     {
-        foreach (var tool in _builtInAgent.Tools)
+        foreach (var tool in builtInAgent.Tools)
         {
-            RegisterTool(tool);
+            _registeredTools[tool.Name] = tool;
         }
 
         // Load tool settings after registration
@@ -94,7 +83,7 @@ public class ToolManager : BaseSettingsProvider<ToolSettings>, IToolManager
 
     public async Task SaveToolSettingsAsync()
     {
-        this.Debouncer.Trigger();
+        Debouncer.Trigger();
         await Task.CompletedTask;
     }
 
@@ -114,18 +103,15 @@ public class ToolManager : BaseSettingsProvider<ToolSettings>, IToolManager
         Current.ToolStates.Clear();
         return SaveAsync();
     }
-
-    public override void Dispose()
-    {
-        base.Dispose();
-    }
+    
     public IEnumerable<Tool> GetEnabledTools() => _registeredTools.Values.Where(t => 
     {
         if (Current.CategoryStates.TryGetValue(t.Category, out var state))
         {
             return state.IsEnabled && t.Enabled;
         }
-        return false;
+        // по умолчанию категория включена
+        return true;
     });
 
     public IEnumerable<Tool> GetAllTools() => _registeredTools.Values;
@@ -292,17 +278,5 @@ public class ToolManager : BaseSettingsProvider<ToolSettings>, IToolManager
         }
 
         return result;
-    }
-
-    private void RegisterTool(Tool tool)
-    {
-        if (tool.ExecuteAsync == null)
-        {
-            Debug.WriteLine($"Tool '{tool.Name}' must have an ExecuteAsync function");
-        }
-        else
-        {
-            _registeredTools[tool.Name] = tool;
-        }
     }
 }

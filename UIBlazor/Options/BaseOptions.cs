@@ -7,9 +7,6 @@ public abstract class BaseOptions : INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    protected virtual void OnPropertyChanged(string propertyName)
-        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-
     protected void SetIfChanged<T>(ref T storage, T value, [CallerMemberName] string prop = "")
     {
         if (EqualityComparer<T>.Default.Equals(storage, value))

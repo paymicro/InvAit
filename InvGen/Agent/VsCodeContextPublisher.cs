@@ -1,14 +1,13 @@
-﻿using EnvDTE;
-using EnvDTE80;
-using InvGen.Utils;
-using Microsoft.VisualStudio.Shell;
-using Microsoft.VisualStudio.Threading;
-using Microsoft.Web.WebView2.Wpf;
-using Shared.Contracts;
-using System;
+﻿using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using EnvDTE;
+using EnvDTE80;
+using InvGen.Utils;
+using Microsoft.VisualStudio.Shell;
+using Microsoft.Web.WebView2.Wpf;
+using Shared.Contracts;
 
 namespace InvGen.Agent
 {

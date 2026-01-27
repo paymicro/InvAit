@@ -3,5 +3,6 @@
 public interface IBaseSettingsProvider
 {
     Task InitializeAsync();
+    
     Task ResetAsync();
 }

@@ -1,4 +1,4 @@
-﻿@inject IJSRuntime JS
+﻿@inject IJSRuntime Js
 
 <div id="@_messageId" class="markdown-content">
     @Content
@@ -8,7 +8,7 @@
     [Parameter] public string Content { get; set; } = string.Empty;
     [Parameter] public bool ScroolBootom { get; set; } = true;
 
-    private string _messageId = $"msg-{Guid.NewGuid()}";
+    private readonly string _messageId = $"msg-{Guid.NewGuid()}";
     private string _lastRenderedContent = "";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -17,10 +17,10 @@
         if (Content != _lastRenderedContent)
         {
             _lastRenderedContent = Content;
-            await JS.InvokeVoidAsync("renderMarkdownToElement", _messageId, Content);
+            await Js.InvokeVoidAsync("renderMarkdownToElement", _messageId, Content);
             if (ScroolBootom)
             {
-                await JS.InvokeVoidAsync("scrollToBottomIfNeeded", $"#{_messageId}");
+                await Js.InvokeVoidAsync("scrollToBottomIfNeeded", $"#{_messageId}");
             }
         }
     }

@@ -65,7 +65,6 @@
     </Compile>
     <Compile Include="ToolWindows\ChatToolWindow.cs" />
     <Compile Include="ToolWindows\ChatPane.cs" />
-    <Compile Include="ToolWindows\ChatViewModel.cs" />
     <Compile Include="Utils\JsonUtils.cs" />
     <Compile Include="VSCommandTable.cs">
       <AutoGen>True</AutoGen>

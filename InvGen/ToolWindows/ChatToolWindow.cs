@@ -6,7 +6,6 @@ using Community.VisualStudio.Toolkit;
 using EnvDTE;
 using EnvDTE80;
 using InvGen.Agent;
-using Microsoft.VisualStudio.Shell;
 using Microsoft.Web.WebView2.Wpf;
 using Shell = Microsoft.VisualStudio.Shell;
 
@@ -22,7 +21,7 @@ public class ChatToolWindow : BaseToolWindow<ChatToolWindow>, IDisposable
 
     public override async Task<FrameworkElement> CreateAsync(int toolWindowId, CancellationToken cancellationToken)
     {
-        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
         var control = new ChatControl();
         control.WebViewInitialized += OnWebViewInitialized;

@@ -1,5 +1,4 @@
 ﻿using System.Text.Encodings.Web;
-using System.Text.Json;
 
 namespace UIBlazor.Utils;
 
@@ -19,7 +18,7 @@ public static class JsonUtils
 
     public static string PrettyPrintFormat(string minifiedJson)
     {
-        using JsonDocument document = JsonDocument.Parse(minifiedJson);
+        using var document = JsonDocument.Parse(minifiedJson);
         return JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions { WriteIndented = true });
     }
 

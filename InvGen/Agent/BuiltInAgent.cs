@@ -96,6 +96,30 @@ public class BuiltInAgent
     private async Task<VsResponse> ReadFileAsync(IReadOnlyDictionary<string, object> args)
     {
         var solutionPath = await GetSolutionPathAsync();
+        var filePathParam = args.GetString("Path"); // Prefer "Path" argument for single file read
+
+        // If the "Path" parameter is provided, we assume a single file read and return raw content.
+        if (!string.IsNullOrEmpty(filePathParam))
+        {
+            var absPath = GetAbsolutePath(filePathParam, solutionPath);
+            if (!File.Exists(absPath))
+            {
+                return new VsResponse { Success = false, Error = $"File \"{filePathParam}\" doesn't exist." };
+            }
+
+            try
+            {
+                var content = File.ReadAllText(absPath);
+                return new VsResponse { Success = true, Payload = content };
+            }
+            catch (Exception ex)
+            {
+                await Logger.LogAsync($"Error reading file {filePathParam}: {ex.Message}", "ERROR");
+                return new VsResponse { Success = false, Error = $"Error reading file {filePathParam}: {ex.Message}" };
+            }
+        }
+        
+        // Fallback to original logic for multiple files or old "param1" usage if "Path" is not provided
         var files = args.Values.TakeWhile(x => !x.ToString().StartsWith(":")).Select(x => x.ToString()).ToList();
         
         // Support for range-based reading if only one file is requested
@@ -103,19 +127,20 @@ public class BuiltInAgent
         int? lineCount = args.ContainsKey("line_count") ? int.Parse(args.GetString("line_count")) : null;
 
         await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-        var stingBuilder = new StringBuilder();
+        var stringBuilder = new StringBuilder();
         var isSuccess = true;
         foreach (var fileName in files)
         {
             var filepath = GetAbsolutePath(fileName, solutionPath);
             if (!File.Exists(filepath))
             {
-                stingBuilder.AppendLine($"File \"{fileName}\" doesn't exist.");
+                stringBuilder.AppendLine($"File \"{fileName}\" doesn't exist.");
                 isSuccess = false;
                 continue;
             }
 
-            stingBuilder.AppendLine($"\"{fileName}\" content");
+            // Original logic appended file name and line numbers, preserving it for non-"Path" usage
+            stringBuilder.AppendLine($"\"{fileName}\" content");
 
             try
             {
@@ -136,13 +161,13 @@ public class BuiltInAgent
 
                 foreach (var readLine in allLines)
                 {
-                    stingBuilder.AppendLine($"{++lineNum} | {readLine}");
+                    stringBuilder.AppendLine($"{++lineNum} | {readLine}");
                 }
             }
             catch (Exception e)
             {
                 Logger.Log(e.Message);
-                stingBuilder.AppendLine($"Error reading {fileName}: {e.Message}");
+                stringBuilder.AppendLine($"Error reading {fileName}: {e.Message}");
                 isSuccess = false;
             }
         }
@@ -150,7 +175,7 @@ public class BuiltInAgent
         return new VsResponse
         {
             Success = isSuccess,
-            Payload = stingBuilder.ToString()
+            Payload = stringBuilder.ToString()
         };
     }
 

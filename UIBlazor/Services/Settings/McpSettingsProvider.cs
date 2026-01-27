@@ -1,24 +1,10 @@
-﻿using System.Text.Json;
-using Shared.Contracts;
-using Shared.Contracts.Mcp;
-using UIBlazor.Options;
-using UIBlazor.Utils;
-using UIBlazor.VS;
+﻿using Shared.Contracts.Mcp;
 
 namespace UIBlazor.Services.Settings;
 
-public class McpSettingsProvider : BaseSettingsProvider<McpOptions>, IMcpSettingsProvider
+public class McpSettingsProvider(ILocalStorageService storage, IVsBridge vsBridge, HttpClient httpClient)
+    : BaseSettingsProvider<McpOptions>(storage, "McpSettings"), IMcpSettingsProvider
 {
-    private readonly IVsBridge _vsBridge;
-    private readonly HttpClient _httpClient;
-
-    public McpSettingsProvider(ILocalStorageService storage, IVsBridge vsBridge, HttpClient httpClient) 
-        : base(storage, "McpSettings")
-    {
-        _vsBridge = vsBridge;
-        _httpClient = httpClient;
-    }
-
     public override async Task ResetAsync()
     {
         Current.Enabled = true;
@@ -36,10 +22,9 @@ public class McpSettingsProvider : BaseSettingsProvider<McpOptions>, IMcpSetting
 
         try
         {
-            string responseJson;
             if (server.Transport == "stdio")
             {
-                var result = await _vsBridge.ExecuteToolAsync(BuiltInToolEnum.McpGetTools, new Dictionary<string, object>
+                var result = await vsBridge.ExecuteToolAsync(BuiltInToolEnum.McpGetTools, new Dictionary<string, object>
                 {
                     { "serverId", server.Id },
                     { "command", server.Command },
@@ -50,14 +35,13 @@ public class McpSettingsProvider : BaseSettingsProvider<McpOptions>, IMcpSetting
                 {
                     return $"Error: {result.ErrorMessage}";
                 }
-                responseJson = result.Result;
             }
             else // http
             {
                 // MCP SSE handshake
                 // 1. Открываем SSE поток (GET)
                 using var request = new HttpRequestMessage(HttpMethod.Get, server.Endpoint);
-                using var handshakeResponse = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+                using var handshakeResponse = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
                 if (!handshakeResponse.IsSuccessStatusCode)
                 {
                     return "Error";
@@ -65,7 +49,7 @@ public class McpSettingsProvider : BaseSettingsProvider<McpOptions>, IMcpSetting
                 var stream = await handshakeResponse.Content.ReadAsStreamAsync();
                 using var reader = new StreamReader(stream);
 
-                string postUrl = string.Empty;
+                var postUrl = string.Empty;
 
                 // 2. Читаем поток, пока не получим URL для POST
                 while (true)
@@ -98,12 +82,12 @@ public class McpSettingsProvider : BaseSettingsProvider<McpOptions>, IMcpSetting
 
                 using var requestMessage = new HttpRequestMessage(HttpMethod.Post, postUrl)
                 {
-                    Content = new StringContent(JsonUtils.Serialize(mcpRequest), System.Text.Encoding.UTF8, "application/json")
+                    Content = new StringContent(JsonUtils.Serialize(mcpRequest), Encoding.UTF8, "application/json")
                 };
 
                 // Force remove the charset from Content-Type header as some MCP servers reject it
                 requestMessage.Content.Headers.ContentType!.CharSet = null;
-                var postResponse = await _httpClient.SendAsync(requestMessage);
+                var postResponse = await httpClient.SendAsync(requestMessage);
 
                 if (postResponse.IsSuccessStatusCode)
                 {

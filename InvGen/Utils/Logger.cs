@@ -32,7 +32,7 @@ internal static class Logger
         // Если это ошибка, можно автоматически активировать панель, чтобы пользователь её увидел
         if (level == "ERROR")
         {
-            await _pane?.ActivateAsync();
+            _ = _pane?.ActivateAsync();
         }
     }
 

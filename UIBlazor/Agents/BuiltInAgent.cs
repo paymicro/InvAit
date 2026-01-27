@@ -1,6 +1,3 @@
-using Shared.Contracts;
-using UIBlazor.VS;
-
 namespace UIBlazor.Agents;
 
 public class BuiltInAgent(IVsBridge vsBridge)
@@ -285,7 +282,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
                                      Agent
                                      <tool_call_end>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.SwitchMode, args)
+            // TODO тут нужен другой класс, например internalToolExec и туда же отправить браузер
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.SwitchMode, args) 
         },
         
         // Skills operations
@@ -324,6 +322,12 @@ public class BuiltInAgent(IVsBridge vsBridge)
             Name = BuiltInToolEnum.McpStartProcess,
             Category = ToolCategory.Mcp,
             Description = "Start a new MCP server process.",
+            ExampleToSystemMessage = $"""
+                                     For example:
+                                     <tool_call_begin> functions.{BuiltInToolEnum.McpStartProcess}
+                                     \path\to\file.cs
+                                     <tool_call_end>
+                                     """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.McpStartProcess, args)
         },
         new()
@@ -331,6 +335,12 @@ public class BuiltInAgent(IVsBridge vsBridge)
             Name = BuiltInToolEnum.McpStopProcess,
             Category = ToolCategory.Mcp,
             Description = "Stop a running MCP server process.",
+            ExampleToSystemMessage = $"""
+                                      For example:
+                                      <tool_call_begin> functions.{BuiltInToolEnum.McpStartProcess}
+                                      \path\to\file.cs
+                                      <tool_call_end>
+                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.McpStopProcess, args)
         },
         new()

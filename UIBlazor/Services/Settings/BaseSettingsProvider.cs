@@ -69,7 +69,7 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider, ID
     protected virtual void CopyProperties(TOptions from, TOptions to)
     {
         var properties = typeof(TOptions).GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanRead && p.CanWrite);
+            .Where(p => p is { CanRead: true, CanWrite: true });
 
         foreach (var prop in properties)
         {

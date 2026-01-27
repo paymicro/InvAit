@@ -1,7 +1,7 @@
-﻿using Community.VisualStudio.Toolkit;
+﻿using System.Threading.Tasks;
+using Community.VisualStudio.Toolkit;
 using InvGen.ToolWindows;
 using Microsoft.VisualStudio.Shell;
-using System.Threading.Tasks;
 
 namespace InvGen.Commands;
 

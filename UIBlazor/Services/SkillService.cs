@@ -1,22 +1,11 @@
-using System.Text;
-using System.Text.Json;
-using Shared.Contracts;
-using UIBlazor.VS;
-
 namespace UIBlazor.Services;
 
-public class SkillService : ISkillService
+public class SkillService(IVsBridge vsBridge) : ISkillService
 {
-    private readonly IVsBridge _vsBridge;
     private List<SkillMetadata>? _skillsCache;
     private readonly Dictionary<string, SkillContent> _contentCache = new();
     private DateTime _lastCacheUpdate = DateTime.MinValue;
-    
-    public SkillService(IVsBridge vsBridge)
-    {
-        _vsBridge = vsBridge;
-    }
-    
+
     /// <summary>
     /// Получить метаданные всех скиллов (кешируется)
     /// Вызывается при старте и при изменении файлов
@@ -29,7 +18,7 @@ public class SkillService : ISkillService
             return _skillsCache;
         }
         
-        var result = await _vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetSkillsMetadata);
+        var result = await vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetSkillsMetadata);
         if (!result.Success)
         {
             return _skillsCache ?? new List<SkillMetadata>();
@@ -71,7 +60,7 @@ public class SkillService : ISkillService
             { "param1", filePath }
         };
         
-        var result = await _vsBridge.ExecuteToolAsync(BuiltInToolEnum.ReadSkillContent, args);
+        var result = await vsBridge.ExecuteToolAsync(BuiltInToolEnum.ReadSkillContent, args);
         if (!result.Success)
         {
             return null;
@@ -146,7 +135,7 @@ public class SkillService : ISkillService
     
     /// <summary>
     /// Принудительно обновить кеш скиллов
-    /// Вызывается при изменении файлов (через FileSystemWatcher)
+    /// При изменении файлов (через FileSystemWatcher)
     /// </summary>
     public async Task RefreshCacheAsync()
     {

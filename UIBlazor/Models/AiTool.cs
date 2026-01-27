@@ -12,7 +12,6 @@ public class AiTool
     /// <summary>
     /// It will probably always be "function", indicating that the execution of a function is being requested.
     /// </summary>
-    /// <returns>
     public string Type { get; set; } = "function";
 
     /// <summary>

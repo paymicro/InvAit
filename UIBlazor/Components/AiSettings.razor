@@ -1,12 +1,4 @@
-﻿@using Radzen
-@using Radzen.Blazor
-@using Shared.Contracts
-@using Shared.Contracts.Mcp
-@using UIBlazor.Agents
-@using UIBlazor.Models
-@using UIBlazor.Options
-@using UIBlazor.Services
-@using UIBlazor.Services.Settings
+﻿@using Shared.Contracts.Mcp
 @inherits RadzenComponent
 
 <RadzenTabs RenderMode="TabRenderMode.Client">
@@ -174,7 +166,7 @@
                             }
                         </RadzenStack>
 
-                        @if (server.Tools != null && server.Tools.Any())
+                        @if (server.Tools.Any())
                         {
                             <RadzenAccordion Style="margin-top: 0.5rem; border: none;">
                                 <Items>
@@ -344,7 +336,6 @@
          {
              await ProfileManager.DeleteProfileAsync(_selectedProfile.Id);
              await LoadProfilesAsync();
-             // LoadProfilesAsync picks a default
          }
     }
 
@@ -372,14 +363,13 @@
 
     private async Task UpdateModelsAsync(CancellationToken cancellationToken)
     {
-        List<string> list = ["---"];
         try
         {
             // Note: This uses the CURRENT options in ProfileManager. 
             // Since we call ActivateProfileAsync/SaveProfileAsync on change, 
             // the settings are already active.
             var models = await ChatService.GetModelsAsync(cancellationToken);
-            list = models.Data.Select(m => m.Id).ToList();
+            var list = models.Data.Select(m => m.Id).ToList();
             
             // Allow Custom Models logic?
             ProfileManager.ActiveProfile.AvailableModels = list;

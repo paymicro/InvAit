@@ -5,19 +5,10 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:toolkit="clr-namespace:Community.VisualStudio.Toolkit;assembly=Community.VisualStudio.Toolkit"
              xmlns:shell="clr-namespace:Microsoft.VisualStudio.Shell;assembly=Microsoft.VisualStudio.Shell.15.0"
-             xmlns:vm="clr-namespace:InvGen.ToolWindows"
              mc:Ignorable="d"
              toolkit:Themes.UseVsTheme="True"
              Background="{DynamicResource {x:Static shell:VsBrushes.WindowKey}}"
              d:DesignHeight="450" d:DesignWidth="400" UseLayoutRounding="True">
-
-    <UserControl.Resources>
-        <vm:ChatViewModel x:Key="Vm"/>
-    </UserControl.Resources>
-
-    <UserControl.DataContext>
-        <StaticResource ResourceKey="Vm"/>
-    </UserControl.DataContext>
     
     <!-- WebView -->
     <ContentPresenter x:Name="WebViewHost"

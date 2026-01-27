@@ -1,7 +1,4 @@
-﻿using Shared.Contracts;
-using UIBlazor.Agents;
-
-namespace UIBlazor.VS;
+﻿namespace UIBlazor.VS;
 
 public interface IVsBridge
 {
@@ -10,6 +7,4 @@ public interface IVsBridge
     Task InitializeAsync();
 
     Task<VsToolResult> ExecuteToolAsync(string name, IReadOnlyDictionary<string, object>? args = null);
-
-    Task SwitchModeAsync(AppMode mode);
 }
