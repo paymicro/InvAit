@@ -1,10 +1,9 @@
 ﻿using System.Collections.Concurrent;
-using System.Text.Json;
 using Microsoft.JSInterop;
 using Radzen;
 using Shared.Contracts;
 using UIBlazor.Agents;
-using UIBlazor.Options;
+using UIBlazor.Models;
 using UIBlazor.Services.Settings;
 using UIBlazor.Utils;
 
@@ -46,7 +45,12 @@ public class VsBridge : IVsBridge, IDisposable
             if (Enum.TryParse<AppMode>(modeObj.ToString(), true, out var mode))
             {
                 await SwitchModeAsync(mode);
-                return new VsToolResult { Success = true, Result = $"Switched to {mode} mode successfully. Now you have access to different set of tools." };
+                return new VsToolResult
+                {
+                    Role = ChatMessageRole.System,
+                    Success = true,
+                    Result = $"Switched to {mode} mode successfully. Now you have access to different set of tools."
+                };
             }
         }
 

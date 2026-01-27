@@ -8,7 +8,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using UIBlazor.Models;
-using UIBlazor.Options;
 using UIBlazor.Services.Models;
 using UIBlazor.Services.Settings;
 using UIBlazor.Utils;
@@ -226,7 +225,7 @@ public class ChatService(
                 if (regex.Success)
                 {
                     message.ReasoningContent ??= regex.Groups["reason"].Value;
-                    message.Content = message.Content.Remove(0, regex.Length);
+                    message.Content = message.Content[regex.Length..];
                 }
                 LastCompletionsModel ??= chunk?.Model;
                 if (chunk?.Usage != null)
@@ -294,7 +293,8 @@ public class ChatService(
             // обрабатываем размышления как Z.ai GLM.
             // Все размышления идут в ReasoningContent с пустым Content
 
-            if (delta.ReasoningContent == null && !string.IsNullOrEmpty(content))
+            // Преобразрвания нужны если есть контент с блоком <think>
+            if (!string.IsNullOrEmpty(content))
             {
                 if (!isReasoningContent) // не думаем
                 {
@@ -307,8 +307,7 @@ public class ChatService(
                     }
                     else
                     {
-                        // Не думали - нечего и начинать.
-                        // Пишем чистый контент в историю
+                        // Не думали - нечего и начинать. Пишем чистый контент в историю
                         assistantResponse.Append(content);
                     }
                 }
@@ -319,12 +318,13 @@ public class ChatService(
                         // если закончил думать, то можно в контент добавить часть чанка (актуально для Kimi2)
                         isReasoningContent = false;
                         delta.Content = content.Replace(_thinkEnd, string.Empty);
+                        delta.ReasoningContent = null;
                     }
                     else
                     {
-                        // если не конец - то все пихаем в ReasoningContent
-                        delta.ReasoningContent = content;
+                        // если не конец - то все пихаем в ReasoningContent и очищаем Content
                         delta.Content = null;
+                        delta.ReasoningContent = content;
                     }
                 }
             }

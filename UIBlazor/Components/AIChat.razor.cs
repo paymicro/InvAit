@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
@@ -287,34 +288,52 @@ public partial class AIChat : RadzenComponent
                     ToolName = tool.Name,
                 };
                 AddVisualMessage(toolResultMessage);
-                await ChatService.AddMessageAsync(toolResultMessage);
-                
-                if (vsToolResult.Success)
+
+                // для модели обогащаем результат и отправляем в чат
+                var result = vsToolResult.Success
+                    ? $"""
+                       <tool_result name="{tool.Name}">
+                       {vsToolResult.Result}
+                       </tool_result>
+                       Инструкция: На основе полученных данных выше, реши, достигнута ли цель. Если нет - предложи следующее действие, НО не повторяй предыдущее.
+                       """
+                    : $"""
+                       <tool_result name="{tool.Name}">
+                       {vsToolResult.ErrorMessage}
+                       </tool_result>
+                       Инструкция: Во время выполнения возникла ошибка. Предложи следующее действие, НО не повторяй предыдущее.
+                       """;
+                await ChatService.AddMessageAsync(new VisualChatMessage
                 {
-                    var result = $"""
-                        <tool_result name="{tool.Name}">
-                        {vsToolResult.Result}
-                        </tool_result>
-                        Инструкция: На основе полученных данных выше, реши, достигнута ли цель. Если нет - предложи следующее действие, НО не повторяй предыдущее.
-                        """ ;
-                    var systemFollowup = new VisualChatMessage { Role = vsToolResult.Role, Content = result };
-                    await ChatService.AddMessageAsync(systemFollowup);
-                }
-                else
-                {
-                    var result = $"""
-                        <tool_result name="{tool.Name}">
-                        {vsToolResult.ErrorMessage}
-                        </tool_result>
-                        Инструкция: Во время выполнения возникла ошибка. Предложи следующее действие, НО не повторяй предыдущее.
-                        """;
-                    var systemError = new VisualChatMessage { Role = ChatMessageRole.System, Content = result };
-                    await ChatService.AddMessageAsync(systemError);
-                }
+                    Role = vsToolResult.Role,
+                    Content = result
+                });
             }
         }
 
         await GetAIResponseAsync();
+    }
+
+    private void SyncSessionMessageWithUi()
+    {
+        foreach (var chatMessage in ChatService.Session.Messages)
+        {
+            // тулзы показываем по особому (смотри HandleToolCallAsync)
+            var regex = Regex.Match(chatMessage.Content, "^<tool_result name=\"(?<name>.{2,20})\">(?<result>.*)</tool_result>", RegexOptions.Singleline);
+            if (regex.Success)
+            {
+                AddVisualMessage(new VisualChatMessage
+                {
+                    Role = ChatMessageRole.Tool,
+                    Content = regex.Groups["result"].Value,
+                    ToolName = regex.Groups["name"].Value,
+                });
+            }
+            else
+            {
+                AddVisualMessage(chatMessage);
+            }
+        }
     }
 
     private async Task CancelResponceAsync()
@@ -326,14 +345,12 @@ public partial class AIChat : RadzenComponent
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
+
         ToolManager.RegisterAllTools();
-        ProfileManager.InitializeAsync();
+        await ProfileManager.InitializeAsync();
 
         await ChatService.LoadLastSessionOrGenerateNewAsync();
-        foreach (var chatMessage in ChatService.Session.Messages)
-        {
-            AddVisualMessage(chatMessage);
-        }
+        SyncSessionMessageWithUi();
 
         VsBridge.OnModeSwitched += HandleModeSwitched;
 
@@ -345,7 +362,7 @@ public partial class AIChat : RadzenComponent
         if (ChatService.Session != null)
         {
             ChatService.Session.Mode = mode;
-            _ = ChatService.AddMessageAsync(ChatMessageRole.System, $"Mode switched to {mode}");
+            // _ = ChatService.AddMessageAsync(ChatMessageRole.System, $"Mode switched to {mode}");
         }
         InvokeAsync(StateHasChanged);
     }
