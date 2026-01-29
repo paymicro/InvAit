@@ -39,7 +39,7 @@ public class ConversationSession
     /// <summary>
     /// Gets or sets the current application mode for this session.
     /// </summary>
-    public Shared.Contracts.AppMode Mode { get; set; } = Shared.Contracts.AppMode.Chat;
+    public AppMode Mode { get; set; } = AppMode.Chat;
 
     /// <summary>
     /// Adds a message to the conversation and manages memory limits.

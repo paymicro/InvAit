@@ -1,6 +1,4 @@
-﻿using System.Collections.Generic;
-
-namespace Shared.Contracts
+﻿namespace Shared.Contracts
 {
     public class VsCodeContext
     {

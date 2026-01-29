@@ -1,0 +1,150 @@
+﻿@inherits RadzenComponent
+
+<div class="chat-container" >
+    <div id="@Id" contenteditable="true" class="custom-editor" @oninput="HandleInput" @onkeydown="OnKeyDown" @onkeydown:preventDefault="@shouldPreventDefault" @onblur="SaveSelection"></div>
+
+    @if (filteredFiles.Any())
+    {
+        <div class="hints-menu" style="top: @(cursorCoords.Top)px; left: @(cursorCoords.Left)px;">
+            @* TODO - RadzenMenu *@
+            <RadzenListBox Data="@filteredFiles"
+                           TValue="string"
+                           Change="@(arg => AddChip(arg.ToString()))">
+                <Template>
+                    <div class="hint-item">@context</div>
+                </Template>
+            </RadzenListBox>
+        </div>
+    }
+
+    @* Кнопки *@
+    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.Right">
+        <RadzenDropDown TValue="AppMode" class="mode-dropdown" Data="@AppModeValues" @bind-Value="@CurrentMode" />
+
+        <RadzenButton Icon="send"
+                      ButtonStyle="ButtonStyle.Primary"
+                      Variant="Variant.Text"
+                      Visible="@(!IsLoading)"
+                      Disabled="@(string.IsNullOrWhiteSpace(message) || IsLoading)"
+                      Click="@OnSendClick"
+                      Title="Send message"
+                      class="rz-chat-send-btn" />
+        <RadzenButton Icon="dangerous"
+                      ButtonStyle="ButtonStyle.Danger"
+                      Variant="Variant.Text"
+                      Visible="@IsLoading"
+                      Click="@Cancel.InvokeAsync"
+                      Title="Cancel"
+                      class="rz-chat-cancel-btn" />
+    </RadzenStack>
+</div>
+
+@code {
+    [Parameter] public string Value { get; set; } = string.Empty;
+
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    [Parameter] public EventCallback<string> SendMessage { get; set; }
+
+    [Parameter] public EventCallback<string> Cancel { get; set; }
+
+    [Parameter] public string Placeholder { get; set; } = string.Empty;
+
+    [Parameter] public bool IsLoading { get; set; }
+
+    [Inject] private ChatService ChatService { get; set; } = null!;
+
+    [Inject] IJSRuntime JS { get; set; } = null!;
+
+    [Inject] IVsCodeContextService VsCodeContextService { get; set; } = null!;
+
+    private string Id = "editor_" + Guid.NewGuid();
+
+    private List<AppMode> AppModeValues { get; } = [.. Enum.GetValues<AppMode>()];
+
+    private AppMode CurrentMode
+    {
+        get => ChatService.Session?.Mode ?? AppMode.Chat; // ?? - т.к. Session не успевает подгрузиться в первый раз
+        set => ChatService.Session.Mode = value; // TODO сохранение
+    }
+
+    private bool shouldPreventDefault;
+
+    public string message { get; set; } = string.Empty;
+
+    // Класс для координат
+    public class Coords { public int Top { get; set; } = 0; public int Left { get; set; } = 0; }
+    private Coords cursorCoords = new();
+
+    private List<string> allFiles = new() { "file1.cs", "file2.cs", "file3.cs", "path\\file4.cs" }; // TODO из VsCodeContextService
+    private List<string> filteredFiles = new();
+
+    private int lastMatchLength = 0; // Сколько символов (включая @) нужно удалить
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // запрет вставки картинок и стилей из буффера
+            await JS.InvokeVoidAsync("editorFunctions.setupPasteInterop", Id);
+        }
+    }
+
+    private async Task SaveSelection()
+    {
+        // Вызываем сохранение range в JS
+        await JS.InvokeVoidAsync("editorFunctions.saveSelection");
+    }
+
+    private async Task HandleInput()
+    {
+        cursorCoords = await JS.InvokeAsync<Coords>("editorFunctions.getCursorCoordinates", Id);
+        var result = await JS.InvokeAsync<JsonElement?>("editorFunctions.getWordBeforeCursor");
+
+        if (result != null)
+        {
+            // Теперь берем корректное свойство "query"
+            string query = result.Value.GetProperty("query").GetString();
+            lastMatchLength = result.Value.GetProperty("length").GetInt32();
+
+            filteredFiles = allFiles
+                .Where(u => u.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+        else
+        {
+            filteredFiles.Clear();
+        }
+
+        message = await JS.InvokeAsync<string>("editorFunctions.getText", Id);
+    }
+
+    private async Task AddChip(string value)
+    {
+        // Создаем HTML чипса
+        string chipHtml = $"<span contenteditable='false' class='chip'> @{value} </span>";
+
+        // Передаем lastMatchLength, чтобы JS удалил "@набранное_имя" перед вставкой
+        await JS.InvokeVoidAsync("editorFunctions.insertChip", Id, chipHtml, lastMatchLength);
+
+        filteredFiles.Clear();
+        lastMatchLength = 0;
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        // Enter без Shift/Ctrl — отправка
+        if (e is { Key: "Enter", CtrlKey: false, ShiftKey: false })
+        {
+            shouldPreventDefault = true;
+            // Здесь можно добавить проверку, не открыто ли сейчас меню подсказок
+            await Task.WhenAll(SendMessage.InvokeAsync(message));
+        }
+        else
+        {
+            shouldPreventDefault = false;
+        }
+    }
+
+    private Task OnSendClick() => SendMessage.InvokeAsync(message);
+}

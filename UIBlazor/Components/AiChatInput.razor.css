@@ -1,0 +1,54 @@
+﻿.chat-input-container {
+    width: 100%;
+}
+
+.chat-container {
+    position: relative; /* Обязательно: меню будет позиционироваться относительно этого блока */
+    border: 1px solid #ccc;
+    margin: 0.2em;
+    border-radius: 0.5em;
+    background: var(--rz-base-dark);
+}
+
+    .chat-container:focus-within {
+        outline: 1px solid var(--rz-base-400); /* выделение при фокусе на дочерних элементах */
+    }
+
+::deep .mode-dropdown {
+    border-radius: 26px;
+    height: 32px;
+    padding: 6px 10px;
+    width: 100px;
+}
+
+.custom-editor {
+    min-height: 40px;
+    border-radius: 4px;
+    min-height: 2.6em;
+    padding: 0.6em 0.6em 0 0.6em;
+}
+    .custom-editor:focus {
+        outline: none;
+    }
+
+.hints-menu {
+    position: absolute;
+    z-index: 1000;
+    border: 1px solid #ccc;
+    box-shadow: 0 -4px 6px rgba(0,0,0,0.1);
+    transform: translateY(-100%);
+    opacity: 1;
+    margin-top: -5px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+/* Стили чипса */
+::deep .chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 1em;
+    user-select: none; /* Запрещаем выделение текста внутри */
+    background: var(--rz-input-background-color);
+}

@@ -1,7 +1,7 @@
 ﻿@inject IJSRuntime Js
 
 <div id="@_messageId" class="markdown-content">
-    @Content
+    @((MarkupString)_processedContent)
 </div>
 
 @code {
@@ -9,7 +9,24 @@
     [Parameter] public bool ScroolBootom { get; set; } = true;
 
     private readonly string _messageId = $"msg-{Guid.NewGuid()}";
-    private string _lastRenderedContent = "";
+    private string _lastRenderedContent = string.Empty;
+    private string _processedContent = string.Empty;
+
+    // protected override void OnParametersSet()
+    // {
+    //     base.OnParametersSet();
+
+    //     try
+    //     {
+    //         // Remove <file_content> and <error_reading_file> tags for display
+    //         _processedContent = Regex.Replace(Content, "<file_content\\s+path=\"[^\"]+\">.*?</file_content>", "", RegexOptions.Singleline);
+    //         _processedContent = Regex.Replace(_processedContent, "<error_reading_file\\s+path=\"[^\"]+\">.*?</error_reading_file>", "", RegexOptions.Singleline);
+    //     }
+    //     catch
+    //     {
+    //         _processedContent = string.Empty;
+    //     }
+    // }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

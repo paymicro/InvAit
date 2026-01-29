@@ -1,28 +1,20 @@
-using System.Text;
-using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Web;
-using Microsoft.JSInterop;
 using Radzen;
 using Radzen.Blazor.Rendering;
-using Shared.Contracts;
-using UIBlazor.Agents;
-using UIBlazor.Models;
+using UIBlazor.Services;
 using UIBlazor.Services.Settings;
-using UIBlazor.VS;
 
 namespace UIBlazor.Components;
 
-public partial class AiChat : RadzenComponent, IDisposable
+public partial class AiChat : RadzenComponent
 {
     // TODO использовать из ChatService.Session.Messages
     private List<VisualChatMessage> Messages { get; set; } = [];
-    private string CurrentInput { get; set; } = string.Empty;
+    // private string CurrentInput { get; set; } = string.Empty;
     private bool IsLoading { get; set; }
 
     private bool _preventDefault;
-    private ElementReference _messagesContainer;
-    private ContextSuggestions _suggestions;
+
     private CancellationTokenSource _cts = new();
 
     [Inject]
@@ -37,27 +29,6 @@ public partial class AiChat : RadzenComponent, IDisposable
     [Inject]
     private IVsBridge VsBridge { get; set; } = null!;
 
-    private List<AppMode> AppModeValues { get; } = Enum.GetValues<AppMode>().ToList();
-
-    /// <summary>
-    /// Specifies additional custom attributes that will be rendered by the input.
-    /// </summary>
-    /// <value>The attributes.</value>
-    [Parameter]
-    public IReadOnlyDictionary<string, object>? InputAttributes { get; set; }
-
-    /// <summary>
-    /// Gets or sets the title displayed in the chat header.
-    /// </summary>
-    [Parameter]
-    public string Title { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Gets or sets the placeholder text for the input field.
-    /// </summary>
-    [Parameter]
-    public string Placeholder { get; set; } = "Type your message...";
-
     /// <summary>
     /// Gets or sets the message displayed when there are no messages.
     /// </summary>
@@ -69,24 +40,6 @@ public partial class AiChat : RadzenComponent, IDisposable
     /// </summary>
     [Parameter]
     public string UserAvatarText { get; set; } = "U";
-
-    /// <summary>
-    /// Gets or sets whether to show the clear chat button.
-    /// </summary>
-    [Parameter]
-    public bool ShowClearButton { get; set; } = true;
-
-    /// <summary>
-    /// Gets or sets whether the chat is disabled.
-    /// </summary>
-    [Parameter]
-    public bool Disabled { get; set; }
-
-    /// <summary>
-    /// Gets or sets whether the input is read-only.
-    /// </summary>
-    [Parameter]
-    public bool ReadOnly { get; set; }
 
     /// <summary>
     /// Adds a message to the chat.
@@ -124,17 +77,16 @@ public partial class AiChat : RadzenComponent, IDisposable
     /// <param name="content">The message content to send.</param>
     public async Task SendMessageAsync(string content)
     {
-        if (string.IsNullOrWhiteSpace(content) || Disabled || IsLoading)
+        if (string.IsNullOrWhiteSpace(content) || IsLoading)
             return;
 
-        // Clear input
-        CurrentInput = string.Empty;
-        await InvokeAsync(StateHasChanged);
+        // Process the CurrentInput (HTML) to extract chip data and fetch content
+        var processedContent = await ProcessMessageContent(content);
 
         // Add user message
         var userMessage = new VisualChatMessage
         {
-            Content = content,
+            Content = processedContent,
             Role = ChatMessageRole.User
         };
         AddVisualMessage(userMessage);
@@ -142,6 +94,51 @@ public partial class AiChat : RadzenComponent, IDisposable
 
         // Get AI response
         await GetAiResponseAsync();
+    }
+
+    private async Task<string> ProcessMessageContent(string htmlContent)
+    {
+        var processedContentBuilder = new StringBuilder();
+        var lastIndex = 0;
+        
+        // Regex to find chip spans: <span contenteditable="false" class="chip" data-path="path_to_file">display_text</span>
+        var chipRegex = new Regex("<span\\s+contenteditable=\"false\"\\s+class=\"chip\"\\s+data-path=\"([^\"]+)\"[^>]*>.*?</span>", RegexOptions.Singleline);
+        
+        foreach (Match match in chipRegex.Matches(htmlContent))
+        {
+            // Append text before the current chip
+            processedContentBuilder.Append(htmlContent.Substring(lastIndex, match.Index - lastIndex));
+
+            var dataPath = match.Groups[1].Value;
+            
+            // Call the tool to get the content
+            var tool = ToolManager.GetTool(BuiltInToolEnum.ReadOpenFile.ToString());
+            if (tool != null)
+            {
+                var args = new Dictionary<string, object> { { "path", dataPath } };
+                var vsToolResult = await tool.ExecuteAsync(args);
+
+                if (vsToolResult.Success)
+                {
+                    processedContentBuilder.Append($"<file_content path=\"{dataPath}\">\n{vsToolResult.Result}\n</file_content>");
+                }
+                else
+                {
+                    processedContentBuilder.Append($"<error_reading_file path=\"{dataPath}\">{vsToolResult.ErrorMessage}</error_reading_file>");
+                }
+            }
+            else
+            {
+                processedContentBuilder.Append($"<error_tool_not_found path=\"{dataPath}\">Tool 'ReadOpenFile' not found.</error_tool_not_found>");
+            }
+
+            lastIndex = match.Index + match.Length;
+        }
+
+        // Append any remaining text after the last chip
+        processedContentBuilder.Append(htmlContent.Substring(lastIndex));
+
+        return processedContentBuilder.ToString();
     }
 
     private async Task GetAiResponseAsync()
@@ -241,16 +238,13 @@ public partial class AiChat : RadzenComponent, IDisposable
                 }
 
                 var vsToolResult = await tool.ExecuteAsync(aiTool.Function.Arguments);
-                if (vsToolResult != null)
+                NotificationService.Notify(new NotificationMessage
                 {
-                    NotificationService.Notify(new NotificationMessage
-                    {
-                        Severity = NotificationSeverity.Success,
-                        Summary = vsToolResult.Result,
-                        Duration = 3_000,
-                        ShowProgress = true
-                    });
-                }
+                    Severity = NotificationSeverity.Success,
+                    Summary = vsToolResult.Result,
+                    Duration = 3_000,
+                    ShowProgress = true
+                });
 #if DEBUG
                 // Безголовые тесты
                 if (!vsToolResult.Success && vsToolResult.ErrorMessage == "WebView2 API is`t find.")
@@ -351,7 +345,6 @@ public partial class AiChat : RadzenComponent, IDisposable
         await VsBridge.InitializeAsync();
         VsBridge.OnModeSwitched += HandleModeSwitched;
 
-        await ChatService.LoadLastSessionOrGenerateNewAsync();
         SyncSessionMessageWithUi();
 
         await InvokeAsync(StateHasChanged);
@@ -377,58 +370,6 @@ public partial class AiChat : RadzenComponent, IDisposable
                 Duration = 2000
             });
         }
-    }
-
-    private async Task OnInputAsync(ChangeEventArgs e)
-    {
-        CurrentInput = e.Value?.ToString() ?? "";
-
-        var match = Regex.Match(CurrentInput, @"@(\w*)$");
-        if (match.Success)
-        {
-            _suggestions.Show(5, 40); 
-            _suggestions.SetFilter(match.Groups[1].Value);
-        }
-        else
-        {
-            _suggestions.Hide();
-        }
-        
-        await InvokeAsync(StateHasChanged);
-    }
-    
-    private void OnSuggestionSelected(string path)
-    {
-        var match = Regex.Match(CurrentInput, @"(.*)@\w*");
-        if (match.Success)
-        {
-            CurrentInput = match.Groups[1].Value + $"\"{path}\" ";
-        }
-        _suggestions.Hide();
-        StateHasChanged();
-    }
-
-    private async Task OnKeyDownAsync(KeyboardEventArgs e)
-    {
-        if (e is { Key: "Enter", ShiftKey: false } && JSRuntime != null)
-        {
-            _preventDefault = true;
-            await OnSendMessageAsync();
-        }
-        else
-        {
-            _preventDefault = false;
-        }
-    }
-
-    private async Task OnSendMessageAsync()
-    {
-        await SendMessageAsync(CurrentInput);
-    }
-
-    private async Task OnClearChatAsync()
-    {
-        await ClearChatAsync();
     }
 
     private static void OnEditMessage(VisualChatMessage message)
@@ -486,30 +427,13 @@ public partial class AiChat : RadzenComponent, IDisposable
     }
 
     /// <inheritdoc />
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-            return;
-
-        if (_messagesContainer.Context != null && JSRuntime != null)
-        {
-            // Scroll to bottom when new messages are added
-            await JSRuntime.InvokeVoidAsync("scrollToBottomIfNeeded", ".rz-chat-messages", 100);
-        }
-    }
-
-    /// <inheritdoc />
-    protected override string GetComponentCssClass()
-    {
-        return ClassList.Create("rz-chat").ToString();
-    }
+    protected override string GetComponentCssClass() => ClassList.Create("rz-chat").ToString();
 
     /// <inheritdoc />
     public override void Dispose()
     {
         base.Dispose();
-
-        _suggestions?.Dispose();
+        
         VsBridge.OnModeSwitched -= HandleModeSwitched;
 
         _cts?.Cancel();

@@ -24,11 +24,11 @@
 @code {
     [Parameter] public List<VisualChatMessage> Messages { get; set; } = [];
 
-    private double MessageProgress => ChatService.Session != null && ChatService.Options.MaxMessages > 0
-        ? Math.Min(100, (double)Messages.Count / ChatService.Options.MaxMessages * 100)
+    private int MessageProgress => ChatService.Session != null && ChatService.Options.MaxMessages > 0
+        ? Math.Min(100, Messages.Count * 100 / ChatService.Options.MaxMessages)
         : 0;
 
-    private double TokenProgress => ChatService.Session != null && ChatService.Options.MaxTokens > 0
-        ? Math.Min(100, (double)ChatService.Session.TotalTokens / ChatService.Options.MaxTokens * 100)
+    private int TokenProgress => ChatService.Session != null && ChatService.Options.MaxTokens > 0
+        ? Math.Min(100, ChatService.Session.TotalTokens * 100 / ChatService.Options.MaxTokens)
         : 0;
 }
