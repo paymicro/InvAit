@@ -37,6 +37,11 @@ public class ProfileService(ILocalStorageService localStorage, IJSRuntime jSRunt
         {
             profile.PropertyChanged += OnProfilePropertyChanged;
         }
+
+        if (ActiveProfile.SkipSSL)
+        {
+            NotifySkipSsl(ActiveProfile.SkipSSL);
+        }
     }
 
     private void OnProfilePropertyChanged(object? sender, PropertyChangedEventArgs e)

@@ -103,6 +103,7 @@ public partial class ChatControl
             }
             else
             {
+                e.Action = CoreWebView2ServerCertificateErrorAction.Cancel;
                 Logger.Log($"SSL validation error. You can skip SSL validation in settings.", "ERROR");
             }
         };

@@ -23,7 +23,7 @@ public class ConnectionProfile : BaseOptions
     
     public double Temperature { get; set => SetIfChanged(ref field, value); } = 0.7;
     
-    public int MaxTokens { get; set => SetIfChanged(ref field, value); } = 256_000;
+    public int MaxTokens { get; set => SetIfChanged(ref field, value); } = 50_000;
     
     public bool Stream { get; set => SetIfChanged(ref field, value); } = true;
     
