@@ -6,14 +6,18 @@
     @if (filteredFiles.Any())
     {
         <div class="hints-menu" style="top: @(cursorCoords.Top)px; left: @(cursorCoords.Left)px;">
-            @* TODO - RadzenMenu *@
-            <RadzenListBox Data="@filteredFiles"
-                           TValue="string"
-                           Change="@(arg => AddChip(arg.ToString()))">
-                <Template>
-                    <div class="hint-item">@context</div>
-                </Template>
-            </RadzenListBox>
+            <ul class="hints-list">
+                @for (int i = 0; i < filteredFiles.Count; i++)
+                {
+                    var index = i;
+                    var file = filteredFiles[i];
+                    var isSelected = index == selectedIndex;
+                    <li class="hint-item @(isSelected ? "selected" : "")" 
+                        @onclick="() => AddChip(file)">
+                        @file
+                    </li>
+                }
+            </ul>
         </div>
     }
 
@@ -76,8 +80,8 @@
     public class Coords { public int Top { get; set; } = 0; public int Left { get; set; } = 0; }
     private Coords cursorCoords = new();
 
-    private List<string> allFiles = new() { "file1.cs", "file2.cs", "file3.cs", "path\\file4.cs" }; // TODO из VsCodeContextService
     private List<string> filteredFiles = new();
+    private int selectedIndex = 0;
 
     private int lastMatchLength = 0; // Сколько символов (включая @) нужно удалить
 
@@ -103,13 +107,16 @@
 
         if (result != null)
         {
-            // Теперь берем корректное свойство "query"
-            string query = result.Value.GetProperty("query").GetString();
+            string query = result.Value.GetProperty("query").GetString() ?? string.Empty;
             lastMatchLength = result.Value.GetProperty("length").GetInt32();
 
-            filteredFiles = allFiles
-                .Where(u => u.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+            var source = VsCodeContextService.CurrentContext?.SolutionFiles ?? ["test1.cs", "test2.cs"];
+
+            filteredFiles = source
+                .Where(u => u.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .Take(10)
                 .ToList();
+            selectedIndex = 0;
         }
         else
         {
@@ -133,6 +140,37 @@
 
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
+        if (filteredFiles.Any())
+        {
+            if (e.Key == "ArrowDown")
+            {
+                selectedIndex = (selectedIndex + 1) % filteredFiles.Count;
+                shouldPreventDefault = true;
+                return;
+            }
+            if (e.Key == "ArrowUp")
+            {
+                selectedIndex = (selectedIndex - 1 + filteredFiles.Count) % filteredFiles.Count;
+                shouldPreventDefault = true;
+                return;
+            }
+            if (e.Key == "Tab" || e.Key == "Enter")
+            {
+                shouldPreventDefault = true;
+                if (selectedIndex >= 0 && selectedIndex < filteredFiles.Count)
+                {
+                    await AddChip(filteredFiles[selectedIndex]);
+                }
+                return;
+            }
+            if (e.Key == "Escape")
+            {
+                shouldPreventDefault = true;
+                filteredFiles.Clear();
+                return;
+            }
+        }
+
         // Enter без Shift/Ctrl — отправка
         if (e is { Key: "Enter", CtrlKey: false, ShiftKey: false })
         {

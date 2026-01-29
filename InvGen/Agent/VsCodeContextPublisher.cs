@@ -1,6 +1,6 @@
 ﻿using System;
-using System.IO;
-using System.Threading;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using EnvDTE;
 using EnvDTE80;
@@ -18,13 +18,11 @@ namespace InvGen.Agent
         private readonly SolutionEvents _solutionEvents;
         private readonly WindowEvents _windowEvents;
         private readonly DocumentEvents _documentEvents;
+        private readonly SelectionEvents _selectionEvents;
 
-        private VsCodeContext _currentContext = new VsCodeContext();
-        private DateTime _lastSolutionUpdateTime = DateTime.MinValue;
-        private readonly SemaphoreSlim _updateSemaphore = new SemaphoreSlim(1, 1);
-        private const int SolutionUpdateThrottleMs = 10000;
         private bool _isDisposed;
-
+        private DateTime _lastUpdate = DateTime.MinValue;
+        private const int ThrottleMs = 500;
 
         private VsCodeContextPublisher(DTE2 dte, WebView2 webView)
         {
@@ -34,6 +32,7 @@ namespace InvGen.Agent
             _solutionEvents = _dte.Events.SolutionEvents;
             _windowEvents = _dte.Events.WindowEvents;
             _documentEvents = _dte.Events.DocumentEvents;
+            _selectionEvents = _dte.Events.SelectionEvents;
         }
 
         public static async Task<VsCodeContextPublisher> CreateAsync(DTE2 dte, WebView2 webView)
@@ -47,170 +46,162 @@ namespace InvGen.Agent
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-            _solutionEvents.Opened += SolutionChangedHandler;
-            _solutionEvents.AfterClosing += SolutionChangedHandler;
-            _solutionEvents.ProjectAdded += SolutionProjectChangedHandler;
-            _solutionEvents.ProjectRemoved += SolutionProjectChangedHandler;
-            _solutionEvents.ProjectRenamed += SolutionProjectRenamedHandler;
+            _solutionEvents.Opened += OnContextChanged;
+            _solutionEvents.AfterClosing += OnContextChanged;
+            _solutionEvents.ProjectAdded += OnProjectChanged;
+            _solutionEvents.ProjectRemoved += OnProjectChanged;
+            _solutionEvents.ProjectRenamed += OnProjectRenamed;
 
-            _windowEvents.WindowActivated += WindowActivatedHandler;
-            _documentEvents.DocumentSaved += DocumentSavedHandler;
+            _windowEvents.WindowActivated += OnWindowActivated;
+            _documentEvents.DocumentSaved += OnDocumentSaved;
+            _selectionEvents.OnChange += OnSelectionChanged;
             
-            await UpdateContextAsync(true, true);
+            await UpdateContextAsync();
         }
 
-        private void DocumentSavedHandler(Document document) => UpdateContextAsync(true, false).FireAndForget();
-        private void WindowActivatedHandler(Window gotFocus, Window lostFocus) => UpdateContextAsync(false, true).FireAndForget();
-        private void SolutionProjectRenamedHandler(Project project, string oldName) => UpdateContextAsync(true, false).FireAndForget();
-        private void SolutionProjectChangedHandler(Project project) => UpdateContextAsync(true, false).FireAndForget();
-        private void SolutionChangedHandler() => UpdateContextAsync(true, true).FireAndForget();
+        private void OnSelectionChanged() => DebouncedUpdate();
+        private void OnDocumentSaved(Document document) => DebouncedUpdate();
+        private void OnWindowActivated(Window gotFocus, Window lostFocus) => DebouncedUpdate();
+        private void OnProjectRenamed(Project project, string oldName) => DebouncedUpdate();
+        private void OnProjectChanged(Project project) => DebouncedUpdate();
+        private void OnContextChanged() => DebouncedUpdate();
 
-        private async Task UpdateContextAsync(bool updateSolution, bool updateActiveDocument)
+        private void DebouncedUpdate()
+        {
+            if ((DateTime.UtcNow - _lastUpdate).TotalMilliseconds < ThrottleMs) return;
+            _lastUpdate = DateTime.UtcNow;
+            UpdateContextAsync().FireAndForget();
+        }
+
+        private async Task UpdateContextAsync()
         {
             if (_isDisposed) return;
 
-            await _updateSemaphore.WaitAsync();
             try
             {
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-                if (updateSolution)
-                {
-                    if ((DateTime.UtcNow - _lastSolutionUpdateTime).TotalMilliseconds > SolutionUpdateThrottleMs)
-                    {
-                        UpdateSolutionStructure();
-                        _lastSolutionUpdateTime = DateTime.UtcNow;
-                    }
-                }
+                var context = new VsCodeContext();
 
-                if (updateActiveDocument)
-                {
-                    UpdateActiveDocumentAndSelection();
-                }
-                
-                await SendContextUpdateAsync();
-            }
-            finally
-            {
-                _updateSemaphore.Release();
-            }
-        }
-
-        private void UpdateActiveDocumentAndSelection()
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
-            try
-            {
-                if (_dte.ActiveDocument != null)
-                {
-                    _currentContext.ActiveDocument = _dte.ActiveDocument.FullName;
-                    if (_dte.ActiveDocument.Selection is TextSelection selection)
-                    {
-                        _currentContext.Selection = (selection.TopLine, selection.BottomLine);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Log($"Error getting active document or selection: {ex.Message}", "ERROR");
-            }
-        }
-
-        private void UpdateSolutionStructure()
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
-            try
-            {
+                // 1. Get Solution Files
                 if (_dte.Solution != null && _dte.Solution.IsOpen)
                 {
-                    var solutionNode = new SolutionNode
-                    {
-                        Name = Path.GetFileName(_dte.Solution.FullName),
-                        Path = _dte.Solution.FullName,
-                        Type = "solution"
-                    };
+                    context.SolutionFiles = GetAllSolutionFiles();
+                }
 
-                    foreach (Project project in _dte.Solution.Projects)
-                    {
-                        solutionNode.Children.Add(GetProjectNode(project));
-                    }
-                    _currentContext.Solution = solutionNode;
-                }
-                else
+                // 2. Get Active Document info
+                if (_dte.ActiveDocument != null)
                 {
-                    _currentContext.Solution = null;
+                    context.ActiveFilePath = _dte.ActiveDocument.FullName;
+                    
+                    var textDoc = (TextDocument)_dte.ActiveDocument.Object("TextDocument");
+                    if (textDoc != null)
+                    {
+                        var startPoint = textDoc.StartPoint.CreateEditPoint();
+                        context.ActiveFileContent = startPoint.GetText(textDoc.EndPoint);
+                    }
+
+                    if (_dte.ActiveDocument.Selection is TextSelection selection)
+                    {
+                        context.SelectionStartLine = selection.TopLine;
+                        context.SelectionEndLine = selection.BottomLine;
+                    }
                 }
+
+                await SendContextUpdateAsync(context);
             }
             catch (Exception ex)
             {
-                Logger.Log($"Error building solution structure: {ex.Message}", "ERROR");
+                Logger.Log($"Error updating context: {ex.Message}", "ERROR");
             }
         }
 
-        private SolutionNode GetProjectNode(Project project)
+        private List<string> GetAllSolutionFiles()
         {
             ThreadHelper.ThrowIfNotOnUIThread();
-            var projectNode = new SolutionNode
-            {
-                Name = project.Name,
-                Path = project.FullName,
-                Type = "project"
-            };
+            var files = new List<string>();
 
-            if (project.ProjectItems != null)
+            foreach (Project project in _dte.Solution.Projects)
             {
-                foreach (ProjectItem item in project.ProjectItems)
+                files.AddRange(GetProjectFiles(project));
+            }
+
+            return [.. files.Distinct()];
+        }
+
+        private List<string> GetProjectFiles(Project project)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            var files = new List<string>();
+
+            if (project.Kind == ProjectKinds.vsProjectKindSolutionFolder)
+            {
+                if (project.ProjectItems != null)
                 {
-                    projectNode.Children.Add(GetProjectItemNode(item));
+                    foreach (ProjectItem item in project.ProjectItems)
+                    {
+                        if (item.SubProject != null)
+                        {
+                            files.AddRange(GetProjectFiles(item.SubProject));
+                        }
+                    }
                 }
             }
-            return projectNode;
+            else
+            {
+                if (project.ProjectItems != null)
+                {
+                    foreach (ProjectItem item in project.ProjectItems)
+                    {
+                        files.AddRange(GetProjectItemFiles(item));
+                    }
+                }
+            }
+
+            return files;
         }
 
-        private SolutionNode GetProjectItemNode(ProjectItem item)
+        private List<string> GetProjectItemFiles(ProjectItem item)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
-            var itemNode = new SolutionNode
+            var files = new List<string>();
+
+            if (Guid.TryParse(item.Kind, out var kindGuid) && kindGuid == new Guid(Constants.vsProjectItemKindPhysicalFile))
             {
-                Name = item.Name,
-                Path = item.FileCount > 0 ? item.FileNames[0] : null,
-                Type = GetProjectItemType(item)
-            };
+                if (item.FileCount > 0)
+                {
+                    try 
+                    {
+                        files.Add(item.FileNames[0]);
+                    }
+                    catch { /* Ignore */ }
+                }
+            }
 
             if (item.ProjectItems != null)
             {
                 foreach (ProjectItem subItem in item.ProjectItems)
                 {
-                    itemNode.Children.Add(GetProjectItemNode(subItem));
+                    files.AddRange(GetProjectItemFiles(subItem));
                 }
             }
 
-            return itemNode;
-        }
-        
-        private string GetProjectItemType(ProjectItem item)
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
             if (item.SubProject != null)
             {
-                return "project";
+                files.AddRange(GetProjectFiles(item.SubProject));
             }
-            if (item.ProjectItems.Count > 0)
-            {
-                return "folder";
-            }
-            return "file";
+
+            return files;
         }
 
-
-        private async Task SendContextUpdateAsync()
+        private async Task SendContextUpdateAsync(VsCodeContext context)
         {
             if (_isDisposed || _webView?.CoreWebView2 == null) return;
 
             var message = new VsMessage
             {
                 Action = "UpdateCodeContext",
-                Payload = JsonUtils.Serialize(_currentContext)
+                Payload = JsonUtils.Serialize(context)
             };
 
             var messageToSend = new { type = nameof(VsMessage), payload = message };
@@ -231,17 +222,16 @@ namespace InvGen.Agent
             {
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
                 
-                _solutionEvents.Opened -= SolutionChangedHandler;
-                _solutionEvents.AfterClosing -= SolutionChangedHandler;
-                _solutionEvents.ProjectAdded -= SolutionProjectChangedHandler;
-                _solutionEvents.ProjectRemoved -= SolutionProjectChangedHandler;
-                _solutionEvents.ProjectRenamed -= SolutionProjectRenamedHandler;
+                _solutionEvents.Opened -= OnContextChanged;
+                _solutionEvents.AfterClosing -= OnContextChanged;
+                _solutionEvents.ProjectAdded -= OnProjectChanged;
+                _solutionEvents.ProjectRemoved -= OnProjectChanged;
+                _solutionEvents.ProjectRenamed -= OnProjectRenamed;
 
-                _windowEvents.WindowActivated -= WindowActivatedHandler;
-                _documentEvents.DocumentSaved -= DocumentSavedHandler;
+                _windowEvents.WindowActivated -= OnWindowActivated;
+                _documentEvents.DocumentSaved -= OnDocumentSaved;
+                _selectionEvents.OnChange -= OnSelectionChanged;
             });
-
-            _updateSemaphore?.Dispose();
         }
     }
 }

@@ -52,3 +52,25 @@
     user-select: none; /* Запрещаем выделение текста внутри */
     background: var(--rz-input-background-color);
 }
+
+.hints-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.hint-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    color: var(--rz-text-color);
+    border-bottom: 1px solid var(--rz-base-200);
+}
+
+    .hint-item:last-child {
+        border-bottom: none;
+    }
+
+    .hint-item:hover, .hint-item.selected {
+        background-color: var(--rz-primary);
+        color: var(--rz-on-primary);
+    }

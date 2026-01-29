@@ -74,6 +74,8 @@ function scrollToBottomIfNeeded(selector, threshold = 100) {
     }, 100);
 }
 
+let lastSavedRange = null;
+
 window.editorFunctions = {
     // Вызывать эту функцию на onmousedown или onfocusout редактора
     saveSelection: function () {
