@@ -1,4 +1,5 @@
 ﻿let markdownRenderer = null;
+const mermaidCache = new Map();
 
 const highlightExt = markedHighlight.markedHighlight({
     langPrefix: 'hljs language-',
@@ -183,9 +184,23 @@ function renderMarkdownToElement(elementId, text) {
                 // Use a globally unique ID for rendering to avoid conflicts
                 const renderId = 'mermaid-svg-' + elementId.replace(/[^a-zA-Z0-9]/g, '') + '-' + index;                
 
+                // Check cache
+                const cached = mermaidCache.get(renderId);
+                if (cached && cached.code === content) {
+                    diagram.innerHTML = cached.svg;
+                    return;
+                }
+
                 window.mermaid.render(renderId, content)
                     .then((result) => {
                         diagram.innerHTML = result.svg;
+                        mermaidCache.set(renderId, { code: content, svg: result.svg });
+                        
+                        // Simple cleanup to prevent memory leaks
+                        if (mermaidCache.size > 200) {
+                            const firstKey = mermaidCache.keys().next().value;
+                            mermaidCache.delete(firstKey);
+                        }
                     })
                     .catch((error) => {
                         console.error('Mermaid render error:', error);
