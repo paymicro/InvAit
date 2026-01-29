@@ -121,9 +121,9 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
             sb.AppendLine($"");
             sb.AppendLine($"""
                            - **{skill.Name}**: {skill.Description}
-                           Activate with: `<tool_call_begin> functions.{BuiltInToolEnum.ReadSkillContent}
+                           Activate with: `<function name="{BuiltInToolEnum.ReadSkillContent}">
                                            {skill.FilePath}
-                                           <tool_call_end>`
+                                           </function>`
                            """);
             sb.AppendLine();
         }

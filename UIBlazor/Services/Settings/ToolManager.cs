@@ -157,20 +157,20 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
                       You have access to several "tools" that you can use at any time to retrieve information and/or perform tasks for the User.
 
                       You MUST invoke tools exclusively with the following literal syntax:
-                      <tool_call_begin> functions.<toolName>
+                      <function name="<toolName>">
                       Parameters
-                      <tool_call_end>
+                      </function>
 
                       Immediately after using any toll - stop generation, no explanatory text.
 
                       Explanation:
-                        <tool_call_begin> functions.<toolName>            # function header. toolName - function name.
-                        param1                                              # parameter 1
-                        param2                                              # parameter 2
-                        <tool_call_end>                                   # end of first call
-                        <tool_call_begin> functions.<toolName>            # optional second function header. toolName - function name.
-                        param1                                              # parameter 1 of second function.
-                        <tool_call_end>                                   # end of second call
+                        <function name="<toolName>">      # function header. toolName - function name.
+                        param1                           # parameter 1
+                        param2                           # parameter 2
+                        </function>                      # end of first call
+                        <function name="<toolName>">      # optional second function header. toolName - function name.
+                        param1                           # parameter 1 of second function.
+                        </function>                      # end of second call
 
                       The following tools/functions are available to you:
 
@@ -199,9 +199,9 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
     {
         var result = new List<AiTool>();
 
-        // Регулярное выражение адаптировано под гибридный формат:
+        // Регулярное выражение адаптировано под новый формат:
         var callRegex = new Regex(
-            @"<tool_call_begin>\s*functions\.(\w+)(?::(\d+))?\s*(.*?)\s*<tool_call_end>",
+            @"<function name=""(\w+)""(?::(\d+))?>\s*(.*?)\s*</function>",
             RegexOptions.Singleline);
 
         foreach (Match callMatch in callRegex.Matches(content))

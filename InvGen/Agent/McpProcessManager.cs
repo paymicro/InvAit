@@ -2,8 +2,10 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using InvGen.Utils;
+using Shared.Contracts.Mcp;
 
 namespace InvGen.Agent;
 
@@ -13,7 +15,8 @@ namespace InvGen.Agent;
 public class McpProcessManager
 {
     private readonly ConcurrentDictionary<string, Process> _processes = new();
-    private readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _outputQueues = new();
+    private readonly ConcurrentDictionary<string, ConcurrentQueue<McpNotification>> _notificationQueues = new();
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, TaskCompletionSource<string>>> _pendingRequests = new();
     
     /// <summary>
     /// Запустить MCP процесс
@@ -22,14 +25,24 @@ public class McpProcessManager
     {
         if (_processes.ContainsKey(serverId))
         {
-            return $"ERROR: Process {serverId} already running";
+            return $"OK: Process {serverId} already running";
         }
         
         try
         {
+            var fileName = command;
+            // На Windows npx/npm это .cmd файлы
+            if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+            {
+                if (fileName.Equals("npx", StringComparison.OrdinalIgnoreCase) || fileName.Equals("npm", StringComparison.OrdinalIgnoreCase))
+                {
+                    fileName += ".cmd";
+                }
+            }
+
             var startInfo = new ProcessStartInfo
             {
-                FileName = command, // "npx" или "node"
+                FileName = fileName,
                 Arguments = args,
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
@@ -46,7 +59,8 @@ public class McpProcessManager
             }
             
             _processes[serverId] = process;
-            _outputQueues[serverId] = new ConcurrentQueue<string>();
+            _notificationQueues[serverId] = new ConcurrentQueue<McpNotification>();
+            _pendingRequests[serverId] = new ConcurrentDictionary<string, TaskCompletionSource<string>>();
             
             // Асинхронное чтение stdout
             _ = Task.Run(async () =>
@@ -56,10 +70,50 @@ public class McpProcessManager
                     while (!process.StandardOutput.EndOfStream)
                     {
                         var line = await process.StandardOutput.ReadLineAsync();
-                        if (line != null)
+                        if (string.IsNullOrWhiteSpace(line)) continue;
+
+                        Logger.Log($"MCP [{serverId}] received: {line}");
+
+                        try
                         {
-                            _outputQueues[serverId].Enqueue(line);
-                            Logger.Log($"MCP [{serverId}] stdout: {line}");
+                            // Пытаемся распарсить как сообщение JSON-RPC
+                            using (var doc = JsonDocument.Parse(line))
+                            {
+                                var root = doc.RootElement;
+                                
+                                // Это ответ? (содержит id и result или error)
+                                if (root.TryGetProperty("id", out var idProp))
+                                {
+                                    var id = idProp.ValueKind == JsonValueKind.Number 
+                                        ? idProp.GetInt32().ToString() 
+                                        : idProp.GetString();
+                                    
+                                    if (id != null && _pendingRequests.TryGetValue(serverId, out var serverRequests) && 
+                                        serverRequests.TryRemove(id, out var tcs))
+                                    {
+                                        tcs.SetResult(line);
+                                        continue;
+                                    }
+                                }
+                                
+                                // Это уведомление? (содержит method, нет id)
+                                if (root.TryGetProperty("method", out var methodProp) && !root.TryGetProperty("id", out _))
+                                {
+                                    var method = methodProp.GetString();
+                                    if (method != null)
+                                    {
+                                        var notification = JsonSerializer.Deserialize<McpNotification>(line, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+                                        if (notification != null)
+                                        {
+                                            _notificationQueues[serverId].Enqueue(notification);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Log($"MCP [{serverId}] parse error: {ex.Message}. Line: {line}", "WARN");
                         }
                     }
                 }
@@ -79,7 +133,7 @@ public class McpProcessManager
                         var line = await process.StandardError.ReadLineAsync();
                         if (line != null)
                         {
-                            Logger.Log($"MCP [{serverId}] stderr: {line}", "WARN");
+                            Logger.Log($"MCP [{serverId}] stderr: {line}", "INFO");
                         }
                     }
                 }
@@ -89,7 +143,7 @@ public class McpProcessManager
                 }
             });
             
-            Logger.Log($"MCP process started: {serverId} ({command} {args})");
+            Logger.Log($"MCP process started: {serverId} ({fileName} {args})");
             return $"OK: Process started: {serverId}";
         }
         catch (Exception ex)
@@ -118,7 +172,16 @@ public class McpProcessManager
             }
             
             process.Dispose();
-            _outputQueues.TryRemove(serverId, out _);
+            _notificationQueues.TryRemove(serverId, out _);
+            _pendingRequests.TryRemove(serverId, out var requests);
+            
+            if (requests != null)
+            {
+                foreach (var tcs in requests.Values)
+                {
+                    tcs.TrySetCanceled();
+                }
+            }
             
             Logger.Log($"MCP process stopped: {serverId}");
             return $"OK: Process stopped: {serverId}";
@@ -131,7 +194,50 @@ public class McpProcessManager
     }
     
     /// <summary>
-    /// Отправить сообщение в stdin процесса
+    /// Отправить сообщение и ждать ответа
+    /// </summary>
+    public async Task<string> CallMethodAsync(string serverId, string id, string message, int timeoutMs = 10000)
+    {
+        if (!_processes.TryGetValue(serverId, out var process))
+        {
+            return "ERROR: Process not found";
+        }
+
+        var tcs = new TaskCompletionSource<string>();
+        if (!_pendingRequests.TryGetValue(serverId, out var serverRequests))
+        {
+            return "ERROR: Server requests dictionary not initialized";
+        }
+
+        serverRequests[id] = tcs;
+
+        try
+        {
+            await process.StandardInput.WriteLineAsync(message);
+            await process.StandardInput.FlushAsync();
+            Logger.Log($"MCP [{serverId}] sent: {message}");
+
+            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs));
+            if (completedTask == tcs.Task)
+            {
+                return await tcs.Task;
+            }
+            else
+            {
+                serverRequests.TryRemove(id, out _);
+                return "ERROR: Timeout waiting for response";
+            }
+        }
+        catch (Exception ex)
+        {
+            serverRequests.TryRemove(id, out _);
+            Logger.Log($"Error calling MCP method in {serverId}: {ex.Message}", "ERROR");
+            return $"ERROR: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Отправить сообщение в stdin процесса (без ожидания ответа)
     /// </summary>
     public async Task<string> SendMessageAsync(string serverId, string message)
     {
@@ -144,7 +250,7 @@ public class McpProcessManager
         {
             await process.StandardInput.WriteLineAsync(message);
             await process.StandardInput.FlushAsync();
-            Logger.Log($"MCP [{serverId}] sent: {message}");
+            Logger.Log($"MCP [{serverId}] sent raw: {message}");
             return "OK";
         }
         catch (Exception ex)
@@ -155,29 +261,15 @@ public class McpProcessManager
     }
     
     /// <summary>
-    /// Прочитать сообщение из stdout процесса
+    /// Прочитать следующее уведомление из очереди
     /// </summary>
-    public async Task<string> ReadMessageAsync(string serverId, int timeoutMs = 5000)
+    public McpNotification? NextNotification(string serverId)
     {
-        if (!_outputQueues.TryGetValue(serverId, out var queue))
+        if (_notificationQueues.TryGetValue(serverId, out var queue) && queue.TryDequeue(out var notification))
         {
-            return "ERROR: Process not found";
+            return notification;
         }
-        
-        var startTime = DateTime.UtcNow;
-        
-        while ((DateTime.UtcNow - startTime).TotalMilliseconds < timeoutMs)
-        {
-            if (queue.TryDequeue(out var message))
-            {
-                Logger.Log($"MCP [{serverId}] received: {message}");
-                return message;
-            }
-            
-            await Task.Delay(50);
-        }
-        
-        return "ERROR: Timeout waiting for message";
+        return null;
     }
     
     /// <summary>
