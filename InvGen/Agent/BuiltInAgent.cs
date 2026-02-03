@@ -53,11 +53,9 @@ public class BuiltInAgent
                 BuiltInToolEnum.SwitchMode => new VsResponse { Success = true, Payload = "Mode switched" },
                 BuiltInToolEnum.GetSkillsMetadata => await GetSkillsMetadataAsync(),
                 BuiltInToolEnum.ReadSkillContent => await ReadSkillContentAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BuiltInToolEnum.McpStartProcess => await McpStartProcessAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BuiltInToolEnum.McpStopProcess => await McpStopProcessAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BuiltInToolEnum.McpSendMessage => await McpSendMessageAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BuiltInToolEnum.McpReadMessage => await McpReadMessageAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.McpGetTools => await McpGetToolsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.McpCallTool => await McpCallToolAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.McpReadNotifications => await McpReadNotificationsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 _ => new VsResponse { Success = false, Error = "Unknown action" }
             };
 
@@ -1034,12 +1032,18 @@ public class BuiltInAgent
         public int Line { get; set; }
     }
 
-    #region MCP Process Management
-
     private readonly ConcurrentDictionary<string, bool> _initializedServers = new();
 
-    private async Task<string> EnsureServerInitializedAsync(string serverId)
+    private async Task<string> EnsureServerRunningAsync(string serverId, string? command = null, string? arguments = null)
     {
+        if (!_mcpProcessManager.IsProcessRunning(serverId))
+        {
+            if (string.IsNullOrEmpty(command)) return $"ERROR: Server {serverId} not running and no command provided to start it";
+            
+            var startResult = await _mcpProcessManager.StartProcessAsync(serverId, command, arguments ?? "");
+            if (!startResult.StartsWith("OK")) return startResult;
+        }
+
         if (_initializedServers.ContainsKey(serverId)) return "OK";
 
         var requestId = Guid.NewGuid().ToString("N");
@@ -1049,17 +1053,15 @@ public class BuiltInAgent
             Method = "initialize",
             Params = new
             {
-                protocolVersion = "2024-11-05", // Standard version
+                protocolVersion = "2024-11-05",
                 capabilities = new { },
                 clientInfo = new { name = "InvGen", version = "1.0.0" }
             }
         };
 
         var responseJson = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonSerializer.Serialize(initRequest));
-        
         if (responseJson.StartsWith("ERROR")) return responseJson;
 
-        // Send 'notifications/initialized'
         var initializedNotification = new McpNotification
         {
             Method = "notifications/initialized",
@@ -1067,131 +1069,84 @@ public class BuiltInAgent
         };
 
         await _mcpProcessManager.SendMessageAsync(serverId, JsonSerializer.Serialize(initializedNotification));
-        
         _initializedServers[serverId] = true;
         return "OK";
-    }
-
-    private async Task<VsResponse> McpStartProcessAsync(IReadOnlyDictionary<string, object> args)
-    {
-        var serverId = args.GetString("param1") ?? args.GetString("serverId");
-        var command = args.GetString("param2") ?? args.GetString("command");
-        var arguments = args.GetString("param3") ?? args.GetString("args") ?? "";
-        
-        if (string.IsNullOrEmpty(serverId) || string.IsNullOrEmpty(command))
-        {
-            return new VsResponse { Success = false, Error = "serverId and command are required" };
-        }
-
-        var result = await _mcpProcessManager.StartProcessAsync(serverId, command, arguments);
-        if (!result.StartsWith("OK"))
-        {
-            return new VsResponse { Success = false, Error = result };
-        }
-
-        // Автоматическая инициализация после запуска
-        var initResult = await EnsureServerInitializedAsync(serverId);
-        if (initResult != "OK")
-        {
-            return new VsResponse { Success = false, Error = $"Process started but initialization failed: {initResult}" };
-        }
-
-        return new VsResponse { Success = true, Payload = "MCP server started and initialized successfully" };
-    }
-
-    private async Task<VsResponse> McpStopProcessAsync(IReadOnlyDictionary<string, object> args)
-    {
-        var serverId = args.GetString("param1") ?? args.GetString("serverId");
-        var result = await _mcpProcessManager.StopProcessAsync(serverId);
-        _initializedServers.TryRemove(serverId, out _);
-        return new VsResponse { Success = result.StartsWith("OK"), Payload = result, Error = result.StartsWith("ERROR") ? result : null };
-    }
-
-    private async Task<VsResponse> McpSendMessageAsync(IReadOnlyDictionary<string, object> args)
-    {
-        var serverId = args.GetString("param1") ?? args.GetString("serverId");
-        var payload = args.GetString("param2") ?? args.GetString("message");
-        
-        if (string.IsNullOrEmpty(serverId) || string.IsNullOrEmpty(payload))
-            return new VsResponse { Success = false, Error = "serverId and message are required" };
-
-        var initResult = await EnsureServerInitializedAsync(serverId);
-        if (initResult != "OK") return new VsResponse { Success = false, Error = initResult };
-
-        var result = await _mcpProcessManager.SendMessageAsync(serverId, payload);
-        return new VsResponse { Success = result == "OK", Payload = result, Error = result != "OK" ? result : null };
-    }
-
-    private async Task<VsResponse> McpReadMessageAsync(IReadOnlyDictionary<string, object> args)
-    {
-        var serverId = args.GetString("param1") ?? args.GetString("serverId");
-        // Теперь мы возвращаем последнее уведомление, а не произвольную строку из STDOUT
-        var notification = _mcpProcessManager.NextNotification(serverId);
-        
-        if (notification == null)
-        {
-            return new VsResponse { Success = true, Payload = "No new notifications" };
-        }
-
-        return new VsResponse { Success = true, Payload = JsonSerializer.Serialize(notification) };
     }
 
     private async Task<VsResponse> McpGetToolsAsync(IReadOnlyDictionary<string, object> args)
     {
         var serverId = args.GetString("param1") ?? args.GetString("serverId");
-        if (string.IsNullOrEmpty(serverId))
-        {
-            serverId = "temp_" + Guid.NewGuid().ToString("N").Substring(0, 8);
-        }
+        var command = args.GetString("param2") ?? args.GetString("command");
+        var arguments = args.GetString("param3") ?? args.GetString("args");
 
-        var isStartedHere = false;
-        if (!_mcpProcessManager.IsProcessRunning(serverId))
-        {
-            var command = args.GetString("param2") ?? args.GetString("command");
-            var arguments = args.GetString("param3") ?? args.GetString("args") ?? "";
-            
-            if (string.IsNullOrEmpty(command)) return new VsResponse { Success = false, Error = "Command is required to start MCP server" };
-            
-            var startResult = await _mcpProcessManager.StartProcessAsync(serverId, command, arguments);
-            if (!startResult.StartsWith("OK")) return new VsResponse { Success = false, Error = startResult };
-            isStartedHere = true;
-        }
+        if (string.IsNullOrEmpty(serverId)) return new VsResponse { Success = false, Error = "serverId is required" };
+
+        var runResult = await EnsureServerRunningAsync(serverId, command, arguments);
+        if (runResult != "OK") return new VsResponse { Success = false, Error = runResult };
 
         try
         {
-            var initResult = await EnsureServerInitializedAsync(serverId);
-            if (initResult != "OK") return new VsResponse { Success = false, Error = initResult };
-
             var requestId = Guid.NewGuid().ToString("N");
-            var request = new McpRequest
-            {
-                Id = requestId,
-                Method = "tools/list",
-                Params = new { }
-            };
-
+            var request = new McpRequest { Id = requestId, Method = "tools/list", Params = new { } };
             var responseJson = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonSerializer.Serialize(request));
 
-            if (responseJson.StartsWith("ERROR"))
-            {
-                return new VsResponse { Success = false, Error = responseJson };
-            }
-
-            return new VsResponse { Success = true, Payload = responseJson };
+            return new VsResponse { Success = !responseJson.StartsWith("ERROR"), Payload = responseJson, Error = responseJson.StartsWith("ERROR") ? responseJson : null };
         }
         catch (Exception ex)
         {
             return new VsResponse { Success = false, Error = ex.Message };
         }
-        finally
+    }
+
+    private async Task<VsResponse> McpCallToolAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var serverId = args.GetString("param1") ?? args.GetString("serverId");
+        var toolName = args.GetString("param2") ?? args.GetString("toolName");
+        var toolArgsJson = args.GetString("param3") ?? args.GetString("arguments");
+        
+        // Command/Arguments for auto-start if needed
+        var command = args.GetString("command");
+        var commandArgs = args.GetString("args");
+
+        if (string.IsNullOrEmpty(serverId) || string.IsNullOrEmpty(toolName))
+            return new VsResponse { Success = false, Error = "serverId and toolName are required" };
+
+        var runResult = await EnsureServerRunningAsync(serverId, command, commandArgs);
+        if (runResult != "OK") return new VsResponse { Success = false, Error = runResult };
+
+        try
         {
-            if (isStartedHere)
+            object? toolArgs = null;
+            if (!string.IsNullOrEmpty(toolArgsJson))
             {
-                await _mcpProcessManager.StopProcessAsync(serverId);
-                _initializedServers.TryRemove(serverId, out _);
+                toolArgs = JsonSerializer.Deserialize<object>(toolArgsJson);
             }
+
+            var requestId = Guid.NewGuid().ToString("N");
+            var request = new McpRequest
+            {
+                Id = requestId,
+                Method = "tools/call",
+                Params = new { name = toolName, arguments = toolArgs ?? new { } }
+            };
+
+            var responseJson = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonSerializer.Serialize(request));
+            return new VsResponse { Success = !responseJson.StartsWith("ERROR"), Payload = responseJson, Error = responseJson.StartsWith("ERROR") ? responseJson : null };
+        }
+        catch (Exception ex)
+        {
+            return new VsResponse { Success = false, Error = ex.Message };
         }
     }
 
-    #endregion
+    private async Task<VsResponse> McpReadNotificationsAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var serverId = args.GetString("param1") ?? args.GetString("serverId");
+        if (string.IsNullOrEmpty(serverId)) return new VsResponse { Success = false, Error = "serverId is required" };
+
+        var notification = _mcpProcessManager.NextNotification(serverId);
+        if (notification == null) return new VsResponse { Success = true, Payload = "No new notifications" };
+
+        return new VsResponse { Success = true, Payload = JsonSerializer.Serialize(notification) };
+    }
 }

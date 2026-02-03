@@ -319,65 +319,9 @@ public class BuiltInAgent(IVsBridge vsBridge)
         },
         new()
         {
-            Name = BuiltInToolEnum.McpStartProcess,
-            Category = ToolCategory.Mcp,
-            Description = "Start a new MCP server process.",
-            ExampleToSystemMessage = $"""
-                                     For example to start a server:
-                                     <function name="{BuiltInToolEnum.McpStartProcess}">
-                                     everything-server
-                                     npx
-                                     -y @modelcontextprotocol/server-everything
-                                     </function>
-                                     Server will be automatically initialized after start.
-                                     """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.McpStartProcess, args)
-        },
-        new()
-        {
-            Name = BuiltInToolEnum.McpStopProcess,
-            Category = ToolCategory.Mcp,
-            Description = "Stop a running MCP server process.",
-            ExampleToSystemMessage = $"""
-                                     For example:
-                                     <function name="{BuiltInToolEnum.McpStopProcess}">
-                                     everything-server
-                                     </function>
-                                     """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.McpStopProcess, args)
-        },
-        new()
-        {
-            Name = BuiltInToolEnum.McpSendMessage,
-            Category = ToolCategory.Mcp,
-            Description = "Send a JSON-RPC message to an MCP server (e.g. tools/call).",
-            ExampleToSystemMessage = $$$$"""
-                                     For example to call a tool:
-                                     <function name="{{{{BuiltInToolEnum.McpSendMessage}}}}">
-                                     everything-server
-                                     {"jsonrpc":"2.0","id":"1","method":"tools/call","params":{"name":"echo","arguments":{"message":"hello"}}}
-                                     </function>
-                                     """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.McpSendMessage, args)
-        },
-        new()
-        {
-            Name = BuiltInToolEnum.McpReadMessage,
-            Category = ToolCategory.Mcp,
-            Description = "Read the next notification or message from an MCP server.",
-            ExampleToSystemMessage = $"""
-                                     For example:
-                                     <function name="{BuiltInToolEnum.McpReadMessage}">
-                                     everything-server
-                                     </function>
-                                     """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.McpReadMessage, args)
-        },
-        new()
-        {
             Name = BuiltInToolEnum.McpGetTools,
             Category = ToolCategory.Mcp,
-            Description = "Get the list of tools provided by an MCP server. Will start and initialize server if not running.",
+            Description = "Get the list of tools provided by an MCP server. Automatically starts and initializes the server if needed.",
             ExampleToSystemMessage = $"""
                                      For example:
                                      <function name="{BuiltInToolEnum.McpGetTools}">
@@ -387,6 +331,34 @@ public class BuiltInAgent(IVsBridge vsBridge)
                                      </function>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.McpGetTools, args)
+        },
+        new()
+        {
+            Name = BuiltInToolEnum.McpCallTool,
+            Category = ToolCategory.Mcp,
+            Description = "Call a specific tool provided by an MCP server. Automatically starts and initializes the server if needed.",
+            ExampleToSystemMessage = $$"""
+                                     For example:
+                                     <function name="{{BuiltInToolEnum.McpCallTool}}">
+                                     everything-server
+                                     echo
+                                     {"message": "Hello world!"}
+                                     </function>
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.McpCallTool, args)
+        },
+        new()
+        {
+            Name = BuiltInToolEnum.McpReadNotifications,
+            Category = ToolCategory.Mcp,
+            Description = "Read the next background notification or log from an MCP server.",
+            ExampleToSystemMessage = $"""
+                                     For example:
+                                     <function name="{BuiltInToolEnum.McpReadNotifications}">
+                                     everything-server
+                                     </function>
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.McpReadNotifications, args)
         }
     ];
 }
