@@ -1,18 +1,65 @@
-﻿.chat-input-container {
-    width: 100%;
+﻿.chat-input-wrapper {
+    position: relative;
+    /* Чтобы меню позиционировалось относительно обертки */
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0.4em;
 }
 
-.chat-container {
-    position: relative; /* Обязательно: меню будет позиционироваться относительно этого блока */
-    border: 1px solid #ccc;
-    margin: 0.2em;
-    border-radius: 0.5em;
+.chips-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 4px 0;
+}
+
+.input-container {
+    border: 1px solid var(--rz-base-400);
+    border-radius: 8px;
     background: var(--rz-base-dark);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    /* Чтобы футер не вылезал за скругления */
 }
 
-    .chat-container:focus-within {
-        outline: 1px solid var(--rz-base-400); /* выделение при фокусе на дочерних элементах */
-    }
+.input-container:focus-within {
+    border-color: var(--rz-primary);
+    box-shadow: 0 0 0 1px var(--rz-primary);
+}
+
+.input-footer {
+    border-top: 1px solid var(--rz-base-500);
+    background: rgba(0, 0, 0, 0.05);
+    display: flex;
+    align-items: center;
+}
+
+.text-input {
+    width: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--rz-text-color);
+    font-size: 1em;
+    font-family: inherit;
+    padding: 10px 12px;
+    line-height: 1.5;
+    resize: none;
+    overflow-y: auto;
+    max-height: 200px;
+}
+
+.text-input::placeholder {
+    color: var(--rz-text-color);
+    opacity: 0.5;
+}
+
+.text-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
 
 ::deep .mode-dropdown {
     border-radius: 26px;
@@ -21,36 +68,20 @@
     width: 100px;
 }
 
-.custom-editor {
-    min-height: 40px;
-    border-radius: 4px;
-    min-height: 2.6em;
-    padding: 0.6em 0.6em 0 0.6em;
-}
-    .custom-editor:focus {
-        outline: none;
-    }
-
+/* Меню подсказок - теперь всплывающее (float) */
 .hints-menu {
     position: absolute;
+    bottom: calc(100% + 10px);
+    /* Всплывает ВВЕРХ над инпутом */
+    left: 0;
+    right: 0;
     z-index: 1000;
-    border: 1px solid #ccc;
-    box-shadow: 0 -4px 6px rgba(0,0,0,0.1);
-    transform: translateY(-100%);
-    opacity: 1;
-    margin-top: -5px;
-    max-height: 200px;
+    border: 1px solid var(--rz-base-400);
+    box-shadow: 0px -4px 16px rgba(0, 0, 0, 0.3);
+    max-height: 300px;
     overflow-y: auto;
-}
-
-/* Стили чипса */
-::deep .chip {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    border-radius: 1em;
-    user-select: none; /* Запрещаем выделение текста внутри */
-    background: var(--rz-input-background-color);
+    border-radius: 8px;
+    background: var(--rz-base-600);
 }
 
 .hints-list {
@@ -60,17 +91,48 @@
 }
 
 .hint-item {
-    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
     cursor: pointer;
     color: var(--rz-text-color);
-    border-bottom: 1px solid var(--rz-base-200);
+    border-bottom: 1px solid var(--rz-base-300);
+    transition: background-color 0.15s;
 }
 
-    .hint-item:last-child {
-        border-bottom: none;
-    }
+.hint-item:last-child {
+    border-bottom: none;
+}
 
-    .hint-item:hover, .hint-item.selected {
-        background-color: var(--rz-primary);
-        color: var(--rz-on-primary);
-    }
+.hint-item:hover,
+.hint-item.selected {
+    background-color: var(--rz-primary);
+    color: var(--rz-on-primary);
+}
+
+.hint-item .file-icon {
+    flex-shrink: 0;
+    font-size: 16px;
+}
+
+.hint-item .file-name {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+    max-width: 200px;
+}
+
+.hint-item .file-path {
+    opacity: 0.7;
+    font-size: 0.85em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-left: auto;
+    text-align: right;
+    flex-shrink: 1;
+    min-width: 0;
+}

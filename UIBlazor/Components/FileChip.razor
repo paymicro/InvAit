@@ -1,0 +1,23 @@
+@using UIBlazor.Models
+
+<div class="input-chip">
+    <span class="chip-icon">@Icon</span>
+    <span class="chip-name">@Token.FileName</span>
+    <button class="chip-remove" @onclick="OnRemove" title="Remove">×</button>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public FileToken Token { get; set; } = null!;
+
+    [Parameter]
+    public EventCallback<FileToken> OnRemoveClick { get; set; }
+
+    [Parameter]
+    public string Icon { get; set; } = "📄";
+
+    private async Task OnRemove()
+    {
+        await OnRemoveClick.InvokeAsync(Token);
+    }
+}

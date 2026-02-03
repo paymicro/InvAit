@@ -1,0 +1,42 @@
+.input-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    margin: 2px 4px 2px 0;
+    border-radius: 16px;
+    background: var(--rz-primary);
+    color: var(--rz-on-primary);
+    font-size: 0.9em;
+    user-select: none;
+    vertical-align: middle;
+}
+
+.input-chip .chip-icon {
+    font-size: 14px;
+}
+
+.input-chip .chip-name {
+    font-weight: 500;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.input-chip .chip-remove {
+    background: none;
+    border: none;
+    color: inherit;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 2px;
+    margin: 0;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.input-chip .chip-remove:hover {
+    opacity: 1;
+}

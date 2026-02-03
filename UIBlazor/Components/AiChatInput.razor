@@ -1,119 +1,141 @@
-﻿@inherits RadzenComponent
+﻿@using UIBlazor.Models
+@inherits RadzenComponent
 
-<div class="chat-container" >
-    <div id="@Id" contenteditable="true" class="custom-editor" @oninput="HandleInput" @onkeydown="OnKeyDown" @onkeydown:preventDefault="@shouldPreventDefault" @onblur="SaveSelection"></div>
+<div class="chat-input-wrapper">
+    @* Контейнер для чипов (над полем ввода) *@
+    @if (tokens.OfType<FileToken>().Any())
+    {
+        <div class="chips-list">
+            @foreach (var token in tokens.OfType<FileToken>())
+            {
+                <FileChip Token="token" 
+                          Icon="@GetFileIcon(token.FileName)" 
+                          OnRemoveClick="RemoveToken" />
+            }
+        </div>
+    }
 
+    <div class="input-container">
+        @* Поле ввода *@
+        <textarea @ref="textareaRef"
+                  rows="1"
+                  class="text-input"
+                  placeholder="@Placeholder"
+                  @bind="currentInput"
+                  @oninput="HandleInput"
+                  @onkeydown="OnKeyDown"
+                  @onkeydown:preventDefault="shouldPreventDefault"
+                  disabled="@IsLoading"></textarea>
+
+        @* Нижняя панель с кнопками *@
+        <div class="input-footer">
+            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Style="width: 100%; padding: 4px 8px;">
+                <RadzenDropDown TValue="AppMode" class="mode-dropdown" Data="@AppModeValues" @bind-Value="@CurrentMode" />
+                
+                <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" AlignItems="AlignItems.Center">
+                    <RadzenButton Icon="send"
+                                  ButtonStyle="ButtonStyle.Primary"
+                                  Variant="Variant.Text"
+                                  Visible="@(!IsLoading)"
+                                  Disabled="@(!CanSend())"
+                                  Click="@OnSendClick"
+                                  Title="Send message"
+                                  class="rz-chat-send-btn" />
+                    <RadzenButton Icon="dangerous"
+                                  ButtonStyle="ButtonStyle.Danger"
+                                  Variant="Variant.Text"
+                                  Visible="@IsLoading"
+                                  Click="@Cancel.InvokeAsync"
+                                  Title="Cancel"
+                                  class="rz-chat-cancel-btn" />
+                </RadzenStack>
+            </RadzenStack>
+        </div>
+    </div>
+
+    @* Всплывающее меню с файлами *@
     @if (filteredFiles.Any())
     {
-        <div class="hints-menu" style="top: @(cursorCoords.Top)px; left: @(cursorCoords.Left)px;">
+        <div class="hints-menu">
             <ul class="hints-list">
                 @for (int i = 0; i < filteredFiles.Count; i++)
                 {
                     var index = i;
                     var file = filteredFiles[i];
                     var isSelected = index == selectedIndex;
+                    var fileName = Path.GetFileName(file);
+                    var fileDir = Path.GetDirectoryName(file) ?? "";
+                    var icon = GetFileIcon(fileName);
                     <li class="hint-item @(isSelected ? "selected" : "")" 
-                        @onclick="() => AddChip(file)">
-                        @file
+                        @onclick="() => AddFileToken(file)">
+                        <span class="file-icon">@icon</span>
+                        <span class="file-name">@fileName</span>
+                        <span class="file-path">@fileDir</span>
                     </li>
                 }
             </ul>
         </div>
     }
-
-    @* Кнопки *@
-    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.Right">
-        <RadzenDropDown TValue="AppMode" class="mode-dropdown" Data="@AppModeValues" @bind-Value="@CurrentMode" />
-
-        <RadzenButton Icon="send"
-                      ButtonStyle="ButtonStyle.Primary"
-                      Variant="Variant.Text"
-                      Visible="@(!IsLoading)"
-                      Disabled="@(string.IsNullOrWhiteSpace(message) || IsLoading)"
-                      Click="@OnSendClick"
-                      Title="Send message"
-                      class="rz-chat-send-btn" />
-        <RadzenButton Icon="dangerous"
-                      ButtonStyle="ButtonStyle.Danger"
-                      Variant="Variant.Text"
-                      Visible="@IsLoading"
-                      Click="@Cancel.InvokeAsync"
-                      Title="Cancel"
-                      class="rz-chat-cancel-btn" />
-    </RadzenStack>
 </div>
 
 @code {
-    [Parameter] public string Value { get; set; } = string.Empty;
-
-    [Parameter] public EventCallback<string> ValueChanged { get; set; }
-
     [Parameter] public EventCallback<string> SendMessage { get; set; }
-
     [Parameter] public EventCallback<string> Cancel { get; set; }
-
-    [Parameter] public string Placeholder { get; set; } = string.Empty;
-
+    [Parameter] public string Placeholder { get; set; } = "Type @ to mention files...";
     [Parameter] public bool IsLoading { get; set; }
 
     [Inject] private ChatService ChatService { get; set; } = null!;
+    [Inject] private IVsCodeContextService VsCodeContextService { get; set; } = null!;
+    [Inject] private IFileContentService FileContentService { get; set; } = null!;
+    [Inject] private IJSRuntime JS { get; set; } = null!;
 
-    [Inject] IJSRuntime JS { get; set; } = null!;
-
-    [Inject] IVsCodeContextService VsCodeContextService { get; set; } = null!;
-
-    private string Id = "editor_" + Guid.NewGuid();
-
-    private List<AppMode> AppModeValues { get; } = [.. Enum.GetValues<AppMode>()];
-
-    private AppMode CurrentMode
-    {
-        get => ChatService.Session?.Mode ?? AppMode.Chat; // ?? - т.к. Session не успевает подгрузиться в первый раз
-        set => ChatService.Session.Mode = value; // TODO сохранение
-    }
-
-    private bool shouldPreventDefault;
-
-    public string message { get; set; } = string.Empty;
-
-    // Класс для координат
-    public class Coords { public int Top { get; set; } = 0; public int Left { get; set; } = 0; }
-    private Coords cursorCoords = new();
-
+    private ElementReference textareaRef;
+    private List<InputToken> tokens = new();
+    private string currentInput = string.Empty;
     private List<string> filteredFiles = new();
     private int selectedIndex = 0;
+    private bool shouldPreventDefault;
 
-    private int lastMatchLength = 0; // Сколько символов (включая @) нужно удалить
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    private List<AppMode> AppModeValues { get; } = [.. Enum.GetValues<AppMode>()];
+    
+    private AppMode CurrentMode
     {
-        if (firstRender)
+        get => ChatService.Session?.Mode ?? AppMode.Chat;
+        set => ChatService.Session.Mode = value;
+    }
+
+    private bool CanSend()
+    {
+        return !IsLoading && (!string.IsNullOrWhiteSpace(currentInput) || tokens.Any());
+    }
+
+    private async Task HandleInput(ChangeEventArgs e)
+    {
+        currentInput = e.Value?.ToString() ?? string.Empty;
+
+        // Автоматически изменяем высоту textarea
+        await JS.InvokeVoidAsync("autoResizeTextarea", textareaRef);
+
+        // Проверяем, есть ли @ в конце
+        if (currentInput.EndsWith(" @"))
         {
-            // запрет вставки картинок и стилей из буффера
-            await JS.InvokeVoidAsync("editorFunctions.setupPasteInterop", Id);
+            // Показываем все файлы
+            var source = VsCodeContextService.CurrentContext?.SolutionFiles ?? 
+                         ["test1.cs", "C:\\asdtes\\t2aksjhdgj\\ahsghd hjagshjdg\\ajhsgdahjkg.cs"];
+            filteredFiles = source.Take(10).ToList();
+            selectedIndex = 0;
         }
-    }
-
-    private async Task SaveSelection()
-    {
-        // Вызываем сохранение range в JS
-        await JS.InvokeVoidAsync("editorFunctions.saveSelection");
-    }
-
-    private async Task HandleInput()
-    {
-        cursorCoords = await JS.InvokeAsync<Coords>("editorFunctions.getCursorCoordinates", Id);
-        var result = await JS.InvokeAsync<JsonElement?>("editorFunctions.getWordBeforeCursor");
-
-        if (result != null)
+        else if (currentInput.Contains('@'))
         {
-            string query = result.Value.GetProperty("query").GetString() ?? string.Empty;
-            lastMatchLength = result.Value.GetProperty("length").GetInt32();
+            // Ищем текст после последнего @
+            var lastAtIndex = currentInput.LastIndexOf('@');
+            var query = currentInput.Substring(lastAtIndex + 1);
 
-            var source = VsCodeContextService.CurrentContext?.SolutionFiles ?? ["test1.cs", "test2.cs"];
+            var source = VsCodeContextService.CurrentContext?.SolutionFiles ?? 
+                         ["test1.cs", "C:\\asdtes\\t2aksjhdgj\\ahsghd hjagshjdg\\ajhsgdahjkg.cs"];
 
             filteredFiles = source
-                .Where(u => u.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .Where(f => f.Contains(query, StringComparison.OrdinalIgnoreCase))
                 .Take(10)
                 .ToList();
             selectedIndex = 0;
@@ -122,20 +144,46 @@
         {
             filteredFiles.Clear();
         }
-
-        message = await JS.InvokeAsync<string>("editorFunctions.getText", Id);
     }
 
-    private async Task AddChip(string value)
+    private async Task AddFileToken(string filePath)
     {
-        // Создаем HTML чипса
-        string chipHtml = $"<span contenteditable='false' class='chip'> @{value} </span>";
+        var fileName = Path.GetFileName(filePath.Replace('\\', '/'));
+        
+        // Удаляем @ и текст после него из currentInput
+        var lastAtIndex = currentInput.LastIndexOf('@');
+        if (lastAtIndex >= 0)
+        {
+            currentInput = currentInput.Substring(0, lastAtIndex);
+        }
 
-        // Передаем lastMatchLength, чтобы JS удалил "@набранное_имя" перед вставкой
-        await JS.InvokeVoidAsync("editorFunctions.insertChip", Id, chipHtml, lastMatchLength);
+        // Добавляем токен файла
+        tokens.Add(new FileToken 
+        { 
+            FilePath = filePath,
+            FileName = fileName
+        });
 
         filteredFiles.Clear();
-        lastMatchLength = 0;
+        selectedIndex = 0;
+        
+        // Фокус обратно на input
+        await FocusInput();
+    }
+
+    private async Task RemoveToken(FileToken token)
+    {
+        tokens.Remove(token);
+        await FocusInput();
+    }
+
+    private async Task FocusInput()
+    {
+        try
+        {
+            await textareaRef.FocusAsync();
+        }
+        catch { }
     }
 
     private async Task OnKeyDown(KeyboardEventArgs e)
@@ -159,7 +207,7 @@
                 shouldPreventDefault = true;
                 if (selectedIndex >= 0 && selectedIndex < filteredFiles.Count)
                 {
-                    await AddChip(filteredFiles[selectedIndex]);
+                    await AddFileToken(filteredFiles[selectedIndex]);
                 }
                 return;
             }
@@ -172,11 +220,10 @@
         }
 
         // Enter без Shift/Ctrl — отправка
-        if (e is { Key: "Enter", CtrlKey: false, ShiftKey: false })
+        if (e is { Key: "Enter", CtrlKey: false, ShiftKey: false } && !filteredFiles.Any())
         {
             shouldPreventDefault = true;
-            // Здесь можно добавить проверку, не открыто ли сейчас меню подсказок
-            await Task.WhenAll(SendMessage.InvokeAsync(message));
+            await OnSendClick();
         }
         else
         {
@@ -184,5 +231,81 @@
         }
     }
 
-    private Task OnSendClick() => SendMessage.InvokeAsync(message);
+    private async Task OnSendClick()
+    {
+        if (!CanSend()) return;
+
+        // Загружаем содержимое файлов перед отправкой
+        foreach (var fileToken in tokens.OfType<FileToken>())
+        {
+            if (string.IsNullOrEmpty(fileToken.FileContent))
+            {
+                fileToken.FileContent = await FileContentService.ReadFileContentAsync(fileToken.FilePath);
+            }
+        }
+
+        // Формируем сообщение для отправки
+        var messageBuilder = new System.Text.StringBuilder();
+        
+        // Добавляем текущий ввод
+        if (!string.IsNullOrWhiteSpace(currentInput))
+        {
+            messageBuilder.Append(currentInput.Trim());
+        }
+
+        // Добавляем файлы с их содержимым
+        foreach (var fileToken in tokens.OfType<FileToken>())
+        {
+            if (messageBuilder.Length > 0)
+                messageBuilder.AppendLine();
+                
+            messageBuilder.Append(fileToken.GetLlmText());
+        }
+
+        var message = messageBuilder.ToString();
+        
+        // Очищаем состояние
+        currentInput = string.Empty;
+        tokens.Clear();
+        filteredFiles.Clear();
+
+        // Сбрасываем высоту textarea
+        await JS.InvokeVoidAsync("eval", "arguments[0].style.height = 'auto'", textareaRef);
+
+        await SendMessage.InvokeAsync(message);
+    }
+
+    private string GetFileIcon(string fileName)
+    {
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+        return extension switch
+        {
+            ".cs" => "📄",
+            ".razor" => "⚡",
+            ".html" => "🌐",
+            ".css" => "🎨",
+            ".js" => "📜",
+            ".json" => "📋",
+            ".xml" => "📋",
+            ".txt" => "📝",
+            ".md" => "📖",
+            ".png" or ".jpg" or ".jpeg" or ".gif" or ".svg" => "🖼️",
+            ".dll" or ".exe" => "⚙️",
+            ".config" => "🔧",
+            ".csproj" or ".sln" => "📦",
+            _ => "📄"
+        };
+    }
+
+    public async Task Clear()
+    {
+        currentInput = string.Empty;
+        tokens.Clear();
+        filteredFiles.Clear();
+        
+        // Сбрасываем высоту textarea
+        await JS.InvokeVoidAsync("eval", "arguments[0].style.height = 'auto'", textareaRef);
+        
+        StateHasChanged();
+    }
 }

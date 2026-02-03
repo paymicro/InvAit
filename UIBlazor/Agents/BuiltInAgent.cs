@@ -19,6 +19,12 @@ public class BuiltInAgent(IVsBridge vsBridge)
                                      line_count
                                      50
                                      </function>
+
+                                     Or to read the entire file:
+                                     <function name="{BuiltInToolEnum.ReadFiles}">
+                                     path/to/file.cs
+                                     path/to/file2.cs
+                                     </function>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, args)
         },

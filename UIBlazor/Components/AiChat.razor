@@ -104,17 +104,20 @@
                         }
                         
                         <!-- Message Actions -->
-                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.25rem" class="rz-chat-message-actions" Style="opacity: 0.4; transition: opacity 0.2s;">
-                            <RadzenButton Icon="edit" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
-                                          Click="@(() => OnEditMessage(message))" Title="Edit message" />
-                            <RadzenButton Icon="delete" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
-                                          Click="@(() => OnDeleteMessageAsync(message))" Title="Delete message" />
-                            @if (message == Messages.LastOrDefault(m => m.Role == ChatMessageRole.Assistant) && !IsLoading)
-                            {
-                                <RadzenButton Icon="refresh" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
-                                              Click="@OnRegenerateLastAsync" Title="Regenerate response" />
-                            }
-                        </RadzenStack>
+                        @if (!message.IsStreaming)
+                        {
+                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.25rem" class="rz-chat-message-actions" Style="opacity: 0.4; transition: opacity 0.2s;">
+                                <RadzenButton Icon="edit" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
+                                Click="@(() => OnEditMessage(message))" Title="Edit message" />
+                                <RadzenButton Icon="delete" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
+                                Click="@(() => OnDeleteMessageAsync(message))" Title="Delete message" />
+                                @if (message == Messages.LastOrDefault(m => m.Role == ChatMessageRole.Assistant) && !IsLoading)
+                                {
+                                    <RadzenButton Icon="refresh" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
+                                    Click="@OnRegenerateLastAsync" Title="Regenerate response" />
+                                }
+                            </RadzenStack>
+                        }
                     </RadzenStack>
                 </div>
             }
