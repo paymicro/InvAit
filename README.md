@@ -1,6 +1,6 @@
-﻿# InvGen - AI-агент для Visual Studio 2022/2026
+﻿# InvGen - Local AI Agent for Visual Studio
 
-**Безопасный плагин для VS 2022/2026 с поддержкой локальных и приватных моделей AI в режиме агента.**
+**Secure Visual Studio 2022/2026 extension with local and private AI agent support.**
 
 ![VS 2022+](https://img.shields.io/badge/Visual%20Studio-2022%2F2026-blue)
 ![.NET Framework 4.8](https://img.shields.io/badge/.NET%20Framework-4.8-blue)
@@ -9,365 +9,53 @@
 
 ---
 
-## 🔐 Приоритет: Безопасность
-
-### Локальная обработка данных
-- **Никакие данные проекта не отправляются на облачные сервисы** по умолчанию
-- Все вычисления выполняются локально или на вашем собственном сервере
-- Поддержка приватных AI-моделей, развёрнутых в вашей инфраструктуре
-
-### Контроль конфиденциальности
-- Полный контроль над API ключами и конечными точками
-- Возможность использовать локальные LLM (Ollama, LM Studio, vLLM и т.д.)
-- Шифрование настроек в локальном хранилище
-- Отсутствие телеметрии и аналитики
-
----
-
-## ✨ Возможности
-
-### 🤖 Режим AI-агента
-- **Автономное выполнение задач** в контексте вашего проекта
-- Агент может:
-  - Читать файлы проекта
-  - Анализировать открытый код
-  - Создавать новые файлы
-  - Выполнять команды терминала
-  - Применять дифы и изменения
-  - Собирать решение (Build)
-  - Получать список ошибок компилятора
-  - Искать файлы и контент
-
-### 💬 Интерактивный чат
-- Встроенная панель чата с поддержкой WebAssembly
-- Взаимодействие с AI-моделью из IDE
-- История диалогов в текущей сессии
-- Контекстная информация о проекте
-
-### ⚙️ Гибкие настройки
-- Выбор AI-модели
-- Настройка endpoint'а (локальный или удалённый)
-- Управление API ключами
-- Поддержка пользовательских заголовков аутентификации
-
----
-
-## 🚀 Установка и использование
-
-### Установка плагина
-1. Скачайте VSIX файл из [релизов](https://github.com/paymicro/InvGen/releases)
-2. Откройте файл в Visual Studio 2022/2026
-3. Следуйте инструкциям установщика
-
-### Первичная настройка
-
-#### Вариант 1: Локальная AI-модель (рекомендуется для безопасности)
-
-Используйте **Ollama** или **LM Studio** для запуска моделей локально:
-
-```bash
-# Ollama (https://ollama.ai)
-ollama run llama2
-# или
-ollama run mistral
-```
-
-В настройках плагина установите:
-- **Endpoint**: `http://localhost:11434/api` (для Ollama)
-- **Модель**: `llama2` или выбранная модель
-- **API Key**: оставить пустым (не требуется для локальных)
-
-#### Вариант 2: Приватный сервер (self-hosted)
-
-Разверните открытую LLM на вашем сервере:
-
-```bash
-# vLLM
-python -m vllm.entrypoints.openai.api_server \
-  --model meta-llama/Llama-2-7b-chat-hf \
-  --host 192.168.1.100 \
-  --port 8000
-```
-
-В настройках:
-- **Endpoint**: `http://192.168.1.104:1234` 
-- **API Key**: генерированный токен (если требуется)
-- **API Key Header**: `Authorization` (стандартное) или пользовательское
-
-#### Вариант 3: Удалённый сервис (на ваш риск)
-
-Если необходимо использовать облачный сервис:
-- **Endpoint**: URL сервиса (например, `https://api.openai.com/v1`)
-- **API Key**: ваш API ключ
-- **API Key Header**: `Authorization`
-
-> ⚠️ **Примечание**: При использовании облачных сервисов весь контент проекта будет передан на удалённый сервер. Используйте только при необходимости и с пониманием рисков конфиденциальности.
-
-### Открытие чата
-
-1. **View** → **Other Windows** → **InvGen Chat** (или используйте поиск команд)
-2. Убедитесь, что настройки AI введены корректно
-3. Начните диалог с AI-агентом
-
----
-
-## 🛠️ Поддерживаемые действия агента
-
-Агент имеет доступ к следующим инструментам:
-
-### 📁 Операции с файлами
-| Инструмент | Описание |
-|-----------|---------|
-| `ReadFiles` | Чтение содержимого одного или нескольких файлов |
-| `ReadOpenFile` | Чтение текущего открытого файла с номерами строк |
-| `CreateFile` | Создание новых файлов в проекте |
-| `ApplyDiff` | Применение изменений (diff) к файлам |
-
-### 🔍 Поиск и навигация
-| Инструмент | Описание |
-|-----------|---------|
-| `SearchFiles` | Поиск файлов по шаблону или имени |
-| `GrepSearch` | Поиск текста в файлах проекта |
-| `ListDirectory` | Просмотр содержимого директорий |
-
-### 🏗️ Сборка и проект
-| Инструмент | Описание |
-|-----------|---------|
-| `Build` | Сборка решения (Build, Rebuild или Clean) |
-| `GetErrors` | Получение списка ошибок компиляции |
-| `GetProjectInfo` | Информация о проектах и структуре решения |
-
-### ⚙️ Выполнение и загрузка
-| Инструмент | Описание |
-|-----------|---------|
-| `ExecuteCommand` | Выполнение команд в терминале (cmd, powershell, dotnet) |
-| `FetchUrl` | Загрузка содержимого с веб-адресов |
-
-### 🔗 Git операции
-| Инструмент | Описание |
-|-----------|---------|
-| `GitStatus` | Проверка статуса репозитория (modified, staged, untracked) |
-| `GitLog` | Просмотр истории коммитов |
-| `GitDiff` | Просмотр различий между версиями |
-| `GitBranch` | Информация о текущей ветке |
-
-### ✅ Планирование и управление задачами
-| Инструмент | Описание |
-|-----------|---------|
-| `CreateTask` | Создание новой задачи с приоритетом, описанием и сроком |
-| `ListTasks` | Просмотр всех задач с фильтрацией по статусу или приоритету |
-| `UpdateTask` | Обновление статуса, приоритета, описания и меток задачи |
-| `CompleteTask` | Отметить задачу как завершённую |
-| `DeleteTask` | Удалить задачу |
-
----
-
-## 📋 Управление задачами (Task Planning)
-
-### Функциональность
-Агент может управлять проектными задачами для структурированной разработки:
-
-**Статусы задач:**
-- `Todo` — новая задача
-- `InProgress` — выполняется
-- `Blocked` — заблокирована
-- `Review` — на review
-- `Done` — завершена
-
-**Приоритеты:**
-- `Low` — низкий
-- `Medium` — средний (по умолчанию)
-- `High` — высокий
-- `Critical` — критический
-
-**Свойства задачи:**
-- Название и описание
-- Приоритет и статус
-- Срок выполнения (DueDate)
-- Оценка времени (EstimatedHours)
-- Теги для категоризации
-- Подзадачи (SubTasks)
-- Назначение исполнителю
-
-### Примеры использования
-
-**Создание задачи:**
-```json
-{
-  "title": "Реализовать аутентификацию",
-  "description": "Добавить JWT токены",
-  "priority": "high",
-  "dueDate": "2024-12-31",
-  "estimatedHours": 8
-}
-```
-
-**Просмотр задач:**
-```json
-{
-  "filter": "todo"  // или: all, done, in_progress, blocked, review, overdue, status
-}
-```
-
-**Обновление задачи:**
-```json
-{
-  "taskId": "task-id",
-  "status": "in_progress",
-  "priority": "critical",
-  "tags": ["bug", "urgent"]
-}
-```
-
-### Сохранение данных
-- Все задачи хранятся в локальном хранилище браузера
-- Синхронизация с IndexedDB
-- История сохраняется между сеансами
-
----
-
-## 🔒 Лучшие практики безопасности
-
-### ✅ Рекомендуется
-- ✓ Использовать локальные AI-модели через Ollama/LM Studio
-- ✓ Развёртывать приватные LLM в вашей инфраструктуре
-- ✓ Хранить API ключи в защищённом хранилище
-- ✓ Регулярно обновлять плагин
-- ✓ Проверять команды, которые агент собирается выполнить, перед одобрением
-
-### ❌ Избегать
-- ✗ Использование публичных облачных AI-сервисов с конфиденциальным кодом
-- ✗ Сохранение API ключей в незащищённом виде
-- ✗ Предоставление агенту полного доступа к системе без контроля
-- ✗ Использование небезопасных сетевых соединений (HTTP вместо HTTPS)
-
----
-
-## 🏗️ Архитектура проекта
-
-```
-InvGen/
-├── InvGen/               # Плагин VS 2022/2026 (.NET Framework 4.8)
-│   ├── Agent/            # Логика выполнения агента
-│   ├── ToolWindows/      # Пользовательский интерфейс
-│   ├── Commands/         # VS команды
-│   └── Utils/            # Утилиты логирования и JSON
-├── UIBlazor/             # Blazor WASM интерфейс чата (.NET 10)
-│   ├── Agents/           # Определение инструментов агента
-│   ├── Services/         # Сервисы (ChatService, ProfileService)
-│   ├── Components/       # Razor компоненты
-│   └── Models/           # Модели данных
-└── Shared/               # Общие контракты (.NET Standard 2.0)
-    └── Contracts/        # VsRequest, VsResponse, BuiltInToolEnum
-```
-
-### Взаимодействие компонентов
-```
-VS IDE (InvGen)
-    ↓ (запрос)
-Blazor WebAssembly Chat UI (UIBlazor)
-    ↓ (передача команд)
-BuiltInAgent (выполнение инструментов)
-    ↓ (возврат результатов)
-ChatService
-    ↓ (отправка в LLM)
-AI Модель (локальная или удалённая)
-```
-
----
-
-## 📦 Требования
-
-- **Visual Studio 2022** или **2026**
-- **.NET Framework 4.8** (для плагина VS)
-- **.NET 10** (для Blazor WASM компонентов)
-
-### Для локальных AI-моделей
-- **Ollama** — https://ollama.ai
-- **LM Studio** — https://lmstudio.ai
-- **vLLM** — https://github.com/vllm-project/vllm
-
----
-
-## 🔄 Поток работы агента
-
-1. **Пользователь вводит запрос** в чат
-2. **ChatService отправляет** контекст и историю в AI-модель
-3. **AI-модель генерирует** последовательность инструментов для выполнения
-4. **BuiltInAgent выполняет** каждый инструмент в VS IDE
-5. **Результаты возвращаются** агенту для анализа
-6. **Процесс повторяется** до завершения задачи
-7. **Результат отображается** пользователю в чате
-
----
-
-## 🐛 Решение проблем
-
-### Агент не видит мои файлы
-- Убедитесь, что решение открыто в VS
-- Проверьте пути в настройках проекта
-- Используйте инструмент `ReadOpenFile` для проверки текущего файла
-
-### API ключ не принимается
-- Проверьте формат ключа (без дополнительных символов)
-- Убедитесь, что установлен правильный заголовок аутентификации
-- Для локальных моделей оставьте поле API ключа пустым
-
-### Ошибка подключения к LLM
-- Проверьте, что сервис запущен: `ollama serve` или `lm-studio serve`
-- Убедитесь в корректности endpoint'а (порт по умолчанию: 11434 для Ollama)
-- Проверьте сетевые настройки и firewall
-
----
-
-## 🤝 Вклад
-
-Проект open-source. Приветствуются:
-- Улучшения безопасности
-- Поддержка новых AI-моделей
-- Оптимизация производительности
-- Документация и примеры
-
----
-
-## 📖 Документация
-
-Подробные гайды по новым инструментам:
-- 📘 **[TASK_PLANNING_GUIDE.md](./TASK_PLANNING_GUIDE.md)** — система управления задачами
-  - Архитектура, API, сценарии использования
-  - Примеры команд для AI-агента
-  
-- 📗 **[GIT_TOOLS_GUIDE.md](./GIT_TOOLS_GUIDE.md)** — работа с Git в IDE
-  - Git операции (status, log, diff, branch)
-  - Интеграция с репозиториями
-  
-- 📕 **[TOOLS_IMPLEMENTATION_SUMMARY.md](./TOOLS_IMPLEMENTATION_SUMMARY.md)** — итоговый отчёт
-  - Список всех добавленных инструментов
-  - Статистика изменений
-  - План развития
-
----
-
-## 📄 Лицензия
-
-Подробнее см. файл [LICENSE](./LICENSE)
-
----
-
-## ⭐ Поддержка
-
-Если проект вам помогает:
-- ⭐ Поставьте звезду на GitHub
-- 🔗 Поделитесь с коллегами
-- 💬 Оставьте feedback в Issues
-
----
-
-## 📞 Контакты
-
-- **GitHub Issues**: https://github.com/paymicro/InvGen/issues
-- **Дискуссии**: https://github.com/paymicro/InvGen/discussions
-
----
-
-**Разработано с ❤️ для безопасности и приватности вашего кода.**
+## 🔐 Security & Privacy
+- **Local First:** No code leaves your machine by default.
+- **Private AI:** Native support for local LLMs (Ollama, LM Studio, vLLM).
+- **Control:** You define the endpoint and API keys. No hidden telemetry.
+
+## ✨ Key Features
+- **Autonomous Agent:** Can read files, execute terminal commands, git operations, and apply code changes.
+- **Integrated Chat:** Blazor WebAssembly UI running directly inside Visual Studio.
+- **Task Management:** Built-in system to track and plan development tasks.
+- **Build Integration:** Can trigger builds and analyze compilation errors.
+
+## 🚀 Setup
+
+### Installation
+1. Download the VSIX from [Releases](https://github.com/paymicro/InvGen/releases).
+2. Install via Visual Studio Extension Manager.
+
+### Configuration
+
+**Option 1: Local (Recommended)**
+Use [Ollama](https://ollama.ai) or [LM Studio](https://lmstudio.ai).
+- **Endpoint:** `http://localhost:11434/api` (Ollama default)
+- **Model:** `llama3`, `mistral`, `codellama`
+- **Key:** (Leave empty)
+
+**Option 2: Remote / Self-Hosted**
+- **Endpoint:** URL of your OpenAI-compatible provider.
+- **Key:** Your API Key (stored securely).
+
+## 🛠 Capabilities
+
+| Category | Tools |
+|----------|-------|
+| **Files** | Read, Create, Search, Apply Diff |
+| **Project** | Build, Get Errors, Inspect Structure |
+| **Git** | Status, Log, Diff, Branch Info |
+| **System** | Execute Shell Commands, Fetch URLs |
+| **Planning** | Create, List, Update, Complete Tasks |
+
+## 🏗 Architecture
+- **Extension:** VS SDK (.NET Framework 4.8) handles system operations.
+- **UI:** Blazor WebAssembly (.NET 10) hosted in WebView2.
+- **Bridge:** JSON-RPC communication between UI and VS Host.
+
+## 📦 Requirements
+- **Visual Studio:** 2022 or 2026
+- **Runtimes:** .NET Framework 4.8, .NET 10 SDK
+
+## 📄 License
+See [LICENSE](./LICENSE).
