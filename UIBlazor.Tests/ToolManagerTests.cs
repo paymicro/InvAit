@@ -2,7 +2,6 @@ using Moq;
 using Shared.Contracts;
 using UIBlazor.Agents;
 using UIBlazor.Models;
-using UIBlazor.Services;
 using UIBlazor.Services.Settings;
 using UIBlazor.VS;
 
@@ -37,10 +36,10 @@ public class ToolManagerTests
     {
         // Arrange
         var content = """
-                      <tool_call_begin> functions.read_files
+                      <function name="read_files">
                       C:\Users\user.txt
                       path/to/file2.txt
-                      <tool_call_end>
+                      </function>
                       """;
 
         // Act
@@ -49,8 +48,58 @@ public class ToolManagerTests
         // Assert
         Assert.Single(result);
         var args = result[0].Function.Arguments;
-        Assert.Equal("C:\\Users\\user.txt", args["param1"]);
-        Assert.Equal("path/to/file2.txt", args["param2"]);
+        Assert.Equal("C:\\Users\\user.txt", ((ReadFileParams)args["file1"]).Name);
+        Assert.Equal("path/to/file2.txt", ((ReadFileParams)args["file2"]).Name);
+    }
+
+    [Fact]
+    public void ParseToolBlock_ReadFiles_WithStartLine()
+    {
+        // Arrange
+        var content = """
+                      <function name="read_files">
+                      C:\Users\user.txt
+                      start_line
+                      5
+                      </function>
+                      """;
+
+        // Act
+        var result = _toolManager.ParseToolBlock(content);
+
+        // Assert
+        Assert.Single(result);
+        var args = result[0].Function.Arguments;
+        var file1 = (ReadFileParams)args["file1"];
+        Assert.Equal("C:\\Users\\user.txt", file1.Name);
+        Assert.Equal(5, file1.StartLine);
+        Assert.Equal(-1, file1.LineCount);
+    }
+
+    [Fact]
+    public void ParseToolBlock_ReadFiles_WithStartLineAndLineCount()
+    {
+        // Arrange
+        var content = """
+                      <function name="read_files">
+                      C:\Users\user.txt
+                      start_line
+                      5
+                      line_count
+                      10
+                      </function>
+                      """;
+
+        // Act
+        var result = _toolManager.ParseToolBlock(content);
+
+        // Assert
+        Assert.Single(result);
+        var args = result[0].Function.Arguments;
+        var file1 = (ReadFileParams)args["file1"];
+        Assert.Equal("C:\\Users\\user.txt", file1.Name);
+        Assert.Equal(5, file1.StartLine);
+        Assert.Equal(10, file1.LineCount);
     }
 
     [Fact]
@@ -58,7 +107,7 @@ public class ToolManagerTests
     {
         // Arrange
         var content = """
-                      <tool_call_begin> functions.apply_diff
+                      <function name="apply_diff">
                       path/to/file.txt
                       :start_line:10
                       <<<<<<< SEARCH
@@ -68,7 +117,7 @@ public class ToolManagerTests
                           with new lines
                       }
                       >>>>>>> REPLACE
-                      <tool_call_end>
+                      </function>
                       """;
         var expectedDiff = new DiffReplacement
         {
@@ -92,7 +141,7 @@ public class ToolManagerTests
     {
         // Arrange
         var content = """
-                      <tool_call_begin> functions.apply_diff
+                      <function name="apply_diff">
                       path/to/file.txt
                       :start_line:10
                       <<<<<<< SEARCH
@@ -117,7 +166,7 @@ public class ToolManagerTests
                       /// <summary>Хех</summary>
                       public class Super
                       >>>>>>> REPLACE
-                      <tool_call_end>
+                      </function>
                       """;
 
         // Act
@@ -238,14 +287,14 @@ public class ToolManagerTests
     {
         // Arrange
         var content = """
-                      <tool_call_begin> functions.read_files
+                      <function name="read_files">
                       file1.txt
-                      <tool_call_end>
+                      </function>
                       Some text in between.
-                      <tool_call_begin> functions.ls
+                      <function name="ls">
                       C:\
                       true
-                      <tool_call_end>
+                      </function>
                       """;
 
         // Act
@@ -255,7 +304,7 @@ public class ToolManagerTests
         Assert.Equal(2, result.Count);
         Assert.Equal("read_files", result[0].Function.Name);
         Assert.Equal("ls", result[1].Function.Name);
-        Assert.Equal("file1.txt", result[0].Function.Arguments["param1"]);
+        Assert.Equal("file1.txt", ((ReadFileParams)result[0].Function.Arguments["file1"]).Name);
         Assert.Equal("C:\\", result[1].Function.Arguments["param1"]);
         Assert.Equal("true", result[1].Function.Arguments["param2"]);
     }

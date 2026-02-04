@@ -86,8 +86,8 @@
 
     [Inject] private ChatService ChatService { get; set; } = null!;
     [Inject] private IVsCodeContextService VsCodeContextService { get; set; } = null!;
-    [Inject] private IFileContentService FileContentService { get; set; } = null!;
     [Inject] private IJSRuntime JS { get; set; } = null!;
+    [Inject] private IVsBridge VsBridge { get; set; } = null!;
 
     private ElementReference textareaRef;
     private List<InputToken> tokens = new();
@@ -240,7 +240,11 @@
         {
             if (string.IsNullOrEmpty(fileToken.FileContent))
             {
-                fileToken.FileContent = await FileContentService.ReadFileContentAsync(fileToken.FilePath);
+                var readFileTool = await VsBridge.ExecuteToolAsync(
+                    BuiltInToolEnum.ReadFiles,
+                    new Dictionary<string, object> { { "param1", fileToken.FilePath } });
+
+                fileToken.FileContent = readFileTool.Result;
             }
         }
 
@@ -270,7 +274,7 @@
         filteredFiles.Clear();
 
         // Сбрасываем высоту textarea
-        await JS.InvokeVoidAsync("eval", "arguments[0].style.height = 'auto'", textareaRef);
+        await JS.InvokeVoidAsync("autoResizeTextarea", textareaRef, true);
 
         await SendMessage.InvokeAsync(message);
     }

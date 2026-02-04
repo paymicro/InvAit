@@ -264,6 +264,20 @@ public partial class AiChat : RadzenComponent
                                 """
                             };
                             break;
+                        case BuiltInToolEnum.ReadFiles:
+                            vsToolResult = new VsToolResult
+                            {
+                                Result = """
+                                File content
+                                1 |namespace UIBlazor.Components;
+                                2 |
+                                3 |public partial class AIChat : TestComponent
+                                4 |{
+                                5 |    private List<ChatMessage> Messages { get; set; } = [];
+                                6 |}
+                                """
+                            };
+                            break;
                         case BuiltInToolEnum.ApplyDiff:
                             vsToolResult = new VsToolResult
                             {

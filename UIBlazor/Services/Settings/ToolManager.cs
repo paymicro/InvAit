@@ -111,7 +111,7 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
             return state.IsEnabled && t.Enabled;
         }
         // по умолчанию категория включена
-        return true;
+        return t.Enabled;
     });
 
     public IEnumerable<Tool> GetAllTools() => _registeredTools.Values;
@@ -139,7 +139,11 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
         sb.AppendLine($"Current Application Mode: {mode}");
         sb.AppendLine("Available modes: Chat (for discussion, reading and explanations), Agent (for taking actions and applying changes), Plan (for planning).");
         sb.AppendLine("Use Mermaid diagrams for clarity in explanations. This will help you better visualize the answer formula.");
-        sb.AppendLine($"You can use '{BuiltInToolEnum.SwitchMode}' tool to change current mode if you need more tools or want to switch context.");
+        
+        if (enabledTools.Any(t => t.Name == BuiltInToolEnum.SwitchMode))
+        {
+            sb.AppendLine($"You can use '{BuiltInToolEnum.SwitchMode}' tool to change current mode if you need more tools or want to switch context.");
+        }
         
         if (enabledTools.Count == 0)
         {
@@ -209,7 +213,7 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
             var toolName = callMatch.Groups[1].Value;
             var callId = callMatch.Groups[2].Success ? callMatch.Groups[2].Value : Guid.NewGuid().ToString();
             var args = callMatch.Groups[3].Value;
-            var arguments = Parse(args);
+            var arguments = Parse(toolName, args);
 
             result.Add(new AiTool
             {
@@ -227,7 +231,7 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
         return result;
     }
 
-    private Dictionary<string, object> Parse(string input)
+    private Dictionary<string, object> Parse(string toolName, string input)
     {
         var result = new Dictionary<string, object>();
         var reader = new StringReader(input);
@@ -235,44 +239,97 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
         var paramIndex = 0;
         var namedIndex = 0;
 
-        while ((line = reader.ReadLine()) != null)
+        if (toolName == BuiltInToolEnum.ReadFiles)
         {
-            var trimmedLine = line.Trim();
+            ReadFileParams? fileParams = null;
 
-            if (string.IsNullOrEmpty(trimmedLine))
-                continue;
-
-            // Начало блока (<<<<<<< SEARCH)
-            if (trimmedLine.StartsWith("<<<<<<< SEARCH"))
+            while ((line = reader.ReadLine()) != null)
             {
-                var diff = new DiffReplacement();
-                var lastResult = result.LastOrDefault().Value?.ToString() ?? string.Empty;
-                if (lastResult.StartsWith(":start_line:"))
-                {
-                    diff.StartLine = int.Parse(lastResult.Split(':')[2]);
-                    result.Remove($"param{paramIndex}");
-                }
-                var search = new List<string>();
-                while ((line = reader.ReadLine()) != null)
-                {
-                    if (line.Trim().StartsWith("=======")) break;
-                    search.Add(line);
-                }
-                diff.Search = search;
+                var trimmedLine = line.Trim();
+                if (string.IsNullOrEmpty(trimmedLine))
+                    continue;
 
-                var replace = new List<string>();
-                while ((line = reader.ReadLine()) != null)
+                if (trimmedLine == "start_line")
                 {
-                    if (line.Trim().StartsWith(">>>>>>> REPLACE")) break;
-                    replace.Add(line);
+                    var valLine = reader.ReadLine()?.Trim();
+                    if (fileParams != null && int.TryParse(valLine, out var startLine))
+                    {
+                        fileParams.StartLine = startLine;
+                    }
                 }
-                diff.Replace = replace;
-
-                result[$"diff{++namedIndex}"] = diff;
+                else if (trimmedLine == "line_count")
+                {
+                    var valLine = reader.ReadLine()?.Trim();
+                    if (fileParams != null && int.TryParse(valLine, out var lineCount))
+                    {
+                        fileParams.LineCount = lineCount;
+                    }
+                }
+                else
+                {
+                    fileParams = new ReadFileParams
+                    {
+                        Name = trimmedLine,
+                        StartLine = -1,
+                        LineCount = -1
+                    };
+                    result[$"file{++paramIndex}"] = fileParams;
+                }
             }
-            // Обычная строка параметров
-            else
+        }
+        else if (toolName == BuiltInToolEnum.ApplyDiff)
+        {
+            while ((line = reader.ReadLine()) != null)
             {
+                var trimmedLine = line.Trim();
+
+                if (string.IsNullOrEmpty(trimmedLine))
+                    continue;
+
+                // Начало блока (<<<<<<< SEARCH)
+                if (trimmedLine.StartsWith("<<<<<<< SEARCH"))
+                {
+                    var diff = new DiffReplacement();
+                    var lastResult = result.LastOrDefault().Value?.ToString() ?? string.Empty;
+                    if (lastResult.StartsWith(":start_line:"))
+                    {
+                        diff.StartLine = int.Parse(lastResult.Split(':')[2]);
+                        result.Remove($"param{paramIndex}");
+                    }
+                    var search = new List<string>();
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        if (line.Trim().StartsWith("=======")) break;
+                        search.Add(line);
+                    }
+                    diff.Search = search;
+
+                    var replace = new List<string>();
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        if (line.Trim().StartsWith(">>>>>>> REPLACE")) break;
+                        replace.Add(line);
+                    }
+                    diff.Replace = replace;
+
+                    result[$"diff{++namedIndex}"] = diff;
+                }
+                // Обычная строка параметров
+                else
+                {
+                    result[$"param{++paramIndex}"] = line;
+                }
+            }
+        }
+        else // обычные тулзы
+        {
+            while ((line = reader.ReadLine()) != null)
+            {
+                var trimmedLine = line.Trim();
+
+                if (string.IsNullOrEmpty(trimmedLine))
+                    continue;
+
                 result[$"param{++paramIndex}"] = line;
             }
         }

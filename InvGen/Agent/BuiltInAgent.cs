@@ -94,78 +94,106 @@ public class BuiltInAgent
     private async Task<VsResponse> ReadFileAsync(IReadOnlyDictionary<string, object> args)
     {
         var solutionPath = await GetSolutionPathAsync();
-        var filePathParam = args.GetString("Path"); // Prefer "Path" argument for single file read
+        var fileParamsList = new List<ReadFileParams>();
 
-        // If the "Path" parameter is provided, we assume a single file read and return raw content.
-        if (!string.IsNullOrEmpty(filePathParam))
+        // 1. Try to get structured parameters (file1, file2, ...)
+        var fileKeys = args.Keys.Where(k => k.StartsWith("file", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (fileKeys.Count > 0)
         {
-            var absPath = GetAbsolutePath(filePathParam, solutionPath);
-            if (!File.Exists(absPath))
+            foreach (var key in fileKeys.OrderBy(k => k))
             {
-                return new VsResponse { Success = false, Error = $"File \"{filePathParam}\" doesn't exist." };
-            }
-
-            try
-            {
-                var content = File.ReadAllText(absPath);
-                return new VsResponse { Success = true, Payload = content };
-            }
-            catch (Exception ex)
-            {
-                await Logger.LogAsync($"Error reading file {filePathParam}: {ex.Message}", "ERROR");
-                return new VsResponse { Success = false, Error = $"Error reading file {filePathParam}: {ex.Message}" };
+                var rp = args.GetObject<ReadFileParams>(key);
+                if (rp != null) fileParamsList.Add(rp);
             }
         }
-        
-        // Fallback to original logic for multiple files or old "param1" usage if "Path" is not provided
-        var files = args.Values.TakeWhile(x => !x.ToString().StartsWith(":")).Select(x => x.ToString()).ToList();
-        
-        // Support for range-based reading if only one file is requested
-        int? startLine = args.ContainsKey("start_line") ? int.Parse(args.GetString("start_line")) : null;
-        int? lineCount = args.ContainsKey("line_count") ? int.Parse(args.GetString("line_count")) : null;
+
+        // 2. Fallback to param* format
+        if (fileParamsList.Count == 0)
+        {
+            var paramKeys = args.Keys.Where(k => k.StartsWith("param", StringComparison.OrdinalIgnoreCase)).OrderBy(k => k).ToList();
+            if (paramKeys.Count > 0)
+            {
+                var startLine = args.GetInt("start_line", -1);
+                var lineCount = args.GetInt("line_count", -1);
+
+                foreach (var key in paramKeys)
+                {
+                    var path = args.GetString(key);
+                    if (!string.IsNullOrEmpty(path) && !path.StartsWith(":"))
+                    {
+                        fileParamsList.Add(new ReadFileParams
+                        {
+                            Name = path,
+                            StartLine = startLine,
+                            LineCount = lineCount
+                        });
+                    }
+                }
+            }
+        }
+
+        if (fileParamsList.Count == 0)
+        {
+            return new VsResponse { Success = false, Error = "No files specified." };
+        }
 
         await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-        var stringBuilder = new StringBuilder();
+        var sb = new StringBuilder();
         var isSuccess = true;
-        foreach (var fileName in files)
+
+        foreach (var rp in fileParamsList)
         {
-            var filepath = GetAbsolutePath(fileName, solutionPath);
-            if (!File.Exists(filepath))
+            var absPath = GetAbsolutePath(rp.Name, solutionPath);
+            if (!File.Exists(absPath))
             {
-                stringBuilder.AppendLine($"File \"{fileName}\" doesn't exist.");
+                sb.AppendLine($"File \"{rp.Name}\" doesn't exist.");
                 isSuccess = false;
                 continue;
             }
 
-            // Original logic appended file name and line numbers, preserving it for non-"Path" usage
-            stringBuilder.AppendLine($"\"{fileName}\" content");
-
             try
             {
-                var allLines = File.ReadLines(filepath);
-                var lineNum = 0;
-                
-                if (startLine.HasValue)
+                // Title for multiple files
+                if (fileParamsList.Count > 1)
                 {
-                    var linesToSkip = Math.Max(0, startLine.Value - 1);
-                    allLines = allLines.Skip(linesToSkip);
-                    lineNum = linesToSkip;
+                    sb.AppendLine($"\"{rp.Name}\" content");
                 }
 
-                if (lineCount.HasValue)
-                {
-                    allLines = allLines.Take(lineCount.Value);
-                }
+                // If it's a snippet or we are reading multiple files, use line numbers
+                var useLineNumbers = rp.StartLine > 0 || rp.LineCount > 0 || fileParamsList.Count > 1;
 
-                foreach (var readLine in allLines)
+                if (!useLineNumbers)
                 {
-                    stringBuilder.AppendLine($"{++lineNum} | {readLine}");
+                    // Raw content for single file without range
+                    sb.Append(File.ReadAllText(absPath));
+                }
+                else
+                {
+                    var lines = File.ReadLines(absPath);
+                    var currentLine = 0;
+
+                    if (rp.StartLine > 0)
+                    {
+                        var skipCount = Math.Max(0, rp.StartLine - 1);
+                        lines = lines.Skip(skipCount);
+                        currentLine = skipCount;
+                    }
+
+                    if (rp.LineCount > 0)
+                    {
+                        lines = lines.Take(rp.LineCount);
+                    }
+
+                    foreach (var line in lines)
+                    {
+                        sb.AppendLine($"{++currentLine} | {line}");
+                    }
                 }
             }
-            catch (Exception e)
+            catch (Exception ex)
             {
-                Logger.Log(e.Message);
-                stringBuilder.AppendLine($"Error reading {fileName}: {e.Message}");
+                await Logger.LogAsync($"Error reading file {rp.Name}: {ex.Message}", "ERROR");
+                sb.AppendLine($"Error reading file {rp.Name}: {ex.Message}");
                 isSuccess = false;
             }
         }
@@ -173,7 +201,7 @@ public class BuiltInAgent
         return new VsResponse
         {
             Success = isSuccess,
-            Payload = stringBuilder.ToString()
+            Payload = sb.ToString()
         };
     }
 

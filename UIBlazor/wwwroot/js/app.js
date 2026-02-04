@@ -75,12 +75,13 @@ function scrollToBottomIfNeeded(selector, threshold = 100) {
 }
 
 // Автоматическое изменение высоты textarea
-window.autoResizeTextarea = function (element) {
+window.autoResizeTextarea = function (element, auto = false) {
     if (!element) return;
 
     // Сбрасываем высоту до минимума
     element.style.height = 'auto';
 
+    if (auto) return;
     // Устанавливаем новую высоту на основе scrollHeight
     const newHeight = Math.min(element.scrollHeight, 200); // Максимум ~10 строк
     element.style.height = newHeight + 'px';
