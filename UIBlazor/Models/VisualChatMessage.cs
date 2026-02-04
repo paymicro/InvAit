@@ -12,7 +12,7 @@ public class VisualChatMessage
     /// Gets or sets the unique identifier for the message.
     /// </summary>
     [JsonIgnore]
-    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string Id { get; set; } = DateTime.Now.ToString("s") + Guid.NewGuid().ToString();
 
     /// <summary>
     /// Gets or sets the content of the message. Without thinking block.
@@ -65,4 +65,16 @@ public class VisualChatMessage
     /// Gets or sets the role associated with the message (e.g., "user", "assistant").
     /// </summary>
     public string Role { get; set; } = ChatMessageRole.User;
+
+    /// <summary>
+    /// Nested tool messages for assistant messages.
+    /// </summary>
+    [JsonIgnore]
+    public List<VisualChatMessage> ToolMessages { get; set; } = [];
+
+    /// <summary>
+    /// Whether the message block is expanded or collapsed.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsExpanded { get; set; }
 }

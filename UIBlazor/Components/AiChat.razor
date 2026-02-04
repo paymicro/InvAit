@@ -64,31 +64,42 @@
                                 <div class="rz-chat-message-time"> @message.Model </div>
                             }
                         </RadzenStack>
-                        @if (isTool)
+                        @if (!isTool) 
                         {
-                            <details class="tool-details">
-                            <summary>@message.ToolName</summary>
-                            <pre>
-                            @message.Content
-                            </pre>
-                            </details>
-                        }
-                        else
-                        {
-                            <div class="rz-chat-message-text" style="display: grid; width: 100%;">
-                                <div style="grid-area: 1/1; opacity: @(message.IsEditing ? 0 : 1); visibility: @(message.IsEditing ? "hidden" : "visible"); pointer-events: @(message.IsEditing ? "none" : "all");">
+                            <div class="rz-chat-message-text" style="display: grid; width: 100%; position: relative;">
+                                <div class="message-content-wrapper @(message.IsExpanded ? "expanded" : "collapsed")" 
+                                     style="grid-area: 1/1; opacity: @(message.IsEditing ? 0 : 1); visibility: @(message.IsEditing ? "hidden" : "visible"); pointer-events: @(message.IsEditing ? "none" : "all");">
                                     @if (!string.IsNullOrEmpty(message.ReasoningContent))
                                     {
                                         <details>
-                                        <summary>Поток сознания...</summary><AiChatMessage Content=@message.ReasoningContent ScroolBootom=false /></details>
+                                        <summary>Размышления...</summary><AiChatMessage Content=@message.ReasoningContent ScroolBootom=false /></details>
                                     }
                                     <AiChatMessage Content=@(message.DisplayContent ?? message.Content) />
+                                    
+                                    @if (message.Role == ChatMessageRole.Assistant && message.ToolMessages.Any())
+                                    {
+                                        <div class="message-tool-results rz-mt-2">
+                                            @foreach (var toolMsg in message.ToolMessages)
+                                            {
+                                                <details class="tool-details">
+                                                    <summary>@toolMsg.ToolName</summary>
+                                                    <pre class="rz-p-2 rz-background-color-base-900 rz-color-white" style="font-size: 0.8rem; border-radius: 4px;">@toolMsg.Content</pre>
+                                                </details>
+                                            }
+                                        </div>
+                                    }
                                 </div>
+                                
+                                @if (!message.IsEditing && !message.IsExpanded && !message.IsStreaming)
+                                {
+                                    <RadzenButton Text="Show More" Icon="expand_more" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.ExtraSmall"
+                                                 class="show-more-button rz-align-self-center" Click="@(() => message.IsExpanded = true)" />
+                                }
                                 
                                 @if (message.IsEditing)
                                 {
-                                    <div style="grid-area: 1/1; display: flex; flex-direction: column; width: 100%;">
-                                        <RadzenTextArea @bind-Value="@message.TempContent" AutoSize="true" Style="width: 100%; min-height: 100px; flex: 1;" class="rz-chat-edit-textarea" />
+                                    <div style="grid-area: 1/1; display: flex; flex-direction: column; width: 100%; height: 100%;">
+                                        <RadzenTextArea @bind-Value="@message.TempContent" AutoSize="true" Style="width: 100%; min-height: 100px; flex: 1; height: 100%;" class="rz-chat-edit-textarea" />
                                         <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" JustifyContent="JustifyContent.End" Style="margin-top: 0.5rem;">
                                             <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@(() => OnCancelEdit(message))" />
                                             <RadzenButton Icon="check" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small" Click="@(() => OnSaveEditAsync(message))" />
@@ -102,16 +113,25 @@
                                 }
                             </div>
                         }
+                        else
+                        {
+                            <details class="tool-details">
+                                <summary>@message.ToolName</summary>
+                                <pre>
+                                    @message.Content
+                                </pre>
+                            </details>
+                        }
                         
                         <!-- Message Actions -->
-                        @if (!message.IsStreaming)
+                        @if (!message.IsStreaming && !message.IsEditing)
                         {
-                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.25rem" class="rz-chat-message-actions" Style="opacity: 0.4; transition: opacity 0.2s;">
+                            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.25rem" class="rz-chat-message-actions" Style="opacity: 0.4; transition: opacity 0.2s;">
                                 <RadzenButton Icon="edit" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
                                 Click="@(() => OnEditMessage(message))" Title="Edit message" />
                                 <RadzenButton Icon="delete" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
                                 Click="@(() => OnDeleteMessageAsync(message))" Title="Delete message" />
-                                @if (message == Messages.LastOrDefault(m => m.Role == ChatMessageRole.Assistant) && !IsLoading)
+                                @if (!IsLoading && message == Messages.LastOrDefault(m => m.Role == ChatMessageRole.Assistant))
                                 {
                                     <RadzenButton Icon="refresh" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
                                     Click="@OnRegenerateLastAsync" Title="Regenerate response" />
@@ -126,9 +146,8 @@
 
     <!-- Chat Input -->
     <AiChatInput
-        Placeholder="Type your message..."
-        IsLoading="@IsLoading"
-        SendMessage="@SendMessageAsync"
+        IsLoading="IsLoading"
+        SendMessage="SendMessageAsync"
         Cancel="CancelResponceAsync">
     </AiChatInput>
 </div>

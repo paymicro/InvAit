@@ -87,7 +87,8 @@ public partial class AiChat : RadzenComponent
         var userMessage = new VisualChatMessage
         {
             Content = processedContent,
-            Role = ChatMessageRole.User
+            Role = ChatMessageRole.User,
+            IsExpanded = IsShortMessage(processedContent)
         };
         AddVisualMessage(userMessage);
         await ChatService.AddMessageAsync(userMessage);
@@ -152,7 +153,8 @@ public partial class AiChat : RadzenComponent
         // Add assistant message placeholder
         var assistantMessage = AddVisualMessage(new VisualChatMessage {
             Role = ChatMessageRole.Assistant,
-            IsStreaming = true
+            IsStreaming = true,
+            IsExpanded = true
         });
 
         try
@@ -189,7 +191,7 @@ public partial class AiChat : RadzenComponent
             // Add assistant response to conversation history
             await ChatService.AddMessageAsync(assistantMessage);
 
-            await HandleToolCallAsync(tools);
+            await HandleToolCallAsync(assistantMessage, tools);
         }
         catch (Exception ex)
         {
@@ -204,7 +206,7 @@ public partial class AiChat : RadzenComponent
         }
     }
 
-    private async Task HandleToolCallAsync(List<AiTool> aiTools)
+    private async Task HandleToolCallAsync(VisualChatMessage assistantMessage, List<AiTool> aiTools)
     {
         if (aiTools.Count == 0)
         {
@@ -288,14 +290,6 @@ public partial class AiChat : RadzenComponent
                 }
 #endif
 
-                var toolResultMessage = new VisualChatMessage
-                {
-                    Role = ChatMessageRole.Tool,
-                    Content = vsToolResult.Result,
-                    ToolName = tool.Name,
-                };
-                AddVisualMessage(toolResultMessage);
-
                 // для модели обогащаем результат и отправляем в чат
                 var result = vsToolResult.Success
                     ? $"""
@@ -310,11 +304,27 @@ public partial class AiChat : RadzenComponent
                        </tool_result>
                        Инструкция: Во время выполнения возникла ошибка. Предложи следующее действие, НО не повторяй предыдущее.
                        """;
-                await ChatService.AddMessageAsync(new VisualChatMessage
+
+                var toolSessionMessage = new VisualChatMessage
                 {
                     Role = vsToolResult.Role,
                     Content = result
-                });
+                };
+
+                // идет в сессию
+                await ChatService.AddMessageAsync(toolSessionMessage);
+
+                var toolResultMessage = new VisualChatMessage
+                {
+                    Id = toolSessionMessage.Id, // синхронизируем Id. Для показа в UI и удаления
+                    Role = ChatMessageRole.Tool,
+                    Content = vsToolResult.Result,
+                    ToolName = tool.Name,
+                };
+
+                assistantMessage.ToolMessages.Add(toolResultMessage);
+
+                await InvokeAsync(StateHasChanged);
             }
         }
 
@@ -323,18 +333,30 @@ public partial class AiChat : RadzenComponent
 
     private void SyncSessionMessageWithUi()
     {
+        VisualChatMessage? lastAssistantMessage = null;
         foreach (var chatMessage in ChatService.Session.Messages)
         {
             // тулзы показываем по особому (смотри HandleToolCallAsync)
             var regex = Regex.Match(chatMessage.Content, "^<tool_result name=\"(?<name>.{2,20})\">(?<result>.*)</tool_result>", RegexOptions.Singleline);
             if (regex.Success)
             {
-                AddVisualMessage(new VisualChatMessage
+                var toolResultMessage = new VisualChatMessage
                 {
+                    Id = chatMessage.Id,
                     Role = ChatMessageRole.Tool,
                     Content = regex.Groups["result"].Value,
                     ToolName = regex.Groups["name"].Value,
-                });
+                };
+                
+                if (lastAssistantMessage != null)
+                {
+                    lastAssistantMessage.ToolMessages.Add(toolResultMessage);
+                }
+                else
+                {
+                    // Fallback if somehow there's a tool result without an assistant message before it
+                    AddVisualMessage(toolResultMessage);
+                }
             }
             else
             {
@@ -345,10 +367,35 @@ public partial class AiChat : RadzenComponent
                     {
                         chatMessage.DisplayContent = "Calling tool: " + string.Join(", ", tools.Select(t => t.Function.Name));
                     }
+                    lastAssistantMessage = chatMessage;
                 }
+                else if (chatMessage.Role == ChatMessageRole.User)
+                {
+                    lastAssistantMessage = null;
+                }
+                
+                chatMessage.IsExpanded = IsShortMessage(chatMessage.Content);
                 AddVisualMessage(chatMessage);
             }
         }
+
+        // Final pass to check if assistant messages should be collapsed due to tool results
+        foreach (var msg in Messages)
+        {
+            if (msg.Role == ChatMessageRole.Assistant && msg.ToolMessages.Any())
+            {
+                // If there are tool results, it might be better to start collapsed if total content is long
+                var totalContent = msg.Content + string.Join("", msg.ToolMessages.Select(t => t.Content));
+                msg.IsExpanded = IsShortMessage(totalContent);
+            }
+        }
+    }
+
+    private bool IsShortMessage(string content)
+    {
+        if (string.IsNullOrEmpty(content)) return true;
+        // Limit by characters and by line count (rough estimate)
+        return content.Length < 1000 && content.Count(c => c == '\n') < 15;
     }
 
     private async Task CancelResponceAsync()
@@ -429,6 +476,12 @@ public partial class AiChat : RadzenComponent
     {
         Messages.Remove(message);
         ChatService.Session.RemoveMessage(message.Id);
+        
+        foreach (var toolMsg in message.ToolMessages)
+        {
+            ChatService.Session.RemoveMessage(toolMsg.Id);
+        }
+
         await ChatService.SaveSessionAsync();
         await InvokeAsync(StateHasChanged);
     }
@@ -440,6 +493,12 @@ public partial class AiChat : RadzenComponent
         {
             Messages.Remove(lastAssistantMessage);
             ChatService.Session.RemoveMessage(lastAssistantMessage.Id);
+
+            foreach (var toolMsg in lastAssistantMessage.ToolMessages)
+            {
+                ChatService.Session.RemoveMessage(toolMsg.Id);
+            }
+
             await GetAiResponseAsync();
         }
     }

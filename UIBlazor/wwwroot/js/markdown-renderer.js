@@ -10,7 +10,7 @@ const highlightExt = markedHighlight.markedHighlight({
 });
 
 // Global copy function
-window.copyCode = function(btn, elementId) {
+window.copyCode = function (btn, elementId) {
     const codeElement = document.getElementById(elementId);
     if (!codeElement) return;
 
@@ -20,7 +20,7 @@ window.copyCode = function(btn, elementId) {
     navigator.clipboard.writeText(text).then(() => {
         const icon = btn.querySelector('i');
         const span = btn.querySelector('span');
-        
+
         if (icon) {
             icon.className = 'fas fa-check';
         }
@@ -109,19 +109,19 @@ function initializeMarkdownRenderer() {
         renderer.code = function (code, infostring, escaped) {
             let textContent = code;
             let language = infostring;
-            
+
             // Check if code is an object (Token) - handling legacy/mermaid logic
             if (typeof code === 'object') {
-                 if (code.lang === 'mermaid' && code.text !== undefined) {
+                if (code.lang === 'mermaid' && code.text !== undefined) {
                     const id = 'mermaid-' + Math.random().toString(36).substr(2, 9);
                     return `<div class="mermaid" id="${id}">${code.text}</div>`;
-                 }
-                 textContent = code.text;
-                 language = code.lang;
+                }
+                textContent = code.text;
+                language = code.lang;
             }
 
             const lang = (language || '').match(/\S*/)[0];
-            
+
             if (lang === 'mermaid') {
                 const id = 'mermaid-' + Math.random().toString(36).substr(2, 9);
                 return `<div class="mermaid" id="${id}">${textContent}</div>`;
@@ -131,7 +131,7 @@ function initializeMarkdownRenderer() {
             const label = lang ? lang.toUpperCase() : '';
 
             // Note: textContent here is already highlighted HTML by marked-highlight
-            
+
             return `\
             <div class="code-block-wrapper">
                 <div class="code-header">
@@ -161,7 +161,20 @@ function initializeMarkdownRenderer() {
 
 function renderMarkdown(text) {
     const renderer = initializeMarkdownRenderer();
-    return renderer.parse(text);
+
+    // Detect incomplete mermaid blocks at the end of text (common during streaming)
+    // If we find a ```mermaid that is not followed by a closing ``` 
+    // we change it to ```text to avoid partial/broken rendering.
+    let processedText = text;
+    const lastMermaidIndex = text.lastIndexOf('```mermaid');
+    if (lastMermaidIndex !== -1) {
+        const afterMermaid = text.substring(lastMermaidIndex + 10);
+        if (afterMermaid.indexOf('```') === -1) {
+            processedText = text.substring(0, lastMermaidIndex) + '```text' + afterMermaid;
+        }
+    }
+
+    return renderer.parse(processedText);
 }
 
 function renderMarkdownToElement(elementId, text) {
@@ -182,7 +195,7 @@ function renderMarkdownToElement(elementId, text) {
             diagrams.forEach((diagram, index) => {
                 const content = diagram.textContent;
                 // Use a globally unique ID for rendering to avoid conflicts
-                const renderId = 'mermaid-svg-' + elementId.replace(/[^a-zA-Z0-9]/g, '') + '-' + index;                
+                const renderId = 'mermaid-svg-' + elementId.replace(/[^a-zA-Z0-9]/g, '') + '-' + index;
 
                 // Check cache
                 const cached = mermaidCache.get(renderId);
@@ -195,7 +208,7 @@ function renderMarkdownToElement(elementId, text) {
                     .then((result) => {
                         diagram.innerHTML = result.svg;
                         mermaidCache.set(renderId, { code: content, svg: result.svg });
-                        
+
                         // Simple cleanup to prevent memory leaks
                         if (mermaidCache.size > 200) {
                             const firstKey = mermaidCache.keys().next().value;
