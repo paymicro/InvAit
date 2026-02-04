@@ -49,9 +49,8 @@ public class VsBridge : IVsBridge, IDisposable
                 await SwitchModeAsync(mode);
                 return new VsToolResult
                 {
-                    Role = ChatMessageRole.System,
                     Success = true,
-                    Result = $"Switched to {mode} mode successfully. Now you have access to different set of tools."
+                    Result = $"Switched to {mode} mode successfully. Now you have access to different set of tools. See the first SYSTEM messages."
                 };
             }
         }

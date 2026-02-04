@@ -20,6 +20,13 @@ public class VisualChatMessage
     public string Content { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets the content of the message for display in the UI.
+    /// If null, Content is used.
+    /// </summary>
+    [JsonIgnore]
+    public string? DisplayContent { get; set; }
+
+    /// <summary>
     /// Gets or sets the content of the Reasoning message. Aka Think block.
     /// </summary>
     [JsonIgnore]

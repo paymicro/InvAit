@@ -183,7 +183,7 @@ public partial class AiChat : RadzenComponent
             // Меняем контент если там есть вызов тулзов
             if (tools.Count > 0)
             {
-                assistantMessage.Content = "Calling tool: " + string.Join(", ", tools.Select(t => t.Function.Name));
+                assistantMessage.DisplayContent = "Calling tool: " + string.Join(", ", tools.Select(t => t.Function.Name));
             }
 
             // Add assistant response to conversation history
@@ -338,6 +338,14 @@ public partial class AiChat : RadzenComponent
             }
             else
             {
+                if (chatMessage.Role == ChatMessageRole.Assistant)
+                {
+                    var tools = ToolManager.ParseToolBlock(chatMessage.Content);
+                    if (tools.Count > 0)
+                    {
+                        chatMessage.DisplayContent = "Calling tool: " + string.Join(", ", tools.Select(t => t.Function.Name));
+                    }
+                }
                 AddVisualMessage(chatMessage);
             }
         }
@@ -402,6 +410,16 @@ public partial class AiChat : RadzenComponent
     {
         message.Content = message.TempContent;
         message.IsEditing = false;
+        
+        // Update display content if it's an assistant message with tools
+        if (message.Role == ChatMessageRole.Assistant)
+        {
+            var tools = ToolManager.ParseToolBlock(message.Content);
+            message.DisplayContent = tools.Count > 0 
+                ? "Calling tool: " + string.Join(", ", tools.Select(t => t.Function.Name)) 
+                : null;
+        }
+
         ChatService.Session.UpdateMessage(message.Id, message.Content);
         await ChatService.SaveSessionAsync();
         await InvokeAsync(StateHasChanged);

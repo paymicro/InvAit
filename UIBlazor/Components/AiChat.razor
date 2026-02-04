@@ -82,7 +82,7 @@
                                         <details>
                                         <summary>Поток сознания...</summary><AiChatMessage Content=@message.ReasoningContent ScroolBootom=false /></details>
                                     }
-                                    <AiChatMessage Content=@message.Content />
+                                    <AiChatMessage Content=@(message.DisplayContent ?? message.Content) />
                                 </div>
                                 
                                 @if (message.IsEditing)
