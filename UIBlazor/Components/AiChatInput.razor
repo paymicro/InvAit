@@ -20,7 +20,7 @@
         <textarea @ref="textareaRef"
                   rows="1"
                   class="text-input"
-                  placeholder="@Placeholder"
+                  placeholder="@ModePlaceholder"
                   @bind="currentInput"
                   @oninput="HandleInput"
                   @onkeydown="OnKeyDown"
@@ -98,6 +98,13 @@
 
     private List<AppMode> AppModeValues { get; } = [.. Enum.GetValues<AppMode>()];
     
+    private string ModePlaceholder => CurrentMode switch
+    {
+        AppMode.Plan => "Describe your goal to create a plan...",
+        AppMode.Agent => "Ask me to perform a task...",
+        _ => Placeholder
+    };
+
     private AppMode CurrentMode
     {
         get => ChatService.Session?.Mode ?? AppMode.Chat;

@@ -77,4 +77,16 @@ public class VisualChatMessage
     /// </summary>
     [JsonIgnore]
     public bool IsExpanded { get; set; }
+
+    /// <summary>
+    /// Extracted plan content if any.
+    /// </summary>
+    [JsonIgnore]
+    public string? PlanContent { get; set; }
+
+    /// <summary>
+    /// Whether this message contains a plan.
+    /// </summary>
+    [JsonIgnore]
+    public bool HasPlan => !string.IsNullOrEmpty(PlanContent);
 }

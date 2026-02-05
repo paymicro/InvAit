@@ -187,6 +187,8 @@ public partial class AiChat : RadzenComponent
 
             assistantMessage.IsStreaming = false;
 
+            ParsePlan(assistantMessage);
+
             var tools = ToolManager.ParseToolBlock(assistantMessage.Content);
 
             // Меняем контент если там есть вызов тулзов
@@ -211,6 +213,38 @@ public partial class AiChat : RadzenComponent
             IsLoading = false;
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    private void ParsePlan(VisualChatMessage message)
+    {
+        if (string.IsNullOrEmpty(message.Content)) return;
+
+        var planRegex = new Regex(@"<plan>(?<plan>.*?)</plan>", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        var match = planRegex.Match(message.Content);
+        if (match.Success)
+        {
+            message.PlanContent = match.Groups["plan"].Value.Trim();
+            // Remove the plan block from display content to avoid double showing
+            message.DisplayContent = planRegex.Replace(message.DisplayContent ?? message.Content, string.Empty).Trim();
+            if (string.IsNullOrEmpty(message.DisplayContent))
+            {
+                message.DisplayContent = "Proposed Plan:";
+            }
+        }
+    }
+
+    private async Task ExecutePlanAsync(VisualChatMessage message)
+    {
+        if (!message.HasPlan) return;
+
+        // Switch mode to Agent
+        ChatService.Session.Mode = AppMode.Agent;
+        
+        // Notify VS Host if needed (though it's mostly for system prompt generation in UI)
+        await VsBridge.ExecuteToolAsync(BuiltInToolEnum.SwitchMode, new Dictionary<string, object> { { "param1", "Agent" } });
+
+        // Send confirmation message to start implementation
+        await SendMessageAsync("Implement the plan.");
     }
 
     private async Task HandleToolCallAsync(VisualChatMessage assistantMessage, List<AiTool> aiTools)
@@ -361,6 +395,7 @@ public partial class AiChat : RadzenComponent
             {
                 if (chatMessage.Role == ChatMessageRole.Assistant)
                 {
+                    ParsePlan(chatMessage);
                     var tools = ToolManager.ParseToolBlock(chatMessage.Content);
                     if (tools.Count > 0)
                     {

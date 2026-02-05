@@ -130,7 +130,7 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
         {
             AppMode.Chat => [.. enabledTools.Where(t => t.Category is ToolCategory.ModeSwitch or ToolCategory.Browser)],
             AppMode.Agent => enabledTools,
-            AppMode.Plan => [.. enabledTools.Where(t => t.Category is ToolCategory.ReadFiles or ToolCategory.ModeSwitch or ToolCategory.Browser)], // Placeholder for Plan mode
+            AppMode.Plan => [.. enabledTools.Where(t => t.Category is ToolCategory.ReadFiles or ToolCategory.ModeSwitch or ToolCategory.Browser or ToolCategory.Mcp)],
             _ => enabledTools
         };
 
@@ -139,6 +139,28 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
         sb.AppendLine($"Current Application Mode: {mode}");
         sb.AppendLine("Available modes: Chat (for discussion, reading and explanations), Agent (for taking actions and applying changes), Plan (for planning).");
         sb.AppendLine("Use Mermaid diagrams for clarity in explanations. This will help you better visualize the answer formula.");
+
+        if (mode == AppMode.Plan)
+        {
+            sb.AppendLine("""
+                          ## Planning Mode Instructions
+                          You are currently in **PLANNING MODE**. Your goal is to analyze the user's request, explore the codebase, and propose a detailed, step-by-step plan for implementation.
+                          
+                          1. **Analyze**: Use available tools to understand the current state of the project.
+                          2. **Propose**: Create a structured plan. The plan should be realistic and broken down into logical steps.
+                          3. **Format**: Wrap your final plan in `<plan>` tags. Each step should be clear and actionable.
+                          
+                          **Example:**
+                          <plan>
+                          1. Create a new service `StorageService`.
+                          2. Register it in `Program.cs`.
+                          3. Update `SettingsPage` to use the new service.
+                          </plan>
+
+                          In this mode, you should NOT make any changes to files. Your goal is to get user approval for the plan.
+                          Once the plan is approved, the mode will be switched to **Agent** for execution.
+                          """);
+        }
         
         if (enabledTools.Any(t => t.Name == BuiltInToolEnum.SwitchMode))
         {
@@ -152,7 +174,7 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
 
         if (mode == AppMode.Agent)
         {
-            sb.AppendLine("You are a function-calling agent.");
+            sb.AppendLine("You are a function-calling agent. You should take actions to fulfill the user's request.");
         }
 
         sb.AppendLine("""
