@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using InvAit.Utils;
@@ -21,7 +22,7 @@ public class McpProcessManager
     /// <summary>
     /// Запустить MCP процесс
     /// </summary>
-    public async Task<string> StartProcessAsync(string serverId, string command, string args)
+    public async Task<string> StartProcessAsync(string serverId, string command, string args, string workingDirectory = null)
     {
         if (_processes.ContainsKey(serverId))
         {
@@ -30,26 +31,18 @@ public class McpProcessManager
         
         try
         {
-            var fileName = command;
-            // На Windows npx/npm это .cmd файлы
-            if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
-            {
-                if (fileName.Equals("npx", StringComparison.OrdinalIgnoreCase) || fileName.Equals("npm", StringComparison.OrdinalIgnoreCase))
-                {
-                    fileName += ".cmd";
-                }
-            }
-
             var startInfo = new ProcessStartInfo
             {
-                FileName = fileName,
-                Arguments = args,
+                FileName = "cmd.exe",
+                Arguments = $"/c \"{command}\" {args}",
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                WorkingDirectory = Environment.CurrentDirectory
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
+                WorkingDirectory = workingDirectory ?? Environment.CurrentDirectory
             };
             
             var process = Process.Start(startInfo);
@@ -102,7 +95,7 @@ public class McpProcessManager
                                     var method = methodProp.GetString();
                                     if (method != null)
                                     {
-                                        var notification = JsonSerializer.Deserialize<McpNotification>(line, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+                                        var notification = JsonUtils.Deserialize<McpNotification>(line);
                                         if (notification != null)
                                         {
                                             _notificationQueues[serverId].Enqueue(notification);
@@ -143,7 +136,7 @@ public class McpProcessManager
                 }
             });
             
-            Logger.Log($"MCP process started: {serverId} ({fileName} {args})");
+            Logger.Log($"MCP process started: {serverId} ({command} {args})");
             return $"OK: Process started: {serverId}";
         }
         catch (Exception ex)
@@ -203,7 +196,7 @@ public class McpProcessManager
             return "ERROR: Process not found";
         }
 
-        var tcs = new TaskCompletionSource<string>();
+        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!_pendingRequests.TryGetValue(serverId, out var serverRequests))
         {
             return "ERROR: Server requests dictionary not initialized";

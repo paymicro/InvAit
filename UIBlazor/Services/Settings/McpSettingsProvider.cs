@@ -35,6 +35,14 @@ public class McpSettingsProvider(ILocalStorageService storage, IVsBridge vsBridg
                 {
                     return $"Error: {result.ErrorMessage}";
                 }
+
+                var mcpData = JsonUtils.Deserialize<McpResponse>(result.Result);
+                if (mcpData?.Result is JsonElement jsonElement)
+                {
+                    return await UpdateServerTools(server, jsonElement);
+                }
+                
+                return "Error: Could not parse tools list";
             }
             else // http
             {
@@ -103,33 +111,7 @@ public class McpSettingsProvider(ILocalStorageService storage, IVsBridge vsBridg
                             var mcpData = JsonUtils.Deserialize<McpResponse>(jsonData);
                             if (mcpData?.Id == mcpRequest.Id && mcpData.Result is JsonElement jsonElement)
                             {
-                                // Update server tools
-                                var listResult = jsonElement.GetObject<McpListToolsResult>();
-                                if (listResult == null)
-                                {
-                                    return $"Error: Not found tools";
-                                }
-
-                                var newTools = listResult.Tools.Select(t => new McpToolConfig
-                                {
-                                    Name = t.Name,
-                                    Description = t.Description,
-                                    Enabled = true
-                                }).ToList();
-
-                                // Merge with existing tools
-                                foreach (var tool in newTools)
-                                {
-                                    var existing = server.Tools.FirstOrDefault(et => et.Name == tool.Name);
-                                    if (existing != null)
-                                    {
-                                        tool.Enabled = existing.Enabled;
-                                    }
-                                }
-
-                                server.Tools = newTools;
-                                await SaveAsync();
-                                return $"Success: Found {newTools.Count} tools";
+                                return await UpdateServerTools(server, jsonElement);
                             }
                         }
                     }
@@ -137,11 +119,40 @@ public class McpSettingsProvider(ILocalStorageService storage, IVsBridge vsBridg
 
                 return "Error: Could not parse tools list";
             }
-            return "";
         }
         catch (Exception ex)
         {
             return $"Error: {ex.Message}";
         }
+    }
+
+    private async Task<string> UpdateServerTools(McpServerConfig server, JsonElement resultElement)
+    {
+        var listResult = resultElement.GetObject<McpListToolsResult>();
+        if (listResult == null)
+        {
+            return $"Error: Not found tools";
+        }
+
+        var newTools = listResult.Tools.Select(t => new McpToolConfig
+        {
+            Name = t.Name,
+            Description = t.Description,
+            Enabled = true
+        }).ToList();
+
+        // Merge with existing tools
+        foreach (var tool in newTools)
+        {
+            var existing = server.Tools.FirstOrDefault(et => et.Name == tool.Name);
+            if (existing != null)
+            {
+                tool.Enabled = existing.Enabled;
+            }
+        }
+
+        server.Tools = newTools;
+        await SaveAsync();
+        return $"Success: Found {newTools.Count} tools";
     }
 }

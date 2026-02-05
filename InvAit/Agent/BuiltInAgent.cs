@@ -1068,7 +1068,8 @@ public class BuiltInAgent
         {
             if (string.IsNullOrEmpty(command)) return $"ERROR: Server {serverId} not running and no command provided to start it";
             
-            var startResult = await _mcpProcessManager.StartProcessAsync(serverId, command, arguments ?? "");
+            var solutionPath = await GetSolutionPathAsync();
+            var startResult = await _mcpProcessManager.StartProcessAsync(serverId, command, arguments ?? "", solutionPath);
             if (!startResult.StartsWith("OK")) return startResult;
         }
 
@@ -1087,7 +1088,7 @@ public class BuiltInAgent
             }
         };
 
-        var responseJson = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonSerializer.Serialize(initRequest));
+        var responseJson = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(initRequest));
         if (responseJson.StartsWith("ERROR")) return responseJson;
 
         var initializedNotification = new McpNotification
@@ -1096,7 +1097,7 @@ public class BuiltInAgent
             Params = new { }
         };
 
-        await _mcpProcessManager.SendMessageAsync(serverId, JsonSerializer.Serialize(initializedNotification));
+        await _mcpProcessManager.SendMessageAsync(serverId, JsonUtils.SerializeCompact(initializedNotification));
         _initializedServers[serverId] = true;
         return "OK";
     }
@@ -1107,16 +1108,22 @@ public class BuiltInAgent
         var command = args.GetString("param2") ?? args.GetString("command");
         var arguments = args.GetString("param3") ?? args.GetString("args");
 
-        if (string.IsNullOrEmpty(serverId)) return new VsResponse { Success = false, Error = "serverId is required" };
+        if (string.IsNullOrEmpty(serverId))
+        {
+            return new VsResponse { Success = false, Error = "serverId is required" };
+        }
 
         var runResult = await EnsureServerRunningAsync(serverId, command, arguments);
-        if (runResult != "OK") return new VsResponse { Success = false, Error = runResult };
+        if (runResult != "OK")
+        {
+            return new VsResponse { Success = false, Error = runResult };
+        }
 
         try
         {
             var requestId = Guid.NewGuid().ToString("N");
             var request = new McpRequest { Id = requestId, Method = "tools/list", Params = new { } };
-            var responseJson = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonSerializer.Serialize(request));
+            var responseJson = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(request));
 
             return new VsResponse { Success = !responseJson.StartsWith("ERROR"), Payload = responseJson, Error = responseJson.StartsWith("ERROR") ? responseJson : null };
         }
@@ -1137,10 +1144,15 @@ public class BuiltInAgent
         var commandArgs = args.GetString("args");
 
         if (string.IsNullOrEmpty(serverId) || string.IsNullOrEmpty(toolName))
+        {
             return new VsResponse { Success = false, Error = "serverId and toolName are required" };
+        }
 
         var runResult = await EnsureServerRunningAsync(serverId, command, commandArgs);
-        if (runResult != "OK") return new VsResponse { Success = false, Error = runResult };
+        if (runResult != "OK")
+        {
+            return new VsResponse { Success = false, Error = runResult };
+        }
 
         try
         {
@@ -1158,8 +1170,13 @@ public class BuiltInAgent
                 Params = new { name = toolName, arguments = toolArgs ?? new { } }
             };
 
-            var responseJson = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonSerializer.Serialize(request));
-            return new VsResponse { Success = !responseJson.StartsWith("ERROR"), Payload = responseJson, Error = responseJson.StartsWith("ERROR") ? responseJson : null };
+            var responseJson = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(request));
+            return new VsResponse
+            {
+                Success = !responseJson.StartsWith("ERROR"),
+                Payload = responseJson,
+                Error = responseJson.StartsWith("ERROR") ? responseJson : null
+            };
         }
         catch (Exception ex)
         {
@@ -1175,6 +1192,6 @@ public class BuiltInAgent
         var notification = _mcpProcessManager.NextNotification(serverId);
         if (notification == null) return new VsResponse { Success = true, Payload = "No new notifications" };
 
-        return new VsResponse { Success = true, Payload = JsonSerializer.Serialize(notification) };
+        return new VsResponse { Success = true, Payload = JsonUtils.Serialize(notification) };
     }
 }

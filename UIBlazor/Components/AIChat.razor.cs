@@ -248,7 +248,7 @@ public partial class AiChat : RadzenComponent
                     ShowProgress = true
                 });
 #if DEBUG
-                // Безголовые тесты
+                // Безголовые (без Visual Studio) тесты
                 if (!vsToolResult.Success && vsToolResult.ErrorMessage == "WebView2 API is`t find.")
                 {
                     switch (vsToolResult.Name)
@@ -291,19 +291,11 @@ public partial class AiChat : RadzenComponent
 #endif
 
                 // для модели обогащаем результат и отправляем в чат
-                var result = vsToolResult.Success
-                    ? $"""
-                       <tool_result name="{tool.Name}">
-                       {vsToolResult.Result}
-                       </tool_result>
-                       Инструкция: На основе полученных данных выше, реши, достигнута ли цель. Если нет - предложи следующее действие, НО не повторяй предыдущее.
-                       """
-                    : $"""
-                       <tool_result name="{tool.Name}">
-                       {vsToolResult.ErrorMessage}
-                       </tool_result>
-                       Инструкция: Во время выполнения возникла ошибка. Предложи следующее действие, НО не повторяй предыдущее.
-                       """;
+                var result = $"""
+                             <tool_result name="{tool.Name}" success={vsToolResult.Success}>
+                             {(vsToolResult.Success ? vsToolResult.Result : vsToolResult.ErrorMessage)}
+                             </tool_result>
+                             """;
 
                 var toolSessionMessage = new VisualChatMessage
                 {
