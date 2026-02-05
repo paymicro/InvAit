@@ -1,0 +1,182 @@
+/* /Components/AiChatInput.razor.rz.scp.css */
+.chat-input-wrapper[b-8p2flc4abt] {
+    position: relative;
+    /* Чтобы меню позиционировалось относительно обертки */
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0.4em;
+}
+
+.chips-list[b-8p2flc4abt] {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 4px 0;
+}
+
+.input-container[b-8p2flc4abt] {
+    border: 1px solid var(--rz-base-400);
+    border-radius: 8px;
+    background: var(--rz-base-dark);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    /* Чтобы футер не вылезал за скругления */
+}
+
+.input-container:focus-within[b-8p2flc4abt] {
+    border-color: var(--rz-primary);
+    box-shadow: 0 0 0 1px var(--rz-primary);
+}
+
+.input-footer[b-8p2flc4abt] {
+    border-top: 1px solid var(--rz-base-500);
+    background: rgba(0, 0, 0, 0.05);
+    display: flex;
+    align-items: center;
+}
+
+.text-input[b-8p2flc4abt] {
+    width: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--rz-text-color);
+    font-size: 1em;
+    font-family: inherit;
+    padding: 10px 12px;
+    line-height: 1.5;
+    resize: none;
+    overflow-y: auto;
+    max-height: 200px;
+}
+
+.text-input[b-8p2flc4abt]::placeholder {
+    color: var(--rz-text-color);
+    opacity: 0.5;
+}
+
+.text-input:disabled[b-8p2flc4abt] {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+[b-8p2flc4abt] .mode-dropdown {
+    border-radius: 26px;
+    height: 32px;
+    padding: 6px 10px;
+    width: 100px;
+}
+
+/* Меню подсказок - теперь всплывающее (float) */
+.hints-menu[b-8p2flc4abt] {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    /* Всплывает ВВЕРХ над инпутом */
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    border: 1px solid var(--rz-base-400);
+    box-shadow: 0px -4px 16px rgba(0, 0, 0, 0.3);
+    max-height: 300px;
+    overflow-y: auto;
+    border-radius: 8px;
+    background: var(--rz-base-600);
+}
+
+.hints-list[b-8p2flc4abt] {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.hint-item[b-8p2flc4abt] {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+    color: var(--rz-text-color);
+    border-bottom: 1px solid var(--rz-base-300);
+    transition: background-color 0.15s;
+}
+
+.hint-item:last-child[b-8p2flc4abt] {
+    border-bottom: none;
+}
+
+.hint-item:hover[b-8p2flc4abt],
+.hint-item.selected[b-8p2flc4abt] {
+    background-color: var(--rz-primary);
+    color: var(--rz-on-primary);
+}
+
+.hint-item .file-icon[b-8p2flc4abt] {
+    flex-shrink: 0;
+    font-size: 16px;
+}
+
+.hint-item .file-name[b-8p2flc4abt] {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+    max-width: 200px;
+}
+
+.hint-item .file-path[b-8p2flc4abt] {
+    opacity: 0.7;
+    font-size: 0.85em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-left: auto;
+    text-align: right;
+    flex-shrink: 1;
+    min-width: 0;
+}
+/* /Components/FileChip.razor.rz.scp.css */
+.input-chip[b-bfalwgylxo] {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    margin: 2px 4px 2px 0;
+    border-radius: 16px;
+    background: var(--rz-primary);
+    color: var(--rz-on-primary);
+    font-size: 0.9em;
+    user-select: none;
+    vertical-align: middle;
+}
+
+.input-chip .chip-icon[b-bfalwgylxo] {
+    font-size: 14px;
+}
+
+.input-chip .chip-name[b-bfalwgylxo] {
+    font-weight: 500;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.input-chip .chip-remove[b-bfalwgylxo] {
+    background: none;
+    border: none;
+    color: inherit;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 2px;
+    margin: 0;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.input-chip .chip-remove:hover[b-bfalwgylxo] {
+    opacity: 1;
+}

@@ -1,4 +1,4 @@
-﻿# InvGen - Local AI Agent for Visual Studio
+# InvAit - Local AI Agent for Visual Studio
 
 **Secure Visual Studio 2022/2026 extension with local and private AI agent support.**
 
@@ -23,7 +23,7 @@
 ## 🚀 Setup
 
 ### Installation
-1. Download the VSIX from [Releases](https://github.com/paymicro/InvGen/releases).
+1. Download the VSIX from [Releases](https://github.com/paymicro/InvAit/releases).
 2. Install via Visual Studio Extension Manager.
 
 ### Configuration

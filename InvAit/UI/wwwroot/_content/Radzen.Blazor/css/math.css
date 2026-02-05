@@ -1,0 +1,64 @@
+/* Math rendering styles for RadzenMarkdown */
+math-renderer {
+    display: inline-block;
+    margin: 0 0.2em;
+    font-family: 'Times New Roman', serif;
+    font-style: italic;
+    background-color: #f8f9fa;
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+    border: 1px solid #e9ecef;
+}
+
+math-renderer.js-block-math {
+    display: block;
+    text-align: center;
+    margin: 1em 0;
+    padding: 1em;
+    border-radius: 5px;
+    overflow-x: auto;
+}
+
+/* MathML styling */
+math {
+    font-family: 'Times New Roman', serif;
+    font-style: italic;
+}
+
+math mi {
+    font-style: italic;
+}
+
+math mn {
+    font-style: normal;
+}
+
+math mo {
+    font-style: normal;
+}
+
+/* Ensure math expressions are properly spaced */
+math-renderer + math-renderer {
+    margin-left: 0.1em;
+}
+
+/* Responsive math blocks */
+@media (max-width: 768px) {
+    math-renderer.js-block-math {
+        font-size: 0.9em;
+        padding: 0.8em;
+    }
+    
+    math-renderer.js-inline-math {
+        font-size: 0.95em;
+    }
+}
+
+/* Dark theme support */
+@media (prefers-color-scheme: dark) {
+    math-renderer {
+        background-color: #2d3748;
+        border-color: #4a5568;
+        color: #e2e8f0;
+    }
+} 
