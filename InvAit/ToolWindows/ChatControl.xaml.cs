@@ -29,24 +29,24 @@ public partial class ChatControl
         InitializeComponent();
         _builtInAgent = new BuiltInAgent();
         Loaded += (_, _) => _ = HandleLoadedAsync();
-        PreviewKeyDown += ChatControl_PreviewKeyDown;
+        // PreviewKeyDown += ChatControl_PreviewKeyDown;
     }
 
     private void ChatControl_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         // фикс обработки Home или End
-        if (e.Key is Key.Home or Key.End && _webView2Installed)
-        {
-            e.Handled = true;
+        //if (e.Key is Key.Home or Key.End && _webView2Installed)
+        //{
+        //    e.Handled = true;
 
-            // Создаём JavaScript-код для эмуляции нажатия клавиши в браузере
-            var jsCode = e.Key == Key.Home
-                ? "document.activeElement.setSelectionRange(0, 0); document.activeElement.scrollIntoView(true);"
-                : "var len = document.activeElement.value.length; document.activeElement.setSelectionRange(len, len); document.activeElement.scrollIntoView(false);";
+        //    // Создаём JavaScript-код для эмуляции нажатия клавиши в браузере
+        //    var jsCode = e.Key == Key.Home
+        //        ? "document.activeElement.setSelectionRange(0, 0); document.activeElement.scrollIntoView(true);"
+        //        : "var len = document.activeElement.value.length; document.activeElement.setSelectionRange(len, len); document.activeElement.scrollIntoView(false);";
 
-            // Выполняем JavaScript в WebView2
-            _ = _webView.ExecuteScriptAsync(jsCode);
-        }
+        //    // Выполняем JavaScript в WebView2
+        //    _ = _webView.ExecuteScriptAsync(jsCode);
+        //}
     }
 
     private async Task HandleLoadedAsync()

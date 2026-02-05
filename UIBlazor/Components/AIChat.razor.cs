@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
 using Radzen;
 using Radzen.Blazor.Rendering;
 using UIBlazor.Services;
@@ -28,6 +29,9 @@ public partial class AiChat : RadzenComponent
 
     [Inject]
     private IVsBridge VsBridge { get; set; } = null!;
+
+    [Inject]
+    private IJSRuntime JsRuntime { get; set; } = null!;
 
     /// <summary>
     /// Gets or sets the message displayed when there are no messages.
@@ -92,6 +96,7 @@ public partial class AiChat : RadzenComponent
         };
         AddVisualMessage(userMessage);
         await ChatService.AddMessageAsync(userMessage);
+        await ScrollToBottomAsync(true);
 
         // Get AI response
         await GetAiResponseAsync();
@@ -156,6 +161,7 @@ public partial class AiChat : RadzenComponent
             IsStreaming = true,
             IsExpanded = true
         });
+        await ScrollToBottomAsync(true);
 
         try
         {
@@ -176,6 +182,7 @@ public partial class AiChat : RadzenComponent
                 assistantMessage.Model ??= ChatService.LastCompletionsModel;
 
                 await InvokeAsync(StateHasChanged);
+                await ScrollToBottomAsync(false);
             }
 
             assistantMessage.IsStreaming = false;
@@ -411,6 +418,15 @@ public partial class AiChat : RadzenComponent
         await InvokeAsync(StateHasChanged);
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+        if (firstRender)
+        {
+            await ScrollToBottomAsync(true);
+        }
+    }
+
     private void HandleModeSwitched(AppMode mode)
     {
         ChatService.Session.Mode = mode;
@@ -511,6 +527,18 @@ public partial class AiChat : RadzenComponent
 
     /// <inheritdoc />
     protected override string GetComponentCssClass() => ClassList.Create("rz-chat").ToString();
+
+    private async Task ScrollToBottomAsync(bool force)
+    {
+        try
+        {
+            await JsRuntime.InvokeVoidAsync("scrollToBottom", ".rz-chat-messages", force);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error scrolling to bottom: {ex.Message}");
+        }
+    }
 
     /// <inheritdoc />
     public override void Dispose()

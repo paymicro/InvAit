@@ -59,20 +59,19 @@ if (window.chrome && window.chrome.webview) {
 //определение темы
 const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
-function scrollToBottomIfNeeded(selector, threshold = 100) {
-    setTimeout(() => {
-        const container = document.querySelector(selector);
-        if (container) {
-            // Проверяем, находится ли пользователь близко к низу
+window.scrollToBottom = function (selector, force = false, threshold = 60) {
+    const container = document.querySelector(selector);
+    if (container) {
+        requestAnimationFrame(() => { // чтобы дождаться перерисовки DOM (особенно важно для Blazor)
             const isNearBottom =
                 container.scrollHeight - container.scrollTop - container.clientHeight <= threshold;
 
-            if (isNearBottom) {
+            if (force || isNearBottom) {
                 container.scrollTop = container.scrollHeight;
             }
-        }
-    }, 100);
-}
+        });
+    }
+};
 
 // Автоматическое изменение высоты textarea
 window.autoResizeTextarea = function (element, auto = false) {

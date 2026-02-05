@@ -72,7 +72,7 @@
                                     @if (!string.IsNullOrEmpty(message.ReasoningContent))
                                     {
                                         <details>
-                                        <summary>Размышления...</summary><AiChatMessage Content=@message.ReasoningContent ScroolBootom=false /></details>
+                                        <summary>Размышления...</summary><AiChatMessage Content=@message.ReasoningContent /></details>
                                     }
                                     <AiChatMessage Content=@(message.DisplayContent ?? message.Content) />
                                     
