@@ -304,12 +304,107 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
         if (!string.IsNullOrWhiteSpace(argsStr))
         {
             sb.AppendLine("""  <div class="tool-call-args">""");
-            sb.AppendLine($"""<pre>{System.Net.WebUtility.HtmlEncode(argsStr)}</pre>""");
+            
+            if (toolName == BuiltInToolEnum.ApplyDiff)
+            {
+                sb.AppendLine(RenderApplyDiff(argsStr));
+            }
+            else if (toolName == BuiltInToolEnum.CreateFile)
+            {
+                sb.AppendLine(RenderCreateNewFile(argsStr));
+            }
+            else
+            {
+                sb.AppendLine($"""<pre>{System.Net.WebUtility.HtmlEncode(argsStr)}</pre>""");
+            }
+            
             sb.AppendLine("  </div>");
         }
 
         sb.AppendLine("</div>");
         sb.AppendLine();
+        return sb.ToString();
+    }
+
+    private string RenderApplyDiff(string argsStr)
+    {
+        var sb = new StringBuilder();
+        var reader = new StringReader(argsStr);
+        string? line;
+        
+        // First line is usually the file path
+        var filePath = reader.ReadLine();
+        if (filePath != null)
+        {
+             sb.AppendLine($"""<div class="tool-file-header">{System.Net.WebUtility.HtmlEncode(filePath)}</div>""");
+        }
+        
+        bool inSearch = false;
+        bool inReplace = false;
+        
+        while ((line = reader.ReadLine()) != null)
+        {
+             var trimmed = line.Trim();
+             if (trimmed.StartsWith("<<<<<<< SEARCH"))
+             {
+                 inSearch = true;
+                 sb.AppendLine("""<div class="diff-block">""");
+                 sb.AppendLine($"""<div class="diff-header-search">{System.Net.WebUtility.HtmlEncode(line)}</div>""");
+                 continue;
+             }
+             if (trimmed.StartsWith("======="))
+             {
+                 inSearch = false;
+                 inReplace = true;
+                 sb.AppendLine($"""<div class="diff-header-separator">{System.Net.WebUtility.HtmlEncode(line)}</div>""");
+                 continue;
+             }
+             if (trimmed.StartsWith(">>>>>>> REPLACE"))
+             {
+                 inReplace = false;
+                 sb.AppendLine($"""<div class="diff-header-replace">{System.Net.WebUtility.HtmlEncode(line)}</div>""");
+                 sb.AppendLine("</div>"); // close diff-block
+                 continue;
+             }
+             
+             var encodedLine = System.Net.WebUtility.HtmlEncode(line);
+             
+             if (inSearch)
+             {
+                 sb.AppendLine($"""<div class="diff-line diff-line-removed"><span class="diff-marker">-</span>{encodedLine}</div>""");
+             }
+             else if (inReplace)
+             {
+                 sb.AppendLine($"""<div class="diff-line diff-line-added"><span class="diff-marker">+</span>{encodedLine}</div>""");
+             }
+             else
+             {
+                 sb.AppendLine($"""<div class="diff-line-context">{encodedLine}</div>""");
+             }
+        }
+        
+        return sb.ToString();
+    }
+
+    private string RenderCreateNewFile(string argsStr)
+    {
+        var sb = new StringBuilder();
+        using var reader = new StringReader(argsStr);
+        
+        var filePath = reader.ReadLine();
+        if (filePath != null)
+        {
+            sb.AppendLine($"""<div class="tool-file-header">{System.Net.WebUtility.HtmlEncode(filePath)}</div>""");
+        }
+        
+        var content = reader.ReadToEnd();
+        if (!string.IsNullOrEmpty(content))
+        {
+            sb.AppendLine("""<div class="tool-file-content">""");
+            sb.AppendLine($"""<pre>{System.Net.WebUtility.HtmlEncode(content.Trim())}</pre>""");
+            sb.AppendLine("</div>");
+        }
+        
         return sb.ToString();
     }
 

@@ -206,3 +206,79 @@ details summary {
     white-space: pre-wrap;
     word-break: break-all;
 }
+
+/* Tool Call Custom Rendering */
+.tool-file-header {
+    background-color: var(--rz-base-900);
+    padding: 0.4rem 0.8rem;
+    font-family: monospace;
+    font-weight: bold;
+    border-bottom: 1px solid var(--rz-base-600);
+    color: #e6e6e6;
+}
+
+.tool-file-content {
+    background-color: var(--rz-base-900);
+    padding: 0.5rem;
+    overflow-x: auto;
+}
+
+.tool-file-content pre {
+    margin: 0;
+    background: transparent;
+    border: none;
+    padding: 0;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 0.85rem;
+    color: var(--rz-base-400);
+}
+
+.diff-block {
+    margin: 0.5rem 0;
+    border: 1px solid var(--rz-base-700);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.diff-header-search, 
+.diff-header-replace,
+.diff-header-separator {
+    display: none;
+}
+
+.diff-line {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 0.85rem;
+    padding: 0 4px;
+    white-space: pre-wrap;
+    display: flex;
+}
+
+.diff-marker {
+    display: inline-block;
+    width: 1.5em;
+    color: var(--rz-base-400);
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.diff-line-removed {
+    background-color: rgba(255, 0, 0, 0.15);
+}
+.diff-line-removed .diff-marker {
+    color: #ff6b6b;
+}
+
+.diff-line-added {
+    background-color: rgba(0, 255, 0, 0.15);
+}
+.diff-line-added .diff-marker {
+    color: #51cf66;
+}
+
+.diff-line-context {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 0.85rem;
+    padding: 0 4px;
+    color: var(--rz-base-400);
+}
