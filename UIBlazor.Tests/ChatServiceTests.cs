@@ -13,6 +13,7 @@ public class ChatServiceTests
     private readonly Mock<IToolManager> _toolManagerMock;
     private readonly Mock<ILocalStorageService> _localStorageMock;
     private readonly Mock<ISkillService> _skillServiceMock;
+    private readonly Mock<IVsCodeContextService> _vsCodeContextServiceMock;
 
     public ChatServiceTests()
     {
@@ -20,6 +21,7 @@ public class ChatServiceTests
         _toolManagerMock = new Mock<IToolManager>();
         _localStorageMock = new Mock<ILocalStorageService>();
         _skillServiceMock = new Mock<ISkillService>();
+        _vsCodeContextServiceMock = new Mock<IVsCodeContextService>();
 
         // Setup default options
         var options = new ProfileOptions
@@ -56,7 +58,8 @@ public class ChatServiceTests
             _profileManagerMock.Object,
             _toolManagerMock.Object,
             _localStorageMock.Object,
-            _skillServiceMock.Object);
+            _skillServiceMock.Object,
+            _vsCodeContextServiceMock.Object);
     }
 
     [Fact]

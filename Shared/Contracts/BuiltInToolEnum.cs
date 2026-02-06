@@ -15,10 +15,10 @@ public static class BuiltInToolEnum
     public const string Ls              = "ls";
     
     // Project and build
-    public const string Build           = "build_solution";
-    public const string GetErrors       = "get_error_list";
-    public const string GetProjectInfo  = "get_project_info";
-    public const string GetSolutionStructure = "get_solution_structure";
+    public const string Build                   = "build_solution";
+    public const string GetErrors               = "get_error_list";
+    public const string GetProjectInfo          = "get_project_info";
+    public const string GetSolutionStructure    = "get_solution_structure";
     
     // Execution
     public const string Exec            = "execute_command";
@@ -38,9 +38,9 @@ public static class BuiltInToolEnum
     public const string ReadSkillContent    = "read_skill_content";    // Полное содержимое по требованию
     
     // MCP Operations
-    public const string McpGetTools         = "mcp_get_tools";
-    public const string McpCallTool         = "mcp_call_tool";
-    public const string McpReadNotifications = "mcp_read_notifications";
+    public const string McpGetTools             = "mcp_get_tools";
+    public const string McpCallTool             = "mcp_call_tool";
+    public const string McpReadNotifications    = "mcp_read_notifications";
 
     // Agent planning (for agent's internal task breakdown)
     public const string Plan                = "plan";

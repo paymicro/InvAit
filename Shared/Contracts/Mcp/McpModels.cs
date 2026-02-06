@@ -63,5 +63,5 @@ public class McpServerConfig
     public string Args { get; set; } = string.Empty;
     public string Endpoint { get; set; } = string.Empty;
     public bool Enabled { get; set; } = true;
-    public List<McpToolConfig> Tools { get; set; } = new();
+    public List<McpToolConfig> Tools { get; set; } = [];
 }

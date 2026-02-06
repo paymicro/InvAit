@@ -85,10 +85,17 @@ public class BuiltInAgent
                 Error = "No active document"
             };
 
-        return await ReadFileAsync(new Dictionary<string, object>
+        var response = await ReadFileAsync(new Dictionary<string, object>
         {
             { "param1", docView.Document.FilePath }
         });
+
+        if (response.Success)
+        {
+            response.Payload = $"Active file: {docView.Document.FilePath}{Environment.NewLine}{Environment.NewLine}{response.Payload}";
+        }
+
+        return response;
     }
 
     private async Task<VsResponse> ReadFileAsync(IReadOnlyDictionary<string, object> args)

@@ -14,7 +14,8 @@ public class ChatService(
     IProfileManager profileManager,
     IToolManager toolManager,
     ILocalStorageService localStorage,
-    ISkillService skillService
+    ISkillService skillService,
+    IVsCodeContextService vsCodeContextService
     )
 {
     private const string _thinkStart    = "<think>";
@@ -156,6 +157,49 @@ public class ChatService(
     /// </summary>
     public UsageInfo? LastUsage { get; private set; }
 
+    /// <summary>
+    /// Asynchronously prepares the system prompt by combining configured instructions, tool usage guidance, skill
+    /// metadata, and the current code context.
+    /// </summary>
+    /// <remarks>The returned prompt includes information relevant to the current session and code context,
+    /// which may affect downstream processing. If no code context is available, the prompt will omit that section. This
+    /// method is intended for internal use when constructing prompts for AI interactions.</remarks>
+    /// <returns>A string containing the complete system prompt, including instructions, tool information, skill details, and
+    /// code context if available.</returns>
+    private async Task<string> PrepareSystemPromptAsync()
+    {
+        // Загружаем метаданные скиллов и добавляем в системный промпт
+        var skillsMetadata = await skillService.GetSkillsMetadataAsync();
+        var skillsSection = skillService.FormatSkillsForSystemPrompt(skillsMetadata);
+
+        var contextSection = string.Empty;
+        var currentContext = vsCodeContextService.CurrentContext;
+        if (currentContext != null && !string.IsNullOrEmpty(currentContext.ActiveFilePath))
+        {
+            contextSection = $"""
+            
+            # CURRENT CODE CONTEXT
+            File: {currentContext.ActiveFilePath}
+            Selection lines: {currentContext.SelectionStartLine} - {currentContext.SelectionEndLine}
+            
+            ```
+            {currentContext.ActiveFileContent}
+            ```
+
+            Solution files:
+            ```
+            {string.Join(Environment.NewLine, currentContext.SolutionFiles)}
+            ```
+            """;
+        }
+
+        return string.Join(Environment.NewLine,
+            Options.SystemPrompt,
+            toolManager.GetToolUseSystemInstructions(Session?.Mode ?? AppMode.Chat),
+            skillsSection,
+            contextSection);
+    }
+
     public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync([EnumeratorCancellation] CancellationToken cancellationToken)
     {
         LastCompletionsModel = null;
@@ -166,17 +210,8 @@ public class ChatService(
         var effectiveApiKey = Options.ApiKey;
         var effectiveApiKeyHeader = Options.ApiKeyHeader;
 
-        // Загружаем метаданные скиллов и добавляем в системный промпт
-        var skillsMetadata = await skillService.GetSkillsMetadataAsync();
-        var skillsSection = skillService.FormatSkillsForSystemPrompt(skillsMetadata);
-        
-        var systemPrompt = string.Join(Environment.NewLine, 
-            Options.SystemPrompt, 
-            toolManager.GetToolUseSystemInstructions(Session.Mode),
-            skillsSection);
-        
         // Get formatted messages including conversation history
-        var messages = Session.GetFormattedMessages(systemPrompt);
+        var messages = Session?.GetFormattedMessages(await PrepareSystemPromptAsync()) ?? [];
 
         var payload = new
         {

@@ -35,8 +35,9 @@ public class BuiltInAgent(IVsBridge vsBridge)
             DisplayName = "Чтение открытого файла",
             Category = ToolCategory.ReadFiles,
             Description = $"""
-                          To view the user's currently open file, use the {BuiltInToolEnum.ReadOpenFile} tool. The tool outputs line-numbered content (e.g. "1 | const x = 1")
-                          If the user is asking about a file and you don't see any code, use this to check the current file
+                          To view the user's currently open file, use the {BuiltInToolEnum.ReadOpenFile} tool. 
+                          The tool returns the absolute file path and its line-numbered content (e.g. "1 | const x = 1").
+                          If the user is asking about a file and you don't see any code, use this to check the current file.
                           """,
             ExampleToSystemMessage = $"""
                                      For example
