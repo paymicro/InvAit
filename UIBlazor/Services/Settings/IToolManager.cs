@@ -17,6 +17,8 @@ public interface IToolManager : IBaseSettingsProvider, IDisposable
     string GetToolUseSystemInstructions(AppMode mode);
 
     List<AiTool> ParseToolBlock(string content);
+    
+    string BeautifyToolBlock(string content);
 
     void UpdateCategorySettings(ToolCategory category, bool isEnabled, ToolApprovalMode approvalMode);
     

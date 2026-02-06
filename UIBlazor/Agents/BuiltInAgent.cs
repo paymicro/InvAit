@@ -8,6 +8,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.ReadFiles,
+            DisplayName = "Чтение файлов",
             Category = ToolCategory.ReadFiles,
             Description = "Request to read the contents of one or more files. Use start_line and line_count to read specific parts of large files.",
             ExampleToSystemMessage = $"""
@@ -31,6 +32,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.ReadOpenFile,
+            DisplayName = "Чтение открытого файла",
             Category = ToolCategory.ReadFiles,
             Description = $"""
                           To view the user's currently open file, use the {BuiltInToolEnum.ReadOpenFile} tool. The tool outputs line-numbered content (e.g. "1 | const x = 1")
@@ -45,6 +47,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.CreateFile,
+            DisplayName = "Создание файла",
             Category = ToolCategory.WriteFiles,
             Description = "To create a NEW file with the relative or absolute filepath and new contents.",
             ExampleToSystemMessage = $"""
@@ -60,6 +63,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.ApplyDiff,
+            DisplayName = "Применение изменений",
             Category = ToolCategory.WriteFiles,
             Description = $"""
                           Request to apply PRECISE, TARGETED modifications to an existing file by searching for specific sections of content and replacing them. This tool is for SURGICAL EDITS ONLY - specific changes to existing code.
@@ -106,6 +110,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.SearchFiles,
+            DisplayName = "Поиск файлов",
             Category = ToolCategory.ReadFiles,
             Description = "To return a list of files with patches in solution directory based on a search regex pattern, use the search_files tool.",
             ExampleToSystemMessage = $"""
@@ -119,6 +124,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GrepSearch,
+            DisplayName = "Поиск по содержимому",
             Category = ToolCategory.ReadFiles,
             Description = "To perform a grep search within the project, call the grep_search tool with the regex pattern to match.",
             ExampleToSystemMessage = $"""
@@ -132,6 +138,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.Ls,
+            DisplayName = "Список файлов",
             Category = ToolCategory.ReadFiles,
             Description = "To list files and folders in a given directory, call the ls tool with \"dirPath\" and \"recursive\".",
             ExampleToSystemMessage = """
@@ -148,6 +155,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.Build,
+            DisplayName = "Сборка проекта",
             Category = ToolCategory.Execution,
             Description = "To build solution in Visual Studio. With action - Build, Rebuild or Clean. When any errors returns errors list.",
             ExampleToSystemMessage = $"""
@@ -161,6 +169,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GetErrors,
+            DisplayName = "Список ошибок",
             Category = ToolCategory.ReadFiles,
             Description = "To get error list of current solution and current file from Visual Studio.",
             ExampleToSystemMessage = $"""
@@ -172,6 +181,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GetProjectInfo,
+            DisplayName = "Информация о проекте",
             Category = ToolCategory.ReadFiles,
             Description = "Get information about the solution and projects. Returns list of projects, their types, target frameworks, and file structure.",
             ExampleToSystemMessage = $"""
@@ -183,6 +193,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GetSolutionStructure,
+            DisplayName = "Структура решения",
             Category = ToolCategory.ReadFiles,
             Description = "Get a tree-like structure of the entire solution, including projects, folders, and files.",
             ExampleToSystemMessage = $"""
@@ -196,6 +207,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.Exec,
+            DisplayName = "Выполнение команды",
             Category = ToolCategory.Execution,
             Description = """
                           To run a terminal command, use the execute_command tool in
@@ -217,6 +229,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.FetchUrl,
+            DisplayName = "Загрузка страницы",
             Category = ToolCategory.Browser,
             Description = "To fetch the content of a URL.",
             ExampleToSystemMessage = $"""
@@ -232,6 +245,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GitStatus,
+            DisplayName = "Статус Git",
             Category = ToolCategory.ReadFiles,
             Description = "Check git status of the current repository. Shows modified, staged, and untracked files.",
             ExampleToSystemMessage = $"""
@@ -243,6 +257,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GitLog,
+            DisplayName = "Лог Git",
             Category = ToolCategory.ReadFiles,
             Description = "View git commit history. Can specify number of commits to display.",
             ExampleToSystemMessage = $"""
@@ -256,6 +271,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GitDiff,
+            DisplayName = "Дифф Git",
             Category = ToolCategory.ReadFiles,
             Description = "View git diff for files. Can compare working directory with staged or specific commits.",
             ExampleToSystemMessage = $"""
@@ -269,6 +285,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GitBranch,
+            DisplayName = "Ветки Git",
             Category = ToolCategory.ReadFiles,
             Description = "List git branches or get current branch information.",
             ExampleToSystemMessage = $"""
@@ -280,6 +297,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.SwitchMode,
+            DisplayName = "Переключение режима",
             Category = ToolCategory.ModeSwitch,
             Description = "Switch the current application mode. Available modes: Chat, Agent, Plan. Use this when you need tools from another mode.",
             ExampleToSystemMessage = $"""
@@ -296,6 +314,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.ReadSkillContent,
+            DisplayName = "Чтение скилла",
             Category = ToolCategory.ReadFiles,
             Description = """
                           Load the full content of a skill when you need detailed instructions.
@@ -313,6 +332,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.DeleteFile,
+            DisplayName = "Удаление файла",
             Category = ToolCategory.DeleteFiles,
             Description = "To delete a file, use the delete_file tool with the relative or absolute filepath.",
             ExampleToSystemMessage = $"""
@@ -326,6 +346,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.McpGetTools,
+            DisplayName = "Список MCP тулзов",
             Category = ToolCategory.Mcp,
             Description = "Get the list of tools provided by an MCP server. Automatically starts and initializes the server if needed.",
             ExampleToSystemMessage = $"""
@@ -341,6 +362,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.McpCallTool,
+            DisplayName = "Вызов MCP тулза",
             Category = ToolCategory.Mcp,
             Description = "Call a specific tool provided by an MCP server. Automatically starts and initializes the server if needed.",
             ExampleToSystemMessage = $$"""
@@ -356,6 +378,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.McpReadNotifications,
+            DisplayName = "Уведомления MCP",
             Category = ToolCategory.Mcp,
             Description = "Read the next background notification or log from an MCP server.",
             ExampleToSystemMessage = $"""

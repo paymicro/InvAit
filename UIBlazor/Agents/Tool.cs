@@ -6,6 +6,11 @@ public class Tool
     /// Name of tool
     /// </summary>
     public required string Name { get; init; }
+    
+    /// <summary>
+    /// Display name for UI
+    /// </summary>
+    public string DisplayName { get; init; } = string.Empty;
 
     /// <summary>
     /// Description for LLM

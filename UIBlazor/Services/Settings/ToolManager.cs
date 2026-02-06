@@ -253,6 +253,66 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
         return result;
     }
 
+    public string BeautifyToolBlock(string content)
+    {
+        if (string.IsNullOrEmpty(content)) return content;
+
+        var callRegex = new Regex(
+            @"<function name=""(\w+)""(?::(\d+))?>\s*(.*?)\s*</function>",
+            RegexOptions.Singleline);
+
+        var result = callRegex.Replace(content, match =>
+        {
+            var toolName = match.Groups[1].Value;
+            var argsStr = match.Groups[3].Value.Trim();
+            return CreateToolBlockHtml(toolName, argsStr);
+        });
+
+        // Обработка незаконченного тега в конце (для стриминга)
+        var lastFunctionIndex = result.LastIndexOf("<function name=");
+        if (lastFunctionIndex != -1)
+        {
+            var substring = result.Substring(lastFunctionIndex);
+            if (!substring.Contains("</function>"))
+            {
+                var partialRegex = new Regex(@"<function name=""(\w+)""(?::(\d+))?>\s*(.*)$", RegexOptions.Singleline);
+                var partialMatch = partialRegex.Match(substring);
+                if (partialMatch.Success)
+                {
+                    var toolName = partialMatch.Groups[1].Value;
+                    var argsStr = partialMatch.Groups[3].Value;
+                    
+                    var beautifiedPartial = CreateToolBlockHtml(toolName, argsStr, true);
+                    result = result.Substring(0, lastFunctionIndex) + beautifiedPartial;
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private string CreateToolBlockHtml(string toolName, string argsStr, bool isPartial = false)
+    {
+        var tool = GetTool(toolName);
+        var displayName = !string.IsNullOrEmpty(tool?.DisplayName) ? tool.DisplayName : toolName;
+
+        var sb = new StringBuilder();
+        sb.AppendLine();
+        sb.AppendLine($"""<div class="tool-call-block" data-tool="{toolName}">""");
+        sb.AppendLine($"""  <div class="tool-call-header">Хочу вызвать: <strong>{displayName}</strong>{(isPartial ? "..." : "")}</div>""");
+
+        if (!string.IsNullOrWhiteSpace(argsStr))
+        {
+            sb.AppendLine("""  <div class="tool-call-args">""");
+            sb.AppendLine($"""<pre>{System.Net.WebUtility.HtmlEncode(argsStr)}</pre>""");
+            sb.AppendLine("  </div>");
+        }
+
+        sb.AppendLine("</div>");
+        sb.AppendLine();
+        return sb.ToString();
+    }
+
     private Dictionary<string, object> Parse(string toolName, string input)
     {
         var result = new Dictionary<string, object>();

@@ -82,7 +82,7 @@
                                             @foreach (var toolMsg in message.ToolMessages)
                                             {
                                                 <details class="tool-details">
-                                                    <summary>@toolMsg.ToolName</summary>
+                                                    <summary>@toolMsg.ToolDisplayName</summary>
                                                     <pre class="rz-p-2 rz-background-color-base-900 rz-color-white" style="font-size: 0.8rem; border-radius: 4px;">@toolMsg.Content</pre>
                                                 </details>
                                             }
@@ -132,7 +132,7 @@
                         else
                         {
                             <details class="tool-details">
-                                <summary>@message.ToolName</summary>
+                                <summary>@message.ToolDisplayName</summary>
                                 <pre>
                                     @message.Content
                                 </pre>

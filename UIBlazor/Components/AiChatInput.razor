@@ -97,7 +97,7 @@
     private bool shouldPreventDefault;
 
     private List<AppMode> AppModeValues { get; } = [.. Enum.GetValues<AppMode>()];
-    
+
     private string ModePlaceholder => CurrentMode switch
     {
         AppMode.Plan => "Describe your goal to create a plan...",
@@ -156,7 +156,7 @@
     private async Task AddFileToken(string filePath)
     {
         var fileName = Path.GetFileName(filePath.Replace('\\', '/'));
-        
+
         // Удаляем @ и текст после него из currentInput
         var lastAtIndex = currentInput.LastIndexOf('@');
         if (lastAtIndex >= 0)
@@ -173,7 +173,7 @@
 
         filteredFiles.Clear();
         selectedIndex = 0;
-        
+
         // Фокус обратно на input
         await FocusInput();
     }
@@ -257,7 +257,7 @@
 
         // Формируем сообщение для отправки
         var messageBuilder = new System.Text.StringBuilder();
-        
+
         // Добавляем текущий ввод
         if (!string.IsNullOrWhiteSpace(currentInput))
         {
@@ -269,12 +269,12 @@
         {
             if (messageBuilder.Length > 0)
                 messageBuilder.AppendLine();
-                
+
             messageBuilder.Append(fileToken.GetLlmText());
         }
 
         var message = messageBuilder.ToString();
-        
+
         // Очищаем состояние
         currentInput = string.Empty;
         tokens.Clear();
@@ -313,10 +313,10 @@
         currentInput = string.Empty;
         tokens.Clear();
         filteredFiles.Clear();
-        
+
         // Сбрасываем высоту textarea
         await JS.InvokeVoidAsync("eval", "arguments[0].style.height = 'auto'", textareaRef);
-        
+
         StateHasChanged();
     }
 }

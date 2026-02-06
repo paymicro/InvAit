@@ -23,6 +23,7 @@ pre {
 .tool-details {
     padding: 0;
     margin: 0;
+    white-space: normal;
 }
 
 details {
@@ -149,7 +150,7 @@ details summary {
 
 .message-tool-results {
     border-top: 1px dashed var(--rz-base-600);
-    margin-top: 1rem;
+    padding: 0.5rem;
 }
 
 .message-tool-results pre {
@@ -164,4 +165,44 @@ details summary {
 
 .plan-box:hover {
     transform: translateY(-2px);
+}
+
+.tool-call-block {
+    background-color: var(--rz-base-800);
+    border: 1px solid var(--rz-base-600);
+    border-radius: 8px;
+    margin: 0.8rem 0;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.tool-call-header {
+    background-color: var(--rz-base-700);
+    padding: 0.6rem 0.8rem;
+    font-size: 0.9rem;
+    border-bottom: 1px solid var(--rz-base-600);
+    color: var(--rz-text-color);
+    border-left: 4px solid var(--rz-info);
+}
+
+.tool-call-header strong {
+    color: var(--rz-info-light);
+    margin-left: 0.3rem;
+    font-weight: 600;
+}
+
+.tool-call-args {
+    padding: 0.6rem 0.8rem;
+}
+
+.tool-call-args pre {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--rz-base-400);
+    background: transparent;
+    padding: 0;
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
 }

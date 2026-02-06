@@ -56,7 +56,7 @@ public class VisualChatMessage
     public string TempContent { get; set; } = string.Empty;
 
     [JsonIgnore]
-    public string ToolName { get; set; } = string.Empty;
+    public string ToolDisplayName { get; set; } = string.Empty;
 
     [JsonIgnore]
     public string? Model { get; set; }

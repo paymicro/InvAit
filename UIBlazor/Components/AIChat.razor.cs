@@ -178,6 +178,8 @@ public partial class AiChat : RadzenComponent
                 {
                     response.Append(delta.Content);
                     assistantMessage.Content = response.ToString();
+                    assistantMessage.DisplayContent = ToolManager.BeautifyToolBlock(assistantMessage.Content);
+                    ParsePlan(assistantMessage);
                 }
                 assistantMessage.Model ??= ChatService.LastCompletionsModel;
 
@@ -187,19 +189,13 @@ public partial class AiChat : RadzenComponent
 
             assistantMessage.IsStreaming = false;
 
+            assistantMessage.DisplayContent = ToolManager.BeautifyToolBlock(assistantMessage.Content);
             ParsePlan(assistantMessage);
-
-            var tools = ToolManager.ParseToolBlock(assistantMessage.Content);
-
-            // Меняем контент если там есть вызов тулзов
-            if (tools.Count > 0)
-            {
-                assistantMessage.DisplayContent = "Calling tool: " + string.Join(", ", tools.Select(t => t.Function.Name));
-            }
 
             // Add assistant response to conversation history
             await ChatService.AddMessageAsync(assistantMessage);
 
+            var tools = ToolManager.ParseToolBlock(assistantMessage.Content);
             await HandleToolCallAsync(assistantMessage, tools);
         }
         catch (Exception ex)
@@ -352,7 +348,7 @@ public partial class AiChat : RadzenComponent
                     Id = toolSessionMessage.Id, // синхронизируем Id. Для показа в UI и удаления
                     Role = ChatMessageRole.Tool,
                     Content = vsToolResult.Result,
-                    ToolName = tool.Name,
+                    ToolDisplayName = tool.Name,
                 };
 
                 assistantMessage.ToolMessages.Add(toolResultMessage);
@@ -374,12 +370,14 @@ public partial class AiChat : RadzenComponent
             if (regex.Success)
             {
                 var isSuccess = string.Equals(regex.Groups["success"].Value, "True", StringComparison.OrdinalIgnoreCase);
+                var toolDisplayName = (isSuccess ? "✅ " : "❌ ") + ToolManager.GetTool(regex.Groups["name"].Value)?.DisplayName ?? regex.Groups["name"].Value;
+
                 var toolResultMessage = new VisualChatMessage
                 {
                     Id = chatMessage.Id,
                     Role = ChatMessageRole.Tool,
                     Content = regex.Groups["result"].Value,
-                    ToolName = (isSuccess ? "✅ " : "❌ ") + regex.Groups["name"].Value,
+                    ToolDisplayName = toolDisplayName,
                 };
 
                 if (lastAssistantMessage != null)
@@ -396,12 +394,8 @@ public partial class AiChat : RadzenComponent
             {
                 if (chatMessage.Role == ChatMessageRole.Assistant)
                 {
+                    chatMessage.DisplayContent = ToolManager.BeautifyToolBlock(chatMessage.Content);
                     ParsePlan(chatMessage);
-                    var tools = ToolManager.ParseToolBlock(chatMessage.Content);
-                    if (tools.Count > 0)
-                    {
-                        chatMessage.DisplayContent = "Calling tool: " + string.Join(", ", tools.Select(t => t.Function.Name));
-                    }
                     lastAssistantMessage = chatMessage;
                 }
                 else if (chatMessage.Role == ChatMessageRole.User)
@@ -484,13 +478,8 @@ public partial class AiChat : RadzenComponent
         message.IsEditing = false;
         
         // Update display content if it's an assistant message with tools
-        if (message.Role == ChatMessageRole.Assistant)
-        {
-            var tools = ToolManager.ParseToolBlock(message.Content);
-            message.DisplayContent = tools.Count > 0 
-                ? "Calling tool: " + string.Join(", ", tools.Select(t => t.Function.Name)) 
-                : null;
-        }
+            message.DisplayContent = ToolManager.BeautifyToolBlock(message.Content);
+            ParsePlan(message);
 
         ChatService.Session.UpdateMessage(message.Id, message.Content);
         await ChatService.SaveSessionAsync();
