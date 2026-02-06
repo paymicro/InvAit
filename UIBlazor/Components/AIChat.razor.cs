@@ -369,7 +369,7 @@ public partial class AiChat : RadzenComponent
         foreach (var chatMessage in ChatService.Session.Messages)
         {
             // тулзы показываем по особому (смотри HandleToolCallAsync)
-            var regex = Regex.Match(chatMessage.Content, "^<tool_result name=\"(?<name>.{2,20})\" success=(?<success>[T|t]rue|[F|f]alse)>(?<result>.*)</tool_result>", RegexOptions.Singleline);
+            var regex = Regex.Match(chatMessage.Content, "^<tool_result name=\"(?<name>.{2,40})\" success=(?<success>[T|t]rue|[F|f]alse)>(?<result>.*)</tool_result>", RegexOptions.Singleline);
             if (regex.Success)
             {
                 var isSuccess = string.Equals(regex.Groups["success"].Value, "True", StringComparison.OrdinalIgnoreCase);
@@ -428,8 +428,6 @@ public partial class AiChat : RadzenComponent
 
         await VsBridge.InitializeAsync();
         VsBridge.OnModeSwitched += HandleModeSwitched;
-
-        SyncSessionMessageWithUi();
 
         await InvokeAsync(StateHasChanged);
     }

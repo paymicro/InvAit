@@ -58,7 +58,6 @@ public class VisualChatMessage
     [JsonIgnore]
     public string ToolDisplayName { get; set; } = string.Empty;
 
-    [JsonIgnore]
     public string? Model { get; set; }
 
     /// <summary>
