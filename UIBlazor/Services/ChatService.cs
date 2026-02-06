@@ -142,6 +142,10 @@ public class ChatService(
         await SaveSessionAsync();
     }
 
+    /// <summary>
+    /// Asynchronously saves the current session data to local storage using the session ID as the key.
+    /// </summary>
+    /// <returns></returns>
     public async Task SaveSessionAsync()
     {
         await localStorage.SetItemAsync(Session.Id, Session);
@@ -161,11 +165,15 @@ public class ChatService(
     /// Asynchronously prepares the system prompt by combining configured instructions, tool usage guidance, skill
     /// metadata, and the current code context.
     /// </summary>
-    /// <remarks>The returned prompt includes information relevant to the current session and code context,
+    /// <remarks>
+    /// The returned prompt includes information relevant to the current session and code context,
     /// which may affect downstream processing. If no code context is available, the prompt will omit that section. This
-    /// method is intended for internal use when constructing prompts for AI interactions.</remarks>
-    /// <returns>A string containing the complete system prompt, including instructions, tool information, skill details, and
-    /// code context if available.</returns>
+    /// method is intended for internal use when constructing prompts for AI interactions.
+    /// </remarks>
+    /// <returns>
+    /// A string containing the complete system prompt, including instructions, tool information, skill details, and
+    /// code context if available.
+    /// </returns>
     private async Task<string> PrepareSystemPromptAsync()
     {
         // Загружаем метаданные скиллов и добавляем в системный промпт
@@ -200,6 +208,21 @@ public class ChatService(
             contextSection);
     }
 
+    /// <summary>
+    /// Asynchronously generates a sequence of chat completion deltas for the current conversation session.
+    /// </summary>
+    /// <remarks>
+    /// This method streams chat completion results as they become available, allowing for real-time
+    /// processing of partial responses. The returned sequence may include reasoning content or message content
+    /// depending on the model and response format. If streaming is not enabled, the method yields a single completion
+    /// result.
+    /// </remarks>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the asynchronous operation.</param>
+    /// <returns>
+    /// An asynchronous stream of <see cref="ChatDelta"/> objects representing incremental updates to the chat
+    /// completion. The stream completes when the response is fully received.
+    /// </returns>
+    /// <exception cref="Exception">Thrown if the chat completion request fails or the server returns an unsuccessful response.</exception>
     public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync([EnumeratorCancellation] CancellationToken cancellationToken)
     {
         LastCompletionsModel = null;
@@ -375,6 +398,20 @@ public class ChatService(
         }
     }
 
+
+    /// <summary>
+    /// Asynchronously clears the current session data and resets the session state.
+    /// </summary>
+    /// <remarks>
+    /// This method removes the session data from local storage and creates a new session instance.
+    /// After calling this method, any data associated with the previous session will no longer be available.
+    /// </remarks>
+    public async Task ClearSessionAsync()
+    {
+        await localStorage.RemoveItemAsync(Session.Id);
+        Session = CreateNewSession();
+    }
+
     private async Task<List<string>> GetAllSessionIdsAsync()
     {
         return [.. (await localStorage.GetAllKeysAsync()).Where(k => k.StartsWith("session_"))];
@@ -407,11 +444,5 @@ public class ChatService(
             Session = CreateNewSession();
         }
         Session.MaxMessages = Options.MaxMessages;
-    }
-
-    public async Task ClearSessionAsync()
-    {
-        await localStorage.RemoveItemAsync(Session.Id);
-        Session = CreateNewSession();
     }
 }
