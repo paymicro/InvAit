@@ -63,8 +63,8 @@
                     var index = i;
                     var file = filteredFiles[i];
                     var isSelected = index == selectedIndex;
-                    var fileName = Path.GetFileName(file);
-                    var fileDir = Path.GetDirectoryName(file) ?? "";
+                    var fileName = Path.GetFileName(file.Replace('\\', '/'));
+                    var fileDir = Path.GetDirectoryName(file.Replace('\\', '/')) ?? "";
                     var icon = GetFileIcon(fileName);
                     <li class="hint-item @(isSelected ? "selected" : "")" 
                         @onclick="() => AddFileToken(file)">
@@ -288,7 +288,7 @@
 
     private string GetFileIcon(string fileName)
     {
-        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+        var extension = Path.GetExtension(fileName.Replace('\\', '/')).ToLowerInvariant();
         return extension switch
         {
             ".cs" => "📄",
