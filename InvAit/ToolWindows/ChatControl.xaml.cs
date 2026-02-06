@@ -132,7 +132,7 @@ public partial class ChatControl
         _webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
 #endif
         _webView.CoreWebView2.Settings.AreHostObjectsAllowed = true;
-        _webView.CoreWebView2.Settings.IsPasswordAutosaveEnabled = true;
+        _webView.CoreWebView2.Settings.IsPasswordAutosaveEnabled = false;
         _webView.CoreWebView2.Settings.IsGeneralAutofillEnabled = true;
         _webView.CoreWebView2.Settings.IsBuiltInErrorPageEnabled = true;
         _webView.CoreWebView2.Settings.IsScriptEnabled = true;

@@ -5,12 +5,9 @@
         <DisplayName>InvAit</DisplayName>
         <Description xml:space="preserve">Simple private LLM chat for Visual Studio</Description>
         <Preview>true</Preview>        
-        <Tags>chatGPT, LLM, AI, OpenAI, Private, Local, Visual Studio, Copilot alternative</Tags>
+        <Tags>chatGPT, LLM, AI, OpenAI, Private, Local, Visual Studio</Tags>
         <Categories>AI</Categories>
-        <License>MIT</License>
-        <Icon>Icon.png</Icon>
-        <PreviewImage>PreviewImage.png</PreviewImage>
-        <Repository>https://github.com/paymicro/InvGen</Repository>
+        <Repository>https://github.com/paymicro/InvAit</Repository>
     </Metadata>
     <Installation>
         <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[17.14, 18.0)">
