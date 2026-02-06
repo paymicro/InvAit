@@ -188,7 +188,7 @@ public class ProfileServiceTests
         _service.ActiveProfile.SkipSSL = true;
 
         // Assert
-        _jsRuntimeMock.Verify(js => js.InvokeAsync<string>("postVsMessage", It.Is<object[]>(args => 
+        _jsRuntimeMock.Verify(js => js.InvokeAsync<string>("postVsMessage", It.Is<object[]>(args =>
             CheckSkipSslRequest(args)
         )), Times.Once);
     }
@@ -197,7 +197,7 @@ public class ProfileServiceTests
     {
         if (args.Length != 1) return false;
         if (args[0] is not VsRequest req) return false;
-        return req.Action == nameof(ConnectionProfile.SkipSSL) && req.Payload == "True";
+        return req.Action == BuiltInToolEnum.SkipSSL && req.Payload == "True";
     }
 
     [Fact]

@@ -37,6 +37,12 @@ public class VsBridge : IVsBridge, IDisposable
             _dotNetRef = DotNetObjectReference.Create(this);
             var result = await _jsRuntime.InvokeAsync<string>("setVsBridgeHandler", _dotNetRef);
             _isInitialized = result == "OK";
+
+            if (_isInitialized)
+            {
+                // Notify Host that we are ready to receive messages (e.g. initial context)
+                await _jsRuntime.InvokeVoidAsync("postVsMessage", new VsRequest { Action = BuiltInToolEnum.UIReady });
+            }
         }
     }
 

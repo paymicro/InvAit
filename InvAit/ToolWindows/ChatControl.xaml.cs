@@ -23,6 +23,7 @@ public partial class ChatControl
     private bool _skipSslValidation;
 
     public event Func<WV.IWebView2, Task> WebViewInitialized;
+    public event Action UIReady;
 
     public ChatControl()
     {
@@ -155,10 +156,16 @@ public partial class ChatControl
                 return;
             }
 
-            if (request.Action == "SkipSSL")
+            if (request.Action == BuiltInToolEnum.SkipSSL)
             {
                 _skipSslValidation = string.Equals(request.Payload, "true", StringComparison.OrdinalIgnoreCase);
                 Logger.Log($"SkipSSL set {_skipSslValidation}");
+                return;
+            }
+
+            if (request.Action == BuiltInToolEnum.UIReady)
+            {
+                UIReady?.Invoke();
                 return;
             }
 

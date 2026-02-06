@@ -21,8 +21,10 @@ namespace InvAit.Agent
         private readonly SelectionEvents _selectionEvents;
 
         private bool _isDisposed;
+        private bool _isUiReady;
+        private VsCodeContext _lastContext;
         private DateTime _lastUpdate = DateTime.MinValue;
-        private const int ThrottleMs = 500;
+        private const int _throttleMs = 500;
 
         private VsCodeContextPublisher(DTE2 dte, WebView2 webView)
         {
@@ -55,8 +57,19 @@ namespace InvAit.Agent
             _windowEvents.WindowActivated += OnWindowActivated;
             _documentEvents.DocumentSaved += OnDocumentSaved;
             _selectionEvents.OnChange += OnSelectionChanged;
-            
-            await UpdateContextAsync();
+        }
+
+        public async Task PushInitialContextAsync()
+        {
+            _isUiReady = true;
+            if (_lastContext != null)
+            {
+                await SendContextUpdateAsync(_lastContext);
+            }
+            else
+            {
+                await UpdateContextAsync();
+            }
         }
 
         private void OnSelectionChanged() => DebouncedUpdate();
@@ -68,7 +81,7 @@ namespace InvAit.Agent
 
         private void DebouncedUpdate()
         {
-            if ((DateTime.UtcNow - _lastUpdate).TotalMilliseconds < ThrottleMs) return;
+            if ((DateTime.UtcNow - _lastUpdate).TotalMilliseconds < _throttleMs) return;
             _lastUpdate = DateTime.UtcNow;
             UpdateContextAsync().FireAndForget();
         }
@@ -108,7 +121,12 @@ namespace InvAit.Agent
                     }
                 }
 
-                await SendContextUpdateAsync(context);
+                _lastContext = context;
+
+                if (_isUiReady)
+                {
+                    await SendContextUpdateAsync(context);
+                }
             }
             catch (Exception ex)
             {

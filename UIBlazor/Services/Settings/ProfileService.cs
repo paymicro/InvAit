@@ -60,7 +60,7 @@ public class ProfileService(ILocalStorageService localStorage, IJSRuntime jSRunt
     private void NotifySkipSsl(bool skipSsl)
     {
         jSRuntime.InvokeAsync<string>("postVsMessage",
-            new VsRequest { Action = nameof(ConnectionProfile.SkipSSL), Payload = skipSsl.ToString() });
+            new VsRequest { Action = BuiltInToolEnum.SkipSSL, Payload = skipSsl.ToString() });
     }
 
     public Task<List<ConnectionProfile>> GetProfilesAsync()
@@ -158,7 +158,7 @@ public class ProfileService(ILocalStorageService localStorage, IJSRuntime jSRunt
         foreach (var p in Current.Profiles) p.PropertyChanged -= OnProfilePropertyChanged;
     }
 
-    private void CopyProfileProperties(ConnectionProfile from, ConnectionProfile to)
+    private static void CopyProfileProperties(ConnectionProfile from, ConnectionProfile to)
     {
         var properties = typeof(ConnectionProfile)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)

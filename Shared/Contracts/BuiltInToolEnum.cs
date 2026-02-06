@@ -48,4 +48,8 @@ public static class BuiltInToolEnum
     public const string RecordObservation   = "record_observation";
     public const string AdaptPlan           = "adapt_plan";
     public const string FinishPlan          = "finish_plan";
+
+    // System heartbeat
+    public const string UIReady             = "ui_ready";
+    public const string SkipSSL             = "skip_ssl_validation";
 }

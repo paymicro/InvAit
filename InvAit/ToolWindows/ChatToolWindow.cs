@@ -6,6 +6,7 @@ using Community.VisualStudio.Toolkit;
 using EnvDTE;
 using EnvDTE80;
 using InvAit.Agent;
+using Microsoft.VisualStudio.Shell;
 using Microsoft.Web.WebView2.Wpf;
 using Shell = Microsoft.VisualStudio.Shell;
 
@@ -25,6 +26,7 @@ public class ChatToolWindow : BaseToolWindow<ChatToolWindow>, IDisposable
 
         var control = new ChatControl();
         control.WebViewInitialized += OnWebViewInitialized;
+        control.UIReady += () => _contextPublisher?.PushInitialContextAsync().FireAndForget();
 
         return control;
     }
