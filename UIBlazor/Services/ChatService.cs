@@ -29,8 +29,22 @@ public class ChatService(
 
     public ConnectionProfile Options => profileManager.ActiveProfile;
 
-    [AllowNull]
-    public ConversationSession Session { get; private set; }
+    public ConversationSession? Session 
+    { 
+        get; 
+        private set 
+        {
+            if (field != value)
+            {
+                field = value;
+                NotifySessionChanged();
+            }
+        }
+    }
+
+    public event Action? OnSessionChanged;
+
+    private void NotifySessionChanged() => OnSessionChanged?.Invoke();
 
     /// <summary>
     /// Determines if an exception is retryable (network errors, timeouts, etc.)

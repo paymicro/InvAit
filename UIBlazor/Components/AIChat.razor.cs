@@ -362,6 +362,9 @@ public partial class AiChat : RadzenComponent
 
     private void SyncSessionMessageWithUi()
     {
+        if (ChatService.Session == null) return;
+
+        Messages.Clear();
         VisualChatMessage? lastAssistantMessage = null;
         foreach (var chatMessage in ChatService.Session.Messages)
         {
@@ -418,6 +421,8 @@ public partial class AiChat : RadzenComponent
     {
         await base.OnInitializedAsync();
 
+        ChatService.OnSessionChanged += HandleSessionChanged;
+
         ToolManager.RegisterAllTools();
         await ProfileManager.InitializeAsync();
 
@@ -427,6 +432,12 @@ public partial class AiChat : RadzenComponent
         SyncSessionMessageWithUi();
 
         await InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleSessionChanged()
+    {
+        SyncSessionMessageWithUi();
+        InvokeAsync(StateHasChanged);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -552,6 +563,7 @@ public partial class AiChat : RadzenComponent
         base.Dispose();
         
         VsBridge.OnModeSwitched -= HandleModeSwitched;
+        ChatService.OnSessionChanged -= HandleSessionChanged;
 
         _cts?.Cancel();
         _cts?.Dispose();

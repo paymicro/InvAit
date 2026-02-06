@@ -108,7 +108,7 @@
     private AppMode CurrentMode
     {
         get => ChatService.Session?.Mode ?? AppMode.Chat;
-        set => ChatService.Session.Mode = value;
+        set => ChatService.Session?.Mode = value;
     }
 
     private bool CanSend()
@@ -318,5 +318,22 @@
         await JS.InvokeVoidAsync("eval", "arguments[0].style.height = 'auto'", textareaRef);
 
         StateHasChanged();
+    }
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        ChatService.OnSessionChanged += HandleSessionChanged;
+    }
+
+    private void HandleSessionChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        ChatService.OnSessionChanged -= HandleSessionChanged;
     }
 }
