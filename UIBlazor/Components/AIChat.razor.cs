@@ -11,7 +11,7 @@ public partial class AiChat : RadzenComponent
 {
     // TODO использовать из ChatService.Session.Messages
     private List<VisualChatMessage> Messages { get; set; } = [];
-    // private string CurrentInput { get; set; } = string.Empty;
+
     private bool IsLoading { get; set; }
 
     private bool _preventDefault;
@@ -85,7 +85,7 @@ public partial class AiChat : RadzenComponent
             return;
 
         // Process the CurrentInput (HTML) to extract chip data and fetch content
-        var processedContent = await ProcessMessageContent(content);
+        var processedContent = await ProcessMessageContentAsync(content);
 
         // Add user message
         var userMessage = new VisualChatMessage
@@ -102,7 +102,7 @@ public partial class AiChat : RadzenComponent
         await GetAiResponseAsync();
     }
 
-    private async Task<string> ProcessMessageContent(string htmlContent)
+    private async Task<string> ProcessMessageContentAsync(string htmlContent)
     {
         var processedContentBuilder = new StringBuilder();
         var lastIndex = 0;
@@ -215,7 +215,7 @@ public partial class AiChat : RadzenComponent
         }
     }
 
-    private void ParsePlan(VisualChatMessage message)
+    private static void ParsePlan(VisualChatMessage message)
     {
         if (string.IsNullOrEmpty(message.Content)) return;
 
@@ -370,17 +370,18 @@ public partial class AiChat : RadzenComponent
         foreach (var chatMessage in ChatService.Session.Messages)
         {
             // тулзы показываем по особому (смотри HandleToolCallAsync)
-            var regex = Regex.Match(chatMessage.Content, "^<tool_result name=\"(?<name>.{2,20})\">(?<result>.*)</tool_result>", RegexOptions.Singleline);
+            var regex = Regex.Match(chatMessage.Content, "^<tool_result name=\"(?<name>.{2,20})\" success=(?<success>[T|t]rue|[F|f]alse)>(?<result>.*)</tool_result>", RegexOptions.Singleline);
             if (regex.Success)
             {
+                var isSuccess = string.Equals(regex.Groups["success"].Value, "True", StringComparison.OrdinalIgnoreCase);
                 var toolResultMessage = new VisualChatMessage
                 {
                     Id = chatMessage.Id,
                     Role = ChatMessageRole.Tool,
                     Content = regex.Groups["result"].Value,
-                    ToolName = regex.Groups["name"].Value,
+                    ToolName = (isSuccess ? "✅ " : "❌ ") + regex.Groups["name"].Value,
                 };
-                
+
                 if (lastAssistantMessage != null)
                 {
                     lastAssistantMessage.ToolMessages.Add(toolResultMessage);
@@ -408,36 +409,17 @@ public partial class AiChat : RadzenComponent
                     lastAssistantMessage = null;
                 }
                 
-                chatMessage.IsExpanded = IsShortMessage(chatMessage.Content);
+                chatMessage.IsExpanded = IsShortMessage(chatMessage.DisplayContent ?? chatMessage.Content);
                 AddVisualMessage(chatMessage);
             }
         }
-
-        // Final pass to check if assistant messages should be collapsed due to tool results
-        foreach (var msg in Messages)
-        {
-            if (msg.Role == ChatMessageRole.Assistant && msg.ToolMessages.Any())
-            {
-                // If there are tool results, it might be better to start collapsed if total content is long
-                var totalContent = msg.Content + string.Join("", msg.ToolMessages.Select(t => t.Content));
-                msg.IsExpanded = IsShortMessage(totalContent);
-            }
-        }
     }
 
-    private bool IsShortMessage(string content)
-    {
-        if (string.IsNullOrEmpty(content)) return true;
-        // Limit by characters and by line count (rough estimate)
-        return content.Length < 1000 && content.Count(c => c == '\n') < 15;
-    }
+    private static bool IsShortMessage(string content)
+        => string.IsNullOrEmpty(content) || (content.Length < 1000 && content.Count(c => c == '\n') < 15);
 
-    private async Task CancelResponceAsync()
-    {
-        await _cts.CancelAsync();
-    }
+    private async Task CancelResponceAsync() => await _cts.CancelAsync();
 
-    /// <inheritdoc />
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
@@ -468,7 +450,7 @@ public partial class AiChat : RadzenComponent
         InvokeAsync(StateHasChanged);
     }
 
-    private async Task OnProfileChange(object value)
+    private async Task OnProfileChangeAsync(object value)
     {
         var profileId = value as string;
         if (!string.IsNullOrEmpty(profileId))

@@ -11,7 +11,7 @@
             @if (ProfileManager.Current.Profiles.Count > 0)
             {
                 <RadzenDropDown TValue="string" Data="@ProfileManager.Current.Profiles" TextProperty="Name" ValueProperty="Id"
-                                Value="@ProfileManager.Current.ActiveProfileId" Change="@OnProfileChange"
+                                Value="@ProfileManager.Current.ActiveProfileId" Change="@OnProfileChangeAsync"
                                 Placeholder="Select Profile"
                                 Style="width: 180px;" />
             }
