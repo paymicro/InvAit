@@ -29,25 +29,30 @@
 
         @* Нижняя панель с кнопками *@
         <div class="input-footer">
-            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Style="width: 100%; padding: 4px 8px;">
+            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween"  AlignItems="AlignItems.Center">
                 <RadzenDropDown TValue="AppMode" class="mode-dropdown" Data="@AppModeValues" @bind-Value="@CurrentMode" />
                 
-                <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" AlignItems="AlignItems.Center">
-                    <RadzenButton Icon="send"
-                                  ButtonStyle="ButtonStyle.Primary"
-                                  Variant="Variant.Text"
-                                  Visible="@(!IsLoading)"
-                                  Disabled="@(!CanSend())"
-                                  Click="@OnSendClick"
-                                  Title="Send message"
-                                  class="rz-chat-send-btn" />
-                    <RadzenButton Icon="dangerous"
-                                  ButtonStyle="ButtonStyle.Danger"
-                                  Variant="Variant.Text"
-                                  Visible="@IsLoading"
-                                  Click="@Cancel.InvokeAsync"
-                                  Title="Cancel"
-                                  class="rz-chat-cancel-btn" />
+                <RadzenStack Orientation="Orientation.Horizontal" Gap="4px" JustifyContent="JustifyContent.End" AlignItems="AlignItems.Center">
+                    <RadzenButton Icon="gavel" ButtonStyle="ButtonStyle.Base" Variant="Variant.Text" Size="ButtonSize.Small" Click="@OpenRules" Title="Open Rules" />
+                    <RadzenButton Icon="extension" ButtonStyle="ButtonStyle.Base" Variant="Variant.Text" Size="ButtonSize.Small" Click="@OpenSkills" Title="Open Skills" />
+                    
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" JustifyContent="JustifyContent.End" AlignItems="AlignItems.Center">
+                        <RadzenButton Icon="send"
+                                      ButtonStyle="ButtonStyle.Primary"
+                                      Variant="Variant.Text"
+                                      Visible="@(!IsLoading)"
+                                      Disabled="@(!CanSend())"
+                                      Click="@OnSendClick"
+                                      Title="Send message"
+                                      class="rz-chat-send-btn" />
+                        <RadzenButton Icon="dangerous"
+                                      ButtonStyle="ButtonStyle.Danger"
+                                      Variant="Variant.Text"
+                                      Visible="@IsLoading"
+                                      Click="@Cancel.InvokeAsync"
+                                      Title="Cancel"
+                                      class="rz-chat-cancel-btn" />
+                    </RadzenStack>
                 </RadzenStack>
             </RadzenStack>
         </div>
@@ -329,6 +334,16 @@
     private void HandleSessionChanged()
     {
         InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OpenRules()
+    {
+        await VsBridge.ExecuteToolAsync(BuiltInToolEnum.OpenFile, new Dictionary<string, object> { { "param1", ".agent/rules.md" } });
+    }
+
+    private async Task OpenSkills()
+    {
+        await VsBridge.ExecuteToolAsync(BuiltInToolEnum.OpenFile, new Dictionary<string, object> { { "param1", ".agent/skills/README.md" } });
     }
 
     public override void Dispose()

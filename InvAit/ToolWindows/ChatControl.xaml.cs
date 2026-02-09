@@ -90,6 +90,19 @@ public partial class ChatControl
                 Logger.Log($"SSL validation error. You can skip SSL validation in settings.", "ERROR");
             }
         };
+        _webView.CoreWebView2.ProcessFailed += (s, e) =>
+        {
+            Logger.Log($"WebView process failed: {e.ProcessFailedKind}", "ERROR");
+            // При падении процесса WebView, нужно его перезагрузить.
+            // Иначе он будет показывать только белый экран.
+            _webView.CoreWebView2.Reload();
+        };
+        _webView.CoreWebView2.NewWindowRequested += (s, e) =>
+        {
+            // Блокируем открытие новых окон. Все должно работать в одном окне.
+            e.Handled = true;
+            Logger.Log($"Blocked attempt to open new window with URL: {e.Uri}", "WARNING");
+        };
 
         //_webView.CoreWebView2.AddHostObjectToScript("mcpHost", new McpProxyHost());
         //_webView.NavigationCompleted += (_, _) =>

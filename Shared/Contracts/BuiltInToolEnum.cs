@@ -37,6 +37,9 @@ public static class BuiltInToolEnum
     public const string GetSkillsMetadata   = "get_skills_metadata";   // Только метаданные (кеш)
     public const string ReadSkillContent    = "read_skill_content";    // Полное содержимое по требованию
     
+    // Rules
+    public const string GetRules            = "get_rules";
+    
     // MCP Operations
     public const string McpGetTools             = "mcp_get_tools";
     public const string McpCallTool             = "mcp_call_tool";
@@ -52,4 +55,5 @@ public static class BuiltInToolEnum
     // System heartbeat
     public const string UIReady             = "ui_ready";
     public const string SkipSSL             = "skip_ssl_validation";
+    public const string OpenFile            = "open_file";
 }

@@ -18,6 +18,7 @@ builder.Services
     .AddScoped<ICommonSettingsProvider, CommonSettingsProvider>()
     .AddScoped<IVsBridge, VsBridge>()
     .AddScoped<ISkillService, SkillService>()
+    .AddScoped<IRuleService, RuleService>()
     .AddScoped<IVsCodeContextService, VsCodeContextService>()
     .AddScoped<BuiltInAgent>()
     .AddScoped<IToolManager, ToolManager>()

@@ -34,6 +34,7 @@ public class BuiltInAgent
             {
                 BuiltInToolEnum.ReadFiles => await ReadFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.ReadOpenFile => await ReadCurrentlyOpenFileAsync(),
+                BuiltInToolEnum.OpenFile => await OpenFileInEditorAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.CreateFile => await CreateNewFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.DeleteFile => await DeleteFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.Exec => await ExecAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
@@ -53,6 +54,7 @@ public class BuiltInAgent
                 BuiltInToolEnum.SwitchMode => new VsResponse { Success = true, Payload = "Mode switched" },
                 BuiltInToolEnum.GetSkillsMetadata => await GetSkillsMetadataAsync(),
                 BuiltInToolEnum.ReadSkillContent => await ReadSkillContentAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.GetRules => await GetRulesAsync(),
                 BuiltInToolEnum.McpGetTools => await McpGetToolsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.McpCallTool => await McpCallToolAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.McpReadNotifications => await McpReadNotificationsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
@@ -754,6 +756,73 @@ public class BuiltInAgent
     private async Task<VsResponse> GitBranchAsync()
     {
         return await ExecGitCommandAsync("branch --show-current");
+    }
+
+    private async Task<VsResponse> GetRulesAsync()
+    {
+        var solutionPath = await GetSolutionPathAsync();
+        var rulesPath = Path.Combine(solutionPath, ".agent", "rules.md");
+
+        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+        if (!File.Exists(rulesPath))
+        {
+            return new VsResponse { Success = true, Payload = string.Empty };
+        }
+
+        try
+        {
+            var content = File.ReadAllText(rulesPath);
+            return new VsResponse { Success = true, Payload = content };
+        }
+        catch (Exception ex)
+        {
+            return new VsResponse { Success = false, Error = $"Error reading rules.md: {ex.Message}" };
+        }
+    }
+
+    private async Task<VsResponse> OpenFileInEditorAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var relativePath = args.GetString("param1");
+        if (string.IsNullOrEmpty(relativePath))
+        {
+            return new VsResponse { Success = false, Error = "File path is empty" };
+        }
+
+        var solutionPath = await GetSolutionPathAsync();
+        
+        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        
+        try
+        {
+            var absolutePath = GetAbsolutePath(relativePath, solutionPath);
+            var directory = Path.GetDirectoryName(absolutePath);
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            if (!File.Exists(absolutePath))
+            {
+                File.WriteAllText(absolutePath, "");
+                // Если создаем новый файл, логируем
+                Logger.Log($"Created new file: {relativePath}");
+            }
+
+            var doc = await VS.Documents.OpenAsync(absolutePath);
+            if (doc == null)
+            {
+                 // fallback using DTE
+                 var dte = (DTE2)Shell.Package.GetGlobalService(typeof(DTE));
+                 dte.ItemOperations.OpenFile(absolutePath);
+            }
+            
+            return new VsResponse { Success = true, Payload = $"Opened {relativePath}" };
+        }
+        catch (Exception ex)
+        {
+             return new VsResponse { Success = false, Error = $"Error opening {relativePath}: {ex.Message}" };
+        }
     }
 
     #region Skills Support

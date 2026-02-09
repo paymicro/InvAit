@@ -12,8 +12,8 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
     /// </summary>
     public async Task<List<SkillMetadata>> GetSkillsMetadataAsync()
     {
-        // Проверяем кеш (обновляем раз в 5 минут или по запросу)
-        if (_skillsCache != null && (DateTime.UtcNow - _lastCacheUpdate).TotalMinutes < 5)
+        // Проверяем кеш (обновляем раз в 2 минуты или по запросу)
+        if (_skillsCache != null && (DateTime.UtcNow - _lastCacheUpdate).TotalMinutes < 2)
         {
             return _skillsCache;
         }

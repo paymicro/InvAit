@@ -74,7 +74,7 @@ public class VsBridge : IVsBridge, IDisposable
             _notificationService.Notify(new NotificationMessage
             {
                 Severity = NotificationSeverity.Error,
-                Summary = $"Error getting response '{request.Action}'",
+                Summary = $"Error getting response from Visual Studio '{request.Action}'",
                 Detail = response.Error ?? string.Empty,
                 Duration = 6_000,
                 ShowProgress = true

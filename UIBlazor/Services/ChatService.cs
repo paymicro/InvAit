@@ -15,6 +15,7 @@ public class ChatService(
     IToolManager toolManager,
     ILocalStorageService localStorage,
     ISkillService skillService,
+    IRuleService ruleService,
     IVsCodeContextService vsCodeContextService
     )
 {
@@ -201,8 +202,12 @@ public class ChatService(
             """;
         }
 
+        // Загружаем правила
+        var rules = await ruleService.GetRulesAsync();
+
         return string.Join(Environment.NewLine,
             Options.SystemPrompt,
+            rules,
             toolManager.GetToolUseSystemInstructions(Session?.Mode ?? AppMode.Chat),
             skillsSection,
             contextSection);

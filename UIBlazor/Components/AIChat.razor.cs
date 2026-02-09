@@ -277,13 +277,6 @@ public partial class AiChat : RadzenComponent
                 }
 
                 var vsToolResult = await tool.ExecuteAsync(aiTool.Function.Arguments);
-                NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = NotificationSeverity.Success,
-                    Summary = vsToolResult.Result,
-                    Duration = 3_000,
-                    ShowProgress = true
-                });
 #if DEBUG
                 // Безголовые (без Visual Studio) тесты
                 if (!vsToolResult.Success && vsToolResult.ErrorMessage == "WebView2 API is`t find.")
@@ -464,7 +457,7 @@ public partial class AiChat : RadzenComponent
                 Severity = NotificationSeverity.Info,
                 Summary = "Profile Changed",
                 Detail = $"Active profile updated.",
-                Duration = 2000
+                Duration = 1000
             });
         }
     }
