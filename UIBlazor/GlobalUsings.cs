@@ -7,5 +7,3 @@ global using UIBlazor.Options;
 global using UIBlazor.Models;
 global using UIBlazor.Utils;
 global using UIBlazor.VS;
-global using Shared.Contracts;
-global using Shared.Contracts;

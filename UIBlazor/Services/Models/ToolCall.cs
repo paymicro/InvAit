@@ -21,7 +21,7 @@ public class ToolCall
     /// </summary>
     /// <returns>
     [JsonPropertyName("type")]
-    public string Type { get; set; } = string.Empty;
+    public string Type { get; set; } = "function";
 
     /// <summary>
     /// Gets or sets the function to call, represented by the <see cref="ToolCallFunction"/> object.

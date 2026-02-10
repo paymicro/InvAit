@@ -16,3 +16,10 @@ public enum ToolApprovalMode
     AutoApprove,
     Manual
 }
+
+public enum ToolApprovalStatus
+{
+    Pending,
+    Approved,
+    Rejected
+}

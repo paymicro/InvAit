@@ -2,7 +2,14 @@
 
 public class ToolSettings : BaseOptions
 {
-    public Dictionary<ToolCategory, ToolModeSettings> CategoryStates { get; set; } = [];
-    
-    public Dictionary<string, bool> ToolStates { get; set; } = [];
+    /// <summary>
+    /// По умолчанию все категории имеют <see cref="ToolApprovalMode.AutoApprove"/> в <seealso cref="ToolCategorySettings"/>
+    /// </summary>
+    public Dictionary<ToolCategory, ToolCategorySettings> CategoryStates { get; set; }
+        = new() { { ToolCategory.Execution, new ToolCategorySettings { ApprovalMode = ToolApprovalMode.Manual } } }; // кроме выполнения
+
+    /// <summary>
+    /// Список выключенных тулзов
+    /// </summary>
+    public List<string> DisabledTools { get; set; } = [];
 }

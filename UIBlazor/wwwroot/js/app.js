@@ -1,4 +1,4 @@
-let vsBridgeHandler;
+﻿let vsBridgeHandler;
 
 // Функция для установки .NET обработчика UIBlazor
 window.setVsBridgeHandler = function (dotNetRef) {
@@ -84,4 +84,16 @@ window.autoResizeTextarea = function (element, auto = false) {
     // Устанавливаем новую высоту на основе scrollHeight
     const newHeight = Math.min(element.scrollHeight, 200); // Максимум ~10 строк
     element.style.height = newHeight + 'px';
+};
+
+let chatHandler;
+window.setChatHandler = function (dotNetRef) {
+    chatHandler = dotNetRef;
+    return "OK";
+};
+
+window.approveTool = function (messageId, callId, approved) {
+    if (chatHandler) {
+        chatHandler.invokeMethodAsync('HandleToolApproval', messageId, callId, approved);
+    }
 };

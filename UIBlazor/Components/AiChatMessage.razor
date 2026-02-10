@@ -1,23 +1,70 @@
-﻿@inject IJSRuntime Js
+﻿@using System.Text.RegularExpressions
+@using UIBlazor.Components.Chat
+@using UIBlazor.Models
 
-<div id="@_messageId" class="markdown-content">
-    @((MarkupString)_processedContent)
+<div class="ai-chat-message">
+    @if (Message.Role != ChatMessageRole.Assistant)
+    {
+        <MarkdownBlock Content="@Message.Content" />
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(Message.ReasoningContent))
+        {
+            <details class="reasoning-details">
+                <summary>Размышления...</summary>
+                <MarkdownBlock Content="@Message.ReasoningContent" />
+            </details>
+        }
+
+        @foreach (var segment in Message.Segments)
+        {
+            if (segment.Type == SegmentType.Tool)
+            {
+                <ToolCallBlock @key="segment.Id"
+                Segment="@segment"
+                OnApproval="@OnToolApprovalHandler" />
+            }
+            else if (segment.Type is SegmentType.Markdown)
+            {
+                <MarkdownBlock @key="segment.Id" Content="@segment.CurrentLine.ToString()" />
+            }
+        }
+
+        @if (Message.ToolMessages.Any())
+        {
+            <div class="message-tool-results rz-mt-2">
+                @foreach (var toolMsg in Message.ToolMessages)
+                {
+                    <details class="tool-details" @key="toolMsg.Id">
+                        <summary>@toolMsg.ToolDisplayName</summary>
+                        <pre class="rz-p-2 rz-background-color-base-900 rz-color-white" style="font-size: 0.8rem; border-radius: 4px;">@toolMsg.Content</pre>
+                    </details>
+                }
+            </div>
+        }
+    }
 </div>
 
 @code {
-    [Parameter] public string Content { get; set; } = string.Empty;
+    [Parameter] public VisualChatMessage Message { get; set; } = new();
+    [Parameter] public EventCallback<(string MessageId, string SegmentId, bool Approved)> OnToolApproval { get; set; }
+    [Inject] private IToolManager ToolManager { get; set; } = null!;
 
-    private readonly string _messageId = $"msg-{Guid.NewGuid()}";
-    private string _lastRenderedContent = string.Empty;
-    private string _processedContent = string.Empty;
+    private string _lastContent = string.Empty;
+    private bool isAssistant = false;
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override void OnParametersSet()
     {
-        // Рендерим только если контент реально изменился (стриминг)
-        if (Content != _lastRenderedContent)
+        if (Message.Content != _lastContent)
         {
-            _lastRenderedContent = Content;
-            await Js.InvokeVoidAsync("renderMarkdownToElement", _messageId, Content);
+            isAssistant = Message.Role == ChatMessageRole.Assistant;
+            _lastContent = Message.Content;
         }
+    }
+
+    private async Task OnToolApprovalHandler((string SegmentId, bool Approved) args)
+    {
+        await OnToolApproval.InvokeAsync((Message.Id, args.SegmentId, args.Approved));
     }
 }

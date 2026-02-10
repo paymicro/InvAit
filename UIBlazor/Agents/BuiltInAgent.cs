@@ -142,7 +142,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
             DisplayName = "Список файлов",
             Category = ToolCategory.ReadFiles,
             Description = "To list files and folders in a given directory, call the ls tool with \"dirPath\" and \"recursive\".",
-            ExampleToSystemMessage = """
+            ExampleToSystemMessage = $"""
                                      For example:
                                      <function name="{BuiltInToolEnum.Ls}">
                                      C:\path\to\dir

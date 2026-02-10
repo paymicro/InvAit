@@ -15,7 +15,6 @@ public class ToolManagerTests
 
     public ToolManagerTests()
     {
-        
         _localStorageMock = new Mock<ILocalStorageService>();
 
         // Setup default tool
@@ -23,7 +22,6 @@ public class ToolManagerTests
         {
             Name = "test_tool",
             Description = "Test tool",
-            Enabled = true,
             ExecuteAsync = _ => Task.FromResult(new VsToolResult { Success = true, Result = "test result" })
         };
         _builtInAgent = new BuiltInAgent(Mock.Of<IVsBridge>()) { Tools = [tool] };

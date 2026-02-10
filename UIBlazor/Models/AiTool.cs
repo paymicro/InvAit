@@ -2,7 +2,7 @@
 
 public class AiTool
 {
-    public int? Index { get; set; } = 0;
+    public int Index { get; set; } = 0;
 
     /// <summary>
     /// Used later to submit the function result back to the AI.

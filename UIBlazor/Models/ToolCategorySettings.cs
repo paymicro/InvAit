@@ -1,8 +1,6 @@
-using Shared.Contracts;
-
 namespace UIBlazor.Models;
 
-public class ToolModeSettings
+public class ToolCategorySettings
 {
     public bool IsEnabled { get; set; } = true;
     

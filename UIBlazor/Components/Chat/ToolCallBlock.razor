@@ -1,0 +1,64 @@
+@using UIBlazor.Services.Settings
+@using UIBlazor.Models
+@using Shared.Contracts
+@inject IToolManager ToolManager
+
+<div class="tool-call-block" data-tool="@Segment.ToolName">
+    <div class="tool-call-header">
+        Хочу вызвать: <strong>@DisplayName</strong>@(Segment.IsClosed ? "" : " ...")
+    </div>
+
+    @if (Segment.Lines.Count > 0)
+    {
+        <div class="tool-call-args">
+            @if (Segment.ToolName == BuiltInToolEnum.ApplyDiff)
+            {
+                <DiffView Lines="@Segment.Lines" />
+            }
+            else if (Segment.ToolName == BuiltInToolEnum.CreateFile)
+            {
+                <div class="tool-file-header">@Segment.Lines[0]</div>
+                <div class="tool-file-content">
+                    <pre>@string.Join("\n", Segment.Lines[1..])</pre>
+                </div>
+            }
+            else
+            {
+                <pre>@string.Join("\n", Segment.Lines[1..])</pre>
+            }
+        </div>
+    }
+
+    @if (Segment.IsClosed)
+    {
+        @if (Segment.ApprovalStatus == ToolApprovalStatus.Pending)
+        {
+            <div class="tool-approval-footer rz-p-2 rz-mt-2">
+                <div class="tool-approval-label"><i class="rz-icon-notification rz-mr-1"></i>Требуется подтверждение</div>
+                <div class="tool-approval-actions">
+                    <RadzenButton Icon="check" class="tool-approve-btn" Click="@(async () => await OnApproval.InvokeAsync((Segment.Id, true)))" />
+                    <RadzenButton Icon="close" class="tool-reject-btn" Click="@(async () => await OnApproval.InvokeAsync((Segment.Id, false)))" />
+                </div>
+            </div>
+        }
+        else if (Segment.ApprovalStatus == ToolApprovalStatus.Rejected)
+        {
+            <div class="tool-approval-footer rejected rz-p-2 rz-mt-2">
+                <div class="tool-approval-label"><i class="rz-icon-close rz-mr-1"></i>Отклонено пользователем</div>
+            </div>
+        }
+        else if (Segment.ApprovalStatus == ToolApprovalStatus.Approved)
+        {
+            <div class="tool-approval-footer approved rz-p-2 rz-mt-2">
+                <div class="tool-approval-label"><i class="rz-icon-check rz-mr-1"></i>Выполнение разрешено</div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public ContentSegment Segment { get; set; } = null!;
+    [Parameter] public EventCallback<(string SegmentId, bool Approved)> OnApproval { get; set; }
+
+    private string DisplayName => ToolManager.GetTool(Segment.ToolName)?.DisplayName ?? Segment.ToolName;
+}

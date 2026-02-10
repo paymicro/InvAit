@@ -1,4 +1,4 @@
-:root {
+﻿:root {
     --rz-layout-body-padding: 0px;
     --rz-text-h1-font-size: 2.2rem;
     --rz-text-h2-font-size: 2.0rem;
@@ -70,6 +70,10 @@ details summary {
 
 .rz-tabview-panels {
     border: 0;
+}
+
+.rz-dropdown {
+    cursor: default;
 }
 
 .category-tools-hidden {
@@ -183,6 +187,7 @@ details summary {
     border-bottom: 1px solid var(--rz-base-600);
     color: var(--rz-text-color);
     border-left: 4px solid var(--rz-info);
+    white-space: normal;
 }
 
 .tool-call-header strong {
@@ -235,7 +240,6 @@ details summary {
 
 .diff-block {
     margin: 0.5rem 0;
-    border: 1px solid var(--rz-base-700);
     border-radius: 4px;
     overflow: hidden;
 }
@@ -281,4 +285,92 @@ details summary {
     font-size: 0.85rem;
     padding: 0 4px;
     color: var(--rz-base-400);
+}
+
+/* Tool Approval UI */
+.tool-approval-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--rz-base-background-color);
+    border: 1px inset var(--rz-primary-light);
+    border-radius: 0 0 8px 8px;
+    margin: 0 !important;
+    animation: pulse-border 2s infinite;
+}
+
+.tool-approval-footer.approved {
+    border: 1px solid var(--rz-success);
+    background: rgba(var(--rz-success-rgb), 0.1);
+    animation: none;
+}
+
+.tool-approval-footer.rejected {
+    border: 1px solid var(--rz-danger);
+    background: rgba(var(--rz-danger-rgb), 0.1);
+    animation: none;
+}
+
+.tool-approval-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--rz-primary-light);
+}
+
+.tool-approval-footer.approved .tool-approval-label {
+    color: var(--rz-success);
+}
+
+.tool-approval-footer.rejected .tool-approval-label {
+    color: var(--rz-danger);
+}
+
+.tool-approval-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.tool-approve-btn, .tool-reject-btn {
+    background: none;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    padding: 0.25rem 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tool-approve-btn {
+    color: var(--rz-success);
+}
+
+.tool-approve-btn:hover {
+    background: var(--rz-success);
+    color: white;
+}
+
+.tool-reject-btn {
+    color: var(--rz-danger);
+}
+
+.tool-reject-btn:hover {
+    background: var(--rz-danger);
+    color: white;
+}
+
+@keyframes pulse-border {
+    0% {
+        box-shadow: 0 0 0 0 rgba(var(--rz-primary-rgb), 0.4);
+        border-color: var(--rz-primary-light);
+    }
+    70% {
+        box-shadow: 0 0 0 6px rgba(var(--rz-primary-rgb), 0);
+        border-color: var(--rz-primary);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(var(--rz-primary-rgb), 0);
+        border-color: var(--rz-primary-light);
+    }
 }

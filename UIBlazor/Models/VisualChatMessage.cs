@@ -1,4 +1,5 @@
 ﻿using System.Text.Json.Serialization;
+using UIBlazor.Components.Chat;
 
 namespace UIBlazor.Models;
 
@@ -18,6 +19,9 @@ public class VisualChatMessage
     /// Gets or sets the content of the message. Without thinking block.
     /// </summary>
     public string Content { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public List<ContentSegment> Segments { get; set; } = [];
 
     /// <summary>
     /// Gets or sets the content of the message for display in the UI.
@@ -88,4 +92,11 @@ public class VisualChatMessage
     /// </summary>
     [JsonIgnore]
     public bool HasPlan => !string.IsNullOrEmpty(PlanContent);
+
+    /// <summary>
+    /// Approval states for each tool call in this message.
+    /// Key is index from 0.
+    /// </summary>
+    [JsonIgnore]
+    public Dictionary<int, ToolApprovalStatus> ToolApprovalStates { get; set; } = [];
 }

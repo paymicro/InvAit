@@ -9,9 +9,10 @@ using UIBlazor.Services.Settings;
 
 namespace UIBlazor.Services;
 
-public class ChatService(
+public partial class ChatService(
     HttpClient httpClient,
     IProfileManager profileManager,
+    ICommonSettingsProvider commonSettingsProvider,
     IToolManager toolManager,
     ILocalStorageService localStorage,
     ISkillService skillService,
@@ -27,6 +28,9 @@ public class ChatService(
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
+
+    [GeneratedRegex(@"<[/\w-][^>\n]*$", RegexOptions.Compiled)]
+    private static partial Regex IncompleteTagRegex();
 
     public ConnectionProfile Options => profileManager.ActiveProfile;
 
@@ -181,25 +185,32 @@ public class ChatService(
         var skillsMetadata = await skillService.GetSkillsMetadataAsync();
         var skillsSection = skillService.FormatSkillsForSystemPrompt(skillsMetadata);
 
-        var contextSection = string.Empty;
+        var contextSection = new StringBuilder();
         var currentContext = vsCodeContextService.CurrentContext;
-        if (currentContext != null && !string.IsNullOrEmpty(currentContext.ActiveFilePath))
+        if (currentContext != null)
         {
-            contextSection = $"""
-            
-            # CURRENT CODE CONTEXT
-            File: {currentContext.ActiveFilePath}
-            Selection lines: {currentContext.SelectionStartLine} - {currentContext.SelectionEndLine}
-            
-            ```
-            {currentContext.ActiveFileContent}
-            ```
+            contextSection.AppendLine("# CURRENT CODE CONTEXT");
 
-            Solution files:
-            ```
-            {string.Join(Environment.NewLine, currentContext.SolutionFiles)}
-            ```
-            """;
+            if (commonSettingsProvider.Current.SendCurrentFile && !string.IsNullOrEmpty(currentContext.ActiveFilePath))
+            {
+                contextSection.AppendLine($"""
+                                          Active file path: {currentContext.ActiveFilePath}
+                                          Selected lines: {currentContext.SelectionStartLine} - {currentContext.SelectionEndLine}
+                                          ```
+                                          {currentContext.ActiveFileContent}
+                                          ```
+                                          """);
+            }
+
+            if (commonSettingsProvider.Current.SendSolutionsStricture)
+            {
+                contextSection.AppendLine($"""
+                                          Solution files:
+                                          ```
+                                          {string.Join(Environment.NewLine, currentContext.SolutionFiles)}
+                                          ```
+                                          """);
+            }
         }
 
         // Загружаем правила
@@ -207,7 +218,7 @@ public class ChatService(
 
         return string.Join(Environment.NewLine,
             Options.SystemPrompt,
-            rules,
+            rules ?? string.Empty,
             toolManager.GetToolUseSystemInstructions(Session?.Mode ?? AppMode.Chat),
             skillsSection,
             contextSection);
@@ -310,12 +321,13 @@ public class ChatService(
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);
 
-        var assistantResponse = new StringBuilder();
-
         string? line;
         var isReasoningContent = false;
         var isStart = true;
-        
+
+        // чтобы html-теги <function> склеивать в один чанк
+        var _pendingText = string.Empty;
+
         while ((line = await reader.ReadLineAsync()) is not null && !cancellationToken.IsCancellationRequested)
         {
             if (string.IsNullOrWhiteSpace(line) || !line.StartsWith("data:"))
@@ -375,8 +387,7 @@ public class ChatService(
                     }
                     else
                     {
-                        // Не думали - нечего и начинать. Пишем чистый контент в историю
-                        assistantResponse.Append(content);
+                        // Не думали - нечего и начинать.
                     }
                 }
                 else // внутри <think> блока
@@ -397,9 +408,39 @@ public class ChatService(
                 }
             }
 
+            // Если есть контент, то проверяем на разрезанные теги и склеиваем их
+            if (delta.Content != null)
+            {
+                // Склеиваем с остатком от прошлого раза
+                var incomingText = _pendingText + delta.Content;
+                _pendingText = string.Empty;
+
+                // ПРОВЕРКА НА НЕПОЛНЫЙ ТЕГ
+                var match = IncompleteTagRegex().Match(incomingText);
+
+                if (match.Success)
+                {
+                    // match.Index — это позиция символа '<', с которого начался "битый" тег
+                    _pendingText = incomingText[match.Index..];
+                    incomingText = incomingText[..match.Index];
+
+                    // Если после отрезания тега ничего не осталось, пропускаем итерацию
+                    if (string.IsNullOrWhiteSpace(incomingText))
+                        continue;
+                }
+
+                delta.Content = incomingText;
+            }
+
             yield return delta;
 
             isStart = false;
+        }
+
+        // если после окончания стрима остался неотправленный текст, отправляем его
+        if (!string.IsNullOrEmpty(_pendingText))
+        {
+            yield return new ChatDelta() { Content = _pendingText };
         }
     }
 

@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics;
+using UIBlazor.Components.Chat;
 
 namespace UIBlazor.Services.Settings;
 
@@ -16,7 +17,7 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
             {
                 if (!Current.CategoryStates.TryGetValue(group.Key, out var state))
                 {
-                    state = new ToolModeSettings
+                    state = new ToolCategorySettings
                     {
                         IsEnabled = true,
                         ApprovalMode = ToolApprovalMode.AutoApprove
@@ -25,10 +26,7 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
                 }
             }
 
-            foreach (var tool in _registeredTools.Values)
-            {
-                Current.ToolStates[tool.Name] = tool.Enabled;
-            }
+            Current.DisabledTools = [.. _registeredTools.Values.Where(t => t.Enabled).Select(t => t.Name)];
 
             await base.SaveAsync();
         }
@@ -42,7 +40,7 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
     {
         if (!Current.CategoryStates.TryGetValue(category, out var state))
         {
-            state = new ToolModeSettings();
+            state = new ToolCategorySettings();
             Current.CategoryStates[category] = state;
         }
         state.IsEnabled = isEnabled;
@@ -74,10 +72,7 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
     {
         foreach (var tool in _registeredTools.Values)
         {
-            if (Current.ToolStates.TryGetValue(tool.Name, out var isEnabled))
-            {
-                tool.Enabled = isEnabled;
-            }
+            tool.Enabled = !Current.DisabledTools.Contains(tool.Name);
         }
     }
 
@@ -100,7 +95,7 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
             state.ApprovalMode = ToolApprovalMode.AutoApprove;
         }
 
-        Current.ToolStates.Clear();
+        Current.DisabledTools.Clear();
         return SaveAsync();
     }
     
@@ -119,6 +114,14 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
     public Tool? GetTool(string name)
     {
         return _registeredTools.TryGetValue(name, out var tool) ? tool : null;
+    }
+
+    public ToolApprovalMode GetApprovalModeByToolName(string name)
+    {
+        var tool = GetTool(name);
+        return tool != null && Current.CategoryStates.TryGetValue(tool.Category, out var state)
+            ? state.ApprovalMode
+            : ToolApprovalMode.AutoApprove;
     }
 
     public string GetToolUseSystemInstructions(AppMode mode)
@@ -221,11 +224,13 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
         return sb.ToString();
     }
 
-    public List<AiTool> ParseToolBlock(string content)
+    public List<(string ToolName, string CallId, string Args)> ParseToolBlockRaw(string content)
     {
-        var result = new List<AiTool>();
+        var result = new List<(string toolName, string callId, string args)>();
 
-        // Регулярное выражение адаптировано под новый формат:
+        if (string.IsNullOrEmpty(content))
+            return result;
+
         var callRegex = new Regex(
             @"<function name=""(\w+)""(?::(\d+))?>\s*(.*?)\s*</function>",
             RegexOptions.Singleline);
@@ -233,18 +238,57 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
         foreach (Match callMatch in callRegex.Matches(content))
         {
             var toolName = callMatch.Groups[1].Value;
-            var callId = callMatch.Groups[2].Success ? callMatch.Groups[2].Value : Guid.NewGuid().ToString();
+            var callId = callMatch.Groups[2].Success ? callMatch.Groups[2].Value : $"idx_{result.Count}";
             var args = callMatch.Groups[3].Value;
-            var arguments = Parse(toolName, args);
+            result.Add((toolName, callId, args));
+        }
 
+        return result;
+    }
+
+    public IEnumerable<AiTool> ParseToolBlock(List<ContentSegment> segments)
+    {
+        foreach (var segment in segments)
+        {
+            if (segment.Type == SegmentType.Tool && !string.IsNullOrEmpty(segment.ToolName))
+            {
+                var content = string.Join("\n", segment.Lines);
+                var arguments = Parse(segment.ToolName, content);
+                yield return new AiTool
+                {
+                    Type = "function",
+                    Id = segment.Id,
+                    Index = 0,
+                    Function = new AiToolToCall
+                    {
+                        Name = segment.ToolName,
+                        Arguments = arguments
+                    }
+                };
+            }
+        }
+    }
+
+    public List<AiTool> ParseToolBlock(string content)
+    {
+        var rawResults = ParseToolBlockRaw(content);
+        var result = new List<AiTool>();
+
+        if (rawResults.Count == 0)
+            return result;
+
+        for (var i = 0; i < rawResults.Count; i++)
+        {
+            var raw = rawResults[i];
+            var arguments = Parse(raw.ToolName, raw.Args);
             result.Add(new AiTool
             {
                 Type = "function",
-                Id = callId,
-                Index = result.Count,
+                Id = raw.CallId,
+                Index = i,
                 Function = new AiToolToCall
                 {
-                    Name = toolName,
+                    Name = raw.ToolName,
                     Arguments = arguments
                 }
             });
@@ -253,159 +297,113 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
         return result;
     }
 
-    public string BeautifyToolBlock(string content)
+    public Dictionary<string, object> Parse(string toolName, List<string> toolLines)
     {
-        if (string.IsNullOrEmpty(content)) return content;
+        var result = new Dictionary<string, object>();
+        var paramIndex = 0;
+        var namedIndex = 0;
 
-        var callRegex = new Regex(
-            @"<function name=""(\w+)""(?::(\d+))?>\s*(.*?)\s*</function>",
-            RegexOptions.Singleline);
-
-        var result = callRegex.Replace(content, match =>
+        if (toolName == BuiltInToolEnum.ReadFiles)
         {
-            var toolName = match.Groups[1].Value;
-            var argsStr = match.Groups[3].Value.Trim();
-            return CreateToolBlockHtml(toolName, argsStr);
-        });
+            ReadFileParams? fileParams = null;
 
-        // Обработка незаконченного тега в конце (для стриминга)
-        var lastFunctionIndex = result.LastIndexOf("<function name=");
-        if (lastFunctionIndex != -1)
-        {
-            var substring = result.Substring(lastFunctionIndex);
-            if (!substring.Contains("</function>"))
+            for (var i = 0; i < toolLines.Count; i++)
             {
-                var partialRegex = new Regex(@"<function name=""(\w+)""(?::(\d+))?>\s*(.*)$", RegexOptions.Singleline);
-                var partialMatch = partialRegex.Match(substring);
-                if (partialMatch.Success)
+                var line = toolLines[i];
+                var trimmedLine = line.Trim();
+                if (string.IsNullOrEmpty(trimmedLine))
+                    continue;
+
+                if (trimmedLine == "start_line")
                 {
-                    var toolName = partialMatch.Groups[1].Value;
-                    var argsStr = partialMatch.Groups[3].Value;
-                    
-                    var beautifiedPartial = CreateToolBlockHtml(toolName, argsStr, true);
-                    result = result.Substring(0, lastFunctionIndex) + beautifiedPartial;
+                    var valLine = toolLines[++i]?.Trim();
+                    if (fileParams != null && int.TryParse(valLine, out var startLine))
+                    {
+                        fileParams.StartLine = startLine;
+                    }
                 }
+                else if (trimmedLine == "line_count")
+                {
+                    var valLine = toolLines[++i]?.Trim();
+                    if (fileParams != null && int.TryParse(valLine, out var lineCount))
+                    {
+                        fileParams.LineCount = lineCount;
+                    }
+                }
+                else
+                {
+                    fileParams = new ReadFileParams
+                    {
+                        Name = trimmedLine,
+                        StartLine = -1,
+                        LineCount = -1
+                    };
+                    result[$"file{++paramIndex}"] = fileParams;
+                }
+            }
+        }
+        else if (toolName == BuiltInToolEnum.ApplyDiff)
+        {
+            for (var i = 0; i < toolLines.Count; i++)
+            {
+                var line = toolLines[i];
+                var trimmedLine = line.Trim();
+
+                if (string.IsNullOrEmpty(trimmedLine))
+                    continue;
+
+                // Начало блока (<<<<<<< SEARCH)
+                if (trimmedLine.StartsWith("<<<<<<< SEARCH"))
+                {
+                    var diff = new DiffReplacement();
+                    var lastResult = result.LastOrDefault().Value?.ToString() ?? string.Empty;
+                    if (lastResult.StartsWith(":start_line:"))
+                    {
+                        diff.StartLine = int.Parse(lastResult.Split(':')[2]);
+                        result.Remove($"param{paramIndex}");
+                    }
+                    var search = new List<string>();
+                    for (; i < toolLines.Count; i++)
+                    {
+                        line = toolLines[i];
+                        if (line.Trim().StartsWith("=======")) break;
+                        search.Add(line);
+                    }
+                    diff.Search = search;
+
+                    var replace = new List<string>();
+                    for (; i < toolLines.Count; i++)
+                    {
+                        line = toolLines[i];
+                        if (line.Trim().StartsWith(">>>>>>> REPLACE")) break;
+                        replace.Add(line);
+                    }
+                    diff.Replace = replace;
+
+                    result[$"diff{++namedIndex}"] = diff;
+                }
+                // Обычная строка параметров
+                else
+                {
+                    result[$"param{++paramIndex}"] = line;
+                }
+            }
+        }
+        else // обычные тулзы
+        {
+            for (var i = 0; i < toolLines.Count; i++)
+            {
+                var line = toolLines[i];
+                var trimmedLine = line.Trim();
+
+                if (string.IsNullOrEmpty(trimmedLine))
+                    continue;
+
+                result[$"param{++paramIndex}"] = line;
             }
         }
 
         return result;
-    }
-
-    private string CreateToolBlockHtml(string toolName, string argsStr, bool isPartial = false)
-    {
-        var tool = GetTool(toolName);
-        var displayName = !string.IsNullOrEmpty(tool?.DisplayName) ? tool.DisplayName : toolName;
-
-        var sb = new StringBuilder();
-        sb.AppendLine();
-        sb.AppendLine($"""<div class="tool-call-block" data-tool="{toolName}">""");
-        sb.AppendLine($"""  <div class="tool-call-header">Хочу вызвать: <strong>{displayName}</strong>{(isPartial ? "..." : "")}</div>""");
-
-        if (!string.IsNullOrWhiteSpace(argsStr))
-        {
-            sb.AppendLine("""  <div class="tool-call-args">""");
-            
-            if (toolName == BuiltInToolEnum.ApplyDiff)
-            {
-                sb.AppendLine(RenderApplyDiff(argsStr));
-            }
-            else if (toolName == BuiltInToolEnum.CreateFile)
-            {
-                sb.AppendLine(RenderCreateNewFile(argsStr));
-            }
-            else
-            {
-                sb.AppendLine($"""<pre>{System.Net.WebUtility.HtmlEncode(argsStr)}</pre>""");
-            }
-            
-            sb.AppendLine("  </div>");
-        }
-
-        sb.AppendLine("</div>");
-        sb.AppendLine();
-        return sb.ToString();
-    }
-
-    private string RenderApplyDiff(string argsStr)
-    {
-        var sb = new StringBuilder();
-        var reader = new StringReader(argsStr);
-        string? line;
-        
-        // First line is usually the file path
-        var filePath = reader.ReadLine();
-        if (filePath != null)
-        {
-             sb.AppendLine($"""<div class="tool-file-header">{System.Net.WebUtility.HtmlEncode(filePath)}</div>""");
-        }
-        
-        bool inSearch = false;
-        bool inReplace = false;
-        
-        while ((line = reader.ReadLine()) != null)
-        {
-             var trimmed = line.Trim();
-             if (trimmed.StartsWith("<<<<<<< SEARCH"))
-             {
-                 inSearch = true;
-                 sb.AppendLine("""<div class="diff-block">""");
-                 sb.AppendLine($"""<div class="diff-header-search">{System.Net.WebUtility.HtmlEncode(line)}</div>""");
-                 continue;
-             }
-             if (trimmed.StartsWith("======="))
-             {
-                 inSearch = false;
-                 inReplace = true;
-                 sb.AppendLine($"""<div class="diff-header-separator">{System.Net.WebUtility.HtmlEncode(line)}</div>""");
-                 continue;
-             }
-             if (trimmed.StartsWith(">>>>>>> REPLACE"))
-             {
-                 inReplace = false;
-                 sb.AppendLine($"""<div class="diff-header-replace">{System.Net.WebUtility.HtmlEncode(line)}</div>""");
-                 sb.AppendLine("</div>"); // close diff-block
-                 continue;
-             }
-             
-             var encodedLine = System.Net.WebUtility.HtmlEncode(line);
-             
-             if (inSearch)
-             {
-                 sb.AppendLine($"""<div class="diff-line diff-line-removed"><span class="diff-marker">-</span>{encodedLine}</div>""");
-             }
-             else if (inReplace)
-             {
-                 sb.AppendLine($"""<div class="diff-line diff-line-added"><span class="diff-marker">+</span>{encodedLine}</div>""");
-             }
-             else
-             {
-                 sb.AppendLine($"""<div class="diff-line-context">{encodedLine}</div>""");
-             }
-        }
-        
-        return sb.ToString();
-    }
-
-    private string RenderCreateNewFile(string argsStr)
-    {
-        var sb = new StringBuilder();
-        using var reader = new StringReader(argsStr);
-        
-        var filePath = reader.ReadLine();
-        if (filePath != null)
-        {
-            sb.AppendLine($"""<div class="tool-file-header">{System.Net.WebUtility.HtmlEncode(filePath)}</div>""");
-        }
-        
-        var content = reader.ReadToEnd();
-        if (!string.IsNullOrEmpty(content))
-        {
-            sb.AppendLine("""<div class="tool-file-content">""");
-            sb.AppendLine($"""<pre>{System.Net.WebUtility.HtmlEncode(content.Trim())}</pre>""");
-            sb.AppendLine("</div>");
-        }
-        
-        return sb.ToString();
     }
 
     private Dictionary<string, object> Parse(string toolName, string input)

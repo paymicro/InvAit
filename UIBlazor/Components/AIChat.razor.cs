@@ -1,7 +1,9 @@
+﻿using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Radzen;
 using Radzen.Blazor.Rendering;
+using UIBlazor.Components.Chat;
 using UIBlazor.Services;
 using UIBlazor.Services.Settings;
 
@@ -14,7 +16,9 @@ public partial class AiChat : RadzenComponent
 
     private bool IsLoading { get; set; }
 
-    private bool _preventDefault;
+    private DotNetObjectReference<AiChat>? _dotNetRef;
+
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<ToolApprovalStatus>> _approvalWaiters = [];
 
     private CancellationTokenSource _cts = new();
 
@@ -40,16 +44,12 @@ public partial class AiChat : RadzenComponent
     public string EmptyMessage { get; set; } = "No messages yet. Start a conversation!";
 
     /// <summary>
-    /// Gets or sets the text displayed in the user avatar.
-    /// </summary>
-    [Parameter]
-    public string UserAvatarText { get; set; } = "U";
-
-    /// <summary>
     /// Adds a message to the chat.
     /// </summary>
     public VisualChatMessage AddVisualMessage(VisualChatMessage chatMessage)
     {
+        _activeSegment = null;
+        UpdateSegments(chatMessage.Content, chatMessage);
         Messages.Add(chatMessage);
 
         // Limit the number of messages
@@ -96,7 +96,6 @@ public partial class AiChat : RadzenComponent
         };
         AddVisualMessage(userMessage);
         await ChatService.AddMessageAsync(userMessage);
-        await ScrollToBottomAsync(true);
 
         // Get AI response
         await GetAiResponseAsync();
@@ -147,6 +146,93 @@ public partial class AiChat : RadzenComponent
         return processedContentBuilder.ToString();
     }
 
+    private ContentSegment _activeSegment;
+
+    public void UpdateSegments(string delta, VisualChatMessage assistant)
+    {
+        if (string.IsNullOrEmpty(delta))
+            return;
+
+        var incomingText = delta;
+
+        while (!string.IsNullOrEmpty(incomingText))
+        {
+            // Логика сегментов
+            if (_activeSegment == null || _activeSegment.IsClosed)
+            {
+                _activeSegment = new ContentSegment();
+                assistant.Segments.Add(_activeSegment);
+            }
+
+            var openIdx = FindOpeningTag(incomingText, out var openTagName);
+            var closeIdx = _activeSegment.Type is not SegmentType.Unknown and not SegmentType.Markdown
+                           ? incomingText.IndexOf($"</{_activeSegment.TagName}>")
+                           : -1;
+
+            // Сценарий А: Закрытие
+            if (closeIdx != -1 && (openIdx == -1 || closeIdx < openIdx))
+            {
+                var closingTag = $"</{_activeSegment.TagName}>";
+                var endOfTag = closeIdx + closingTag.Length;
+                _activeSegment.AppendToken(incomingText.Substring(0, endOfTag));
+                _activeSegment.Close();
+                incomingText = incomingText.Substring(endOfTag);
+                continue;
+            }
+
+            // Сценарий Б: Открытие
+            if (openIdx != -1)
+            {
+                if (openIdx > 0)
+                {
+                    _activeSegment.AppendToken(incomingText.Substring(0, openIdx));
+                    _activeSegment.Close();
+                    incomingText = incomingText.Substring(openIdx);
+                    continue;
+                }
+
+                // Находим конец тега '>', чтобы знать, где кончаются параметры (name="...")
+                var tagEndIdx = incomingText.IndexOf(">");
+                if (tagEndIdx != -1)
+                {
+                    var consumptionLength = tagEndIdx + 1;
+                    _activeSegment.AppendToken(incomingText.Substring(0, consumptionLength));
+                    if (_activeSegment.Type == SegmentType.Tool && !string.IsNullOrEmpty(_activeSegment.ToolName))
+                    {
+                        // ну и сразу ставим статус, чтобы не было гонки между рендером и обновлением статуса после получения всех параметров
+                        _activeSegment.ApprovalStatus = ToolManager.GetApprovalModeByToolName(_activeSegment.ToolName) == ToolApprovalMode.Manual
+                            ? ToolApprovalStatus.Pending
+                            : ToolApprovalStatus.Approved;
+                    }
+                    incomingText = incomingText.Substring(consumptionLength);
+                    continue;
+                }
+            }
+
+            // Сценарий В: Обычный контент
+            _activeSegment.AppendToken(incomingText);
+            incomingText = string.Empty;
+        }
+    }
+
+    private int FindOpeningTag(string text, out string tagName)
+    {
+        tagName = "";
+        int planIdx = text.IndexOf("<plan");
+        int funcIdx = text.IndexOf("<function");
+
+        if (planIdx == -1 && funcIdx == -1) return -1;
+
+        // Берем тот, что встретился раньше
+        if (planIdx != -1 && (funcIdx == -1 || planIdx < funcIdx))
+        {
+            tagName = "plan";
+            return planIdx;
+        }
+        tagName = "function";
+        return funcIdx;
+    }
+
     private async Task GetAiResponseAsync()
     {
         IsLoading = true;
@@ -161,12 +247,12 @@ public partial class AiChat : RadzenComponent
             IsStreaming = true,
             IsExpanded = true
         });
-        await ScrollToBottomAsync(true);
 
         try
         {
             var reasoning = new StringBuilder();
             var response = new StringBuilder();
+
             await foreach (var delta in ChatService.GetCompletionsAsync(_cts.Token))
             {
                 if (delta.ReasoningContent != null)
@@ -177,26 +263,24 @@ public partial class AiChat : RadzenComponent
                 if (delta.Content != null)
                 {
                     response.Append(delta.Content);
-                    assistantMessage.Content = response.ToString();
-                    assistantMessage.DisplayContent = ToolManager.BeautifyToolBlock(assistantMessage.Content);
-                    ParsePlan(assistantMessage);
+
+                    UpdateSegments(delta.Content, assistantMessage);
                 }
+
                 assistantMessage.Model ??= ChatService.LastCompletionsModel;
 
                 await InvokeAsync(StateHasChanged);
-                await ScrollToBottomAsync(false);
             }
 
+            assistantMessage.Content = response.ToString();
             assistantMessage.IsStreaming = false;
 
-            assistantMessage.DisplayContent = ToolManager.BeautifyToolBlock(assistantMessage.Content);
             ParsePlan(assistantMessage);
 
-            // Add assistant response to conversation history
             await ChatService.AddMessageAsync(assistantMessage);
 
-            var tools = ToolManager.ParseToolBlock(assistantMessage.Content);
-            await HandleToolCallAsync(assistantMessage, tools);
+            // TODO: надо подумать что делать, если прервался на незакрытом тулзе...
+            await HandleToolCallAsync(assistantMessage, [.. assistantMessage.Segments.Where(s => s.Type == SegmentType.Tool && s.IsClosed)]);
         }
         catch (Exception ex)
         {
@@ -243,40 +327,78 @@ public partial class AiChat : RadzenComponent
         await SendMessageAsync("Implement the plan.");
     }
 
-    private async Task HandleToolCallAsync(VisualChatMessage assistantMessage, List<AiTool> aiTools)
+    private async Task HandleToolApprovalAsync((string MessageId, string SegmentId, bool Approved) args)
     {
-        if (aiTools.Count == 0)
+        // оно всегда должно быть, потому что мы блокируем UI,
+        // пока не придет ответ от модели, и юзер не может кликнуть раньше времени. Но на всякий случай проверим.
+        var message = Messages.FirstOrDefault(m => m.Id == args.MessageId); 
+        if (message != null)
+        {
+            var status = args.Approved ? ToolApprovalStatus.Approved : ToolApprovalStatus.Rejected;
+            message.Segments.FirstOrDefault(s => s.Id == args.SegmentId)?.ApprovalStatus = status;
+            await InvokeAsync(StateHasChanged);
+
+            if (_approvalWaiters.TryRemove($"{args.MessageId}_{args.SegmentId}", out var tcs))
+            {
+                tcs.SetResult(status);
+            }
+        }
+    }
+
+    private async Task HandleToolCallAsync(VisualChatMessage assistantMessage, List<ContentSegment> toolsSegments)
+    {
+        if (toolsSegments.Count == 0)
         {
             return;
         }
 
-        foreach (var aiTool in aiTools)
+        _approvalWaiters.Clear();
+
+        foreach (var segment in toolsSegments)
         {
-            var tool = ToolManager.GetTool(aiTool.Function.Name);
+            if (_cts.Token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            var tool = ToolManager.GetTool(segment.ToolName);
+
             if (tool != null)
             {
-                var approvalMode = ToolManager.Current.CategoryStates.TryGetValue(tool.Category, out var state)
-                    ? state.ApprovalMode
-                    : ToolApprovalMode.AutoApprove;
-
-                if (approvalMode == ToolApprovalMode.Manual)
+                // Спрашиваем разрешение если нужно
+                if (segment.ApprovalStatus == ToolApprovalStatus.Pending)
                 {
-                    var confirmed = await DialogService.Confirm(
-                        $"The AI wants to use the tool '{tool.Name}' with the following parameters:\n\n" +
-                        string.Join("\n", aiTool.Function.Arguments.Select(a => $"{a.Key}: {a.Value}")),
-                        "Approval Required",
-                        new ConfirmOptions { OkButtonText = "Allow", CancelButtonText = "Deny" });
-
-                    if (confirmed != true)
+                    var tcs = new TaskCompletionSource<ToolApprovalStatus>();
+                    var waiterKey = $"{assistantMessage.Id}_{segment.Id}";
+                    _approvalWaiters[waiterKey] = tcs;
+                    
+                    try
                     {
-                        var deniedMsg = new VisualChatMessage { Role = ChatMessageRole.System, Content = $"Execution of '{tool.Name}' was denied by user." };
-                        AddVisualMessage(deniedMsg);
-                        await ChatService.AddMessageAsync(deniedMsg);
-                        continue;
+                        // Ждем аппрува от пользователя или отмены всего стрима
+                        segment.ApprovalStatus = await tcs.Task.WaitAsync(_cts.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        _approvalWaiters.TryRemove(waiterKey, out _);
+                        return;
+                    }
+                    finally
+                    {
+                        _approvalWaiters.TryRemove(waiterKey, out _);
                     }
                 }
 
-                var vsToolResult = await tool.ExecuteAsync(aiTool.Function.Arguments);
+                if (_cts.Token.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                // Уже должен быть известен статус тулза - или разрешен, или запрещен.
+                var vsToolResult = segment.ApprovalStatus switch
+                {
+                    ToolApprovalStatus.Approved => await tool.ExecuteAsync(ToolManager.Parse(segment.ToolName, segment.Lines)),
+                    _ => new VsToolResult { Name = segment.ToolName, Success = false, ErrorMessage = "Execution was denied by user." }
+                };
 #if DEBUG
                 // Безголовые (без Visual Studio) тесты
                 if (!vsToolResult.Success && vsToolResult.ErrorMessage == "WebView2 API is`t find.")
@@ -330,7 +452,8 @@ public partial class AiChat : RadzenComponent
                 var toolSessionMessage = new VisualChatMessage
                 {
                     Role = vsToolResult.Role,
-                    Content = result
+                    Content = result,
+                    DisplayContent = (vsToolResult.Success ? "✅ " : "❌ ") + tool.DisplayName ?? tool.Name
                 };
 
                 // идет в сессию
@@ -348,6 +471,11 @@ public partial class AiChat : RadzenComponent
 
                 await InvokeAsync(StateHasChanged);
             }
+        }
+
+        if (_cts.Token.IsCancellationRequested)
+        {
+            return;
         }
 
         await GetAiResponseAsync();
@@ -390,7 +518,6 @@ public partial class AiChat : RadzenComponent
             {
                 if (chatMessage.Role == ChatMessageRole.Assistant)
                 {
-                    chatMessage.DisplayContent = ToolManager.BeautifyToolBlock(chatMessage.Content);
                     ParsePlan(chatMessage);
                     lastAssistantMessage = chatMessage;
                 }
@@ -413,6 +540,8 @@ public partial class AiChat : RadzenComponent
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
+        _dotNetRef = DotNetObjectReference.Create(this);
+        await JsRuntime.InvokeVoidAsync("setChatHandler", _dotNetRef);
 
         ChatService.OnSessionChanged += HandleSessionChanged;
 
@@ -436,7 +565,7 @@ public partial class AiChat : RadzenComponent
         await base.OnAfterRenderAsync(firstRender);
         if (firstRender)
         {
-            await ScrollToBottomAsync(true);
+            // await ScrollToBottomAsync(true);
         }
     }
 
@@ -480,8 +609,7 @@ public partial class AiChat : RadzenComponent
         message.IsEditing = false;
         
         // Update display content if it's an assistant message with tools
-            message.DisplayContent = ToolManager.BeautifyToolBlock(message.Content);
-            ParsePlan(message);
+        ParsePlan(message);
 
         ChatService.Session.UpdateMessage(message.Id, message.Content);
         await ChatService.SaveSessionAsync();
@@ -521,7 +649,7 @@ public partial class AiChat : RadzenComponent
 
     private async Task OnShowSettingsAsync()
     {
-        await DialogService.OpenSideAsync<AiSettings>("Settings", options: new SideDialogOptions {
+        await DialogService.OpenSideAsync<SettingsDialog>("Settings", options: new SideDialogOptions {
             CloseDialogOnOverlayClick = true,
             Resizable = false,
             Position = DialogPosition.Right,
@@ -536,23 +664,12 @@ public partial class AiChat : RadzenComponent
     /// <inheritdoc />
     protected override string GetComponentCssClass() => ClassList.Create("rz-chat").ToString();
 
-    private async Task ScrollToBottomAsync(bool force)
-    {
-        try
-        {
-            await JsRuntime.InvokeVoidAsync("scrollToBottom", ".rz-chat-messages", force);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error scrolling to bottom: {ex.Message}");
-        }
-    }
-
     /// <inheritdoc />
     public override void Dispose()
     {
         base.Dispose();
         
+        _dotNetRef?.Dispose();
         VsBridge.OnModeSwitched -= HandleModeSwitched;
         ChatService.OnSessionChanged -= HandleSessionChanged;
 

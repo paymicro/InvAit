@@ -1,5 +1,3 @@
-using System.Threading.Tasks;
-
 namespace UIBlazor.Services;
 
 public interface IRuleService

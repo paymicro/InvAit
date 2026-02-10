@@ -76,6 +76,14 @@
                     </RadzenFormField>
                 </RadzenStack>
             }
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                <RadzenLabel Text="Send current file" Component="SendCurrentFile" Style="font-weight: 500; min-width: 150px;" />
+                <RadzenSwitch @bind-Value="@CommonSettingsProvider.Current.SendCurrentFile" Name="SendCurrentFile" />
+            </RadzenStack>
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                <RadzenLabel Text="Send solution structure" Component="SendSolutionsStricture" Style="font-weight: 500; min-width: 150px;" />
+                <RadzenSwitch @bind-Value="@CommonSettingsProvider.Current.SendSolutionsStricture" Name="SendSolutionsStricture" />
+            </RadzenStack>
         </RadzenStack>
     </RadzenTabsItem>
     <RadzenTabsItem Text="Built-in Tools">
@@ -84,7 +92,7 @@
             {
                 var state = ToolManager.Current.CategoryStates.ContainsKey(category) 
                     ? ToolManager.Current.CategoryStates[category] 
-                    : new ToolModeSettings();
+                    : new ToolCategorySettings();
 
                 <RadzenStack Gap="0.5rem">
                     <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" >
@@ -207,6 +215,7 @@
     [Inject] NotificationService NotificationService { get; set; } = null!;
     [Inject] IToolManager ToolManager { get; set; } = null!;
     [Inject] IProfileManager ProfileManager { get; set; } = null!;
+    [Inject] ICommonSettingsProvider CommonSettingsProvider { get; set; } = null!;
     [Inject] DialogService DialogService { get; set; } = null!;
     [Inject] IMcpSettingsProvider McpSettingsProvider { get; set; } = null!;
 
@@ -409,7 +418,7 @@
         };
     }
 
-    private async Task OnCategorySettingChanged(ToolCategory category, ToolModeSettings state)
+    private async Task OnCategorySettingChanged(ToolCategory category, ToolCategorySettings state)
     {
         ToolManager.UpdateCategorySettings(category, state.IsEnabled, state.ApprovalMode);
         await Task.CompletedTask;
