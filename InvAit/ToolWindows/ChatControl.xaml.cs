@@ -113,6 +113,24 @@ public partial class ChatControl
         //};
     }
 
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Home || e.Key == Key.End)
+        {
+            // Прерываем маршрутизацию события на уровне WPF.
+            // Если фокус на WebView, это событие сработает первым.
+            e.Handled = true;
+
+            // Отправляем команду в WebView через JS
+            // Это имитирует стандартное поведение клавиш Home/End
+            var isShiftDown = Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
+
+            // Вызываем нашу JS функцию
+            _ = _webView.ExecuteScriptAsync($"window.handleNavigationKey('{e.Key}', {isShiftDown.ToString().ToLower()});");
+        }
+        base.OnPreviewKeyDown(e);
+    }
+
     private void CoreWebView2InitializationCompleted(object sender, CoreWebView2InitializationCompletedEventArgs e)
     {
         if (!e.IsSuccess)

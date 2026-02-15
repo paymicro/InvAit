@@ -97,3 +97,33 @@ window.approveTool = function (messageId, callId, approved) {
         chatHandler.invokeMethodAsync('HandleToolApproval', messageId, callId, approved);
     }
 };
+
+// для Home и End. Приходится их отправлять программно т.к. они перехватываются в VS.
+window.handleNavigationKey = function (key, isShift) {
+    const el = document.activeElement;
+    const isHome = key === 'Home';
+
+    // Если фокус в текстовом поле или контенте
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) {
+        const targetPos = isHome ? 0 : (el.value?.length || el.innerText?.length || 0);
+
+        if (isShift) {
+            // Логика выделения (Selection)
+            if (isHome) {
+                el.setSelectionRange(0, el.selectionEnd, 'backward');
+            } else {
+                el.setSelectionRange(el.selectionStart, targetPos, 'forward');
+            }
+        } else {
+            // Просто перенос курсора
+            el.setSelectionRange(targetPos, targetPos);
+        }
+        el.focus();
+    } else {
+        // Если фокус не в тексте — скроллим страницу
+        window.scrollTo({
+            top: isHome ? 0 : document.body.scrollHeight,
+            behavior: 'smooth'
+        });
+    }
+};
