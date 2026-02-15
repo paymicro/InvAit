@@ -562,10 +562,9 @@ public partial class AiChat : RadzenComponent
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await base.OnAfterRenderAsync(firstRender);
         if (firstRender)
         {
-            // await ScrollToBottomAsync(true);
+            await JsRuntime.InvokeVoidAsync("initChatAutoScroll", $"#chat-messages", 70);
         }
     }
 

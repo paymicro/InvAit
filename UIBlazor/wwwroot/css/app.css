@@ -352,13 +352,13 @@ details summary {
 }
 
 .tool-reject-btn {
-    color: var(--rz-danger);
+    background: var(--rz-danger-dark) !important;
 }
 
-.tool-reject-btn:hover {
-    background: var(--rz-danger);
-    color: white;
-}
+    .tool-reject-btn:hover {
+        background: var(--rz-danger-darker) !important;
+        color: white;
+    }
 
 @keyframes pulse-border {
     0% {

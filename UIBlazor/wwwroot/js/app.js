@@ -59,18 +59,35 @@ if (window.chrome && window.chrome.webview) {
 //определение темы
 const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
-window.scrollToBottom = function (selector, force = false, threshold = 60) {
+window.initChatAutoScroll = function (selector, threshold = 70) {
     const container = document.querySelector(selector);
-    if (container) {
-        requestAnimationFrame(() => { // чтобы дождаться перерисовки DOM (особенно важно для Blazor)
-            const isNearBottom =
-                container.scrollHeight - container.scrollTop - container.clientHeight <= threshold;
+    if (!container) return;
 
-            if (force || isNearBottom) {
+    let isAtBottom = true;
+
+    // 1. Следим за ручным скроллом пользователя
+    container.addEventListener('scroll', () => {
+        // Проверяем, находится ли пользователь внизу (с небольшим порогом)
+        const position = container.scrollHeight - container.scrollTop - container.clientHeight;
+        isAtBottom = position <= threshold;
+    });
+
+    // 2. Создаем наблюдатель за изменениями в DOM
+    const observer = new MutationObserver((mutations) => {
+        // Если до изменения мы были внизу - скроллим к новой нижней границе
+        if (isAtBottom) {
+            // Используем requestAnimationFrame для синхронизации с отрисовкой браузера
+            requestAnimationFrame(() => {
                 container.scrollTop = container.scrollHeight;
-            }
-        });
-    }
+            });
+        }
+    });
+
+    // Настраиваем наблюдение за добавлением новых элементов (childList)
+    observer.observe(container, {
+        childList: true,
+        subtree: true // важно, если сообщения вложены глубоко
+    });
 };
 
 // Автоматическое изменение высоты textarea
