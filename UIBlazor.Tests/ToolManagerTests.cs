@@ -86,7 +86,7 @@ public class ToolManagerTests
                       line_count
                       10
                       </function>
-                      """;
+                      """.Replace("\r", "");
 
         // Act
         var result = _toolManager.ParseToolBlock(content);
@@ -116,7 +116,8 @@ public class ToolManagerTests
                       }
                       >>>>>>> REPLACE
                       </function>
-                      """;
+                      """.Replace("\r", "");
+
         var expectedDiff = new DiffReplacement
         {
             StartLine = 10,
@@ -130,7 +131,7 @@ public class ToolManagerTests
         // Assert
         Assert.Single(result);
         var args = result[0].Function.Arguments;
-        Assert.Equal("path/to/file.txt", args["param1"]);
+        Assert.Equivalent("path/to/file.txt", args["param1"]);
         Assert.Equivalent(expectedDiff, args["diff1"]);
     }
 
@@ -165,7 +166,7 @@ public class ToolManagerTests
                       public class Super
                       >>>>>>> REPLACE
                       </function>
-                      """;
+                      """.Replace("\r", "");
 
         // Act
         var result = _toolManager.ParseToolBlock(content);
@@ -191,7 +192,7 @@ public class ToolManagerTests
         // Assert
         Assert.Single(result);
         var args = result[0].Function.Arguments;
-        Assert.Equal("path/to/file.txt", args["param1"]);
+        Assert.Equivalent("path/to/file.txt", args["param1"]);
         Assert.Equivalent(expectedDiff1, args["diff1"]);
         Assert.Equivalent(expectedDiff2, args["diff2"]);
         Assert.Equivalent(expectedDiff3, args["diff3"]);
@@ -293,7 +294,7 @@ public class ToolManagerTests
                       C:\
                       true
                       </function>
-                      """;
+                      """.Replace("\r", "");
 
         // Act
         var result = _toolManager.ParseToolBlock(content);

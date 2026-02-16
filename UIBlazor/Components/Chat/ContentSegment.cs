@@ -1,9 +1,10 @@
 ﻿namespace UIBlazor.Components.Chat;
 
-public enum SegmentType { Unknown, Markdown, Tool, Plan }
-
 public class ContentSegment
 {
+    // Вспомогательный буфер для накопления "сырого" текста внутри сегмента
+    private readonly StringBuilder _rawAccumulator = new();
+
     public string Id { get; } = Guid.NewGuid().ToString();
 
     public SegmentType Type { get; internal set; } = SegmentType.Unknown;
@@ -21,9 +22,6 @@ public class ContentSegment
 
     // Буфер для текущей (недописанной) строки
     public StringBuilder CurrentLine { get; } = new();
-
-    // Вспомогательный буфер для накопления "сырого" текста внутри сегмента
-    private StringBuilder _rawAccumulator = new();
 
     public void AppendToken(string token)
     {

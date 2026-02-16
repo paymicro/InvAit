@@ -1,4 +1,4 @@
-# InvAit - Local AI Agent for Visual Studio
+# InvAit - Local AI Chat and agent for Visual Studio
 
 **Secure Visual Studio 2022/2026 extension with local and private AI agent support.**
 
@@ -29,9 +29,9 @@
 ### Configuration
 
 **Option 1: Local (Recommended)**
-Use [Ollama](https://ollama.ai) or [LM Studio](https://lmstudio.ai).
+Use [LM Studio](https://lmstudio.ai) or [Ollama](https://ollama.ai).
 - **Endpoint:** `http://localhost:11434/api` (Ollama default)
-- **Model:** `llama3`, `mistral`, `codellama`
+- **Model:** `llama3`, `mistral`, `codellama`, `zai-org/glm-4.7-flash`
 - **Key:** (Leave empty)
 
 **Option 2: Remote / Self-Hosted**
@@ -46,7 +46,6 @@ Use [Ollama](https://ollama.ai) or [LM Studio](https://lmstudio.ai).
 | **Project** | Build, Get Errors, Inspect Structure |
 | **Git** | Status, Log, Diff, Branch Info |
 | **System** | Execute Shell Commands, Fetch URLs |
-| **Planning** | Create, List, Update, Complete Tasks |
 
 ## 🏗 Architecture
 - **Extension:** VS SDK (.NET Framework 4.8) handles system operations.
@@ -54,7 +53,7 @@ Use [Ollama](https://ollama.ai) or [LM Studio](https://lmstudio.ai).
 - **Bridge:** JSON-RPC communication between UI and VS Host.
 
 ## 📦 Requirements
-- **Visual Studio:** 2022 or 2026
+- **Visual Studio:** 2022 (17.14+) or 2026 (18.0+)
 - **Runtimes:** .NET Framework 4.8, .NET 10 SDK
 
 ## 📄 License

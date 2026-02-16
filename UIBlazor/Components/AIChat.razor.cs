@@ -289,7 +289,6 @@ public partial class AiChat : RadzenComponent
                 if (delta.Content != null)
                 {
                     response.Append(delta.Content);
-
                     UpdateSegments(delta.Content, assistantMessage);
                 }
 

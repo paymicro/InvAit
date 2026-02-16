@@ -4,7 +4,7 @@ using UIBlazor.Components.Chat;
 
 namespace UIBlazor.Services.Settings;
 
-public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localStorage)
+public partial class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localStorage)
     : BaseSettingsProvider<ToolSettings>(localStorage, "ToolSettings"), IToolManager
 {
     private readonly ConcurrentDictionary<string, Tool> _registeredTools = new();
@@ -207,7 +207,7 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
 
         foreach (var tool in enabledTools)
         {
-            sb.AppendLine("====");
+            sb.AppendLine("---");
             sb.AppendLine($"### {tool.Name}");
             sb.AppendLine(tool.Description);
             sb.AppendLine(tool.ExampleToSystemMessage);
@@ -231,9 +231,7 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
         if (string.IsNullOrEmpty(content))
             return result;
 
-        var callRegex = new Regex(
-            @"<function name=""(\w+)""(?::(\d+))?>\s*(.*?)\s*</function>",
-            RegexOptions.Singleline);
+        var callRegex = FunctionRegex();
 
         foreach (Match callMatch in callRegex.Matches(content))
         {
@@ -252,8 +250,7 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
         {
             if (segment.Type == SegmentType.Tool && !string.IsNullOrEmpty(segment.ToolName))
             {
-                var content = string.Join("\n", segment.Lines);
-                var arguments = Parse(segment.ToolName, content);
+                var arguments = Parse(segment.ToolName, segment.Lines);
                 yield return new AiTool
                 {
                     Type = "function",
@@ -269,6 +266,7 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
         }
     }
 
+    // TODO удалить, используется только в тестах...
     public List<AiTool> ParseToolBlock(string content)
     {
         var rawResults = ParseToolBlockRaw(content);
@@ -296,6 +294,7 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
 
         return result;
     }
+
 
     public Dictionary<string, object> Parse(string toolName, List<string> toolLines)
     {
@@ -406,109 +405,10 @@ public class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localSt
         return result;
     }
 
+    // TODO удалить используется только в тестах...
     private Dictionary<string, object> Parse(string toolName, string input)
-    {
-        var result = new Dictionary<string, object>();
-        var reader = new StringReader(input);
-        string? line;
-        var paramIndex = 0;
-        var namedIndex = 0;
+        => Parse(toolName, [.. input.Split('\n')]);
 
-        if (toolName == BuiltInToolEnum.ReadFiles)
-        {
-            ReadFileParams? fileParams = null;
-
-            while ((line = reader.ReadLine()) != null)
-            {
-                var trimmedLine = line.Trim();
-                if (string.IsNullOrEmpty(trimmedLine))
-                    continue;
-
-                if (trimmedLine == "start_line")
-                {
-                    var valLine = reader.ReadLine()?.Trim();
-                    if (fileParams != null && int.TryParse(valLine, out var startLine))
-                    {
-                        fileParams.StartLine = startLine;
-                    }
-                }
-                else if (trimmedLine == "line_count")
-                {
-                    var valLine = reader.ReadLine()?.Trim();
-                    if (fileParams != null && int.TryParse(valLine, out var lineCount))
-                    {
-                        fileParams.LineCount = lineCount;
-                    }
-                }
-                else
-                {
-                    fileParams = new ReadFileParams
-                    {
-                        Name = trimmedLine,
-                        StartLine = -1,
-                        LineCount = -1
-                    };
-                    result[$"file{++paramIndex}"] = fileParams;
-                }
-            }
-        }
-        else if (toolName == BuiltInToolEnum.ApplyDiff)
-        {
-            while ((line = reader.ReadLine()) != null)
-            {
-                var trimmedLine = line.Trim();
-
-                if (string.IsNullOrEmpty(trimmedLine))
-                    continue;
-
-                // Начало блока (<<<<<<< SEARCH)
-                if (trimmedLine.StartsWith("<<<<<<< SEARCH"))
-                {
-                    var diff = new DiffReplacement();
-                    var lastResult = result.LastOrDefault().Value?.ToString() ?? string.Empty;
-                    if (lastResult.StartsWith(":start_line:"))
-                    {
-                        diff.StartLine = int.Parse(lastResult.Split(':')[2]);
-                        result.Remove($"param{paramIndex}");
-                    }
-                    var search = new List<string>();
-                    while ((line = reader.ReadLine()) != null)
-                    {
-                        if (line.Trim().StartsWith("=======")) break;
-                        search.Add(line);
-                    }
-                    diff.Search = search;
-
-                    var replace = new List<string>();
-                    while ((line = reader.ReadLine()) != null)
-                    {
-                        if (line.Trim().StartsWith(">>>>>>> REPLACE")) break;
-                        replace.Add(line);
-                    }
-                    diff.Replace = replace;
-
-                    result[$"diff{++namedIndex}"] = diff;
-                }
-                // Обычная строка параметров
-                else
-                {
-                    result[$"param{++paramIndex}"] = line;
-                }
-            }
-        }
-        else // обычные тулзы
-        {
-            while ((line = reader.ReadLine()) != null)
-            {
-                var trimmedLine = line.Trim();
-
-                if (string.IsNullOrEmpty(trimmedLine))
-                    continue;
-
-                result[$"param{++paramIndex}"] = line;
-            }
-        }
-
-        return result;
-    }
+    [GeneratedRegex(@"<function name=""(\w+)""(?::(\d+))?>\s*(.*?)\s*</function>", RegexOptions.Singleline)]
+    private static partial Regex FunctionRegex();
 }
