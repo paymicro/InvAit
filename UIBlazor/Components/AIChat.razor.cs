@@ -209,6 +209,11 @@ public partial class AiChat : RadzenComponent
                     incomingText = incomingText[openIdx..];
                     continue;
                 }
+                else if (_activeSegment is { IsClosed: false, Type: SegmentType.Markdown })
+                {
+                    _activeSegment.Close();
+                    continue;
+                }
 
                 // Находим конец тега '>', чтобы знать, где кончаются параметры (name="...")
                 var tagEndIdx = incomingText.IndexOf(">");
@@ -273,6 +278,8 @@ public partial class AiChat : RadzenComponent
             IsStreaming = true,
             IsExpanded = true
         });
+
+        _activeSegment = null;
 
         try
         {
@@ -568,7 +575,7 @@ public partial class AiChat : RadzenComponent
     {
         await base.OnInitializedAsync();
         _dotNetRef = DotNetObjectReference.Create(this);
-        await JsRuntime.InvokeVoidAsync("setChatHandler", _dotNetRef);
+
 
         ChatService.OnSessionChanged += HandleSessionChanged;
 
@@ -591,6 +598,7 @@ public partial class AiChat : RadzenComponent
     {
         if (firstRender)
         {
+            await JsRuntime.InvokeVoidAsync("setChatHandler", _dotNetRef);
             await JsRuntime.InvokeVoidAsync("initChatAutoScroll", $"#chat-messages", 70);
         }
     }

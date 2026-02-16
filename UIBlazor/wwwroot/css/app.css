@@ -198,16 +198,16 @@ details summary {
 
 .tool-call-args {
     padding: 0.6rem 0.8rem;
+    white-space: nowrap;
+    max-height: 200px;
+    overflow-y: auto;
 }
 
 .tool-call-args pre {
     margin: 0;
     font-size: 0.85rem;
     color: var(--rz-base-400);
-    background: transparent;
     padding: 0;
-    max-height: 200px;
-    overflow-y: auto;
     white-space: pre-wrap;
     word-break: break-all;
 }

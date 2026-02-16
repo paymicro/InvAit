@@ -345,15 +345,15 @@ public partial class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService
         {
             for (var i = 0; i < toolLines.Count; i++)
             {
-                var line = toolLines[i];
-                var trimmedLine = line.Trim();
+                var line = toolLines[i].Trim();
 
-                if (string.IsNullOrEmpty(trimmedLine))
+                if (string.IsNullOrEmpty(line))
                     continue;
 
                 // Начало блока (<<<<<<< SEARCH)
-                if (trimmedLine.StartsWith("<<<<<<< SEARCH"))
+                if (line.StartsWith("<<<<<<< SEARCH"))
                 {
+                    i++;
                     var diff = new DiffReplacement();
                     var lastResult = result.LastOrDefault().Value?.ToString() ?? string.Empty;
                     if (lastResult.StartsWith(":start_line:"))
@@ -364,8 +364,12 @@ public partial class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService
                     var search = new List<string>();
                     for (; i < toolLines.Count; i++)
                     {
-                        line = toolLines[i];
-                        if (line.Trim().StartsWith("=======")) break;
+                        line = toolLines[i].TrimEnd();
+                        if (line.StartsWith("======="))
+                        {
+                            i++;
+                            break;
+                        }
                         search.Add(line);
                     }
                     diff.Search = search;
@@ -373,8 +377,12 @@ public partial class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService
                     var replace = new List<string>();
                     for (; i < toolLines.Count; i++)
                     {
-                        line = toolLines[i];
-                        if (line.Trim().StartsWith(">>>>>>> REPLACE")) break;
+                        line = toolLines[i].TrimEnd();
+                        if (line.StartsWith(">>>>>>> REPLACE"))
+                        {
+                            i++;
+                            break;
+                        }
                         replace.Add(line);
                     }
                     diff.Replace = replace;

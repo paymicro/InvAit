@@ -15,13 +15,6 @@
             {
                 <DiffView Lines="@Segment.Lines" />
             }
-            else if (Segment.ToolName == BuiltInToolEnum.CreateFile)
-            {
-                <div class="tool-file-header">@Segment.Lines[0]</div>
-                <div class="tool-file-content">
-                    <pre>@string.Join("\n", Segment.Lines[1..])</pre>
-                </div>
-            }
             else
             {
                 <pre>@string.Join("\n", Segment.Lines[1..])</pre>

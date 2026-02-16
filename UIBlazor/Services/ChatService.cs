@@ -9,7 +9,7 @@ using UIBlazor.Services.Settings;
 
 namespace UIBlazor.Services;
 
-public partial class ChatService(
+public class ChatService(
     HttpClient httpClient,
     IProfileManager profileManager,
     ICommonSettingsProvider commonSettingsProvider,
@@ -28,9 +28,6 @@ public partial class ChatService(
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
-
-    [GeneratedRegex(@"<[/\w-][^>\n]*$", RegexOptions.Compiled)]
-    private static partial Regex IncompleteTagRegex();
 
     public ConnectionProfile Options => profileManager.ActiveProfile;
 
@@ -415,18 +412,21 @@ public partial class ChatService(
                 var incomingText = _pendingText + delta.Content;
                 _pendingText = string.Empty;
 
-                // ПРОВЕРКА НА НЕПОЛНЫЙ ТЕГ
-                var match = IncompleteTagRegex().Match(incomingText);
-
-                if (match.Success)
+                // Ищем последний открывающий тег
+                var lastOpenIndex = incomingText.LastIndexOf('<');
+                if (lastOpenIndex >= 0)
                 {
-                    // match.Index — это позиция символа '<', с которого начался "битый" тег
-                    _pendingText = incomingText[match.Index..];
-                    incomingText = incomingText[..match.Index];
+                    var potentialTag = incomingText[lastOpenIndex..];
+                    // Если тег не закрыт (нет '>') и нет переноса строки (\n), то буферизируем
+                    if (potentialTag.IndexOfAny(['>', '\n']) == -1)
+                    {
+                        _pendingText = incomingText[lastOpenIndex..];
+                        incomingText = incomingText[..lastOpenIndex];
 
-                    // Если после отрезания тега ничего не осталось, пропускаем итерацию
-                    if (string.IsNullOrWhiteSpace(incomingText))
-                        continue;
+                        // Если после отрезания тега ничего не осталось, пропускаем итерацию
+                        if (string.IsNullOrWhiteSpace(incomingText))
+                            continue;
+                    }
                 }
 
                 delta.Content = incomingText;

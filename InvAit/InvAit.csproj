@@ -118,6 +118,10 @@
       <Name>Shared</Name>
     </ProjectReference>
   </ItemGroup>
+  <ItemGroup />
+  <ItemGroup>
+    <Content Include="Resources\icon_nano.png" />
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Import Project="$(VSToolsPath)\VSSDK\Microsoft.VsSDK.targets" Condition="'$(VSToolsPath)' != ''" />
   <Target Name="IncludeUIBlazorInVsix" BeforeTargets="_CopyFilesMarkedCopyLocal;_CopyFilesToOutputDirectory;_CopySourceItemsToOutputDirectory">

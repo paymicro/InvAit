@@ -8,13 +8,12 @@ public class UniversalDiffParser
     {
         if (hint == -1) // поиск по всему файлу
         {
-            for (var offset = 1; offset <= target.Count - search.Count; offset++)
+            for (var i = 0; i <= target.Count - search.Count; i++)
             {
-                var candidate = offset - 1; // 1-based Adjust
                 var match = true;
                 for (var j = 0; j < search.Count; j++)
                 {
-                    if (target[candidate + j].Trim() != search[j].Trim())
+                    if (target[i + j].Trim() != search[j].Trim())
                     {
                         match = false;
                         break;
@@ -22,7 +21,7 @@ public class UniversalDiffParser
                 }
                 if (match)
                 {
-                    return candidate; // actual start
+                    return i; // actual start
                 }
             }
         }
