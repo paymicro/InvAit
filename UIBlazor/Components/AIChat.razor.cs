@@ -46,10 +46,10 @@ public partial class AiChat : RadzenComponent
     /// <summary>
     /// Adds a message to the chat.
     /// </summary>
-    public VisualChatMessage AddVisualMessage(VisualChatMessage chatMessage)
+    public VisualChatMessage AddVisualMessage(VisualChatMessage chatMessage, bool updateState = true)
     {
-        _activeSegment = null;
-        UpdateSegments(chatMessage.Content, chatMessage);
+        // если не обновляем состояние - то это загрузка истории
+        UpdateSegments(chatMessage.Content, chatMessage, isHistory: !updateState); 
         Messages.Add(chatMessage);
 
         // Limit the number of messages
@@ -58,7 +58,10 @@ public partial class AiChat : RadzenComponent
             Messages.RemoveAt(0);
         }
 
-        InvokeAsync(StateHasChanged);
+        if (updateState)
+        {
+            InvokeAsync(StateHasChanged);
+        }
         return chatMessage;
     }
 
@@ -146,12 +149,28 @@ public partial class AiChat : RadzenComponent
         return processedContentBuilder.ToString();
     }
 
-    private ContentSegment _activeSegment;
+    /// <summary>
+    /// Текущий активный сегмент.
+    /// </summary>
+    private ContentSegment? _activeSegment;
 
-    public void UpdateSegments(string delta, VisualChatMessage assistant)
+    /// <summary>
+    /// Наполнение сегментов <see cref="VisualChatMessage"/>
+    /// </summary>
+    /// <param name="delta">Дельта или весь текст контента</param>
+    /// <param name="assistant">Сообщение ассистента</param>
+    /// <param name="isHistory">Подгрузка истории сессии</param>
+    public void UpdateSegments(string delta, VisualChatMessage assistant, bool isHistory = false)
     {
         if (string.IsNullOrEmpty(delta))
             return;
+
+        if (isHistory)
+        {
+            // В истории дельта - это целое неизменное сообщение.
+            // Поэтому активный сегмент всегда новый для каждого вызова.
+            _activeSegment = null;
+        }
 
         var incomingText = delta;
 
@@ -174,9 +193,9 @@ public partial class AiChat : RadzenComponent
             {
                 var closingTag = $"</{_activeSegment.TagName}>";
                 var endOfTag = closeIdx + closingTag.Length;
-                _activeSegment.AppendToken(incomingText.Substring(0, endOfTag));
+                _activeSegment.AppendToken(incomingText[..endOfTag]);
                 _activeSegment.Close();
-                incomingText = incomingText.Substring(endOfTag);
+                incomingText = incomingText[endOfTag..];
                 continue;
             }
 
@@ -185,9 +204,9 @@ public partial class AiChat : RadzenComponent
             {
                 if (openIdx > 0)
                 {
-                    _activeSegment.AppendToken(incomingText.Substring(0, openIdx));
+                    _activeSegment.AppendToken(incomingText[..openIdx]);
                     _activeSegment.Close();
-                    incomingText = incomingText.Substring(openIdx);
+                    incomingText = incomingText[openIdx..];
                     continue;
                 }
 
@@ -199,10 +218,17 @@ public partial class AiChat : RadzenComponent
                     _activeSegment.AppendToken(incomingText.Substring(0, consumptionLength));
                     if (_activeSegment.Type == SegmentType.Tool && !string.IsNullOrEmpty(_activeSegment.ToolName))
                     {
-                        // ну и сразу ставим статус, чтобы не было гонки между рендером и обновлением статуса после получения всех параметров
-                        _activeSegment.ApprovalStatus = ToolManager.GetApprovalModeByToolName(_activeSegment.ToolName) == ToolApprovalMode.Manual
-                            ? ToolApprovalStatus.Pending
-                            : ToolApprovalStatus.Approved;
+                        if (isHistory) // При загрузке истории все тулзы заапрувлены. Чтобы не было ложного Pending.
+                        {
+                            _activeSegment.ApprovalStatus = ToolApprovalStatus.Approved;
+                        }
+                        else
+                        {
+                            // ну и сразу ставим статус, чтобы не было гонки между рендером и обновлением статуса после получения всех параметров
+                            _activeSegment.ApprovalStatus = ToolManager.GetApprovalModeByToolName(_activeSegment.ToolName) == ToolApprovalMode.Manual
+                                ? ToolApprovalStatus.Pending
+                                : ToolApprovalStatus.Approved;
+                        }
                     }
                     incomingText = incomingText.Substring(consumptionLength);
                     continue;
@@ -511,7 +537,7 @@ public partial class AiChat : RadzenComponent
                 else
                 {
                     // Fallback if somehow there's a tool result without an assistant message before it
-                    AddVisualMessage(toolResultMessage);
+                    AddVisualMessage(toolResultMessage, updateState: false);
                 }
             }
             else
@@ -527,9 +553,11 @@ public partial class AiChat : RadzenComponent
                 }
                 
                 chatMessage.IsExpanded = IsShortMessage(chatMessage.DisplayContent ?? chatMessage.Content);
-                AddVisualMessage(chatMessage);
+                AddVisualMessage(chatMessage, updateState: false);
             }
         }
+
+        InvokeAsync(StateHasChanged);
     }
 
     private static bool IsShortMessage(string content)

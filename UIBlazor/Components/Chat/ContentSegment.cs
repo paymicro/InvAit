@@ -91,7 +91,7 @@ public class ContentSegment
     {
         IsClosed = true;
         // Переносим остаток из буфера в финальные линии, если он там есть
-        if (CurrentLine.Length > 0)
+        if (Type != SegmentType.Markdown && CurrentLine.Length > 0)
         {
             Lines.Add(CurrentLine.ToString());
             CurrentLine.Clear();
