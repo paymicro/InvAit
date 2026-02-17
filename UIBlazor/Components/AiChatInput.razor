@@ -329,6 +329,13 @@
     {
         base.OnInitialized();
         ChatService.OnSessionChanged += HandleSessionChanged;
+        VsBridge.OnModeSwitched += HandleModeSwitched;
+    }
+
+    private void HandleModeSwitched(AppMode mode)
+    {
+        CurrentMode = mode;
+        InvokeAsync(StateHasChanged);
     }
 
     private void HandleSessionChanged()
@@ -350,5 +357,6 @@
     {
         base.Dispose();
         ChatService.OnSessionChanged -= HandleSessionChanged;
+        VsBridge.OnModeSwitched -= HandleModeSwitched;
     }
 }

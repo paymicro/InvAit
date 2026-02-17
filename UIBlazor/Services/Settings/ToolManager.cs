@@ -26,7 +26,7 @@ public partial class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService
                 }
             }
 
-            Current.DisabledTools = [.. _registeredTools.Values.Where(t => t.Enabled).Select(t => t.Name)];
+            Current.DisabledTools = [.. _registeredTools.Values.Where(t => !t.Enabled).Select(t => t.Name)];
 
             await base.SaveAsync();
         }

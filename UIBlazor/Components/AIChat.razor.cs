@@ -563,6 +563,8 @@ public partial class AiChat : RadzenComponent
             }
         }
 
+        _activeSegment = null;
+
         InvokeAsync(StateHasChanged);
     }
 
@@ -583,8 +585,6 @@ public partial class AiChat : RadzenComponent
         await ProfileManager.InitializeAsync();
 
         await VsBridge.InitializeAsync();
-        VsBridge.OnModeSwitched += HandleModeSwitched;
-
         await InvokeAsync(StateHasChanged);
     }
 
@@ -601,12 +601,6 @@ public partial class AiChat : RadzenComponent
             await JsRuntime.InvokeVoidAsync("setChatHandler", _dotNetRef);
             await JsRuntime.InvokeVoidAsync("initChatAutoScroll", $"#chat-messages", 70);
         }
-    }
-
-    private void HandleModeSwitched(AppMode mode)
-    {
-        ChatService.Session.Mode = mode;
-        InvokeAsync(StateHasChanged);
     }
 
     private async Task OnProfileChangeAsync(object value)
@@ -704,7 +698,6 @@ public partial class AiChat : RadzenComponent
         base.Dispose();
         
         _dotNetRef?.Dispose();
-        VsBridge.OnModeSwitched -= HandleModeSwitched;
         ChatService.OnSessionChanged -= HandleSessionChanged;
 
         _cts?.Cancel();
