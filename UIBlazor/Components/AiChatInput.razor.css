@@ -20,6 +20,7 @@
     background: var(--rz-base-dark);
     display: flex;
     flex-direction: column;
+    color: var(--rz-on-base-dark);
     overflow: hidden;
     /* Чтобы футер не вылезал за скругления */
 }
@@ -41,7 +42,7 @@
     border: none;
     outline: none;
     background: transparent;
-    color: var(--rz-text-color);
+    color: var(--rz-on-base-dark);
     font-size: 1em;
     font-family: inherit;
     padding: 10px 12px;
@@ -51,10 +52,10 @@
     max-height: 200px;
 }
 
-.text-input::placeholder {
-    color: var(--rz-text-color);
-    opacity: 0.5;
-}
+    .text-input::placeholder {
+        color: var(--rz-on-base-dark);
+        opacity: 0.5;
+    }
 
 .text-input:disabled {
     opacity: 0.6;
@@ -74,11 +75,13 @@
     background: transparent;
     border: 0px;
     height: 32px;
+    color: var(--rz-on-base-dark);
 }
 
     ::deep .model-dropdown:hover,
     ::deep .model-dropdown:focus {
         border: 0px !important;
+        color: var(--rz-text-color);
     }
 
 /* Меню подсказок - теперь всплывающее (float) */

@@ -185,7 +185,7 @@ details summary {
     padding: 0.6rem 0.8rem;
     font-size: 0.9rem;
     border-bottom: 1px solid var(--rz-base-600);
-    color: var(--rz-text-color);
+    color: var(--rz-on-base-dark);
     border-left: 4px solid var(--rz-info);
     white-space: normal;
 }
