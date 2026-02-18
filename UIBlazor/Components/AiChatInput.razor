@@ -1,4 +1,5 @@
-﻿@using UIBlazor.Models
+﻿@using System.ComponentModel
+@using UIBlazor.Models
 @inherits RadzenComponent
 
 <div class="chat-input-wrapper">
@@ -30,7 +31,15 @@
         @* Нижняя панель с кнопками *@
         <div class="input-footer">
             <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween"  AlignItems="AlignItems.Center">
-                <RadzenDropDown TValue="AppMode" class="mode-dropdown" Data="@AppModeValues" @bind-Value="@CurrentMode" />
+                <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" AlignItems="AlignItems.Center">
+                    <RadzenDropDown TValue="AppMode" class="mode-dropdown" Data="@AppModeValues" @bind-Value="@CurrentMode" />
+                    <RadzenDropDown TValue="string" class="model-dropdown"
+                                    Data="@(ProfileManager.ActiveProfile.AvailableModels ?? new List<string>())"
+                                    @bind-Value="@ProfileManager.ActiveProfile.Model"
+                                    @bind-Value:after="OnModelChanged"
+                                    AllowCustomText="true"
+                                    Placeholder="Model" />
+                </RadzenStack>
                 
                 <RadzenStack Orientation="Orientation.Horizontal" Gap="4px" JustifyContent="JustifyContent.End" AlignItems="AlignItems.Center">
                     <RadzenButton Icon="gavel" ButtonStyle="ButtonStyle.Base" Variant="Variant.Text" Size="ButtonSize.Small" Click="@OpenRules" Title="Open Rules" />
@@ -93,6 +102,7 @@
     [Inject] private IVsCodeContextService VsCodeContextService { get; set; } = null!;
     [Inject] private IJSRuntime JS { get; set; } = null!;
     [Inject] private IVsBridge VsBridge { get; set; } = null!;
+    [Inject] private IProfileManager ProfileManager { get; set; } = null!;
 
     private ElementReference textareaRef;
     private List<InputToken> tokens = new();
@@ -243,6 +253,9 @@
         }
     }
 
+    private async Task OnModelChanged()
+        => await ProfileManager.SaveProfileAsync(ProfileManager.ActiveProfile);
+
     private async Task OnSendClick()
     {
         if (!CanSend()) return;
@@ -330,6 +343,7 @@
         base.OnInitialized();
         ChatService.OnSessionChanged += HandleSessionChanged;
         VsBridge.OnModeSwitched += HandleModeSwitched;
+        ProfileManager.Current.PropertyChanged += HandleProfileChanged;
     }
 
     private void HandleModeSwitched(AppMode mode)
@@ -341,6 +355,15 @@
     private void HandleSessionChanged()
     {
         InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleProfileChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ProfileOptions.ActiveProfileId))
+        {
+            // обновление состояния если изменился профиль - для обновления списка моделей
+            InvokeAsync(StateHasChanged);
+        }
     }
 
     private async Task OpenRules()
@@ -358,5 +381,6 @@
         base.Dispose();
         ChatService.OnSessionChanged -= HandleSessionChanged;
         VsBridge.OnModeSwitched -= HandleModeSwitched;
+        ProfileManager.Current.PropertyChanged -= HandleProfileChanged;
     }
 }

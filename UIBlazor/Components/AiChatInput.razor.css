@@ -68,6 +68,19 @@
     width: 100px;
 }
 
+::deep .model-dropdown {
+    min-width: 100px;
+    max-width: 250px;
+    background: transparent;
+    border: 0px;
+    height: 32px;
+}
+
+    ::deep .model-dropdown:hover,
+    ::deep .model-dropdown:focus {
+        border: 0px !important;
+    }
+
 /* Меню подсказок - теперь всплывающее (float) */
 .hints-menu {
     position: absolute;

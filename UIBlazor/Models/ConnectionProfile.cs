@@ -4,8 +4,7 @@ namespace UIBlazor.Models;
 
 public class ConnectionProfile : BaseOptions
 {
-    public string Id
-    { get; init => SetIfChanged(ref field, value); } = Guid.NewGuid().ToString();
+    public string Id { get; init => SetIfChanged(ref field, value); } = Guid.NewGuid().ToString();
 
     public string Name { get; set => SetIfChanged(ref field, value); } = "New Profile";
     
