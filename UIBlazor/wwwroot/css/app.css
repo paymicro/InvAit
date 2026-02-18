@@ -292,24 +292,24 @@ details summary {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: var(--rz-base-background-color);
-    border: 1px inset var(--rz-primary-light);
-    border-radius: 0 0 8px 8px;
+    color: var(--rz-on-secondary);
+    background: var(--rz-secondary);
+    border-bottom: 4px inset var(--rz-primary-light);
     margin: 0 !important;
     animation: pulse-border 2s infinite;
 }
 
-.tool-approval-footer.approved {
-    border: 1px solid var(--rz-success);
-    background: rgba(var(--rz-success-rgb), 0.1);
-    animation: none;
-}
+    .tool-approval-footer.approved {
+        border-bottom: 4px solid var(--rz-success);
+        background: rgba(var(--rz-success-rgb), 0.1);
+        animation: none;
+    }
 
-.tool-approval-footer.rejected {
-    border: 1px solid var(--rz-danger);
-    background: rgba(var(--rz-danger-rgb), 0.1);
-    animation: none;
-}
+    .tool-approval-footer.rejected {
+        border-bottom: 4px solid var(--rz-danger);
+        background: rgba(var(--rz-danger-rgb), 0.1);
+        animation: none;
+    }
 
 .tool-approval-label {
     font-size: 0.85rem;
@@ -327,19 +327,20 @@ details summary {
 
 .tool-approval-actions {
     display: flex;
-    gap: 0.5rem;
+    gap: 0.8rem;
 }
 
 .tool-approve-btn, .tool-reject-btn {
     background: none;
-    border: 1px solid currentColor;
     border-radius: 4px;
-    padding: 0.25rem 0.5rem;
     cursor: pointer;
     transition: all 0.2s;
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 0.1em !important;
+    min-width: 2em !important;
+    min-height: 2em !important;
 }
 
 .tool-approve-btn {

@@ -339,7 +339,4 @@ public partial class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService
 
         return result;
     }
-
-    [GeneratedRegex(@"<function name=""(\w+)""(?::(\d+))?>\s*(.*?)\s*</function>", RegexOptions.Singleline)]
-    private static partial Regex FunctionRegex();
 }

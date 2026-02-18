@@ -40,8 +40,10 @@ public class MessageParser(IToolManager toolManager) : IMessageParser
             {
                 var closingTag = $"</{activeSegment.TagName}>";
                 var endOfTag = closeIdx + closingTag.Length;
-                activeSegment.AppendToken(incomingText[..endOfTag]);
-                activeSegment.Close();
+                AppendToken(activeSegment, incomingText.StartsWith('\n')
+                    ? incomingText[1..endOfTag] // убираем первый перенос строки после функции, если он есть
+                    : incomingText[..endOfTag]);
+                Close(activeSegment);
                 incomingText = incomingText[endOfTag..];
                 continue;
             }
@@ -51,14 +53,14 @@ public class MessageParser(IToolManager toolManager) : IMessageParser
             {
                 if (openIdx > 0)
                 {
-                    activeSegment.AppendToken(incomingText[..openIdx]);
-                    activeSegment.Close();
+                    AppendToken(activeSegment, incomingText[..openIdx]);
+                    Close(activeSegment);
                     incomingText = incomingText[openIdx..];
                     continue;
                 }
                 else if (activeSegment is { IsClosed: false, Type: SegmentType.Markdown })
                 {
-                    activeSegment.Close();
+                    Close(activeSegment);
                     continue;
                 }
 
@@ -67,7 +69,7 @@ public class MessageParser(IToolManager toolManager) : IMessageParser
                 if (tagEndIdx != -1)
                 {
                     var consumptionLength = tagEndIdx + 1;
-                    activeSegment.AppendToken(incomingText.Substring(0, consumptionLength));
+                    AppendToken(activeSegment, incomingText.Substring(0, consumptionLength));
                     if (activeSegment.Type == SegmentType.Tool && !string.IsNullOrEmpty(activeSegment.ToolName))
                     {
                         if (isHistory) // При загрузке истории все тулзы заапрувлены. Чтобы не было ложного Pending.
@@ -88,7 +90,7 @@ public class MessageParser(IToolManager toolManager) : IMessageParser
             }
 
             // Сценарий В: Обычный контент
-            activeSegment.AppendToken(incomingText);
+            AppendToken(activeSegment, incomingText);
             incomingText = string.Empty;
         }
     }
@@ -109,5 +111,84 @@ public class MessageParser(IToolManager toolManager) : IMessageParser
         }
         tagName = "function";
         return funcIdx;
+    }
+
+    // Вспомогательный буфер для накопления "сырого" текста внутри сегмента
+    private readonly StringBuilder _rawAccumulator = new();
+
+    public void AppendToken(ContentSegment segment, string token)
+    {
+        if (segment.IsClosed || string.IsNullOrEmpty(token)) return;
+
+        _rawAccumulator.Append(token);
+
+        // 1. Определяем тип, если он еще не известен. Теги приходят полными
+        if (segment.Type == SegmentType.Unknown)
+        {
+            var raw = _rawAccumulator.ToString();
+            var functionMatch = Regex.Match(token, @"<function name=""(\w+)""(?::(\d+))?>$", RegexOptions.Compiled);
+            if (functionMatch.Success)
+            {
+                segment.Type = SegmentType.Tool;
+                segment.TagName = "function";
+                segment.ToolName = functionMatch.Groups[1].Value;
+            }
+            else if (raw.Contains("<plan>"))
+            {
+                segment.Type = SegmentType.Plan;
+                segment.TagName = "plan";
+            }
+            else if (!string.IsNullOrEmpty(raw))
+            {
+                segment.Type = SegmentType.Markdown;
+            }
+        }
+
+        // 2. Обрабатываем текст и разбиваем на линии
+        ProcessIncomingText(segment, token);
+    }
+
+    private void ProcessIncomingText(ContentSegment segment, string token)
+    {
+        // Очищаем токен от управляющих тегов, чтобы парсеры их не видели
+        var cleanToken = token;
+        if (segment.Type != SegmentType.Markdown && !string.IsNullOrEmpty(segment.TagName))
+        {
+            // Удаляем <function...>, <plan...>, </function>, </plan>
+            cleanToken = Regex.Replace(token, $@"^.*<{segment.TagName}[^>]*>(?:\r?\n)?|(?:\r?\n)?<\/{segment.TagName}>.*$", "", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        }
+
+        if (string.IsNullOrEmpty(cleanToken) && token.Contains('>'))
+        {
+            return;
+        }
+
+        segment.CurrentLine.Append(cleanToken);
+
+        // Если есть перенос строки - фиксируем завершенные линии
+        if (segment.Type != SegmentType.Markdown && cleanToken.Contains('\n'))
+        {
+            var content = segment.CurrentLine.ToString();
+            var parts = content.Split('\n');
+
+            for (var i = 0; i < parts.Length; i++)
+            {
+                segment.Lines.Add(parts[i]);
+            }
+
+            segment.CurrentLine.Clear();
+            segment.CurrentLine.Append(parts.Last());
+        }
+    }
+
+    private void Close(ContentSegment segment)
+    {
+        segment.IsClosed = true;
+        // Переносим остаток из буфера в финальные линии, если он там есть
+        if (segment.Type != SegmentType.Markdown && segment.CurrentLine.Length > 0)
+        {
+            segment.Lines.Add(segment.CurrentLine.ToString());
+            segment.CurrentLine.Clear();
+        }
     }
 }
