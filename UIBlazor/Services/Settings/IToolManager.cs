@@ -20,12 +20,6 @@ public interface IToolManager : IBaseSettingsProvider, IDisposable
 
     string GetToolUseSystemInstructions(AppMode mode);
 
-    List<(string ToolName, string CallId, string Args)> ParseToolBlockRaw(string content);
-
-    List<AiTool> ParseToolBlock(string content);
-
-    IEnumerable<AiTool> ParseToolBlock(List<ContentSegment> segments);
-
     Dictionary<string, object> Parse(string toolName, List<string> toolLines);
 
     void UpdateCategorySettings(ToolCategory category, bool isEnabled, ToolApprovalMode approvalMode);

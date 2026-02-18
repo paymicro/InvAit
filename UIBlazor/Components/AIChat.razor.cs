@@ -249,8 +249,8 @@ public partial class AiChat : RadzenComponent
     private int FindOpeningTag(string text, out string tagName)
     {
         tagName = "";
-        int planIdx = text.IndexOf("<plan");
-        int funcIdx = text.IndexOf("<function");
+        var planIdx = text.IndexOf("<plan");
+        var funcIdx = text.IndexOf("<function");
 
         if (planIdx == -1 && funcIdx == -1) return -1;
 
@@ -429,7 +429,12 @@ public partial class AiChat : RadzenComponent
                 var vsToolResult = segment.ApprovalStatus switch
                 {
                     ToolApprovalStatus.Approved => await tool.ExecuteAsync(ToolManager.Parse(segment.ToolName, segment.Lines)),
-                    _ => new VsToolResult { Name = segment.ToolName, Success = false, ErrorMessage = "Execution was denied by user." }
+                    _ => new VsToolResult
+                    {
+                        Name = segment.ToolName,
+                        Success = false,
+                        ErrorMessage = "Execution was denied by user."
+                    }
                 };
 #if DEBUG
                 // Безголовые (без Visual Studio) тесты

@@ -34,10 +34,9 @@
                 <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" AlignItems="AlignItems.Center">
                     <RadzenDropDown TValue="AppMode" class="mode-dropdown" Data="@AppModeValues" @bind-Value="@CurrentMode" />
                     <RadzenDropDown TValue="string" class="model-dropdown"
-                                    Data="@(ProfileManager.ActiveProfile.AvailableModels ?? new List<string>())"
+                                    Data="@(ProfileManager.ActiveProfile.AvailableModels ?? [])"
                                     @bind-Value="@ProfileManager.ActiveProfile.Model"
                                     @bind-Value:after="OnModelChanged"
-                                    AllowCustomText="true"
                                     Placeholder="Model" />
                 </RadzenStack>
                 
@@ -52,14 +51,14 @@
                                       Visible="@(!IsLoading)"
                                       Disabled="@(!CanSend())"
                                       Click="@OnSendClick"
-                                      Title="Send message"
+                                      title="Send message"
                                       class="rz-chat-send-btn" />
                         <RadzenButton Icon="dangerous"
                                       ButtonStyle="ButtonStyle.Danger"
                                       Variant="Variant.Text"
                                       Visible="@IsLoading"
                                       Click="@Cancel.InvokeAsync"
-                                      Title="Cancel"
+                                      title="Cancel"
                                       class="rz-chat-cancel-btn" />
                     </RadzenStack>
                 </RadzenStack>

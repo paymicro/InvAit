@@ -1,6 +1,5 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics;
-using UIBlazor.Components.Chat;
 
 namespace UIBlazor.Services.Settings;
 
@@ -224,78 +223,6 @@ public partial class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService
         return sb.ToString();
     }
 
-    public List<(string ToolName, string CallId, string Args)> ParseToolBlockRaw(string content)
-    {
-        var result = new List<(string toolName, string callId, string args)>();
-
-        if (string.IsNullOrEmpty(content))
-            return result;
-
-        var callRegex = FunctionRegex();
-
-        foreach (Match callMatch in callRegex.Matches(content))
-        {
-            var toolName = callMatch.Groups[1].Value;
-            var callId = callMatch.Groups[2].Success ? callMatch.Groups[2].Value : $"idx_{result.Count}";
-            var args = callMatch.Groups[3].Value;
-            result.Add((toolName, callId, args));
-        }
-
-        return result;
-    }
-
-    public IEnumerable<AiTool> ParseToolBlock(List<ContentSegment> segments)
-    {
-        foreach (var segment in segments)
-        {
-            if (segment.Type == SegmentType.Tool && !string.IsNullOrEmpty(segment.ToolName))
-            {
-                var arguments = Parse(segment.ToolName, segment.Lines);
-                yield return new AiTool
-                {
-                    Type = "function",
-                    Id = segment.Id,
-                    Index = 0,
-                    Function = new AiToolToCall
-                    {
-                        Name = segment.ToolName,
-                        Arguments = arguments
-                    }
-                };
-            }
-        }
-    }
-
-    // TODO удалить, используется только в тестах...
-    public List<AiTool> ParseToolBlock(string content)
-    {
-        var rawResults = ParseToolBlockRaw(content);
-        var result = new List<AiTool>();
-
-        if (rawResults.Count == 0)
-            return result;
-
-        for (var i = 0; i < rawResults.Count; i++)
-        {
-            var raw = rawResults[i];
-            var arguments = Parse(raw.ToolName, raw.Args);
-            result.Add(new AiTool
-            {
-                Type = "function",
-                Id = raw.CallId,
-                Index = i,
-                Function = new AiToolToCall
-                {
-                    Name = raw.ToolName,
-                    Arguments = arguments
-                }
-            });
-        }
-
-        return result;
-    }
-
-
     public Dictionary<string, object> Parse(string toolName, List<string> toolLines)
     {
         var result = new Dictionary<string, object>();
@@ -412,10 +339,6 @@ public partial class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService
 
         return result;
     }
-
-    // TODO удалить используется только в тестах...
-    private Dictionary<string, object> Parse(string toolName, string input)
-        => Parse(toolName, [.. input.Split('\n')]);
 
     [GeneratedRegex(@"<function name=""(\w+)""(?::(\d+))?>\s*(.*?)\s*</function>", RegexOptions.Singleline)]
     private static partial Regex FunctionRegex();
