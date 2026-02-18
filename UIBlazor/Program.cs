@@ -20,6 +20,7 @@ builder.Services
     .AddScoped<ISkillService, SkillService>()
     .AddScoped<IRuleService, RuleService>()
     .AddScoped<IVsCodeContextService, VsCodeContextService>()
+    .AddScoped<IMessageParser, MessageParser>()
     .AddScoped<BuiltInAgent>()
     .AddScoped<IToolManager, ToolManager>()
     .AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });

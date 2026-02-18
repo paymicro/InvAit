@@ -22,26 +22,19 @@ public partial class AiChat : RadzenComponent
 
     private CancellationTokenSource _cts = new();
 
-    [Inject]
-    private NotificationService NotificationService { get; set; } = null!;
+    [Inject] private NotificationService NotificationService { get; set; } = null!;
 
-    [Inject]
-    private IToolManager ToolManager { get; set; } = null!;
+    [Inject] private IToolManager ToolManager { get; set; } = null!;
 
-    [Inject]
-    private IProfileManager ProfileManager { get; set; } = null!;
+    [Inject] private IProfileManager ProfileManager { get; set; } = null!;
 
-    [Inject]
-    private IVsBridge VsBridge { get; set; } = null!;
+    [Inject] private IVsBridge VsBridge { get; set; } = null!;
 
-    [Inject]
-    private IJSRuntime JsRuntime { get; set; } = null!;
+    [Inject] private IJSRuntime JsRuntime { get; set; } = null!;
 
-    /// <summary>
-    /// Gets or sets the message displayed when there are no messages.
-    /// </summary>
-    [Parameter]
-    public string EmptyMessage { get; set; } = "No messages yet. Start a conversation!";
+    [Inject] private IMessageParser MessageParser { get; set; } = null!;
+
+    [Parameter] public string EmptyMessage { get; set; } = "No messages yet. Start a conversation!";
 
     /// <summary>
     /// Adds a message to the chat.
@@ -49,7 +42,7 @@ public partial class AiChat : RadzenComponent
     public VisualChatMessage AddVisualMessage(VisualChatMessage chatMessage, bool updateState = true)
     {
         // если не обновляем состояние - то это загрузка истории
-        UpdateSegments(chatMessage.Content, chatMessage, isHistory: !updateState); 
+        MessageParser.UpdateSegments(chatMessage.Content, chatMessage, isHistory: !updateState);
         Messages.Add(chatMessage);
 
         // Limit the number of messages
@@ -149,127 +142,11 @@ public partial class AiChat : RadzenComponent
         return processedContentBuilder.ToString();
     }
 
-    /// <summary>
-    /// Текущий активный сегмент.
-    /// </summary>
-    private ContentSegment? _activeSegment;
-
-    /// <summary>
-    /// Наполнение сегментов <see cref="VisualChatMessage"/>
-    /// </summary>
-    /// <param name="delta">Дельта или весь текст контента</param>
-    /// <param name="assistant">Сообщение ассистента</param>
-    /// <param name="isHistory">Подгрузка истории сессии</param>
-    public void UpdateSegments(string delta, VisualChatMessage assistant, bool isHistory = false)
-    {
-        if (string.IsNullOrEmpty(delta))
-            return;
-
-        if (isHistory)
-        {
-            // В истории дельта - это целое неизменное сообщение.
-            // Поэтому активный сегмент всегда новый для каждого вызова.
-            _activeSegment = null;
-        }
-
-        var incomingText = delta;
-
-        while (!string.IsNullOrEmpty(incomingText))
-        {
-            // Логика сегментов
-            if (_activeSegment == null || _activeSegment.IsClosed)
-            {
-                _activeSegment = new ContentSegment();
-                assistant.Segments.Add(_activeSegment);
-            }
-
-            var openIdx = FindOpeningTag(incomingText, out var openTagName);
-            var closeIdx = _activeSegment.Type is not SegmentType.Unknown and not SegmentType.Markdown
-                           ? incomingText.IndexOf($"</{_activeSegment.TagName}>")
-                           : -1;
-
-            // Сценарий А: Закрытие
-            if (closeIdx != -1 && (openIdx == -1 || closeIdx < openIdx))
-            {
-                var closingTag = $"</{_activeSegment.TagName}>";
-                var endOfTag = closeIdx + closingTag.Length;
-                _activeSegment.AppendToken(incomingText[..endOfTag]);
-                _activeSegment.Close();
-                incomingText = incomingText[endOfTag..];
-                continue;
-            }
-
-            // Сценарий Б: Открытие
-            if (openIdx != -1)
-            {
-                if (openIdx > 0)
-                {
-                    _activeSegment.AppendToken(incomingText[..openIdx]);
-                    _activeSegment.Close();
-                    incomingText = incomingText[openIdx..];
-                    continue;
-                }
-                else if (_activeSegment is { IsClosed: false, Type: SegmentType.Markdown })
-                {
-                    _activeSegment.Close();
-                    continue;
-                }
-
-                // Находим конец тега '>', чтобы знать, где кончаются параметры (name="...")
-                var tagEndIdx = incomingText.IndexOf(">");
-                if (tagEndIdx != -1)
-                {
-                    var consumptionLength = tagEndIdx + 1;
-                    _activeSegment.AppendToken(incomingText.Substring(0, consumptionLength));
-                    if (_activeSegment.Type == SegmentType.Tool && !string.IsNullOrEmpty(_activeSegment.ToolName))
-                    {
-                        if (isHistory) // При загрузке истории все тулзы заапрувлены. Чтобы не было ложного Pending.
-                        {
-                            _activeSegment.ApprovalStatus = ToolApprovalStatus.Approved;
-                        }
-                        else
-                        {
-                            // ну и сразу ставим статус, чтобы не было гонки между рендером и обновлением статуса после получения всех параметров
-                            _activeSegment.ApprovalStatus = ToolManager.GetApprovalModeByToolName(_activeSegment.ToolName) == ToolApprovalMode.Manual
-                                ? ToolApprovalStatus.Pending
-                                : ToolApprovalStatus.Approved;
-                        }
-                    }
-                    incomingText = incomingText.Substring(consumptionLength);
-                    continue;
-                }
-            }
-
-            // Сценарий В: Обычный контент
-            _activeSegment.AppendToken(incomingText);
-            incomingText = string.Empty;
-        }
-    }
-
-    private int FindOpeningTag(string text, out string tagName)
-    {
-        tagName = "";
-        var planIdx = text.IndexOf("<plan");
-        var funcIdx = text.IndexOf("<function");
-
-        if (planIdx == -1 && funcIdx == -1) return -1;
-
-        // Берем тот, что встретился раньше
-        if (planIdx != -1 && (funcIdx == -1 || planIdx < funcIdx))
-        {
-            tagName = "plan";
-            return planIdx;
-        }
-        tagName = "function";
-        return funcIdx;
-    }
-
     private async Task GetAiResponseAsync()
     {
         IsLoading = true;
 
         await _cts.CancelAsync();
-
         _cts = new CancellationTokenSource();
 
         // Add assistant message placeholder
@@ -278,8 +155,6 @@ public partial class AiChat : RadzenComponent
             IsStreaming = true,
             IsExpanded = true
         });
-
-        _activeSegment = null;
 
         try
         {
@@ -296,7 +171,8 @@ public partial class AiChat : RadzenComponent
                 if (delta.Content != null)
                 {
                     response.Append(delta.Content);
-                    UpdateSegments(delta.Content, assistantMessage);
+                    // обновляем сегменты в сообщении
+                    MessageParser.UpdateSegments(delta.Content, assistantMessage);
                 }
 
                 assistantMessage.Model ??= ChatService.LastCompletionsModel;
@@ -312,6 +188,7 @@ public partial class AiChat : RadzenComponent
             await ChatService.AddMessageAsync(assistantMessage);
 
             // TODO: надо подумать что делать, если прервался на незакрытом тулзе...
+            // Думаю нужно выдавать ошибку модели
             await HandleToolCallAsync(assistantMessage, [.. assistantMessage.Segments.Where(s => s.Type == SegmentType.Tool && s.IsClosed)]);
         }
         catch (Exception ex)
@@ -411,7 +288,7 @@ public partial class AiChat : RadzenComponent
                     }
                     catch (OperationCanceledException)
                     {
-                        _approvalWaiters.TryRemove(waiterKey, out _);
+                        _approvalWaiters.Clear();
                         return;
                     }
                     finally
@@ -489,8 +366,7 @@ public partial class AiChat : RadzenComponent
                 var toolSessionMessage = new VisualChatMessage
                 {
                     Role = vsToolResult.Role,
-                    Content = result,
-                    DisplayContent = (vsToolResult.Success ? "✅ " : "❌ ") + tool.DisplayName ?? tool.Name
+                    Content = result
                 };
 
                 // идет в сессию
@@ -501,7 +377,7 @@ public partial class AiChat : RadzenComponent
                     Id = toolSessionMessage.Id, // синхронизируем Id. Для показа в UI и удаления
                     Role = ChatMessageRole.Tool,
                     Content = vsToolResult.Result,
-                    ToolDisplayName = tool.Name,
+                    ToolDisplayName = (vsToolResult.Success ? "✅ " : "❌ ") + tool.DisplayName ?? tool.Name,
                 };
 
                 assistantMessage.ToolMessages.Add(toolResultMessage);
@@ -568,7 +444,6 @@ public partial class AiChat : RadzenComponent
             }
         }
 
-        _activeSegment = null;
 
         InvokeAsync(StateHasChanged);
     }

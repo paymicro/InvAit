@@ -1,6 +1,4 @@
-﻿using UIBlazor.Components.Chat;
-
-namespace UIBlazor.Services.Settings;
+﻿namespace UIBlazor.Services.Settings;
 
 public interface IToolManager : IBaseSettingsProvider, IDisposable
 {
