@@ -327,7 +327,6 @@ details summary {
 
 .tool-approval-actions {
     display: flex;
-    gap: 0.8rem;
 }
 
 .tool-approve-btn, .tool-reject-btn {

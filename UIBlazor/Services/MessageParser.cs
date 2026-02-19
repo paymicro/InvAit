@@ -155,7 +155,7 @@ public class MessageParser(IToolManager toolManager) : IMessageParser
         if (segment.Type != SegmentType.Markdown && !string.IsNullOrEmpty(segment.TagName))
         {
             // Удаляем <function...>, <plan...>, </function>, </plan>
-            cleanToken = Regex.Replace(token, $@"^.*<{segment.TagName}[^>]*>(?:\r?\n)?|(?:\r?\n)?<\/{segment.TagName}>.*$", "", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            cleanToken = Regex.Replace(token, $@".*<{segment.TagName}[^>]*>|<\/{segment.TagName}>.*", "", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         }
 
         if (string.IsNullOrEmpty(cleanToken) && token.Contains('>'))
@@ -171,7 +171,12 @@ public class MessageParser(IToolManager toolManager) : IMessageParser
             var content = segment.CurrentLine.ToString();
             var parts = content.Split('\n');
 
-            for (var i = 0; i < parts.Length; i++)
+            if (!string.IsNullOrWhiteSpace(parts[0]))
+            {
+                segment.Lines.Add(parts[0]);
+            }
+
+            for (var i = 1; i < parts.Length - 1; i++)
             {
                 segment.Lines.Add(parts[i]);
             }

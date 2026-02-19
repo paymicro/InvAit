@@ -30,44 +30,29 @@ public class ToolManagerTests
     }
 
     [Fact]
-    public void ParseToolBlock_ReadFiles()
+    public void Parse_ReadFiles()
     {
         // Arrange
-        var content = """
-                      <function name="read_files">
-                      C:\Users\user.txt
-                      path/to/file2.txt
-                      </function>
-                      """;
+        var lines = new List<string> { "C:\\Users\\user.txt", "path/to/file2.txt" };
 
         // Act
-        var result = _toolManager.ParseToolBlock(content);
+        var args = _toolManager.Parse(BuiltInToolEnum.ReadFiles, lines);
 
         // Assert
-        Assert.Single(result);
-        var args = result[0].Function.Arguments;
         Assert.Equal("C:\\Users\\user.txt", ((ReadFileParams)args["file1"]).Name);
         Assert.Equal("path/to/file2.txt", ((ReadFileParams)args["file2"]).Name);
     }
 
     [Fact]
-    public void ParseToolBlock_ReadFiles_WithStartLine()
+    public void Parse_ReadFiles_WithStartLine()
     {
         // Arrange
-        var content = """
-                      <function name="read_files">
-                      C:\Users\user.txt
-                      start_line
-                      5
-                      </function>
-                      """;
+        var lines = new List<string> { "C:\\Users\\user.txt", "start_line", "5" };
 
         // Act
-        var result = _toolManager.ParseToolBlock(content);
+        var args = _toolManager.Parse(BuiltInToolEnum.ReadFiles, lines);
 
         // Assert
-        Assert.Single(result);
-        var args = result[0].Function.Arguments;
         var file1 = (ReadFileParams)args["file1"];
         Assert.Equal("C:\\Users\\user.txt", file1.Name);
         Assert.Equal(5, file1.StartLine);
@@ -75,25 +60,15 @@ public class ToolManagerTests
     }
 
     [Fact]
-    public void ParseToolBlock_ReadFiles_WithStartLineAndLineCount()
+    public void Parse_ReadFiles_WithStartLineAndLineCount()
     {
         // Arrange
-        var content = """
-                      <function name="read_files">
-                      C:\Users\user.txt
-                      start_line
-                      5
-                      line_count
-                      10
-                      </function>
-                      """.Replace("\r", "");
+        var lines = new List<string> { "C:\\Users\\user.txt", "start_line", "5", "line_count", "10" };
 
         // Act
-        var result = _toolManager.ParseToolBlock(content);
+        var args = _toolManager.Parse(BuiltInToolEnum.ReadFiles, lines);
 
         // Assert
-        Assert.Single(result);
-        var args = result[0].Function.Arguments;
         var file1 = (ReadFileParams)args["file1"];
         Assert.Equal("C:\\Users\\user.txt", file1.Name);
         Assert.Equal(5, file1.StartLine);
@@ -101,22 +76,21 @@ public class ToolManagerTests
     }
 
     [Fact]
-    public void ParseToolBlock_ApplyDiff()
+    public void Parse_ApplyDiff()
     {
         // Arrange
-        var content = """
-                      <function name="apply_diff">
-                      path/to/file.txt
-                      :start_line:10
-                      <<<<<<< SEARCH
-                      old code
-                      =======
-                      new code {
-                          with new lines
-                      }
-                      >>>>>>> REPLACE
-                      </function>
-                      """.Replace("\r", "");
+        var lines = new List<string>
+        {
+            "path/to/file.txt",
+            ":start_line:10",
+            "<<<<<<< SEARCH",
+            "old code",
+            "=======",
+            "new code {",
+            "    with new lines",
+            "}",
+            ">>>>>>> REPLACE"
+        };
 
         var expectedDiff = new DiffReplacement
         {
@@ -126,50 +100,48 @@ public class ToolManagerTests
         };
 
         // Act
-        var result = _toolManager.ParseToolBlock(content);
+        var args = _toolManager.Parse(BuiltInToolEnum.ApplyDiff, lines);
 
         // Assert
-        Assert.Single(result);
-        var args = result[0].Function.Arguments;
-        Assert.Equivalent("path/to/file.txt", args["param1"]);
+        Assert.Equal("path/to/file.txt", args["param1"]);
         Assert.Equivalent(expectedDiff, args["diff1"]);
     }
 
     [Fact]
-    public void ParseToolBlock_ApplyDiff_2Blocks()
+    public void Parse_ApplyDiff_2Blocks()
     {
         // Arrange
-        var content = """
-                      <function name="apply_diff">
-                      path/to/file.txt
-                      :start_line:10
-                      <<<<<<< SEARCH
-                      old code
-                      =======
-                      new code {
-                          with new lines
-                      }
-                      >>>>>>> REPLACE
-
-                      :start_line:12
-                      <<<<<<< SEARCH
-                      public class Test {
-                          var bla = "bla"
-                      }
-                      =======
-                      >>>>>>> REPLACE
-
-                      <<<<<<< SEARCH
-                      public class Super
-                      =======
-                      /// <summary>Хех</summary>
-                      public class Super
-                      >>>>>>> REPLACE
-                      </function>
-                      """.Replace("\r", "");
+        var lines = new List<string>
+        {
+            "path/to/file.txt",
+            ":start_line:10",
+            "<<<<<<< SEARCH",
+            "old code",
+            "=======",
+            "new code {",
+            "    with new lines",
+            "}",
+            ">>>>>>> REPLACE",
+            "",
+            ":start_line:12",
+            "<<<<<<< SEARCH",
+            "public class Test {",
+            "    var bla = \"bla\"",
+            "}",
+            "=======",
+            ">>>>>>> REPLACE",
+            "",
+            "<<<<<<< SEARCH",
+            "public class Super",
+            "=======",
+            "/// <summary>Хех</summary>",
+            "public class Super",
+            ">>>>>>> REPLACE"
+        };
 
         // Act
-        var result = _toolManager.ParseToolBlock(content);
+        var args = _toolManager.Parse(BuiltInToolEnum.ApplyDiff, lines);
+        
         var expectedDiff1 = new DiffReplacement
         {
             StartLine = 10,
@@ -190,9 +162,7 @@ public class ToolManagerTests
         };
 
         // Assert
-        Assert.Single(result);
-        var args = result[0].Function.Arguments;
-        Assert.Equivalent("path/to/file.txt", args["param1"]);
+        Assert.Equal("path/to/file.txt", args["param1"]);
         Assert.Equivalent(expectedDiff1, args["diff1"]);
         Assert.Equivalent(expectedDiff2, args["diff2"]);
         Assert.Equivalent(expectedDiff3, args["diff3"]);
@@ -242,7 +212,7 @@ public class ToolManagerTests
     {
         // Arrange
         _toolManager.RegisterAllTools();
-        _toolManager.GetTool("test_tool")?.Enabled = false;
+        _toolManager.GetTool("test_tool")!.Enabled = false;
 
         // Act
         var enabledTools = _toolManager.GetEnabledTools();
@@ -282,33 +252,6 @@ public class ToolManagerTests
     }
 
     [Fact]
-    public void ParseToolBlock_MultipleDifferentTools()
-    {
-        // Arrange
-        var content = """
-                      <function name="read_files">
-                      file1.txt
-                      </function>
-                      Some text in between.
-                      <function name="ls">
-                      C:\
-                      true
-                      </function>
-                      """.Replace("\r", "");
-
-        // Act
-        var result = _toolManager.ParseToolBlock(content);
-
-        // Assert
-        Assert.Equal(2, result.Count);
-        Assert.Equal("read_files", result[0].Function.Name);
-        Assert.Equal("ls", result[1].Function.Name);
-        Assert.Equal("file1.txt", ((ReadFileParams)result[0].Function.Arguments["file1"]).Name);
-        Assert.Equal("C:\\", result[1].Function.Arguments["param1"]);
-        Assert.Equal("true", result[1].Function.Arguments["param2"]);
-    }
-
-    [Fact]
     public void GetToolUseSystemInstructions_ReturnsFormattedInstructions()
     {
         // Arrange
@@ -328,7 +271,7 @@ public class ToolManagerTests
     {
         // Arrange
         _toolManager.RegisterAllTools();
-        _toolManager.GetTool("test_tool")?.Enabled = false;
+        _toolManager.GetTool("test_tool")!.Enabled = false;
 
         // Act
         var instructions = _toolManager.GetToolUseSystemInstructions(AppMode.Agent);

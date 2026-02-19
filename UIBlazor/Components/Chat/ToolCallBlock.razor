@@ -17,20 +17,20 @@
             }
             else
             {
-                <pre>@string.Join("\n", Segment.Lines[1..])</pre>
+                <pre>@string.Join("\n", Segment.Lines[0..])</pre>
             }
         </div>
     }
 
     @if (Segment.IsClosed)
     {
-        <div class="tool-approval-footer rz-p-2 rz-mt-2 @statusClass">
+        <div class="tool-approval-footer @statusClass">
             @if (Segment.ApprovalStatus == ToolApprovalStatus.Pending)
             {
-                <div class="tool-approval-label"><i class="rz-icon-notification rz-mr-1"></i>Требуется подтверждение</div>
+                <div class="tool-approval-label"><i class="rz-icon-notification rz-ml-2"></i>Требуется подтверждение</div>
                 <div class="tool-approval-actions">
-                    <RadzenButton Icon="check" class="tool-approve-btn" Click="@(async () => await OnApproval.InvokeAsync((Segment.Id, true)))" />
-                    <RadzenButton Icon="close" class="tool-reject-btn" Click="@(async () => await OnApproval.InvokeAsync((Segment.Id, false)))" />
+                    <RadzenButton Icon="check" class="tool-approve-btn rz-m-2" Click="@(async () => await OnApproval.InvokeAsync((Segment.Id, true)))" />
+                    <RadzenButton Icon="close" class="tool-reject-btn rz-m-2" Click="@(async () => await OnApproval.InvokeAsync((Segment.Id, false)))" />
                 </div>
             }
         </div>
