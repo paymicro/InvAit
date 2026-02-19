@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Components.Chat;
+namespace UIBlazor.Models;
 
 public enum SegmentType
 {

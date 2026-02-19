@@ -1,4 +1,4 @@
-﻿:root {
+:root {
     --rz-layout-body-padding: 0px;
     --rz-text-h1-font-size: 2.2rem;
     --rz-text-h2-font-size: 2.0rem;
@@ -47,6 +47,11 @@ details summary {
     color: var(--rz-base-400);
 }
 
+.reasoning-details {
+    white-space: normal;
+    font-size: small;
+}
+
 .rz-chat-message-assistant {
     min-width: 100%;
 }
@@ -72,6 +77,24 @@ details summary {
     border: 0;
 }
 
+.settings li {
+    flex: 1;
+    text-align: center;
+}
+
+    .settings li a {
+        display: block !important;
+    }
+
+.tool-description {
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-left: 2.2em;
+    color: var(--rz-text-secondary-color);
+}
+
 .rz-dropdown {
     cursor: default;
 }
@@ -84,7 +107,6 @@ details summary {
 }
 
 .category-tools-visible {
-    max-height: 500px;
     opacity: 1;
 }
 

@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.VS;
+namespace UIBlazor.VS;
 
 public interface IVsBridge
 {

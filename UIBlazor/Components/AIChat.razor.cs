@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Radzen;
@@ -33,6 +33,8 @@ public partial class AiChat : RadzenComponent
     [Inject] private IJSRuntime JsRuntime { get; set; } = null!;
 
     [Inject] private IMessageParser MessageParser { get; set; } = null!;
+
+    [Inject] private ILogger<AiChat> Logger { get; set; } = null!;
 
     [Parameter] public string EmptyMessage { get; set; } = "No messages yet. Start a conversation!";
 
@@ -101,17 +103,17 @@ public partial class AiChat : RadzenComponent
     {
         var processedContentBuilder = new StringBuilder();
         var lastIndex = 0;
-        
+
         // Regex to find chip spans: <span contenteditable="false" class="chip" data-path="path_to_file">display_text</span>
         var chipRegex = new Regex("<span\\s+contenteditable=\"false\"\\s+class=\"chip\"\\s+data-path=\"([^\"]+)\"[^>]*>.*?</span>", RegexOptions.Singleline);
-        
+
         foreach (Match match in chipRegex.Matches(htmlContent))
         {
             // Append text before the current chip
             processedContentBuilder.Append(htmlContent.Substring(lastIndex, match.Index - lastIndex));
 
             var dataPath = match.Groups[1].Value;
-            
+
             // Call the tool to get the content
             var tool = ToolManager.GetTool(BuiltInToolEnum.ReadOpenFile.ToString());
             if (tool != null)
@@ -150,7 +152,8 @@ public partial class AiChat : RadzenComponent
         _cts = new CancellationTokenSource();
 
         // Add assistant message placeholder
-        var assistantMessage = AddVisualMessage(new VisualChatMessage {
+        var assistantMessage = AddVisualMessage(new VisualChatMessage
+        {
             Role = ChatMessageRole.Assistant,
             IsStreaming = true,
             IsExpanded = true
@@ -228,9 +231,9 @@ public partial class AiChat : RadzenComponent
 
         // Switch mode to Agent
         ChatService.Session.Mode = AppMode.Agent;
-        
+
         // Notify VS Host if needed (though it's mostly for system prompt generation in UI)
-        await VsBridge.ExecuteToolAsync(BuiltInToolEnum.SwitchMode, new Dictionary<string, object> { { "param1", "Agent" } });
+        await VsBridge.ExecuteToolAsync(BasicEnum.SwitchMode, new Dictionary<string, object> { { "param1", "Agent" } });
 
         // Send confirmation message to start implementation
         await SendMessageAsync("Implement the plan.");
@@ -240,7 +243,7 @@ public partial class AiChat : RadzenComponent
     {
         // оно всегда должно быть, потому что мы блокируем UI,
         // пока не придет ответ от модели, и юзер не может кликнуть раньше времени. Но на всякий случай проверим.
-        var message = Messages.FirstOrDefault(m => m.Id == args.MessageId); 
+        var message = Messages.FirstOrDefault(m => m.Id == args.MessageId);
         if (message != null)
         {
             var status = args.Approved ? ToolApprovalStatus.Approved : ToolApprovalStatus.Rejected;
@@ -280,7 +283,7 @@ public partial class AiChat : RadzenComponent
                     var tcs = new TaskCompletionSource<ToolApprovalStatus>();
                     var waiterKey = $"{assistantMessage.Id}_{segment.Id}";
                     _approvalWaiters[waiterKey] = tcs;
-                    
+
                     try
                     {
                         // Ждем аппрува от пользователя или отмены всего стрима
@@ -305,7 +308,7 @@ public partial class AiChat : RadzenComponent
                 // Уже должен быть известен статус тулза - или разрешен, или запрещен.
                 var vsToolResult = segment.ApprovalStatus switch
                 {
-                    ToolApprovalStatus.Approved => await tool.ExecuteAsync(ToolManager.Parse(segment.ToolName, segment.Lines)),
+                    ToolApprovalStatus.Approved => await tool.ExecuteAsync(MessageParser.Parse(segment.ToolName, segment.Lines)),
                     _ => new VsToolResult
                     {
                         Name = segment.ToolName,
@@ -315,45 +318,8 @@ public partial class AiChat : RadzenComponent
                 };
 #if DEBUG
                 // Безголовые (без Visual Studio) тесты
-                if (!vsToolResult.Success && vsToolResult.ErrorMessage == "WebView2 API is`t find.")
-                {
-                    switch (vsToolResult.Name)
-                    {
-                        case BuiltInToolEnum.ReadOpenFile:
-                            vsToolResult = new VsToolResult
-                            {
-                                Result = """
-                                namespace UIBlazor.Components;
-
-                                public partial class AIChat : TestComponent
-                                {
-                                    private List<ChatMessage> Messages { get; set; } = [];
-                                }
-                                """
-                            };
-                            break;
-                        case BuiltInToolEnum.ReadFiles:
-                            vsToolResult = new VsToolResult
-                            {
-                                Result = """
-                                File content
-                                1 |namespace UIBlazor.Components;
-                                2 |
-                                3 |public partial class AIChat : TestComponent
-                                4 |{
-                                5 |    private List<ChatMessage> Messages { get; set; } = [];
-                                6 |}
-                                """
-                            };
-                            break;
-                        case BuiltInToolEnum.ApplyDiff:
-                            vsToolResult = new VsToolResult
-                            {
-                                Result = "All replacements is successful."
-                            };
-                            break;
-                    }
-                }
+                vsToolResult = HeadlessMocker.GetVsToolResult(vsToolResult);
+                Logger.LogInformation("{request} >>>>>> {result}", JsonUtils.Serialize(tool), JsonUtils.Serialize(vsToolResult));
 #endif
 
                 // для модели обогащаем результат и отправляем в чат
@@ -438,7 +404,7 @@ public partial class AiChat : RadzenComponent
                 {
                     lastAssistantMessage = null;
                 }
-                
+
                 chatMessage.IsExpanded = IsShortMessage(chatMessage.DisplayContent ?? chatMessage.Content);
                 AddVisualMessage(chatMessage, updateState: false);
             }
@@ -515,7 +481,7 @@ public partial class AiChat : RadzenComponent
     {
         message.Content = message.TempContent;
         message.IsEditing = false;
-        
+
         // Update display content if it's an assistant message with tools
         ParsePlan(message);
 
@@ -528,7 +494,7 @@ public partial class AiChat : RadzenComponent
     {
         Messages.Remove(message);
         ChatService.Session.RemoveMessage(message.Id);
-        
+
         foreach (var toolMsg in message.ToolMessages)
         {
             ChatService.Session.RemoveMessage(toolMsg.Id);
@@ -557,14 +523,15 @@ public partial class AiChat : RadzenComponent
 
     private async Task OnShowSettingsAsync()
     {
-        await DialogService.OpenSideAsync<SettingsDialog>("Settings", options: new SideDialogOptions {
+        await DialogService.OpenSideAsync<SettingsDialog>("Settings", options: new SideDialogOptions
+        {
             CloseDialogOnOverlayClick = true,
-            Resizable = false,
+            Resizable = true,
             Position = DialogPosition.Right,
             MinHeight = 250.0,
-            MinWidth = 450.0
+            MinWidth = 400.0
         });
-        
+
         // Reload profiles in case they were changed
         await InvokeAsync(StateHasChanged);
     }
@@ -576,7 +543,7 @@ public partial class AiChat : RadzenComponent
     public override void Dispose()
     {
         base.Dispose();
-        
+
         _dotNetRef?.Dispose();
         ChatService.OnSessionChanged -= HandleSessionChanged;
 

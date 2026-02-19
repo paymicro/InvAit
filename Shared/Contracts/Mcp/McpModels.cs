@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Shared.Contracts.Mcp;
 
 /// <summary>
@@ -48,6 +50,20 @@ public class McpToolConfig
 {
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
+
+    /// <summary>
+    /// Full JSON Schema for tool arguments (preserves types, required fields, descriptions)
+    /// </summary>
+    public JsonElement? InputSchema { get; set; }
+
+    /// <summary>
+    /// List of required argument names
+    /// </summary>
+    public List<string> RequiredArguments { get; set; } = [];
+
+    /// <summary>
+    /// Временная переменная, для UI. не стоит доверять.
+    /// </summary>
     public bool Enabled { get; set; } = true;
 }
 
@@ -56,12 +72,35 @@ public class McpToolConfig
 /// </summary>
 public class McpServerConfig
 {
-    public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = string.Empty;
     public string Transport { get; set; } = "stdio"; // "stdio" or "http"
-    public string Command { get; set; } = "npx";
-    public string Args { get; set; } = string.Empty;
+    public string Command { get; set; } = string.Empty;
+    public string[] Args { get; set; } = [];
+    public string Url { get; set; } = string.Empty;
     public string Endpoint { get; set; } = string.Empty;
+    public Dictionary<string, string> Env { get; set; } = new();
     public bool Enabled { get; set; } = true;
     public List<McpToolConfig> Tools { get; set; } = [];
+}
+
+/// <summary>
+/// Root model for mcp.json file deserialization
+/// </summary>
+public class McpSettingsFile
+{
+    public Dictionary<string, McpServerJsonEntry> McpServers { get; set; } = new();
+}
+
+/// <summary>
+/// Single MCP server entry in mcp.json
+/// </summary>
+public class McpServerJsonEntry
+{
+    public string? Command { get; set; }
+
+    public string[]? Args { get; set; }
+
+    public string? Url { get; set; }
+
+    public Dictionary<string, string>? Env { get; set; }
 }

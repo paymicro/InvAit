@@ -7,12 +7,12 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using EnvDTE;
 using EnvDTE80;
 using InvAit.Utils;
+using Microsoft.VisualStudio.Shell;
 using Shared.Contracts;
 using Shared.Contracts.Mcp;
 using Process = System.Diagnostics.Process;
@@ -22,7 +22,7 @@ using VS = Community.VisualStudio.Toolkit.VS;
 
 namespace InvAit.Agent;
 
-public class BuiltInAgent
+public class ToolExecutor
 {
     private readonly ConcurrentDictionary<string, DateTime> _skillsCache = new();
     private readonly McpProcessManager _mcpProcessManager = new();
@@ -34,7 +34,6 @@ public class BuiltInAgent
             {
                 BuiltInToolEnum.ReadFiles => await ReadFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.ReadOpenFile => await ReadCurrentlyOpenFileAsync(),
-                BuiltInToolEnum.OpenFile => await OpenFileInEditorAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.CreateFile => await CreateNewFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.DeleteFile => await DeleteFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.Exec => await ExecAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
@@ -51,13 +50,18 @@ public class BuiltInAgent
                 BuiltInToolEnum.GitLog => await GitLogAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GitDiff => await GitDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GitBranch => await GitBranchAsync(),
-                BuiltInToolEnum.SwitchMode => new VsResponse { Success = true, Payload = "Mode switched" },
-                BuiltInToolEnum.GetSkillsMetadata => await GetSkillsMetadataAsync(),
-                BuiltInToolEnum.ReadSkillContent => await ReadSkillContentAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BuiltInToolEnum.GetRules => await GetRulesAsync(),
-                BuiltInToolEnum.McpGetTools => await McpGetToolsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BuiltInToolEnum.McpCallTool => await McpCallToolAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BuiltInToolEnum.McpReadNotifications => await McpReadNotificationsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BasicEnum.SwitchMode => new VsResponse { Success = true, Payload = "Mode switched" },
+                BasicEnum.OpenFile => await OpenFileInEditorAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BasicEnum.GetSkillsMetadata => await GetSkillsMetadataAsync(),
+                BasicEnum.ReadSkillContent => await ReadSkillContentAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BasicEnum.GetRules => await GetRulesAsync(),
+                // MCP
+                BasicEnum.McpGetTools => await McpGetToolsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BasicEnum.McpCallTool => await McpCallToolAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BasicEnum.McpStopAll => await StopAllMcpServersAsync(),
+                BasicEnum.ReadMcpSettingsFile => await ReadMcpSettingsAsync(),
+                BasicEnum.WriteMcpSettings => await WriteMcpSettingsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BasicEnum.OpenMcpSettings => await OpenMcpSettingsAsync(),
                 _ => new VsResponse { Success = false, Error = "Unknown action" }
             };
 
@@ -264,7 +268,7 @@ public class BuiltInAgent
                     Payload = $"File {fileParam} deleted successfully."
                 };
             }
-            
+
             return new VsResponse
             {
                 Success = false,
@@ -571,7 +575,7 @@ public class BuiltInAgent
             File.Copy(filepath, tempFile, true);
             File.WriteAllLines(filepath, lines);
             await FileDiffAsync(tempFile, filepath, "old", "new");
-            Logger.Log($"{totalReplacements} changes successfully applied to {inputFileName}.\r\nLooks good!");
+            await Logger.LogAsync($"{totalReplacements} changes successfully applied to {inputFileName}.\r\nLooks good!");
         }
         catch (Exception e)
         {
@@ -683,7 +687,7 @@ public class BuiltInAgent
         var sb = new StringBuilder();
         await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         var projects = await VS.Solutions.GetAllProjectsAsync();
-        
+
         foreach (var project in projects)
         {
             sb.AppendLine($"Project: {project.Name}");
@@ -705,7 +709,7 @@ public class BuiltInAgent
             {
                 var ext = Path.GetExtension(item.FullPath).ToLower();
                 if (ext is ".zip" or ".bin" or ".dll" or ".exe" or ".png" or ".jpg" or ".obj" or ".pdb") continue;
-                
+
                 sb.AppendLine($"{indentString}📄 {item.Name}");
             }
             else if (item.Type == Toolkit.SolutionItemType.PhysicalFolder || item.Type == Toolkit.SolutionItemType.Project)
@@ -790,9 +794,9 @@ public class BuiltInAgent
         }
 
         var solutionPath = await GetSolutionPathAsync();
-        
+
         await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-        
+
         try
         {
             var absolutePath = GetAbsolutePath(relativePath, solutionPath);
@@ -806,22 +810,22 @@ public class BuiltInAgent
             {
                 File.WriteAllText(absolutePath, "");
                 // Если создаем новый файл, логируем
-                Logger.Log($"Created new file: {relativePath}");
+                await Logger.LogAsync($"Created new file: {relativePath}");
             }
 
             var doc = await VS.Documents.OpenAsync(absolutePath);
             if (doc == null)
             {
-                 // fallback using DTE
-                 var dte = (DTE2)Shell.Package.GetGlobalService(typeof(DTE));
-                 dte.ItemOperations.OpenFile(absolutePath);
+                // fallback using DTE
+                var dte = (DTE2)Shell.Package.GetGlobalService(typeof(DTE));
+                dte.ItemOperations.OpenFile(absolutePath);
             }
-            
+
             return new VsResponse { Success = true, Payload = $"Opened {relativePath}" };
         }
         catch (Exception ex)
         {
-             return new VsResponse { Success = false, Error = $"Error opening {relativePath}: {ex.Message}" };
+            return new VsResponse { Success = false, Error = $"Error opening {relativePath}: {ex.Message}" };
         }
     }
 
@@ -865,7 +869,7 @@ public class BuiltInAgent
                 var firstFiveLines = File.ReadLines(file).Take(5).ToList();
                 var (name, description) = ParseYamlFrontmatter(firstFiveLines);
                 var relativePath = MakeRelativeToSolution(file, solutionPath);
-                
+
                 if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(description))
                 {
                     continue;
@@ -877,11 +881,11 @@ public class BuiltInAgent
                     { "description", description },
                     { "filePath", relativePath }
                 });
-                Logger.Log($"Added skill metadata. {name} - {file}");
+                await Logger.LogAsync($"Added skill metadata. {name} - {file}");
             }
             catch (Exception ex)
             {
-                Logger.Log($"Error reading skill metadata {file}: {ex.Message}");
+                await Logger.LogAsync($"Error reading skill metadata {file}: {ex.Message}");
             }
         }
 
@@ -899,7 +903,7 @@ public class BuiltInAgent
         var skillName = args.GetString("param1");
         var solutionPath = await GetSolutionPathAsync();
         var fullPath = GetSkillsPaths(solutionPath)
-            .FirstOrDefault(path => path.Split(Path.DirectorySeparatorChar).Last().Equals(skillName, StringComparison.OrdinalIgnoreCase)) 
+            .FirstOrDefault(path => path.Split(Path.DirectorySeparatorChar).Last().Equals(skillName, StringComparison.OrdinalIgnoreCase))
             ?? string.Empty;
 
         if (!File.Exists(fullPath))
@@ -1126,26 +1130,129 @@ public class BuiltInAgent
 
     private class BuildError
     {
-        [JsonPropertyName("message")]
         public string Message { get; set; }
 
-        [JsonPropertyName("file_name")]
         public string FileName { get; set; }
 
-        [JsonPropertyName("line")]
         public int Line { get; set; }
     }
 
     private readonly ConcurrentDictionary<string, bool> _initializedServers = new();
 
-    private async Task<string> EnsureServerRunningAsync(string serverId, string? command = null, string? arguments = null)
+    private async Task<VsResponse> StopAllMcpServersAsync()
+    {
+        try
+        {
+            await _mcpProcessManager.StopAllProcessesAsync();
+            _initializedServers.Clear();
+            return new VsResponse { Success = true, Payload = "All MCP processes stopped." };
+        }
+        catch (Exception ex)
+        {
+            await Logger.LogAsync($"Error stopping all MCP processes: {ex.Message}", "ERROR");
+            return new VsResponse { Success = false, Error = ex.Message };
+        }
+    }
+
+    private static string GetMcpSettingsPath()
+    {
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        return Path.Combine(appData, "Agent", "mcp.json");
+    }
+
+    private async Task<VsResponse> ReadMcpSettingsAsync()
+    {
+        try
+        {
+            await StopAllMcpServersAsync();
+
+            var filePath = GetMcpSettingsPath();
+            if (!File.Exists(filePath))
+            {
+                // Return empty settings; UI will show nothing
+                return new VsResponse { Payload = "{\"mcpServers\":{}}" };
+            }
+
+            var content = File.ReadAllText(filePath, Encoding.UTF8);
+            return new VsResponse { Payload = content };
+        }
+        catch (Exception ex)
+        {
+            return new VsResponse { Success = false, Error = $"Error reading mcp.json: {ex.Message}" };
+        }
+    }
+
+    private async Task<VsResponse> WriteMcpSettingsAsync(IReadOnlyDictionary<string, object> args)
+    {
+        try
+        {
+            var content = args.GetString("param1");
+            if (string.IsNullOrEmpty(content))
+            {
+                return new VsResponse { Success = false, Error = "Content is empty" };
+            }
+
+            var filePath = GetMcpSettingsPath();
+            var directory = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            await StopAllMcpServersAsync();
+
+            File.WriteAllText(filePath, content, Encoding.UTF8);
+            return new VsResponse { Payload = "OK" };
+        }
+        catch (Exception ex)
+        {
+            return new VsResponse { Success = false, Error = $"Error writing mcp.json: {ex.Message}" };
+        }
+    }
+
+    private async Task<VsResponse> OpenMcpSettingsAsync()
+    {
+        try
+        {
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            var filePath = GetMcpSettingsPath();
+            var directory = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            if (!File.Exists(filePath))
+            {
+                // Create a sample mcp.json
+                var sample = "{\n  \"mcpServers\": {}\n}";
+                File.WriteAllText(filePath, sample, Encoding.UTF8);
+            }
+
+            var doc = await VS.Documents.OpenAsync(filePath);
+            if (doc == null)
+            {
+                // fallback using DTE
+                var dte = (DTE2)Shell.Package.GetGlobalService(typeof(DTE));
+                dte.ItemOperations.OpenFile(filePath);
+            }
+
+            return new VsResponse { Payload = $"Opened {filePath}" };
+        }
+        catch (Exception ex)
+        {
+            return new VsResponse { Success = false, Error = $"Error opening mcp.json: {ex.Message}" };
+        }
+    }
+
+    private async Task<string> EnsureServerRunningAsync(string serverId, string? command = null, string? arguments = null, Dictionary<string, string> env = null)
     {
         if (!_mcpProcessManager.IsProcessRunning(serverId))
         {
             if (string.IsNullOrEmpty(command)) return $"ERROR: Server {serverId} not running and no command provided to start it";
-            
+
             var solutionPath = await GetSolutionPathAsync();
-            var startResult = await _mcpProcessManager.StartProcessAsync(serverId, command, arguments ?? "", solutionPath);
+            var startResult = await _mcpProcessManager.StartProcessAsync(serverId, command, arguments ?? "", solutionPath, env);
             if (!startResult.StartsWith("OK")) return startResult;
         }
 
@@ -1183,13 +1290,14 @@ public class BuiltInAgent
         var serverId = args.GetString("param1") ?? args.GetString("serverId");
         var command = args.GetString("param2") ?? args.GetString("command");
         var arguments = args.GetString("param3") ?? args.GetString("args");
+        var env = args.GetDictionary("env");
 
         if (string.IsNullOrEmpty(serverId))
         {
             return new VsResponse { Success = false, Error = "serverId is required" };
         }
 
-        var runResult = await EnsureServerRunningAsync(serverId, command, arguments);
+        var runResult = await EnsureServerRunningAsync(serverId, command, arguments, env);
         if (runResult != "OK")
         {
             return new VsResponse { Success = false, Error = runResult };
@@ -1201,7 +1309,12 @@ public class BuiltInAgent
             var request = new McpRequest { Id = requestId, Method = "tools/list", Params = new { } };
             var responseJson = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(request));
 
-            return new VsResponse { Success = !responseJson.StartsWith("ERROR"), Payload = responseJson, Error = responseJson.StartsWith("ERROR") ? responseJson : null };
+            return new VsResponse
+            {
+                Success = !responseJson.StartsWith("ERROR"),
+                Payload = responseJson,
+                Error = responseJson.StartsWith("ERROR") ? responseJson : null
+            };
         }
         catch (Exception ex)
         {
@@ -1213,18 +1326,29 @@ public class BuiltInAgent
     {
         var serverId = args.GetString("param1") ?? args.GetString("serverId");
         var toolName = args.GetString("param2") ?? args.GetString("toolName");
-        var toolArgsJson = args.GetString("param3") ?? args.GetString("arguments");
-        
+        var toolArgsRaw = args.GetValue("arguments");
+        object? toolArgs = null;
+
+        if (toolArgsRaw is string jsonStr && !string.IsNullOrEmpty(jsonStr))
+        {
+            toolArgs = JsonSerializer.Deserialize<object>(jsonStr);
+        }
+        else if (toolArgsRaw != null)
+        {
+            toolArgs = toolArgsRaw;
+        }
+
         // Command/Arguments for auto-start if needed
         var command = args.GetString("command");
         var commandArgs = args.GetString("args");
+        var env = args.GetDictionary("env");
 
         if (string.IsNullOrEmpty(serverId) || string.IsNullOrEmpty(toolName))
         {
             return new VsResponse { Success = false, Error = "serverId and toolName are required" };
         }
 
-        var runResult = await EnsureServerRunningAsync(serverId, command, commandArgs);
+        var runResult = await EnsureServerRunningAsync(serverId, command, commandArgs, env);
         if (runResult != "OK")
         {
             return new VsResponse { Success = false, Error = runResult };
@@ -1232,12 +1356,6 @@ public class BuiltInAgent
 
         try
         {
-            object? toolArgs = null;
-            if (!string.IsNullOrEmpty(toolArgsJson))
-            {
-                toolArgs = JsonSerializer.Deserialize<object>(toolArgsJson);
-            }
-
             var requestId = Guid.NewGuid().ToString("N");
             var request = new McpRequest
             {
@@ -1258,16 +1376,5 @@ public class BuiltInAgent
         {
             return new VsResponse { Success = false, Error = ex.Message };
         }
-    }
-
-    private async Task<VsResponse> McpReadNotificationsAsync(IReadOnlyDictionary<string, object> args)
-    {
-        var serverId = args.GetString("param1") ?? args.GetString("serverId");
-        if (string.IsNullOrEmpty(serverId)) return new VsResponse { Success = false, Error = "serverId is required" };
-
-        var notification = _mcpProcessManager.NextNotification(serverId);
-        if (notification == null) return new VsResponse { Success = true, Payload = "No new notifications" };
-
-        return new VsResponse { Success = true, Payload = JsonUtils.Serialize(notification) };
     }
 }

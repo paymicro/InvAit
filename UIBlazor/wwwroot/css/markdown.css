@@ -41,13 +41,14 @@
     font-style: italic;
 }
 
-.markdown-content code {
-    background-color: var(--rz-base-600);
-    border-radius: 3px;
-    padding: 0.2em 0.4em;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    font-size: 0.9em;
-}
+    .markdown-content code {
+        background-color: var(--rz-base);
+        color: var(--rz-on-base);
+        border-radius: 4px;
+        padding: 0.2em 0.4em;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 0.9em;
+    }
 
 /* Code Block Wrapper */
 .code-block-wrapper {

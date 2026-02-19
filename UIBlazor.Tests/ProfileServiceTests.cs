@@ -1,5 +1,5 @@
-﻿using Moq;
 using Microsoft.JSInterop;
+using Moq;
 using Shared.Contracts;
 using UIBlazor.Models;
 using UIBlazor.Options;
@@ -17,7 +17,7 @@ public class ProfileServiceTests
     {
         _localStorageMock = new Mock<ILocalStorageService>();
         _jsRuntimeMock = new Mock<IJSRuntime>();
-        
+
         _service = new ProfileService(_localStorageMock.Object, _jsRuntimeMock.Object);
     }
 
@@ -73,7 +73,7 @@ public class ProfileServiceTests
         await Task.Delay(800, TestContext.Current.CancellationToken); // Wait for debounce
 
         // Assert
-        _localStorageMock.Verify(ls => ls.SetItemAsync("ProfileSettings", It.Is<ProfileOptions>(o => 
+        _localStorageMock.Verify(ls => ls.SetItemAsync("ProfileSettings", It.Is<ProfileOptions>(o =>
             o.Profiles.Any(p => p.Id == "new"))), Times.Once);
     }
 
@@ -141,8 +141,8 @@ public class ProfileServiceTests
     public async Task ActivateProfileAsync_UpdatesOptionsAndSavesId()
     {
         // Arrange
-        var profile = new ConnectionProfile 
-        { 
+        var profile = new ConnectionProfile
+        {
             Id = "test-profile",
             Endpoint = "http://test",
             ApiKey = "key",
@@ -197,7 +197,7 @@ public class ProfileServiceTests
     {
         if (args.Length != 1) return false;
         if (args[0] is not VsRequest req) return false;
-        return req.Action == BuiltInToolEnum.SkipSSL && req.Payload == "True";
+        return req.Action == BasicEnum.SkipSSL && req.Payload == "True";
     }
 
     [Fact]

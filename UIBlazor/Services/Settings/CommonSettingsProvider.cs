@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Services.Settings;
+namespace UIBlazor.Services.Settings;
 
 public class CommonSettingsProvider(ILocalStorageService storage)
     : BaseSettingsProvider<CommonOptions>(storage, "CommonSettings"), ICommonSettingsProvider

@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Net.Mime;
@@ -31,10 +31,10 @@ public class ChatService(
 
     public ConnectionProfile Options => profileManager.ActiveProfile;
 
-    public ConversationSession? Session 
-    { 
-        get; 
-        private set 
+    public ConversationSession? Session
+    {
+        get;
+        private set
         {
             if (field != value)
             {
@@ -98,7 +98,7 @@ public class ChatService(
     public async Task<AiModelList> GetModelsAsync(CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, $"{Options.Endpoint}{_models}");
-        
+
         if (!string.IsNullOrEmpty(Options.ApiKey))
         {
             if (string.IsNullOrWhiteSpace(Options.ApiKeyHeader))
@@ -120,14 +120,14 @@ public class ChatService(
         {
             throw new InvalidOperationException("Endpoint must be specified.");
         }
-        
+
         var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken).ConfigureAwait(false);
-        
+
         if (!response.IsSuccessStatusCode)
         {
             throw new HttpRequestException($"Getting models failed: {await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false)}");
         }
-        
+
         return await response.Content.ReadFromJsonAsync<AiModelList>(cancellationToken)
                ?? throw new JsonException("Models deserialization exception");
     }
@@ -279,8 +279,8 @@ public class ChatService(
             }
         }
 
-        var response = await ExecuteWithRetryAsync(async ct => 
-            await httpClient.SendAsync(request, Options.Stream ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead, ct), 
+        var response = await ExecuteWithRetryAsync(async ct =>
+            await httpClient.SendAsync(request, Options.Stream ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead, ct),
             cancellationToken, "Chat completion").ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
@@ -472,7 +472,7 @@ public class ChatService(
         var sessionList = await GetAllSessionIdsAsync();
         // сортируем сессии по времени создания и берем самую свежую
         var lastSessionId = sessionList.OrderByDescending(id =>
-        { 
+        {
             if (DateTime.TryParseExact(id.Substring(8), "s", CultureInfo.InvariantCulture, DateTimeStyles.None, out var result))
             {
                 return result;

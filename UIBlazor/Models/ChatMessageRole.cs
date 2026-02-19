@@ -1,9 +1,9 @@
-﻿namespace UIBlazor.Models;
+namespace UIBlazor.Models;
 
 public static class ChatMessageRole
 {
-    public const string System      = "system";
-    public const string User        = "user";
-    public const string Assistant   = "assistant";
-    public const string Tool        = "tool";
+    public const string System = "system";
+    public const string User = "user";
+    public const string Assistant = "assistant";
+    public const string Tool = "tool";
 }

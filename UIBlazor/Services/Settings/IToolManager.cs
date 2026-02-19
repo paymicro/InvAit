@@ -1,12 +1,10 @@
-﻿namespace UIBlazor.Services.Settings;
+namespace UIBlazor.Services.Settings;
 
 public interface IToolManager : IBaseSettingsProvider, IDisposable
 {
     ToolSettings Current { get; }
-    
-    void RegisterAllTools();
 
-    Task SaveToolSettingsAsync();
+    void RegisterAllTools();
 
     IEnumerable<Tool> GetEnabledTools();
 
@@ -17,8 +15,6 @@ public interface IToolManager : IBaseSettingsProvider, IDisposable
     ToolApprovalMode GetApprovalModeByToolName(string name);
 
     string GetToolUseSystemInstructions(AppMode mode);
-
-    Dictionary<string, object> Parse(string toolName, List<string> toolLines);
 
     void UpdateCategorySettings(ToolCategory category, bool isEnabled, ToolApprovalMode approvalMode);
 

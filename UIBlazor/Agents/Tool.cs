@@ -1,4 +1,6 @@
-﻿namespace UIBlazor.Agents;
+using System.Text.Json.Serialization;
+
+namespace UIBlazor.Agents;
 
 public class Tool
 {
@@ -6,7 +8,7 @@ public class Tool
     /// Name of tool
     /// </summary>
     public required string Name { get; init; }
-    
+
     /// <summary>
     /// Display name for UI
     /// </summary>
@@ -35,5 +37,6 @@ public class Tool
     /// <summary>
     /// Function to execute the tool
     /// </summary>
+    [JsonIgnore]
     public Func<IReadOnlyDictionary<string, object>, Task<VsToolResult>> ExecuteAsync { get; init; } = null!;
 }

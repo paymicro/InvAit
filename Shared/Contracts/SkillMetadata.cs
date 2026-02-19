@@ -1,4 +1,4 @@
-﻿namespace Shared.Contracts;
+namespace Shared.Contracts;
 
 /// <summary>
 /// Метаданные скилла для системного промпта (название + описание).
@@ -10,12 +10,12 @@ public class SkillMetadata
     /// Название скилла из YAML frontmatter
     /// </summary>
     public string Name { get; set; } = string.Empty;
-    
+
     /// <summary>
     /// Краткое описание скилла (триггер для активации)
     /// </summary>
     public string Description { get; set; } = string.Empty;
-    
+
     /// <summary>
     /// Относительный путь к SKILL.md файлу
     /// </summary>

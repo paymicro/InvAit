@@ -1,4 +1,4 @@
-﻿namespace Shared.Contracts;
+namespace Shared.Contracts;
 
 /// <summary>
 /// Полное содержимое скилла (загружается только при активации)

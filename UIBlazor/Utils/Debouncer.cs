@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Utils;
+namespace UIBlazor.Utils;
 
 public sealed class Debouncer : IDisposable
 {

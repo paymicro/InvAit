@@ -20,7 +20,7 @@ public partial class ChatControl
 {
     private bool _webView2Installed;
     private WV.IWebView2 _webView;
-    private readonly BuiltInAgent _builtInAgent;
+    private readonly ToolExecutor _toolExecutor;
     private bool _skipSslValidation;
     private string _vsVersion;
 
@@ -30,7 +30,7 @@ public partial class ChatControl
     public ChatControl()
     {
         InitializeComponent();
-        _builtInAgent = new BuiltInAgent();
+        _toolExecutor = new ToolExecutor();
         Loaded += (_, _) => _ = HandleLoadedAsync();
     }
 
@@ -162,7 +162,7 @@ public partial class ChatControl
         {
             Debug.WriteLine($"WebView MemoryUsageTargetLevel error: {ex}");
         }
-        
+
         WebViewInitialized?.Invoke(_webView).FireAndForget();
     }
 
@@ -173,7 +173,7 @@ public partial class ChatControl
             // Ожидаем вызов тулзов только из правильных мест.
             // Чтобы левые сайты (если будет поиск в вебе) не могли получить доступ к тулзам.
             // И поиск браузером должен быть на стороне UI, т.к. там и так браузер.
-            Logger.Log($"Wrong source {e.Source}", "ERROR");
+            await Logger.LogAsync($"Wrong source {e.Source}", "ERROR");
             return;
         }
 
@@ -185,23 +185,23 @@ public partial class ChatControl
                 return;
             }
 
-            if (request.Action == BuiltInToolEnum.SkipSSL)
+            if (request.Action == BasicEnum.SkipSSL)
             {
                 _skipSslValidation = string.Equals(request.Payload, "true", StringComparison.OrdinalIgnoreCase);
                 return;
             }
 
-            if (request.Action == BuiltInToolEnum.UIReady)
+            if (request.Action == BasicEnum.UIReady)
             {
                 UIReady?.Invoke();
                 return;
             }
 
-            Logger.Log($"WebMessage {request.Action} received.");
-            var response = await _builtInAgent.ExecuteAsync(request);
+            await Logger.LogAsync($"WebMessage {request.Action} received.");
+            var response = await _toolExecutor.ExecuteAsync(request);
             var json = new { type = nameof(VsResponse), payload = response };
             _webView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(json, JsonSerializerOptions.Web));
-            Logger.Log($"WebMessage {request.Action} response result: {response.Success}.");
+            await Logger.LogAsync($"WebMessage {request.Action} response result: {response.Success}.");
         }
         catch (Exception ex)
         {

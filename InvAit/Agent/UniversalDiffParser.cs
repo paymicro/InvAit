@@ -48,7 +48,7 @@ public class UniversalDiffParser
                     return candidate; // actual start
                 }
             }
-            
+
             // Fallback to full search if hint failed
             return FindInFile(target, search, -1, tol);
         }

@@ -297,24 +297,24 @@ public class BuiltInAgent(IVsBridge vsBridge)
         },
         new()
         {
-            Name = BuiltInToolEnum.SwitchMode,
+            Name = BasicEnum.SwitchMode,
             DisplayName = "Переключение режима",
             Category = ToolCategory.ModeSwitch,
             Description = "Switch the current application mode. Available modes: Chat, Agent, Plan. Use this when you need tools from another mode.",
             ExampleToSystemMessage = $"""
                                      For example, to switch to Agent mode:
-                                     <function name="{BuiltInToolEnum.SwitchMode}">
+                                     <function name="{BasicEnum.SwitchMode}">
                                      Agent
                                      </function>
                                      """,
             // TODO тут нужен другой класс, например internalToolExec и туда же отправить браузер
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.SwitchMode, args)
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BasicEnum.SwitchMode, args)
         },
         
         // Skills operations
         new()
         {
-            Name = BuiltInToolEnum.ReadSkillContent,
+            Name = BasicEnum.ReadSkillContent,
             DisplayName = "Чтение скилла",
             Category = ToolCategory.ReadFiles,
             Description = """
@@ -324,11 +324,11 @@ public class BuiltInAgent(IVsBridge vsBridge)
                           """,
             ExampleToSystemMessage = $"""
                                      For example, to load a specific skill:
-                                     <function name="{BuiltInToolEnum.ReadSkillContent}">
+                                     <function name="{BasicEnum.ReadSkillContent}">
                                      .agent/skills/debugging/SKILL.md
                                      </function>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ReadSkillContent, args)
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BasicEnum.ReadSkillContent, args)
         },
         new()
         {
@@ -343,52 +343,6 @@ public class BuiltInAgent(IVsBridge vsBridge)
                                      </function>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.DeleteFile, args)
-        },
-        new()
-        {
-            Name = BuiltInToolEnum.McpGetTools,
-            DisplayName = "Список MCP тулзов",
-            Category = ToolCategory.Mcp,
-            Description = "Get the list of tools provided by an MCP server. Automatically starts and initializes the server if needed.",
-            ExampleToSystemMessage = $"""
-                                     For example:
-                                     <function name="{BuiltInToolEnum.McpGetTools}">
-                                     everything-server
-                                     npx
-                                     -y @modelcontextprotocol/server-everything
-                                     </function>
-                                     """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.McpGetTools, args)
-        },
-        new()
-        {
-            Name = BuiltInToolEnum.McpCallTool,
-            DisplayName = "Вызов MCP тулза",
-            Category = ToolCategory.Mcp,
-            Description = "Call a specific tool provided by an MCP server. Automatically starts and initializes the server if needed.",
-            ExampleToSystemMessage = $$"""
-                                     For example:
-                                     <function name="{{BuiltInToolEnum.McpCallTool}}">
-                                     everything-server
-                                     echo
-                                     {"message": "Hello world!"}
-                                     </function>
-                                     """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.McpCallTool, args)
-        },
-        new()
-        {
-            Name = BuiltInToolEnum.McpReadNotifications,
-            DisplayName = "Уведомления MCP",
-            Category = ToolCategory.Mcp,
-            Description = "Read the next background notification or log from an MCP server.",
-            ExampleToSystemMessage = $"""
-                                     For example:
-                                     <function name="{BuiltInToolEnum.McpReadNotifications}">
-                                     everything-server
-                                     </function>
-                                     """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.McpReadNotifications, args)
         }
     ];
 }

@@ -1,5 +1,5 @@
 using Moq;
-using UIBlazor.Components.Chat;
+using Shared.Contracts;
 using UIBlazor.Models;
 using UIBlazor.Services;
 using UIBlazor.Services.Settings;
@@ -74,7 +74,7 @@ public class MessageParserTests
 
         // Assert
         Assert.Equal(3, message.Segments.Count);
-        
+
         Assert.Equal(SegmentType.Markdown, message.Segments[0].Type);
         Assert.Equal("Thinking...\r\n", message.Segments[0].CurrentLine.ToString());
         Assert.True(message.Segments[0].IsClosed);
@@ -106,5 +106,144 @@ public class MessageParserTests
         Assert.Equal("read_files", segment.ToolName);
         Assert.Equal("file.txt", segment.Lines[0]);
         Assert.True(segment.IsClosed);
+    }
+
+    [Fact]
+    public void Parse_ReadFiles()
+    {
+        // Arrange
+        var lines = new List<string> { "C:\\Users\\user.txt", "path/to/file2.txt" };
+
+        // Act
+        var args = _parser.Parse(BuiltInToolEnum.ReadFiles, lines);
+
+        // Assert
+        Assert.Equal("C:\\Users\\user.txt", ((ReadFileParams)args["file1"]).Name);
+        Assert.Equal("path/to/file2.txt", ((ReadFileParams)args["file2"]).Name);
+    }
+
+    [Fact]
+    public void Parse_ReadFiles_WithStartLine()
+    {
+        // Arrange
+        var lines = new List<string> { "C:\\Users\\user.txt", "start_line", "5" };
+
+        // Act
+        var args = _parser.Parse(BuiltInToolEnum.ReadFiles, lines);
+
+        // Assert
+        var file1 = (ReadFileParams)args["file1"];
+        Assert.Equal("C:\\Users\\user.txt", file1.Name);
+        Assert.Equal(5, file1.StartLine);
+        Assert.Equal(-1, file1.LineCount);
+    }
+
+    [Fact]
+    public void Parse_ReadFiles_WithStartLineAndLineCount()
+    {
+        // Arrange
+        var lines = new List<string> { "C:\\Users\\user.txt", "start_line", "5", "line_count", "10" };
+
+        // Act
+        var args = _parser.Parse(BuiltInToolEnum.ReadFiles, lines);
+
+        // Assert
+        var file1 = (ReadFileParams)args["file1"];
+        Assert.Equal("C:\\Users\\user.txt", file1.Name);
+        Assert.Equal(5, file1.StartLine);
+        Assert.Equal(10, file1.LineCount);
+    }
+
+    [Fact]
+    public void Parse_ApplyDiff()
+    {
+        // Arrange
+        var lines = new List<string>
+        {
+            "path/to/file.txt",
+            ":start_line:10",
+            "<<<<<<< SEARCH",
+            "old code",
+            "=======",
+            "new code {",
+            "    with new lines",
+            "}",
+            ">>>>>>> REPLACE"
+        };
+
+        var expectedDiff = new DiffReplacement
+        {
+            StartLine = 10,
+            Search = ["old code"],
+            Replace = ["new code {", "    with new lines", "}"]
+        };
+
+        // Act
+        var args = _parser.Parse(BuiltInToolEnum.ApplyDiff, lines);
+
+        // Assert
+        Assert.Equal("path/to/file.txt", args["param1"]);
+        Assert.Equivalent(expectedDiff, args["diff1"]);
+    }
+
+    [Fact]
+    public void Parse_ApplyDiff_2Blocks()
+    {
+        // Arrange
+        var lines = new List<string>
+        {
+            "path/to/file.txt",
+            ":start_line:10",
+            "<<<<<<< SEARCH",
+            "old code",
+            "=======",
+            "new code {",
+            "    with new lines",
+            "}",
+            ">>>>>>> REPLACE",
+            "",
+            ":start_line:12",
+            "<<<<<<< SEARCH",
+            "public class Test {",
+            "    var bla = \"bla\"",
+            "}",
+            "=======",
+            ">>>>>>> REPLACE",
+            "",
+            "<<<<<<< SEARCH",
+            "public class Super",
+            "=======",
+            "/// <summary>Хех</summary>",
+            "public class Super",
+            ">>>>>>> REPLACE"
+        };
+
+        // Act
+        var args = _parser.Parse(BuiltInToolEnum.ApplyDiff, lines);
+
+        var expectedDiff1 = new DiffReplacement
+        {
+            StartLine = 10,
+            Search = ["old code"],
+            Replace = ["new code {", "    with new lines", "}"]
+        };
+        var expectedDiff2 = new DiffReplacement
+        {
+            StartLine = 12,
+            Search = ["public class Test {", "    var bla = \"bla\"", "}"],
+            Replace = []
+        };
+        var expectedDiff3 = new DiffReplacement
+        {
+            StartLine = -1,
+            Search = ["public class Super"],
+            Replace = ["/// <summary>Хех</summary>", "public class Super"]
+        };
+
+        // Assert
+        Assert.Equal("path/to/file.txt", args["param1"]);
+        Assert.Equivalent(expectedDiff1, args["diff1"]);
+        Assert.Equivalent(expectedDiff2, args["diff2"]);
+        Assert.Equivalent(expectedDiff3, args["diff3"]);
     }
 }

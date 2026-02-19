@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using Microsoft.JSInterop;
 using Radzen;
 using UIBlazor.Services;
@@ -41,14 +41,14 @@ public class VsBridge : IVsBridge, IDisposable
             if (_isInitialized)
             {
                 // Notify Host that we are ready to receive messages (e.g. initial context)
-                await _jsRuntime.InvokeVoidAsync("postVsMessage", new VsRequest { Action = BuiltInToolEnum.UIReady });
+                await _jsRuntime.InvokeVoidAsync("postVsMessage", new VsRequest { Action = BasicEnum.UIReady });
             }
         }
     }
 
     public async Task<VsToolResult> ExecuteToolAsync(string name, IReadOnlyDictionary<string, object>? args = null)
     {
-        if (name == BuiltInToolEnum.SwitchMode && args != null && args.TryGetValue("param1", out var modeObj))
+        if (name == BasicEnum.SwitchMode && args != null && args.TryGetValue("param1", out var modeObj))
         {
             if (Enum.TryParse<AppMode>(modeObj.ToString(), true, out var mode))
             {

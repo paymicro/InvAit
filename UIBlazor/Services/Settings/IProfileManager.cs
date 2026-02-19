@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Services.Settings;
+namespace UIBlazor.Services.Settings;
 
 public interface IProfileManager : IBaseSettingsProvider, IDisposable
 {

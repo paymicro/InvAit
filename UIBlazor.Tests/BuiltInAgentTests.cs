@@ -1,4 +1,4 @@
-﻿using Moq;
+using Moq;
 using Shared.Contracts;
 using UIBlazor.Agents;
 using UIBlazor.VS;
@@ -52,7 +52,7 @@ public class BuiltInAgentTests
         // Assert
         _vsBridgeMock.Verify(b => b.ExecuteToolAsync(BuiltInToolEnum.ApplyDiff, args), Times.Once);
     }
-    
+
     [Fact]
     public async Task Execute_Exec_CallsBridge()
     {

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
@@ -18,17 +19,25 @@ public class McpProcessManager
     private readonly ConcurrentDictionary<string, Process> _processes = new();
     private readonly ConcurrentDictionary<string, ConcurrentQueue<McpNotification>> _notificationQueues = new();
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, TaskCompletionSource<string>>> _pendingRequests = new();
-    
+
     /// <summary>
     /// Запустить MCP процесс
     /// </summary>
-    public async Task<string> StartProcessAsync(string serverId, string command, string args, string workingDirectory = null)
+    public async Task<string> StartProcessAsync(string serverId, string command, string args, string workingDirectory = null, Dictionary<string, string> env = null)
     {
-        if (_processes.ContainsKey(serverId))
+        if (_processes.TryGetValue(serverId, out var proc))
         {
-            return $"OK: Process {serverId} already running";
+            if (!proc.HasExited)
+            {
+                return $"OK: Process {serverId} already running.";
+            }
+            else
+            {
+                await Logger.LogAsync($"MCP [{serverId}] unexpected exited.", "WARNING");
+                _processes.TryRemove(serverId, out var _);
+            }
         }
-        
+
         try
         {
             var startInfo = new ProcessStartInfo
@@ -44,17 +53,20 @@ public class McpProcessManager
                 StandardErrorEncoding = Encoding.UTF8,
                 WorkingDirectory = workingDirectory ?? Environment.CurrentDirectory
             };
-            
+
+            SetEnvironments(env, startInfo);
+
             var process = Process.Start(startInfo);
             if (process == null)
             {
                 return "ERROR: Failed to start process";
             }
-            
+
             _processes[serverId] = process;
+            process.Exited += (s, e) => { _processes.TryRemove(serverId, out var _); };
             _notificationQueues[serverId] = new ConcurrentQueue<McpNotification>();
             _pendingRequests[serverId] = new ConcurrentDictionary<string, TaskCompletionSource<string>>();
-            
+
             // Асинхронное чтение stdout
             _ = Task.Run(async () =>
             {
@@ -65,57 +77,55 @@ public class McpProcessManager
                         var line = await process.StandardOutput.ReadLineAsync();
                         if (string.IsNullOrWhiteSpace(line)) continue;
 
-                        Logger.Log($"MCP [{serverId}] received: {line}");
+                        await Logger.LogAsync($"MCP [{serverId}] received: {line}");
 
                         try
                         {
                             // Пытаемся распарсить как сообщение JSON-RPC
-                            using (var doc = JsonDocument.Parse(line))
+                            using var doc = JsonDocument.Parse(line);
+                            var root = doc.RootElement;
+
+                            // Это ответ? (содержит id и result или error)
+                            if (root.TryGetProperty("id", out var idProp))
                             {
-                                var root = doc.RootElement;
-                                
-                                // Это ответ? (содержит id и result или error)
-                                if (root.TryGetProperty("id", out var idProp))
+                                var id = idProp.ValueKind == JsonValueKind.Number
+                                    ? idProp.GetInt32().ToString()
+                                    : idProp.GetString();
+
+                                if (id != null && _pendingRequests.TryGetValue(serverId, out var serverRequests) &&
+                                    serverRequests.TryRemove(id, out var tcs))
                                 {
-                                    var id = idProp.ValueKind == JsonValueKind.Number 
-                                        ? idProp.GetInt32().ToString() 
-                                        : idProp.GetString();
-                                    
-                                    if (id != null && _pendingRequests.TryGetValue(serverId, out var serverRequests) && 
-                                        serverRequests.TryRemove(id, out var tcs))
-                                    {
-                                        tcs.SetResult(line);
-                                        continue;
-                                    }
+                                    tcs.SetResult(line);
+                                    continue;
                                 }
-                                
-                                // Это уведомление? (содержит method, нет id)
-                                if (root.TryGetProperty("method", out var methodProp) && !root.TryGetProperty("id", out _))
+                            }
+
+                            // Это уведомление? (содержит method, нет id)
+                            if (root.TryGetProperty("method", out var methodProp) && !root.TryGetProperty("id", out _))
+                            {
+                                var method = methodProp.GetString();
+                                if (method != null)
                                 {
-                                    var method = methodProp.GetString();
-                                    if (method != null)
+                                    var notification = JsonUtils.Deserialize<McpNotification>(line);
+                                    if (notification != null)
                                     {
-                                        var notification = JsonUtils.Deserialize<McpNotification>(line);
-                                        if (notification != null)
-                                        {
-                                            _notificationQueues[serverId].Enqueue(notification);
-                                        }
+                                        _notificationQueues[serverId].Enqueue(notification);
                                     }
                                 }
                             }
                         }
                         catch (Exception ex)
                         {
-                            Logger.Log($"MCP [{serverId}] parse error: {ex.Message}. Line: {line}", "WARN");
+                            await Logger.LogAsync($"MCP [{serverId}] parse error: {ex.Message}. Line: {line}", "WARN");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    Logger.Log($"MCP [{serverId}] stdout error: {ex.Message}", "ERROR");
+                    await Logger.LogAsync($"MCP [{serverId}] stdout error: {ex.Message}", "ERROR");
                 }
             });
-            
+
             // Асинхронное чтение stderr для логирования
             _ = Task.Run(async () =>
             {
@@ -126,26 +136,46 @@ public class McpProcessManager
                         var line = await process.StandardError.ReadLineAsync();
                         if (line != null)
                         {
-                            Logger.Log($"MCP [{serverId}] stderr: {line}", "INFO");
+                            await Logger.LogAsync($"MCP [{serverId}] stderr: {line}", "INFO");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    Logger.Log($"MCP [{serverId}] stderr error: {ex.Message}", "ERROR");
+                    await Logger.LogAsync($"MCP [{serverId}] stderr error: {ex.Message}", "ERROR");
                 }
             });
-            
-            Logger.Log($"MCP process started: {serverId} ({command} {args})");
+
+            await Logger.LogAsync($"MCP process started: {serverId} ({command} {args})");
             return $"OK: Process started: {serverId}";
         }
         catch (Exception ex)
         {
-            Logger.Log($"Failed to start MCP process {serverId}: {ex.Message}", "ERROR");
+            await Logger.LogAsync($"Failed to start MCP process {serverId}: {ex.Message}", "ERROR");
             return $"ERROR: {ex.Message}";
         }
     }
-    
+
+    private static void SetEnvironments(Dictionary<string, string> env, ProcessStartInfo startInfo)
+    {
+        // Полная очистка унаследованных переменных
+        startInfo.EnvironmentVariables.Clear();
+
+        // Добавление системного минимума
+        startInfo.EnvironmentVariables["PATH"] = Environment.GetEnvironmentVariable("PATH");
+        startInfo.EnvironmentVariables["SystemRoot"] = Environment.GetEnvironmentVariable("SystemRoot");
+        startInfo.EnvironmentVariables["SystemDrive"] = Environment.GetEnvironmentVariable("SystemDrive");
+
+        // Добавление переменных окружения
+        if (env != null)
+        {
+            foreach (var kvp in env)
+            {
+                startInfo.Environment[kvp.Key] = kvp.Value;
+            }
+        }
+    }
+
     /// <summary>
     /// Остановить MCP процесс
     /// </summary>
@@ -155,7 +185,7 @@ public class McpProcessManager
         {
             return $"ERROR: Process {serverId} not found";
         }
-        
+
         try
         {
             if (!process.HasExited)
@@ -163,11 +193,11 @@ public class McpProcessManager
                 process.Kill();
                 await Task.Run(() => process.WaitForExit(5000));
             }
-            
+
             process.Dispose();
             _notificationQueues.TryRemove(serverId, out _);
             _pendingRequests.TryRemove(serverId, out var requests);
-            
+
             if (requests != null)
             {
                 foreach (var tcs in requests.Values)
@@ -175,17 +205,17 @@ public class McpProcessManager
                     tcs.TrySetCanceled();
                 }
             }
-            
-            Logger.Log($"MCP process stopped: {serverId}");
+
+            await Logger.LogAsync($"MCP process stopped: {serverId}");
             return $"OK: Process stopped: {serverId}";
         }
         catch (Exception ex)
         {
-            Logger.Log($"Error stopping MCP process {serverId}: {ex.Message}", "ERROR");
+            await Logger.LogAsync($"Error stopping MCP process {serverId}: {ex.Message}", "ERROR");
             return $"ERROR: {ex.Message}";
         }
     }
-    
+
     /// <summary>
     /// Отправить сообщение и ждать ответа
     /// </summary>
@@ -208,7 +238,7 @@ public class McpProcessManager
         {
             await process.StandardInput.WriteLineAsync(message);
             await process.StandardInput.FlushAsync();
-            Logger.Log($"MCP [{serverId}] sent: {message}");
+            await Logger.LogAsync($"MCP [{serverId}] sent: {message}");
 
             var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs));
             if (completedTask == tcs.Task)
@@ -224,7 +254,7 @@ public class McpProcessManager
         catch (Exception ex)
         {
             serverRequests.TryRemove(id, out _);
-            Logger.Log($"Error calling MCP method in {serverId}: {ex.Message}", "ERROR");
+            await Logger.LogAsync($"Error calling MCP method in {serverId}: {ex.Message}", "ERROR");
             return $"ERROR: {ex.Message}";
         }
     }
@@ -238,21 +268,21 @@ public class McpProcessManager
         {
             return "ERROR: Process not found";
         }
-        
+
         try
         {
             await process.StandardInput.WriteLineAsync(message);
             await process.StandardInput.FlushAsync();
-            Logger.Log($"MCP [{serverId}] sent raw: {message}");
+            await Logger.LogAsync($"MCP [{serverId}] sent raw: {message}");
             return "OK";
         }
         catch (Exception ex)
         {
-            Logger.Log($"Error sending to MCP process {serverId}: {ex.Message}", "ERROR");
+            await Logger.LogAsync($"Error sending to MCP process {serverId}: {ex.Message}", "ERROR");
             return $"ERROR: {ex.Message}";
         }
     }
-    
+
     /// <summary>
     /// Прочитать следующее уведомление из очереди
     /// </summary>
@@ -264,7 +294,7 @@ public class McpProcessManager
         }
         return null;
     }
-    
+
     /// <summary>
     /// Проверить, запущен ли процесс
     /// </summary>
@@ -276,7 +306,7 @@ public class McpProcessManager
         }
         return false;
     }
-    
+
     /// <summary>
     /// Остановить все процессы
     /// </summary>

@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Models;
+namespace UIBlazor.Models;
 
 public class AiToolToCall
 {

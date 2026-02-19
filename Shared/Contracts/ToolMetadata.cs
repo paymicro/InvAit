@@ -1,4 +1,4 @@
-﻿namespace Shared.Contracts;
+namespace Shared.Contracts;
 
 public enum ToolCategory
 {
@@ -14,7 +14,7 @@ public enum ToolCategory
 public enum ToolApprovalMode
 {
     AutoApprove,
-    Manual
+    AlwaysAsk
 }
 
 public enum ToolApprovalStatus

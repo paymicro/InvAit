@@ -1,4 +1,4 @@
-﻿using Moq;
+using Moq;
 using Shared.Contracts;
 using UIBlazor.Models;
 using UIBlazor.Options;
@@ -48,7 +48,7 @@ public class ChatServiceTests
         });
         _toolManagerMock.Setup(tm => tm.GetToolUseSystemInstructions(It.IsAny<AppMode>()))
             .Returns("Tool instructions");
-        
+
         // Default setup for session listing
         _localStorageMock.Setup(ls => ls.GetAllKeysAsync()).ReturnsAsync([]);
     }
@@ -105,7 +105,7 @@ public class ChatServiceTests
         Assert.Single(chatService.Session.Messages);
         Assert.Equal("user", chatService.Session.Messages[0].Role);
         Assert.Equal("Hello", chatService.Session.Messages[0].Content);
-        
+
         _localStorageMock.Verify(ls => ls.SetItemAsync(sessionId, It.Is<ConversationSession>(s =>
             s.Messages.Count == 1 &&
             s.Messages[0].Role == "user" &&

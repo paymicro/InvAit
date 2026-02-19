@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Components.Chat;
+namespace UIBlazor.Components.Chat;
 
 public class ContentSegment
 {

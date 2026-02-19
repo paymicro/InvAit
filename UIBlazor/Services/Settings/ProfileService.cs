@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Reflection;
 using Microsoft.JSInterop;
 
@@ -60,7 +60,7 @@ public class ProfileService(ILocalStorageService localStorage, IJSRuntime jSRunt
     private void NotifySkipSsl(bool skipSsl)
     {
         jSRuntime.InvokeAsync<string>("postVsMessage",
-            new VsRequest { Action = BuiltInToolEnum.SkipSSL, Payload = skipSsl.ToString() });
+            new VsRequest { Action = BasicEnum.SkipSSL, Payload = skipSsl.ToString() });
     }
 
     public Task<List<ConnectionProfile>> GetProfilesAsync()
@@ -171,4 +171,3 @@ public class ProfileService(ILocalStorageService localStorage, IJSRuntime jSRunt
         }
     }
 }
-    

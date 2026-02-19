@@ -28,6 +28,7 @@ namespace InvAit.Agent
 
         private VsCodeContextPublisher(DTE2 dte, WebView2 webView)
         {
+            ThreadHelper.ThrowIfNotOnUIThread();
             _dte = dte;
             _webView = webView;
 
@@ -106,7 +107,7 @@ namespace InvAit.Agent
                 if (_dte.ActiveDocument != null)
                 {
                     context.ActiveFilePath = _dte.ActiveDocument.FullName;
-                    
+
                     var textDoc = (TextDocument)_dte.ActiveDocument.Object("TextDocument");
                     if (textDoc != null)
                     {
@@ -130,7 +131,7 @@ namespace InvAit.Agent
             }
             catch (Exception ex)
             {
-                Logger.Log($"Error updating context: {ex.Message}", "ERROR");
+                await Logger.LogAsync($"Error updating context: {ex.Message}", "ERROR");
             }
         }
 
@@ -188,7 +189,7 @@ namespace InvAit.Agent
             {
                 if (item.FileCount > 0)
                 {
-                    try 
+                    try
                     {
                         files.Add(item.FileNames[0]);
                     }
@@ -235,11 +236,11 @@ namespace InvAit.Agent
         {
             if (_isDisposed) return;
             _isDisposed = true;
-            
+
             ThreadHelper.JoinableTaskFactory.Run(async () =>
             {
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-                
+
                 _solutionEvents.Opened -= OnContextChanged;
                 _solutionEvents.AfterClosing -= OnContextChanged;
                 _solutionEvents.ProjectAdded -= OnProjectChanged;

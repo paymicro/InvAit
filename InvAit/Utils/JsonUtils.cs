@@ -78,6 +78,22 @@ public static class JsonUtils
         return defaultValue;
     }
 
+    public static Dictionary<string, string> GetDictionary(this IReadOnlyDictionary<string, object> parameters, string key)
+    {
+        var value = parameters.GetValue(key);
+        if (value == null) return null;
+
+        try
+        {
+            var json = JsonSerializer.Serialize(value, _jsonOptions);
+            return JsonSerializer.Deserialize<Dictionary<string, string>>(json, _jsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public static T? GetObject<T>(this IReadOnlyDictionary<string, object> parameters, string key) where T : class
     {
         var value = parameters.GetValue(key);

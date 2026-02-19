@@ -3,7 +3,7 @@ using UIBlazor.Services.Settings;
 
 namespace UIBlazor.Services;
 
-public class MessageParser(IToolManager toolManager) : IMessageParser
+public partial class MessageParser(IToolManager toolManager) : IMessageParser
 {
     public void UpdateSegments(string delta, VisualChatMessage message, bool isHistory = false)
     {
@@ -26,6 +26,7 @@ public class MessageParser(IToolManager toolManager) : IMessageParser
             // Логика сегментов
             if (activeSegment == null || activeSegment.IsClosed)
             {
+                _rawAccumulator.Clear();
                 activeSegment = new ContentSegment();
                 message.Segments.Add(activeSegment);
             }
@@ -79,7 +80,7 @@ public class MessageParser(IToolManager toolManager) : IMessageParser
                         else
                         {
                             // ну и сразу ставим статус, чтобы не было гонки между рендером и обновлением статуса после получения всех параметров
-                            activeSegment.ApprovalStatus = toolManager.GetApprovalModeByToolName(activeSegment.ToolName) == ToolApprovalMode.Manual
+                            activeSegment.ApprovalStatus = toolManager.GetApprovalModeByToolName(activeSegment.ToolName) == ToolApprovalMode.AlwaysAsk
                                 ? ToolApprovalStatus.Pending
                                 : ToolApprovalStatus.Approved;
                         }
@@ -126,7 +127,7 @@ public class MessageParser(IToolManager toolManager) : IMessageParser
         if (segment.Type == SegmentType.Unknown)
         {
             var raw = _rawAccumulator.ToString();
-            var functionMatch = Regex.Match(token, @"<function name=""(\w+)""(?::(\d+))?>$", RegexOptions.Compiled);
+            var functionMatch = FunctionRegex().Match(token);
             if (functionMatch.Success)
             {
                 segment.Type = SegmentType.Tool;
@@ -186,7 +187,7 @@ public class MessageParser(IToolManager toolManager) : IMessageParser
         }
     }
 
-    private void Close(ContentSegment segment)
+    private static void Close(ContentSegment segment)
     {
         segment.IsClosed = true;
         // Переносим остаток из буфера в финальные линии, если он там есть
@@ -196,4 +197,142 @@ public class MessageParser(IToolManager toolManager) : IMessageParser
             segment.CurrentLine.Clear();
         }
     }
+
+    public Dictionary<string, object> Parse(string toolName, List<string> toolLines)
+    {
+        var result = new Dictionary<string, object>();
+        var paramIndex = 0;
+        var namedIndex = 0;
+
+        if (toolName == BuiltInToolEnum.ReadFiles)
+        {
+            ReadFileParams? fileParams = null;
+
+            for (var i = 0; i < toolLines.Count; i++)
+            {
+                var line = toolLines[i];
+                var trimmedLine = line.Trim();
+                if (string.IsNullOrEmpty(trimmedLine))
+                    continue;
+
+                if (trimmedLine == "start_line")
+                {
+                    var valLine = toolLines[++i]?.Trim();
+                    if (fileParams != null && int.TryParse(valLine, out var startLine))
+                    {
+                        fileParams.StartLine = startLine;
+                    }
+                }
+                else if (trimmedLine == "line_count")
+                {
+                    var valLine = toolLines[++i]?.Trim();
+                    if (fileParams != null && int.TryParse(valLine, out var lineCount))
+                    {
+                        fileParams.LineCount = lineCount;
+                    }
+                }
+                else
+                {
+                    fileParams = new ReadFileParams
+                    {
+                        Name = trimmedLine,
+                        StartLine = -1,
+                        LineCount = -1
+                    };
+                    result[$"file{++paramIndex}"] = fileParams;
+                }
+            }
+        }
+        else if (toolName == BuiltInToolEnum.ApplyDiff)
+        {
+            for (var i = 0; i < toolLines.Count; i++)
+            {
+                var line = toolLines[i].Trim();
+
+                if (string.IsNullOrEmpty(line))
+                    continue;
+
+                // Начало блока (<<<<<<< SEARCH)
+                if (line.StartsWith("<<<<<<< SEARCH"))
+                {
+                    i++;
+                    var diff = new DiffReplacement();
+                    var lastResult = result.LastOrDefault().Value?.ToString() ?? string.Empty;
+                    if (lastResult.StartsWith(":start_line:"))
+                    {
+                        diff.StartLine = int.Parse(lastResult.Split(':')[2]);
+                        result.Remove($"param{paramIndex}");
+                    }
+                    var search = new List<string>();
+                    for (; i < toolLines.Count; i++)
+                    {
+                        line = toolLines[i].TrimEnd();
+                        if (line.StartsWith("======="))
+                        {
+                            i++;
+                            break;
+                        }
+                        search.Add(line);
+                    }
+                    diff.Search = search;
+
+                    var replace = new List<string>();
+                    for (; i < toolLines.Count; i++)
+                    {
+                        line = toolLines[i].TrimEnd();
+                        if (line.StartsWith(">>>>>>> REPLACE"))
+                        {
+                            i++;
+                            break;
+                        }
+                        replace.Add(line);
+                    }
+                    diff.Replace = replace;
+
+                    result[$"diff{++namedIndex}"] = diff;
+                }
+                // Обычная строка параметров
+                else
+                {
+                    result[$"param{++paramIndex}"] = line;
+                }
+            }
+        }
+        else if (toolName.StartsWith("mcp__")) // MCP
+        {
+            for (var i = 0; i < toolLines.Count; i++)
+            {
+                var line = toolLines[i];
+                var devider = line.IndexOf(':');
+                if (devider > 1)
+                {
+                    var argName = line[..devider].Trim();
+                    var argValue = line[(devider + 1)..].Trim();
+
+                    if (!string.IsNullOrEmpty(argName))
+                    {
+                        if (argValue.Length > 2 && argValue.StartsWith('\"') && argValue.EndsWith('\"'))
+                        {
+                            argValue = argValue[1..^1];
+                        }
+                        result[argName] = argValue;
+                        continue;
+                    }
+                }
+            }
+        }
+        else // обычные тулзы
+        {
+            for (var i = 0; i < toolLines.Count; i++)
+            {
+                var line = toolLines[i];
+                result[$"param{++paramIndex}"] = line;
+            }
+        }
+
+        return result;
+    }
+
+    [GeneratedRegex(@"<function name=""([\w-_\.]+)"">$", RegexOptions.Compiled)]
+    private static partial Regex FunctionRegex();
 }

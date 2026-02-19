@@ -1,7 +1,5 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Reflection;
-using UIBlazor.Options;
-using UIBlazor.Utils;
 
 namespace UIBlazor.Services.Settings;
 
@@ -31,10 +29,18 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider, ID
         }
     }
 
+    /// <summary>
+    /// Свойство изменилось и будет сохранено
+    /// </summary>
+    /// <param name="propertyName">Имя измененного свойства</param>
     protected virtual void OnAnyPropertyChanged(string? propertyName)
     {
     }
 
+    /// <summary>
+    /// Немедленное сохранение Current объекта.<br/>
+    /// Автоматически вызывается при изменении любого свойства, которое использует <see cref="BaseOptions.SetIfChanged"/>
+    /// </summary>
     public virtual async Task SaveAsync()
     {
         await Storage.SetItemAsync(StorageKey, Current);
@@ -50,7 +56,7 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider, ID
             {
                 CopyProperties(saved, Current);
             }
-            OnInitialized();
+            await OnInitializedAsync();
         }
         catch (Exception ex)
         {
@@ -62,9 +68,7 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider, ID
         }
     }
 
-    protected virtual void OnInitialized()
-    {
-    }
+    protected virtual Task OnInitializedAsync() => Task.CompletedTask;
 
     protected virtual void CopyProperties(TOptions from, TOptions to)
     {

@@ -2,6 +2,7 @@ using Moq;
 using Shared.Contracts;
 using UIBlazor.Agents;
 using UIBlazor.Models;
+using UIBlazor.Options;
 using UIBlazor.Services.Settings;
 using UIBlazor.VS;
 
@@ -16,6 +17,9 @@ public class ToolManagerTests
     public ToolManagerTests()
     {
         _localStorageMock = new Mock<ILocalStorageService>();
+        var mcpSettingsMock = new Mock<IMcpSettingsProvider>();
+        mcpSettingsMock.Setup(m => m.Current).Returns(new McpOptions());
+        var vsBridgeMock = new Mock<IVsBridge>();
 
         // Setup default tool
         var tool = new Tool
@@ -24,156 +28,17 @@ public class ToolManagerTests
             Description = "Test tool",
             ExecuteAsync = _ => Task.FromResult(new VsToolResult { Success = true, Result = "test result" })
         };
-        _builtInAgent = new BuiltInAgent(Mock.Of<IVsBridge>()) { Tools = [tool] };
+        _builtInAgent = new BuiltInAgent(vsBridgeMock.Object) { Tools = [tool] };
 
-        _toolManager = new ToolManager(_builtInAgent, _localStorageMock.Object);
-    }
-
-    [Fact]
-    public void Parse_ReadFiles()
-    {
-        // Arrange
-        var lines = new List<string> { "C:\\Users\\user.txt", "path/to/file2.txt" };
-
-        // Act
-        var args = _toolManager.Parse(BuiltInToolEnum.ReadFiles, lines);
-
-        // Assert
-        Assert.Equal("C:\\Users\\user.txt", ((ReadFileParams)args["file1"]).Name);
-        Assert.Equal("path/to/file2.txt", ((ReadFileParams)args["file2"]).Name);
-    }
-
-    [Fact]
-    public void Parse_ReadFiles_WithStartLine()
-    {
-        // Arrange
-        var lines = new List<string> { "C:\\Users\\user.txt", "start_line", "5" };
-
-        // Act
-        var args = _toolManager.Parse(BuiltInToolEnum.ReadFiles, lines);
-
-        // Assert
-        var file1 = (ReadFileParams)args["file1"];
-        Assert.Equal("C:\\Users\\user.txt", file1.Name);
-        Assert.Equal(5, file1.StartLine);
-        Assert.Equal(-1, file1.LineCount);
-    }
-
-    [Fact]
-    public void Parse_ReadFiles_WithStartLineAndLineCount()
-    {
-        // Arrange
-        var lines = new List<string> { "C:\\Users\\user.txt", "start_line", "5", "line_count", "10" };
-
-        // Act
-        var args = _toolManager.Parse(BuiltInToolEnum.ReadFiles, lines);
-
-        // Assert
-        var file1 = (ReadFileParams)args["file1"];
-        Assert.Equal("C:\\Users\\user.txt", file1.Name);
-        Assert.Equal(5, file1.StartLine);
-        Assert.Equal(10, file1.LineCount);
-    }
-
-    [Fact]
-    public void Parse_ApplyDiff()
-    {
-        // Arrange
-        var lines = new List<string>
-        {
-            "path/to/file.txt",
-            ":start_line:10",
-            "<<<<<<< SEARCH",
-            "old code",
-            "=======",
-            "new code {",
-            "    with new lines",
-            "}",
-            ">>>>>>> REPLACE"
-        };
-
-        var expectedDiff = new DiffReplacement
-        {
-            StartLine = 10,
-            Search = ["old code"],
-            Replace = ["new code {", "    with new lines", "}"]
-        };
-
-        // Act
-        var args = _toolManager.Parse(BuiltInToolEnum.ApplyDiff, lines);
-
-        // Assert
-        Assert.Equal("path/to/file.txt", args["param1"]);
-        Assert.Equivalent(expectedDiff, args["diff1"]);
-    }
-
-    [Fact]
-    public void Parse_ApplyDiff_2Blocks()
-    {
-        // Arrange
-        var lines = new List<string>
-        {
-            "path/to/file.txt",
-            ":start_line:10",
-            "<<<<<<< SEARCH",
-            "old code",
-            "=======",
-            "new code {",
-            "    with new lines",
-            "}",
-            ">>>>>>> REPLACE",
-            "",
-            ":start_line:12",
-            "<<<<<<< SEARCH",
-            "public class Test {",
-            "    var bla = \"bla\"",
-            "}",
-            "=======",
-            ">>>>>>> REPLACE",
-            "",
-            "<<<<<<< SEARCH",
-            "public class Super",
-            "=======",
-            "/// <summary>Хех</summary>",
-            "public class Super",
-            ">>>>>>> REPLACE"
-        };
-
-        // Act
-        var args = _toolManager.Parse(BuiltInToolEnum.ApplyDiff, lines);
-        
-        var expectedDiff1 = new DiffReplacement
-        {
-            StartLine = 10,
-            Search = ["old code"],
-            Replace = ["new code {", "    with new lines", "}"]
-        };
-        var expectedDiff2 = new DiffReplacement
-        {
-            StartLine = 12,
-            Search = ["public class Test {", "    var bla = \"bla\"", "}"],
-            Replace = []
-        };
-        var expectedDiff3 = new DiffReplacement
-        {
-            StartLine = -1,
-            Search = ["public class Super"],
-            Replace = ["/// <summary>Хех</summary>", "public class Super"]
-        };
-
-        // Assert
-        Assert.Equal("path/to/file.txt", args["param1"]);
-        Assert.Equivalent(expectedDiff1, args["diff1"]);
-        Assert.Equivalent(expectedDiff2, args["diff2"]);
-        Assert.Equivalent(expectedDiff3, args["diff3"]);
+        _toolManager = new ToolManager(_builtInAgent, _localStorageMock.Object, mcpSettingsMock.Object, vsBridgeMock.Object);
     }
 
     [Fact]
     public void RegisterAllTools_RegistersToolsFromAgent()
     {
         // Arrange
-        var tool1 = new Tool { Name = "tool1", ExecuteAsync = _ => Task.FromResult(new VsToolResult { Success = true, Result = "result1" })};
-        var tool2 = new Tool { Name = "tool2", ExecuteAsync = _ => Task.FromResult(new VsToolResult { Success = true, Result = "result2" })};
+        var tool1 = new Tool { Name = "tool1", ExecuteAsync = _ => Task.FromResult(new VsToolResult { Success = true, Result = "result1" }) };
+        var tool2 = new Tool { Name = "tool2", ExecuteAsync = _ => Task.FromResult(new VsToolResult { Success = true, Result = "result2" }) };
         _builtInAgent.Tools = [tool1, tool2];
 
         // Act
@@ -194,17 +59,6 @@ public class ToolManagerTests
 
         // Act & Assert - should not throw
         await _toolManager.InitializeAsync();
-    }
-
-    [Fact]
-    public async Task SaveToolSettingsAsync_HandlesExceptionGracefully()
-    {
-        // Arrange
-        _localStorageMock.Setup(ls => ls.SetItemAsync(It.IsAny<string>(), It.IsAny<ToolSettings>()))
-            .ThrowsAsync(new Exception("Storage error"));
-
-        // Act & Assert - should not throw
-        await _toolManager.SaveToolSettingsAsync();
     }
 
     [Fact]

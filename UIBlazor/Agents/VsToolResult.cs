@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Agents;
+namespace UIBlazor.Agents;
 
 public record VsToolResult
 {

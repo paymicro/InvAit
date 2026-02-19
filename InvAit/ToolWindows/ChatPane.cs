@@ -1,6 +1,6 @@
+using System.Runtime.InteropServices;
 using Microsoft.VisualStudio.Imaging;
 using Microsoft.VisualStudio.Shell;
-using System.Runtime.InteropServices;
 
 namespace InvAit.ToolWindows;
 

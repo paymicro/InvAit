@@ -1,4 +1,4 @@
-﻿using UIBlazor.Utils;
+using UIBlazor.Utils;
 
 namespace UIBlazor.Tests;
 
@@ -75,9 +75,9 @@ public class JsonUtilsTests
     [Fact]
     public void GetBool_ReturnsBoolOrDefault()
     {
-        var dict = new Dictionary<string, object> 
-        { 
-            { "trueVal", "true" }, 
+        var dict = new Dictionary<string, object>
+        {
+            { "trueVal", "true" },
             { "falseVal", "false" },
             { "yesVal", "yes" },
             { "noVal", "no" },
@@ -111,7 +111,7 @@ public class JsonUtilsTests
     {
         var innerObj = new TestObject { Name = "inner", Value = 999 };
         var dict = new Dictionary<string, object> { { "key", innerObj } };
-        
+
         var result = dict.GetObject<TestObject>("key");
         Assert.NotNull(result);
         Assert.Equal("inner", result.Name);

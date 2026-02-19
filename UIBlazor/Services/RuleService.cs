@@ -17,18 +17,18 @@ public class RuleService(IVsBridge vsBridge) : IRuleService
         {
             return _rulesCache;
         }
-        
-        var result = await vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetRules);
+
+        var result = await vsBridge.ExecuteToolAsync(BasicEnum.GetRules);
         if (!result.Success)
         {
             return _rulesCache ?? string.Empty;
         }
-        
+
         _rulesCache = result.Result;
         _lastCacheUpdate = DateTime.UtcNow;
         return _rulesCache;
     }
-    
+
     /// <summary>
     /// Принудительно обновить кеш правил
     /// </summary>

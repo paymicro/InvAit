@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Services.Models;
+namespace UIBlazor.Services.Models;
 
 using System.Text.Json.Serialization;
 

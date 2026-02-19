@@ -20,20 +20,17 @@ internal static class Logger
         LogAsync(message, level).FireAndForget();
     }
 
-    public static async Task LogAsync(string message, string level = "INFO")
+    public static Task LogAsync(string message, string level = "INFO")
     {
-        if (_pane == null)
-        {
-            return;
-        }
-
-        await _pane.WriteLineAsync(GetMessage(message, level));
+        _pane?.WriteLineAsync(GetMessage(message, level)).FireAndForget();
 
         // Если это ошибка, можно автоматически активировать панель, чтобы пользователь её увидел
         if (level == "ERROR")
         {
-            _ = _pane?.ActivateAsync();
+            _pane?.ActivateAsync().FireAndForget();
         }
+
+        return Task.CompletedTask;
     }
 
     private static string GetMessage(string message, string level)

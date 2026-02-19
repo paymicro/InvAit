@@ -1,4 +1,4 @@
-﻿namespace Shared.Contracts;
+namespace Shared.Contracts;
 
 /// <summary>
 /// Ответ на <see cref="VsRequest"/> от Extension → UI

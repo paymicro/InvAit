@@ -1,9 +1,9 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
 namespace UIBlazor.Models;
 
 public record AiModelItem(
     string Id,
     string Object,
-    int Created, 
+    int Created,
     [property: JsonPropertyName("owned_by")] string OwnedBy);

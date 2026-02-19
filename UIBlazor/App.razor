@@ -31,8 +31,8 @@
         await base.OnInitializedAsync();
 
         // инициализация всех настроек
-        await McpSettingsProvider.InitializeAsync();
         await ProfileService.InitializeAsync();
         await CommonSettingsProvider.InitializeAsync();
+        await McpSettingsProvider.InitializeAsync();
     }
 }

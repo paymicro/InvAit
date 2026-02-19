@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Models;
+namespace UIBlazor.Models;
 
 public class ToolSettings : BaseOptions
 {
@@ -6,7 +6,7 @@ public class ToolSettings : BaseOptions
     /// По умолчанию все категории имеют <see cref="ToolApprovalMode.AutoApprove"/> в <seealso cref="ToolCategorySettings"/>
     /// </summary>
     public Dictionary<ToolCategory, ToolCategorySettings> CategoryStates { get; set; }
-        = new() { { ToolCategory.Execution, new ToolCategorySettings { ApprovalMode = ToolApprovalMode.Manual } } }; // кроме выполнения
+        = new() { { ToolCategory.Execution, new ToolCategorySettings { ApprovalMode = ToolApprovalMode.AlwaysAsk } } }; // кроме выполнения
 
     /// <summary>
     /// Список выключенных тулзов

@@ -30,12 +30,12 @@ public class FileToken : InputToken
     public string? FileContent { get; set; }
 
     public override string GetDisplayText() => $"@{FileName}";
-    
+
     public override string GetLlmText()
     {
         if (string.IsNullOrEmpty(FileContent))
             return $"File: {FilePath}";
-        
+
         return $"File: {FilePath}\n```\n{FileContent}\n```";
     }
 }

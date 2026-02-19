@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Options;
+namespace UIBlazor.Options;
 
 public class CommonOptions : BaseOptions
 {

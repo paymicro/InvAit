@@ -1,9 +1,11 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using Radzen.Blazor;
+using Shared.Contracts.Mcp;
 
 namespace UIBlazor.Services.Settings;
 
-public partial class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localStorage)
+public partial class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localStorage, IMcpSettingsProvider mcpSettingsProvider, IVsBridge vsBridge)
     : BaseSettingsProvider<ToolSettings>(localStorage, "ToolSettings"), IToolManager
 {
     private readonly ConcurrentDictionary<string, Tool> _registeredTools = new();
@@ -67,18 +69,13 @@ public partial class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService
         _ = InitializeAsync();
     }
 
-    protected override void OnInitialized()
+    protected override Task OnInitializedAsync()
     {
         foreach (var tool in _registeredTools.Values)
         {
             tool.Enabled = !Current.DisabledTools.Contains(tool.Name);
         }
-    }
-
-    public async Task SaveToolSettingsAsync()
-    {
-        Debouncer.Trigger();
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     public override Task ResetAsync()
@@ -97,26 +94,97 @@ public partial class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService
         Current.DisabledTools.Clear();
         return SaveAsync();
     }
-    
-    public IEnumerable<Tool> GetEnabledTools() => _registeredTools.Values.Where(t => 
-    {
-        if (Current.CategoryStates.TryGetValue(t.Category, out var state))
-        {
-            return state.IsEnabled && t.Enabled;
-        }
-        // по умолчанию категория включена
-        return t.Enabled;
-    });
 
-    public IEnumerable<Tool> GetAllTools() => _registeredTools.Values;
+    public IEnumerable<Tool> GetEnabledTools()
+    {
+        var builtIn = _registeredTools.Values.Where(t =>
+        {
+            if (Current.CategoryStates.TryGetValue(t.Category, out var state))
+            {
+                return state.IsEnabled && t.Enabled;
+            }
+            return t.Enabled;
+        });
+
+        var mcp = GetMcpTools().Where(t => t.Enabled);
+
+        return builtIn.Concat(mcp);
+    }
+
+    public IEnumerable<Tool> GetAllTools()
+    {
+        return _registeredTools.Values.Concat(GetMcpTools());
+    }
 
     public Tool? GetTool(string name)
     {
-        return _registeredTools.TryGetValue(name, out var tool) ? tool : null;
+        if (_registeredTools.TryGetValue(name, out var tool))
+            return tool;
+
+        return GetMcpTools().FirstOrDefault(t => t.Name == name);
+    }
+
+    private IEnumerable<Tool> GetMcpTools()
+    {
+        if (!mcpSettingsProvider.Current.Enabled)
+        {
+            yield break;
+        }
+
+        // перебираем все MCP сервера
+        foreach (var server in mcpSettingsProvider.Current.Servers.Where(s =>
+            mcpSettingsProvider.Current.ServerEnabledStates.TryGetValue(s.Name, out var serverEnabled)
+                ? serverEnabled
+                : s.Enabled))
+        {
+            // перебор всех тулзов в MCP этом сервере
+            foreach (var toolConfig in server.Tools)
+            {
+                var toolName = $"mcp__{server.Name}__{toolConfig.Name}";
+
+                var isEnabled = !mcpSettingsProvider.Current.ToolDisabledStates.Contains(toolName);
+
+                yield return new Tool
+                {
+                    Name = toolName,
+                    DisplayName = toolConfig.Name,
+                    Description = toolConfig.Description ?? string.Empty,
+                    Category = ToolCategory.Mcp,
+                    Enabled = isEnabled,
+                    ExampleToSystemMessage = BuildSchemaDescription(toolName, toolConfig),
+                    ExecuteAsync = (args) =>
+                    {
+                        var arguments = GetArgumentNamesFromSchema(toolConfig.InputSchema, args);
+                        var mcpArgs = new Dictionary<string, object>
+                        {
+                            { "serverId", server.Name },
+                            { "toolName", toolConfig.Name },
+                            { "arguments", arguments }
+                        };
+
+                        return vsBridge.ExecuteToolAsync(BasicEnum.McpCallTool, mcpArgs);
+                    }
+                };
+            }
+        }
     }
 
     public ToolApprovalMode GetApprovalModeByToolName(string name)
     {
+        if (name.StartsWith("mcp__"))
+        {
+            var parts = name.Split("__"); // TODO есть риск что сервер в названии содержит __ и тогда он всегда будет AutoApprove
+            if (parts.Length >= 2)
+            {
+                var serverName = parts[1];
+                if (mcpSettingsProvider.Current.ServerApprovalModes.TryGetValue(serverName, out var mode))
+                {
+                    return mode;
+                }
+            }
+            return ToolApprovalMode.AutoApprove;
+        }
+
         var tool = GetTool(name);
         return tool != null && Current.CategoryStates.TryGetValue(tool.Category, out var state)
             ? state.ApprovalMode
@@ -126,7 +194,7 @@ public partial class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService
     public string GetToolUseSystemInstructions(AppMode mode)
     {
         var enabledTools = GetEnabledTools().ToList();
-        
+
         // Filter tools based on mode
         enabledTools = mode switch
         {
@@ -163,12 +231,12 @@ public partial class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService
                           Once the plan is approved, the mode will be switched to **Agent** for execution.
                           """);
         }
-        
-        if (enabledTools.Any(t => t.Name == BuiltInToolEnum.SwitchMode))
+
+        if (enabledTools.Any(t => t.Name == BasicEnum.SwitchMode))
         {
-            sb.AppendLine($"You can use '{BuiltInToolEnum.SwitchMode}' tool to change current mode if you need more tools or want to switch context.");
+            sb.AppendLine($"You can use '{BasicEnum.SwitchMode}' tool to change current mode if you need more tools or want to switch context.");
         }
-        
+
         if (enabledTools.Count == 0)
         {
             return sb.ToString();
@@ -179,36 +247,33 @@ public partial class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService
             sb.AppendLine("You are a function-calling agent. You should take actions to fulfill the user's request.");
         }
 
-        sb.AppendLine("""
+        if (enabledTools.Count > 0)
+        {
+            sb.AppendLine("""
                       ## Tool use instructions
 
                       You have access to several "tools" that you can use at any time to retrieve information and/or perform tasks for the User.
 
                       You MUST invoke tools exclusively with the following literal syntax:
-                      <function name="<toolName>">
+                      <function name="toolName">
                       Parameters
                       </function>
 
-                      Immediately after using any toll - stop generation, no explanatory text.
+                      DONT use <function> tag if you don`t want to call tool! This tag is a trigger to calling tool. Be careful.
 
-                      Explanation:
-                        <function name="<toolName>">      # function header. toolName - function name.
-                        param1                           # parameter 1
-                        param2                           # parameter 2
-                        </function>                      # end of first call
-                        <function name="<toolName>">      # optional second function header. toolName - function name.
-                        param1                           # parameter 1 of second function.
-                        </function>                      # end of second call
+                      Immediately after using any toll - stop generation, no explanatory text.
 
                       The following tools/functions are available to you:
 
                       """);
+        }
 
         foreach (var tool in enabledTools)
         {
             sb.AppendLine("---");
-            sb.AppendLine($"### {tool.Name}");
-            sb.AppendLine(tool.Description);
+            sb.AppendLine($"### Tool: {tool.Name}");
+            sb.AppendLine($"**Description:** {tool.Description}");
+            sb.AppendLine("**Calling:**");
             sb.AppendLine(tool.ExampleToSystemMessage);
             sb.AppendLine();
         }
@@ -216,124 +281,113 @@ public partial class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService
         sb.AppendLine("""
 
                       If it seems like the User's request could be solved with the tools, choose the BEST tool for the job based on the user's request and the tool descriptions
-                      Then send the tool_calls_section (YOU call the tool, not the user).
                       Do not perform actions with/for hypothetical files. Use tools to deduce which files are relevant.
-                      You can call multiple tools in one tool_calls_section.
+                      You can call multiple tools once.
                       """);
         return sb.ToString();
     }
 
-    public Dictionary<string, object> Parse(string toolName, List<string> toolLines)
+    /// <summary>
+    /// Build a readable schema description for LLM prompt
+    /// </summary>
+    private static string BuildSchemaDescription(string toolName, McpToolConfig toolConfig)
     {
+        var schemaElement = toolConfig.InputSchema;
+        var requiredArgs = toolConfig.RequiredArguments;
+        if (!schemaElement.HasValue || schemaElement.Value.ValueKind != JsonValueKind.Object)
+        {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder();
+        var schema = schemaElement.Value;
+
+        sb.AppendLine("For example:");
+        sb.AppendLine($"<function name =\"{toolName}\">");
+
+        var propDesc = new List<string>();
+        // Get properties
+        if (schema.TryGetProperty("properties", out var props) && props.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var prop in props.EnumerateObject())
+            {
+                var isRequired = requiredArgs.Contains(prop.Name);
+                var type = "string";
+                var description = string.Empty;
+
+                if (prop.Value.ValueKind == JsonValueKind.Object)
+                {
+                    if (prop.Value.TryGetProperty("type", out var typeProp))
+                    {
+                        type = typeProp.GetString() ?? "string";
+                    }
+                    if (prop.Value.TryGetProperty("description", out var descProp))
+                    {
+                        description = descProp.GetString() ?? string.Empty;
+                    }
+                }
+
+                // TODO еще enum (допустимые значения), minimum, maximum (для чисел), minLength, maxLength, pattern (для сторок)
+                var requiredMark = isRequired ? " (required)" : "";
+                propDesc.Add($"{prop.Name} : [{type}]{requiredMark} {description}");
+
+                sb.AppendLine($"{prop.Name} : {GetSampleByType(type)}");
+            }
+        }
+
+        sb.AppendLine("</function>");
+
+        if (propDesc.Count > 0)
+        {
+            sb.AppendLine("*Properties schema:*");
+            sb.AppendLine(string.Join(Environment.NewLine, propDesc));
+        }
+
+        return sb.ToString();
+    }
+
+    private static string GetSampleByType(string propType)
+    {
+        return propType switch
+        {
+            "number" or "integer" => "123456",
+            "boolean" => "true",
+            "array" => "[]", // TODO нужно сделать поддержку массивов
+            "object" => "object", // TODO вложенный объект...
+            _ => "\"string\"",
+        };
+    }
+
+    private static object GetArgumentByType(string propType, object arg)
+    {
+        // TODO array и object и enum
+        return propType switch
+        {
+            "integer" => int.TryParse(arg.ToString(), out var valueInt) ? valueInt : arg,
+            "number" => double.TryParse(arg.ToString(), out var valueDouble) ? valueDouble : arg,
+            "boolean" => bool.TryParse(arg.ToString(), out var valueBool) ? valueBool : arg,
+            _ => arg
+        };
+    }
+
+    private static Dictionary<string, object> GetArgumentNamesFromSchema(JsonElement? schemaElement, IReadOnlyDictionary<string, object> args)
+    {
+        if (!schemaElement.HasValue || schemaElement.Value.ValueKind != JsonValueKind.Object)
+        {
+            return [];
+        }
+
         var result = new Dictionary<string, object>();
-        var paramIndex = 0;
-        var namedIndex = 0;
-
-        if (toolName == BuiltInToolEnum.ReadFiles)
+        var schema = schemaElement.Value;
+        if (schema.TryGetProperty("properties", out var props) && props.ValueKind == JsonValueKind.Object)
         {
-            ReadFileParams? fileParams = null;
-
-            for (var i = 0; i < toolLines.Count; i++)
+            foreach (var prop in props.EnumerateObject())
             {
-                var line = toolLines[i];
-                var trimmedLine = line.Trim();
-                if (string.IsNullOrEmpty(trimmedLine))
-                    continue;
-
-                if (trimmedLine == "start_line")
+                if (args.TryGetValue(prop.Name, out var arg))
                 {
-                    var valLine = toolLines[++i]?.Trim();
-                    if (fileParams != null && int.TryParse(valLine, out var startLine))
-                    {
-                        fileParams.StartLine = startLine;
-                    }
+                    var propType = prop.Value.GetProperty("type").GetString() ?? string.Empty; // TODO этого не может быть - ошибку надо выкидывать.
+                    result[prop.Name] = GetArgumentByType(propType, arg);
                 }
-                else if (trimmedLine == "line_count")
-                {
-                    var valLine = toolLines[++i]?.Trim();
-                    if (fileParams != null && int.TryParse(valLine, out var lineCount))
-                    {
-                        fileParams.LineCount = lineCount;
-                    }
-                }
-                else
-                {
-                    fileParams = new ReadFileParams
-                    {
-                        Name = trimmedLine,
-                        StartLine = -1,
-                        LineCount = -1
-                    };
-                    result[$"file{++paramIndex}"] = fileParams;
-                }
-            }
-        }
-        else if (toolName == BuiltInToolEnum.ApplyDiff)
-        {
-            for (var i = 0; i < toolLines.Count; i++)
-            {
-                var line = toolLines[i].Trim();
-
-                if (string.IsNullOrEmpty(line))
-                    continue;
-
-                // Начало блока (<<<<<<< SEARCH)
-                if (line.StartsWith("<<<<<<< SEARCH"))
-                {
-                    i++;
-                    var diff = new DiffReplacement();
-                    var lastResult = result.LastOrDefault().Value?.ToString() ?? string.Empty;
-                    if (lastResult.StartsWith(":start_line:"))
-                    {
-                        diff.StartLine = int.Parse(lastResult.Split(':')[2]);
-                        result.Remove($"param{paramIndex}");
-                    }
-                    var search = new List<string>();
-                    for (; i < toolLines.Count; i++)
-                    {
-                        line = toolLines[i].TrimEnd();
-                        if (line.StartsWith("======="))
-                        {
-                            i++;
-                            break;
-                        }
-                        search.Add(line);
-                    }
-                    diff.Search = search;
-
-                    var replace = new List<string>();
-                    for (; i < toolLines.Count; i++)
-                    {
-                        line = toolLines[i].TrimEnd();
-                        if (line.StartsWith(">>>>>>> REPLACE"))
-                        {
-                            i++;
-                            break;
-                        }
-                        replace.Add(line);
-                    }
-                    diff.Replace = replace;
-
-                    result[$"diff{++namedIndex}"] = diff;
-                }
-                // Обычная строка параметров
-                else
-                {
-                    result[$"param{++paramIndex}"] = line;
-                }
-            }
-        }
-        else // обычные тулзы
-        {
-            for (var i = 0; i < toolLines.Count; i++)
-            {
-                var line = toolLines[i];
-                var trimmedLine = line.Trim();
-
-                if (string.IsNullOrEmpty(trimmedLine))
-                    continue;
-
-                result[$"param{++paramIndex}"] = line;
             }
         }
 
