@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using Community.VisualStudio.Toolkit;
 using InvAit.Agent;
 using InvAit.Utils;
 using Microsoft.VisualStudio.PlatformUI;
@@ -21,6 +22,7 @@ public partial class ChatControl
     private WV.IWebView2 _webView;
     private readonly BuiltInAgent _builtInAgent;
     private bool _skipSslValidation;
+    private string _vsVersion;
 
     public event Func<WV.IWebView2, Task> WebViewInitialized;
     public event Action UIReady;
@@ -60,8 +62,8 @@ public partial class ChatControl
             }
         }
 
+        _vsVersion ??= (await VS.Shell.GetVsVersionAsync()).ToString();
         WebViewHost.Content = _webView = new WV.WebView2();
-
         _webView.CoreWebView2InitializationCompleted += CoreWebView2InitializationCompleted;
 
         var userDataFolder = Path.Combine(
@@ -94,8 +96,10 @@ public partial class ChatControl
         {
             Logger.Log($"WebView process failed: {e.ProcessFailedKind}", "ERROR");
             // При падении процесса WebView, нужно его перезагрузить.
-            // Иначе он будет показывать только белый экран.
+            // Иначе он будет показывать только чистый экран.
             _webView.CoreWebView2.Reload();
+
+            // TODO: сделать отрисовку WPF кнопки для ручного перезапуска webView
         };
         _webView.CoreWebView2.NewWindowRequested += (s, e) =>
         {
@@ -105,14 +109,12 @@ public partial class ChatControl
         };
 
         //_webView.CoreWebView2.AddHostObjectToScript("mcpHost", new McpProxyHost());
-        //_webView.NavigationCompleted += (_, _) =>
-        //{
-        //    SafeExecuteJs(WebFunctions.ReloadThemeCss(WebAsset.IsDarkTheme));
-        //    _viewModel.ForceDownloadChats();
-        //    _ = _viewModel.LoadChatAsync();
-        //};
     }
 
+    /// <summary>
+    /// Если окно чата в TabControl то клавиши Home и End перехватываются TabControl студии и не попадают в webView.
+    /// Для этого сделан этот перехватчик и симуляция отправки клавиш через JS-скрипт
+    /// </summary>
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
         if (e.Key == Key.Home || e.Key == Key.End)
@@ -138,13 +140,10 @@ public partial class ChatControl
             Debug.WriteLine($"WebView error: {e.InitializationException}");
             return;
         }
+
         _webView.CoreWebView2.Settings.AreDefaultScriptDialogsEnabled = true;
         _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
-#if !DEBUG
-        _webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
-#else
-        _webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
-#endif
+        _webView.CoreWebView2.Settings.AreDevToolsEnabled = true; // не страшно, мы ж опен-сурс =)
         _webView.CoreWebView2.Settings.AreHostObjectsAllowed = true;
         _webView.CoreWebView2.Settings.IsPasswordAutosaveEnabled = false;
         _webView.CoreWebView2.Settings.IsGeneralAutofillEnabled = true;
@@ -154,8 +153,7 @@ public partial class ChatControl
         _webView.CoreWebView2.Settings.IsWebMessageEnabled = true;
         _webView.DefaultBackgroundColor = VSColorTheme.GetThemedColor(EnvironmentColors.ToolWindowBackgroundBrushKey);
         _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = true;
-        _webView.CoreWebView2.Settings.AreHostObjectsAllowed = true;
-        _webView.CoreWebView2.Settings.UserAgent = "InvAit VisualStudio plugin";
+        _webView.CoreWebView2.Settings.UserAgent = $"VisualStudio/{_vsVersion} ({Vsix.Name}/{Vsix.Version})";
         try
         {
             _webView.CoreWebView2.MemoryUsageTargetLevel = CoreWebView2MemoryUsageTargetLevel.Low;
@@ -190,7 +188,6 @@ public partial class ChatControl
             if (request.Action == BuiltInToolEnum.SkipSSL)
             {
                 _skipSslValidation = string.Equals(request.Payload, "true", StringComparison.OrdinalIgnoreCase);
-                Logger.Log($"SkipSSL set {_skipSslValidation}");
                 return;
             }
 
@@ -226,6 +223,7 @@ public partial class ChatControl
         }
 #endif
 
+        // virtualHost ссылается на папку UI
         _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
             virtualHost,
             blazorRoot,
