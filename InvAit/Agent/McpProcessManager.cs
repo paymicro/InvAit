@@ -284,18 +284,6 @@ public class McpProcessManager
     }
 
     /// <summary>
-    /// Прочитать следующее уведомление из очереди
-    /// </summary>
-    public McpNotification? NextNotification(string serverId)
-    {
-        if (_notificationQueues.TryGetValue(serverId, out var queue) && queue.TryDequeue(out var notification))
-        {
-            return notification;
-        }
-        return null;
-    }
-
-    /// <summary>
     /// Проверить, запущен ли процесс
     /// </summary>
     public bool IsProcessRunning(string serverId)
