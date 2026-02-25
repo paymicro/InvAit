@@ -1,9 +1,11 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using Moq;
 using Shared.Contracts;
 using UIBlazor.Models;
 using UIBlazor.Options;
 using UIBlazor.Services.Settings;
+using UIBlazor.Tests.Utils;
 
 namespace UIBlazor.Tests;
 
@@ -12,13 +14,15 @@ public class ProfileServiceTests
     private readonly Mock<ILocalStorageService> _localStorageMock;
     private readonly Mock<IJSRuntime> _jsRuntimeMock;
     private readonly ProfileService _service;
+    private readonly ILogger<ProfileService> _logger;
 
     public ProfileServiceTests()
     {
         _localStorageMock = new Mock<ILocalStorageService>();
         _jsRuntimeMock = new Mock<IJSRuntime>();
+        _logger = new LoggerMock<ProfileService>();
 
-        _service = new ProfileService(_localStorageMock.Object, _jsRuntimeMock.Object);
+        _service = new ProfileService(_localStorageMock.Object, _logger, _jsRuntimeMock.Object);
     }
 
     [Fact]

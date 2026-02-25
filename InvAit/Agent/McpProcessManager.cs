@@ -23,7 +23,7 @@ public class McpProcessManager
     /// <summary>
     /// Запустить MCP процесс
     /// </summary>
-    public async Task<string> StartProcessAsync(string serverId, string command, string args, string workingDirectory = null, Dictionary<string, string> env = null)
+    public async Task<string> StartProcessAsync(string serverId, string command, string args, string workingDirectory, Dictionary<string, string> env)
     {
         if (_processes.TryGetValue(serverId, out var proc))
         {
@@ -163,6 +163,9 @@ public class McpProcessManager
 
         // Добавление системного минимума
         startInfo.EnvironmentVariables["PATH"] = Environment.GetEnvironmentVariable("PATH");
+        startInfo.EnvironmentVariables["APPDATA"] = Environment.GetEnvironmentVariable("APPDATA");
+        startInfo.EnvironmentVariables["LOCALAPPDATA"] = Environment.GetEnvironmentVariable("LOCALAPPDATA");
+        startInfo.EnvironmentVariables["TEMP"] = Environment.GetEnvironmentVariable("TEMP");
         startInfo.EnvironmentVariables["SystemRoot"] = Environment.GetEnvironmentVariable("SystemRoot");
         startInfo.EnvironmentVariables["SystemDrive"] = Environment.GetEnvironmentVariable("SystemDrive");
 

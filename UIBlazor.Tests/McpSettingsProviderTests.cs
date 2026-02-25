@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Moq;
 using Moq.Protected;
 using Shared.Contracts;
@@ -8,6 +9,7 @@ using Shared.Contracts.Mcp;
 using UIBlazor.Agents;
 using UIBlazor.Options;
 using UIBlazor.Services.Settings;
+using UIBlazor.Tests.Utils;
 using UIBlazor.Utils;
 using UIBlazor.VS;
 
@@ -20,6 +22,7 @@ public class McpSettingsProviderTests
     private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
     private readonly HttpClient _httpClient;
     private readonly McpSettingsProvider _provider;
+    private readonly ILogger<McpSettingsProvider> _logger;
 
     public McpSettingsProviderTests()
     {
@@ -27,8 +30,9 @@ public class McpSettingsProviderTests
         _vsBridgeMock = new Mock<IVsBridge>();
         _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
         _httpClient = new HttpClient(_httpMessageHandlerMock.Object);
+        _logger = new LoggerMock<McpSettingsProvider>();
 
-        _provider = new McpSettingsProvider(_storageMock.Object, _vsBridgeMock.Object, _httpClient);
+        _provider = new McpSettingsProvider(_storageMock.Object, _logger, _vsBridgeMock.Object, _httpClient);
     }
 
     [Fact]

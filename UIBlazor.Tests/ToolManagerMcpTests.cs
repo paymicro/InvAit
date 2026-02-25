@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Moq;
 using Shared.Contracts;
 using Shared.Contracts.Mcp;
@@ -6,6 +7,7 @@ using UIBlazor.Agents;
 using UIBlazor.Models;
 using UIBlazor.Options;
 using UIBlazor.Services.Settings;
+using UIBlazor.Tests.Utils;
 using UIBlazor.VS;
 
 namespace UIBlazor.Tests;
@@ -16,6 +18,7 @@ public class ToolManagerMcpTests
     private readonly Mock<IVsBridge> _vsBridgeMock;
     private readonly ToolManager _toolManager;
     private readonly McpOptions _mcpOptions;
+    private readonly ILogger<ToolManager> _logger;
 
     public ToolManagerMcpTests()
     {
@@ -23,6 +26,7 @@ public class ToolManagerMcpTests
         _vsBridgeMock = new Mock<IVsBridge>();
         var storageMock = new Mock<ILocalStorageService>();
         var builtInAgent = new BuiltInAgent(_vsBridgeMock.Object);
+        _logger = new LoggerMock<ToolManager>();
         foreach (var item in builtInAgent.Tools)
         {
             item.Enabled = false;
@@ -31,7 +35,7 @@ public class ToolManagerMcpTests
         _mcpOptions = new McpOptions { Enabled = true };
         _mcpSettingsMock.Setup(m => m.Current).Returns(_mcpOptions);
 
-        _toolManager = new ToolManager(builtInAgent, storageMock.Object, _mcpSettingsMock.Object, _vsBridgeMock.Object);
+        _toolManager = new ToolManager(builtInAgent, _logger, storageMock.Object, _mcpSettingsMock.Object, _vsBridgeMock.Object);
     }
 
     [Fact]
