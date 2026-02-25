@@ -1,4 +1,3 @@
-using UIBlazor.Components.Chat;
 using UIBlazor.Services.Settings;
 
 namespace UIBlazor.Services;

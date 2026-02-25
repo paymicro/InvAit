@@ -3,124 +3,215 @@
 
 <RadzenTabs RenderMode="TabRenderMode.Client" class="settings">
     <Tabs>
-    <RadzenTabsItem Text="General">
-        <RadzenStack Gap="1rem">
-            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
-                <RadzenText TextStyle="TextStyle.Subtitle1">Profile:</RadzenText>
-                <RadzenDropDown Data="@_profiles" TextProperty="Name" ValueProperty="Id" 
-                                @bind-Value="@_selectedProfileId" @bind-Value:after="@OnProfileChanged"
-                                Style="flex: 1;" />
-                <RadzenButton Icon="add" ButtonStyle="ButtonStyle.Success" Variant="Variant.Flat" Click="@OnAddProfile" ToolTip="Create new profile" />
-                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Flat" Click="@OnDeleteProfile" 
-                              Disabled="@(_profiles.Count <= 1)" ToolTip="Delete current profile" />
-            </RadzenStack>
-
-            @if (_selectedProfile != null)
-            {
-                 <RadzenStack Gap="1rem">
-                    <RadzenFormField Text="Profile Name" Variant="Variant.Outlined">
-                        <RadzenTextBox @bind-Value="@_selectedProfile.Name" @bind-Value:after="@OnFieldChanged" Immediate Style="width: 100%" />
-                    </RadzenFormField>
-
-                    <RadzenFormField Text="Provider" Variant="Variant.Outlined">
-                        <RadzenDropDown @bind-Value="@_selectedProfile.Provider" Data="@_providers" @bind-Value:after="@OnProviderChanged" Style="width: 100%" />
-                    </RadzenFormField>
-
-                    <RadzenFormField Text="Endpoint" Variant="Variant.Outlined">
-                        <RadzenTextBox @bind-Value="@_selectedProfile.Endpoint" @bind-Value:after="@OnFieldChanged" Style="width: 100%" />
-                    </RadzenFormField>
-
-                    <RadzenFormField Text="ApiKey" Variant="Variant.Outlined">
-                        <RadzenPassword @bind-Value="@_selectedProfile.ApiKey" @bind-Value:after="@OnFieldChanged" Style="width: 100%" />
-                    </RadzenFormField>
-
-                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                        <RadzenDropDown TValue="string"
-                                        Data="@ProfileManager.ActiveProfile.AvailableModels"
-                                        @bind-Value="@_selectedProfile.Model"
-                                        @bind-Value:after="@OnFieldChanged"
-                                        Placeholder="Select model (type to add custom)"
-                                        AllowCustomText="true"
-                                        Style="width: 100%" />
-                         <RadzenButton Icon="autorenew" Click="() => UpdateModelsAsync(CancellationToken.None)" ButtonStyle="ButtonStyle.Light" ToolTip="Refresh models from endpoint" />
-                    </RadzenStack>
-
-                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
-                        <RadzenCheckBox @bind-Value=@_selectedProfile.Stream Name="Stream" @bind-Value:after="@OnFieldChanged" />
-                        <RadzenLabel Text="Use stream" Component="Stream" />
-                    </RadzenStack>
-
-                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
-                        <RadzenCheckBox @bind-Value=@_selectedProfile.SkipSSL Name="SkipSSL" @bind-Value:after="@OnFieldChanged" />
-                        <RadzenLabel Text="Skip SSL validation" Component="SkipSSL" />
-                    </RadzenStack>
-
-                    <RadzenStack Gap="0.2rem">
-                        <RadzenLabel Text="Temperature" />
-                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                            <RadzenSlider @bind-Value="@_selectedProfile.Temperature" Min="0" Max="2" Step="0.1" @bind-Value:after="@OnFieldChanged" Style="width: 100%; height: 20px;" />
-                            <RadzenLabel Text="@Math.Abs(_selectedProfile.Temperature).ToString("0.0")" Style="text-align: right; width: 50px;" />
-                        </RadzenStack>
-                    </RadzenStack>
-
-                    <RadzenStack Gap="0.2rem">
-                        <RadzenLabel Text="Max tokens" />
-                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                            <RadzenSlider @bind-Value="@_selectedProfile.MaxTokens" Min=1000 Max=256000 Step="1000" @bind-Value:after="@OnFieldChanged" Style="width: 100%; height: 20px;" />
-                            <RadzenLabel Text="@($"{_selectedProfile.MaxTokens / 1000}K")" Style="text-align: right; width: 50px;" />
-                        </RadzenStack>
-                    </RadzenStack>
-
-                    <RadzenFormField Text="System prompt" Variant="Variant.Outlined">
-                        <RadzenTextArea @bind-Value="@_selectedProfile.SystemPrompt" @bind-Value:after="@OnFieldChanged" Style="min-height: 90px" />
-                    </RadzenFormField>
+        <RadzenTabsItem Text="@SharedResource.SettingsGeneral">
+            <RadzenStack Gap="1rem">
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                    <RadzenText TextStyle="TextStyle.Subtitle1">@SharedResource.Profile:</RadzenText>
+                    <RadzenDropDown Data="@_profiles" TextProperty="Name" ValueProperty="Id" 
+                                    @bind-Value="@_selectedProfileId" @bind-Value:after="@OnProfileChanged"
+                                    Style="flex: 1;" />
+                        <RadzenButton Icon="add" ButtonStyle="ButtonStyle.Success" Variant="Variant.Flat" Click="@OnAddProfile" />
+                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Flat" Click="@OnDeleteProfile" 
+                                  Disabled="@(_profiles.Count <= 1)" />
                 </RadzenStack>
-            }
-            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
-                <RadzenLabel Text="Send current file" Component="SendCurrentFile" Style="font-weight: 500; min-width: 150px;" />
-                <RadzenSwitch @bind-Value="@CommonSettingsProvider.Current.SendCurrentFile" Name="SendCurrentFile" />
-            </RadzenStack>
-            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
-                <RadzenLabel Text="Send solution structure" Component="SendSolutionsStricture" Style="font-weight: 500; min-width: 150px;" />
-                <RadzenSwitch @bind-Value="@CommonSettingsProvider.Current.SendSolutionsStricture" Name="SendSolutionsStricture" />
-            </RadzenStack>
-        </RadzenStack>
-    </RadzenTabsItem>
-    <RadzenTabsItem Text="Tools">
-        <RadzenStack Gap="1rem">
-            @foreach (var category in Enum.GetValues<ToolCategory>())
-            {
-                var state = ToolManager.Current.CategoryStates.ContainsKey(category) 
-                    ? ToolManager.Current.CategoryStates[category] 
-                    : new ToolCategorySettings();
 
-                <RadzenStack Gap="0.5rem">
-                    <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" >
-                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
-                            <RadzenLabel Text="@GetCategoryName(category)" Component="@($"cat_{category}")" Style="font-weight: 500; min-width: 150px;" />
-                            <RadzenSwitch @bind-Value="@state.IsEnabled" @bind-Value:after="() => OnCategorySettingChanged(category, state)" Name="@($"cat_{category}")" />
+                @if (_selectedProfile != null)
+                {
+                     <RadzenStack Gap="1rem">
+                        <RadzenFormField Text="@SharedResource.ProfileName" Variant="Variant.Outlined">
+                            <RadzenTextBox @bind-Value="@_selectedProfile.Name" @bind-Value:after="@OnFieldChanged" Immediate Style="width: 100%" />
+                        </RadzenFormField>
+
+                        <RadzenFormField Text="@SharedResource.Provider" Variant="Variant.Outlined">
+                            <RadzenDropDown @bind-Value="@_selectedProfile.Provider" Data="@_providers" @bind-Value:after="@OnProviderChanged" Style="width: 100%" />
+                        </RadzenFormField>
+
+                        <RadzenFormField Text="@SharedResource.Endpoint" Variant="Variant.Outlined">
+                            <RadzenTextBox @bind-Value="@_selectedProfile.Endpoint" @bind-Value:after="@OnFieldChanged" Style="width: 100%" />
+                        </RadzenFormField>
+
+                        <RadzenFormField Text="ApiKey" Variant="Variant.Outlined">
+                            <RadzenPassword @bind-Value="@_selectedProfile.ApiKey" @bind-Value:after="@OnFieldChanged" Style="width: 100%" />
+                        </RadzenFormField>
+
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                            <RadzenDropDown TValue="string"
+                                            Data="@ProfileManager.ActiveProfile.AvailableModels"
+                                            @bind-Value="@_selectedProfile.Model"
+                                            @bind-Value:after="@OnFieldChanged"
+                                            Placeholder="@SharedResource.SelectModel"
+                                            AllowCustomText="true"
+                                            Style="width: 100%" />
+                             <RadzenButton Icon="autorenew" Click="() => UpdateModelsAsync(CancellationToken.None)" ButtonStyle="ButtonStyle.Light" />
                         </RadzenStack>
 
-                        <RadzenDropDown TValue="ToolApprovalMode" Data="@(Enum.GetValues<ToolApprovalMode>())"
-                                        @bind-Value="@state.ApprovalMode" @bind-Value:after="() => OnCategorySettingChanged(category, state)" />
-                    </RadzenStack>
+                        <Switch Text="@SharedResource.UseStream" @bind-Value=@_selectedProfile.Stream />
+                        <Switch Text="@SharedResource.SkipSSL" @bind-Value=@_selectedProfile.SkipSSL />
 
-                    <div class="@(state.IsEnabled ? "category-tools-visible" : "category-tools-hidden")">
-                        @if (state.IsEnabled)
-                        {
-                            var categoryTools = ToolManager.GetAllTools().Where(t => t.Category == category).ToList();
-                            if (categoryTools.Count > 1)
+                        <RadzenStack Gap="0.2rem">
+                            <RadzenLabel Text="@SharedResource.Temperature" />
+                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                                <RadzenSlider @bind-Value="@_selectedProfile.Temperature" Min="0" Max="2" Step="0.1" @bind-Value:after="@OnFieldChanged" Style="width: 100%; height: 20px;" />
+                                <RadzenLabel Text="@Math.Abs(_selectedProfile.Temperature).ToString("0.0")" Style="text-align: right; width: 50px;" />
+                            </RadzenStack>
+                        </RadzenStack>
+
+                        <RadzenStack Gap="0.2rem">
+                            <RadzenLabel Text="@SharedResource.MaxTokens" />
+                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                                <RadzenSlider @bind-Value="@_selectedProfile.MaxTokens" Min=1000 Max=256000 Step="1000" @bind-Value:after="@OnFieldChanged" Style="width: 100%; height: 20px;" />
+                                <RadzenLabel Text="@($"{_selectedProfile.MaxTokens / 1000}K")" Style="text-align: right; width: 50px;" />
+                            </RadzenStack>
+                        </RadzenStack>
+
+                        <RadzenFormField Text="@SharedResource.SystemPrompt" Variant="Variant.Outlined">
+                            <RadzenTextArea @bind-Value="@_selectedProfile.SystemPrompt" @bind-Value:after="@OnFieldChanged" Style="min-height: 90px" />
+                        </RadzenFormField>
+                    </RadzenStack>
+                }
+                <Switch Text="@SharedResource.SendCurrentFile" @bind-Value="@CommonSettingsProvider.Current.SendCurrentFile" />
+                <Switch Text="@SharedResource.SendSolutionsStricture" @bind-Value="@CommonSettingsProvider.Current.SendSolutionsStricture" />
+            </RadzenStack>
+        </RadzenTabsItem>
+        <RadzenTabsItem Text="@SharedResource.SettingsTools">
+            <RadzenStack Gap="1rem">
+                @foreach (var category in Enum.GetValues<ToolCategory>())
+                {
+                    var state = ToolManager.Current.CategoryStates.ContainsKey(category) 
+                        ? ToolManager.Current.CategoryStates[category] 
+                        : new ToolCategorySettings();
+
+                    <RadzenStack Gap="0.5rem">
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" >
+                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                                <RadzenLabel Text="@GetCategoryName(category)" Component="@($"cat_{category}")" Style="font-weight: 500; min-width: 150px;" />
+                                <RadzenSwitch @bind-Value="@state.IsEnabled" @bind-Value:after="() => OnCategorySettingChanged(category, state)" Name="@($"cat_{category}")" />
+                            </RadzenStack>
+
+                            <RadzenDropDown TValue="ToolApprovalMode" Data="@(Enum.GetValues<ToolApprovalMode>())"
+                                            @bind-Value="@state.ApprovalMode" @bind-Value:after="() => OnCategorySettingChanged(category, state)" />
+                        </RadzenStack>
+
+                        <div class="@(state.IsEnabled ? "category-tools-visible" : "category-tools-hidden")">
+                            @if (state.IsEnabled)
                             {
-                                <RadzenAccordion>
+                                var categoryTools = ToolManager.GetAllTools().Where(t => t.Category == category).ToList();
+                                if (categoryTools.Count > 1)
+                                {
+                                    <RadzenAccordion>
+                                        <Items>
+                                            <RadzenAccordionItem Text="@SharedResource.Tools" Icon="build">
+                                                <RadzenStack Gap="0.5rem">
+                                                    @foreach (var tool in categoryTools)
+                                                    {
+                                                        <RadzenStack Orientation="Orientation.Vertical" JustifyContent="JustifyContent.SpaceBetween">
+                                                            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                                                                <RadzenCheckBox @bind-Value="@tool.Enabled" @bind-Value:after="() => OnToolSettingChanged(tool)" Name="@($"tool_{tool.Name}")" />
+                                                                <RadzenLabel Text="@tool.Name" Component="@($"tool_{tool.Name}")" Style="font-size: 0.9rem; opacity: 0.8;" />
+                                                            </RadzenStack>
+                                                            <RadzenText TextStyle="TextStyle.Caption" class="tool-description">@tool.Description</RadzenText>
+                                                        </RadzenStack>
+                                                    }
+                                                </RadzenStack>
+                                            </RadzenAccordionItem>
+                                        </Items>
+                                    </RadzenAccordion>
+                                }
+                            }
+                        </div>
+                    </RadzenStack>
+                }
+            </RadzenStack>
+        </RadzenTabsItem>
+
+        <RadzenTabsItem Text="MCP">
+            <RadzenStack Gap="0.5rem">
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                        <RadzenLabel Text="Enable MCP" Component="McpGlobalEnabled" />
+                        <RadzenSwitch @bind-Value="@McpSettingsProvider.Current.Enabled" @bind-Value:after="OnMcpEnabledChanged" Name="McpGlobalEnabled" />
+                    </RadzenStack>
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.3rem">
+                        <RadzenButton Icon="edit_note" ButtonStyle="ButtonStyle.Info" Size="ButtonSize.Small" Click="@OnOpenMcpSettings" />
+                        <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@OnReloadMcpSettings" />
+                    </RadzenStack>
+                </RadzenStack>
+
+                @if (McpSettingsProvider.Current.Enabled)
+                {
+                    @if (!McpSettingsProvider.Current.Servers.Any())
+                    {
+                        <RadzenText TextStyle="TextStyle.Caption" Style="color: var(--rz-text-secondary-color); font-style: italic;">
+                            @SharedResource.NoMCP
+                        </RadzenText>
+                    }
+
+                    @foreach (var server in McpSettingsProvider.Current.Servers)
+                    {
+                        var hasError = McpSettingsProvider.Current.ServerErrors.TryGetValue(server.Name, out var errorMsg);
+                        var borderColor = hasError ? "var(--rz-error-color)" : "var(--rz-border-color)";
+                        var serverStyle = $"padding: 0.5rem; border: 1px solid {borderColor}; border-radius: var(--rz-border-radius);";
+                    
+                        <RadzenStack Gap="0.5rem" Style="@serverStyle">
+                            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+                                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                                    <RadzenCheckBox @bind-Value="@server.Enabled" @bind-Value:after="OnMcpToolSettingChanged" Name="@($"mcp_server_{server.Name}")" />
+                                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="margin: 0; font-weight: bold;">@server.Name</RadzenText>
+                                    <RadzenBadge Text="@server.Transport" Style="font-size: 0.7rem;" />
+                                    @if (hasError)
+                                    {
+                                        <RadzenBadge Text="@SharedResource.Error" Style="font-size: 0.7rem; background: var(--rz-error-color);" />
+                                    }
+                                    else if (server.Enabled && server.Tools.Any())
+                                    {
+                                        <RadzenBadge Text="@SharedResource.Ready" Style="font-size: 0.7rem; background: var(--rz-success-color);" />
+                                    }
+                                </RadzenStack>
+                                <RadzenDropDown TValue="ToolApprovalMode" Data="@(Enum.GetValues<ToolApprovalMode>())"
+                                                Value="@GetMcpServerApprovalMode(server)"
+                                                ValueChanged="@(mode => OnMcpServerApprovalChanged(server, mode))"
+                                                Style="width: 150px; flex-shrink: 0;" />
+                            </RadzenStack>
+
+                            @if (hasError && !string.IsNullOrEmpty(errorMsg))
+                            {
+                                <RadzenStack Style="padding: 0.5rem; background: var(--rz-error-background); border-radius: var(--rz-border-radius); font-size: 0.8rem; color: var(--rz-error-color);">
+                                    <strong>Error:</strong> @errorMsg
+                                </RadzenStack>
+                            }
+
+                            <RadzenStack Gap="0.2rem" Style="font-size: 0.8rem; color: var(--rz-text-secondary-color); padding-left: 2rem;">
+                                @if (server.Transport == "stdio")
+                                {
+                                    <div>Command: @server.Command @(string.Join(" ", server.Args))</div>
+                                }
+                                else
+                                {
+                                    <div>URL: @server.Url</div>
+                                }
+                                @if (server.Env.Any())
+                                {
+                                    <div>Env: @server.Env.Count variable(s)</div>
+                                }
+                            </RadzenStack>
+
+                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.3rem" Style="padding-left: 2rem;">
+                                <RadzenButton Text="@SharedResource.RefreshTools" Icon="sync" Size="ButtonSize.ExtraSmall" ButtonStyle="ButtonStyle.Light"
+                                              Click="@(() => OnRefreshMcpTools(server))" IsBusy="@(_refreshingServerId == server.Name)" />
+                            </RadzenStack>
+
+                            @if (server.Tools.Any())
+                            {
+                                <RadzenAccordion Style="margin-top: 0.3rem; border: none;">
                                     <Items>
-                                        <RadzenAccordionItem Text="Tools" Icon="build">
+                                        <RadzenAccordionItem Text="@SharedResource.Tools" Icon="build">
                                             <RadzenStack Gap="0.5rem">
-                                                @foreach (var tool in categoryTools)
+                                                @foreach (var tool in server.Tools)
                                                 {
                                                     <RadzenStack Orientation="Orientation.Vertical" JustifyContent="JustifyContent.SpaceBetween">
-                                                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
-                                                            <RadzenCheckBox @bind-Value="@tool.Enabled" @bind-Value:after="() => OnToolSettingChanged(tool)" Name="@($"tool_{tool.Name}")" />
-                                                            <RadzenLabel Text="@tool.Name" Component="@($"tool_{tool.Name}")" Style="font-size: 0.9rem; opacity: 0.8;" />
+                                                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                                                            <RadzenCheckBox @bind-Value="@tool.Enabled" @bind-Value:after="OnMcpToolSettingChanged" Name="@($"mcp__{server.Name}__{tool.Name}")" />
+                                                            <RadzenLabel Text="@tool.Name" Component="@($"mcp__{server.Name}__{tool.Name}")" />
                                                         </RadzenStack>
                                                         <RadzenText TextStyle="TextStyle.Caption" class="tool-description">@tool.Description</RadzenText>
                                                     </RadzenStack>
@@ -130,121 +221,18 @@
                                     </Items>
                                 </RadzenAccordion>
                             }
-                        }
-                    </div>
-                </RadzenStack>
-            }
-        </RadzenStack>
-    </RadzenTabsItem>
-
-    <RadzenTabsItem Text="MCP">
-        <RadzenStack Gap="0.5rem">
-            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
-                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
-                    <RadzenLabel Text="Enable MCP" Component="McpGlobalEnabled" />
-                    <RadzenSwitch @bind-Value="@McpSettingsProvider.Current.Enabled" @bind-Value:after="OnMcpEnabledChanged" Name="McpGlobalEnabled" />
-                </RadzenStack>
-                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.3rem">
-                    <RadzenButton Icon="edit_note" ButtonStyle="ButtonStyle.Info" Size="ButtonSize.Small" Click="@OnOpenMcpSettings" />
-                    <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@OnReloadMcpSettings" />
-                </RadzenStack>
+                        </RadzenStack>
+                    }
+                }
+            </RadzenStack>
+        </RadzenTabsItem>
+        <RadzenTabsItem Text="UI">
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="margin-block-end: 0.5em">
+                <RadzenAppearanceToggle Variant="Variant.Filled" ButtonStyle="ButtonStyle.Base" />
             </RadzenStack>
 
-            @if (McpSettingsProvider.Current.Enabled)
-            {
-                @if (!McpSettingsProvider.Current.Servers.Any())
-                {
-                    <RadzenText TextStyle="TextStyle.Caption" Style="color: var(--rz-text-secondary-color); font-style: italic;">
-                        No MCP servers configured. Click "Open mcp.json" to add servers.
-                    </RadzenText>
-                }
-
-                @foreach (var server in McpSettingsProvider.Current.Servers)
-                {
-                    var hasError = McpSettingsProvider.Current.ServerErrors.TryGetValue(server.Name, out var errorMsg);
-                    var borderColor = hasError ? "var(--rz-error-color)" : "var(--rz-border-color)";
-                    var serverStyle = $"padding: 0.5rem; border: 1px solid {borderColor}; border-radius: var(--rz-border-radius);";
-                    
-                    <RadzenStack Gap="0.5rem" Style="@serverStyle">
-                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
-                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
-                                <RadzenCheckBox @bind-Value="@server.Enabled" @bind-Value:after="OnMcpToolSettingChanged" Name="@($"mcp_server_{server.Name}")" />
-                                <RadzenText TextStyle="TextStyle.Subtitle1" Style="margin: 0; font-weight: bold;">@server.Name</RadzenText>
-                                <RadzenBadge Text="@server.Transport" Style="font-size: 0.7rem;" />
-                                @if (hasError)
-                                {
-                                    <RadzenBadge Text="Error" Style="font-size: 0.7rem; background: var(--rz-error-color);" />
-                                }
-                                else if (server.Enabled && server.Tools.Any())
-                                {
-                                    <RadzenBadge Text="Ready" Style="font-size: 0.7rem; background: var(--rz-success-color);" />
-                                }
-                            </RadzenStack>
-                            <RadzenDropDown TValue="ToolApprovalMode" Data="@(Enum.GetValues<ToolApprovalMode>())"
-                                            Value="@GetMcpServerApprovalMode(server)"
-                                            ValueChanged="@(mode => OnMcpServerApprovalChanged(server, mode))"
-                                            Style="width: 150px; flex-shrink: 0;" />
-                        </RadzenStack>
-
-                        @if (hasError && !string.IsNullOrEmpty(errorMsg))
-                        {
-                            <RadzenStack Style="padding: 0.5rem; background: var(--rz-error-background); border-radius: var(--rz-border-radius); font-size: 0.8rem; color: var(--rz-error-color);">
-                                <strong>Error:</strong> @errorMsg
-                            </RadzenStack>
-                        }
-
-                        <RadzenStack Gap="0.2rem" Style="font-size: 0.8rem; color: var(--rz-text-secondary-color); padding-left: 2rem;">
-                            @if (server.Transport == "stdio")
-                            {
-                                <div>Command: @server.Command @(string.Join(" ", server.Args))</div>
-                            }
-                            else
-                            {
-                                <div>URL: @server.Url</div>
-                            }
-                            @if (server.Env.Any())
-                            {
-                                <div>Env: @server.Env.Count variable(s)</div>
-                            }
-                        </RadzenStack>
-
-                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.3rem" Style="padding-left: 2rem;">
-                            <RadzenButton Text="Refresh Tools" Icon="sync" Size="ButtonSize.ExtraSmall" ButtonStyle="ButtonStyle.Light"
-                                          Click="@(() => OnRefreshMcpTools(server))" IsBusy="@(_refreshingServerId == server.Name)" />
-                        </RadzenStack>
-
-                        @if (server.Tools.Any())
-                        {
-                            <RadzenAccordion Style="margin-top: 0.3rem; border: none;">
-                                <Items>
-                                    <RadzenAccordionItem Text="Tools" Icon="build">
-                                        <RadzenStack Gap="0.5rem">
-                                            @foreach (var tool in server.Tools)
-                                            {
-                                                <RadzenStack Orientation="Orientation.Vertical" JustifyContent="JustifyContent.SpaceBetween">
-                                                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                                                        <RadzenCheckBox @bind-Value="@tool.Enabled" @bind-Value:after="OnMcpToolSettingChanged" Name="@($"mcp_tool_{server.Name}_{tool.Name}")" />
-                                                        <RadzenLabel Text="@tool.Name" Component="@($"mcp_tool_{server.Name}_{tool.Name}")" />
-                                                    </RadzenStack>
-                                                    <RadzenText TextStyle="TextStyle.Caption" class="tool-description">@tool.Description</RadzenText>
-                                                </RadzenStack>
-                                            }
-                                        </RadzenStack>
-                                    </RadzenAccordionItem>
-                                </Items>
-                            </RadzenAccordion>
-                        }
-                    </RadzenStack>
-                }
-            }
-        </RadzenStack>
-    </RadzenTabsItem>
-    <RadzenTabsItem Text="UI">
-        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
-            <RadzenLabel Text="Theme" Style="margin-right: 0.5rem;" />
-            <RadzenAppearanceToggle Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" />
-        </RadzenStack>
-    </RadzenTabsItem>
+            <LanguageSelector />
+        </RadzenTabsItem>
     </Tabs>
 </RadzenTabs>
 
@@ -387,8 +375,8 @@
     {
         if (_profiles.Count <= 1) return;
 
-        var confirm = await DialogService.Confirm($"Are you sure you want to delete '{_selectedProfile?.Name}'?", "Delete Profile", 
-           new ConfirmOptions() { OkButtonText = "Yes", CancelButtonText = "No" });
+        var confirm = await DialogService.Confirm($"{SharedResource.DeleteProfileQuestion} '{_selectedProfile?.Name}'?", SharedResource.DeleteProfile,
+           new ConfirmOptions() { OkButtonText = SharedResource.Yes, CancelButtonText = SharedResource.No });
 
         if (confirm == true && _selectedProfile != null)
         {
@@ -443,7 +431,7 @@
             NotificationService.Notify(new NotificationMessage
             {
                 Severity = NotificationSeverity.Error,
-                Summary = "Models not found",
+                Summary = SharedResource.ErrorModelsNotFound,
                 Detail = ex.Message,
                 Duration = 10_000,
                 ShowProgress = true,
@@ -456,13 +444,13 @@
     {
         return category switch
         {
-            ToolCategory.ReadFiles => "Чтение файлов",
-            ToolCategory.WriteFiles => "Запись файлов",
-            ToolCategory.DeleteFiles => "Удаление файлов",
-            ToolCategory.Browser => "Браузер",
+            ToolCategory.ReadFiles => SharedResource.CategoryReadFiles,
+            ToolCategory.WriteFiles => SharedResource.CategoryWriteFiles,
+            ToolCategory.DeleteFiles => SharedResource.CategoryDeleteFiles,
+            ToolCategory.Browser => SharedResource.CategoryBrowser,
             ToolCategory.Mcp => "MCP",
-            ToolCategory.ModeSwitch => "Смена режима",
-            ToolCategory.Execution => "Выполнение",
+            ToolCategory.ModeSwitch => SharedResource.CategoryModeSwitch,
+            ToolCategory.Execution => SharedResource.CategoryExecution,
             _ => category.ToString()
         };
     }
@@ -481,8 +469,6 @@
 
     private async Task OnMcpToolSettingChanged()
     {
-        // сохраняется автоматически Debouncer-ом
-
         // Update server enabled states
         foreach (var server in McpSettingsProvider.Current.Servers)
         {
@@ -502,6 +488,7 @@
             }
         }
 
-        await McpSettingsProvider.SaveAsync();
+        // сохраняется автоматически Debouncer-ом
+        // await McpSettingsProvider.SaveAsync();
     }
 }

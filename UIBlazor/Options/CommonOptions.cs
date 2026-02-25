@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace UIBlazor.Options;
 
 public class CommonOptions : BaseOptions
@@ -10,4 +12,6 @@ public class CommonOptions : BaseOptions
 
     // TODO
     public bool IsDarkTheme { get; set => SetIfChanged(ref field, value); } = true;
+
+    public string Culture { get; set => SetIfChanged(ref field, value); } = CultureInfo.CurrentCulture.Name;
 }

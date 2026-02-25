@@ -66,7 +66,7 @@ details summary {
 }
 
 .rz-dialog-side-content {
-    padding: 0;
+    padding: 0 0 0 0.5em;
 }
 
 .rz-dialog-wrapper {
@@ -78,12 +78,23 @@ details summary {
 }
 
 .settings li {
-    flex: 1;
+    flex-grow: 1;
     text-align: center;
 }
 
-    .settings li a {
+    .settings li button {
+        width: 100%;
         display: block !important;
+    }
+
+.switch {
+    padding: 0.5em;
+    border-radius: var(--rz-input-border-radius);
+    border: var(--rz-border-width) solid transparent;
+}
+
+    .switch:hover {
+        border: var(--rz-input-border);
     }
 
 .tool-description {

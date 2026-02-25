@@ -1,4 +1,4 @@
-namespace UIBlazor.Components.Chat;
+namespace UIBlazor.Models;
 
 public class ContentSegment
 {
@@ -15,7 +15,7 @@ public class ContentSegment
     public bool IsClosed { get; internal set; }
 
     // Список готовых строк для UI-парсеров (DiffView и т.д.)
-    public List<string> Lines { get; } = new();
+    public List<string> Lines { get; } = [];
 
     // Буфер для текущей (недописанной) строки
     public StringBuilder CurrentLine { get; } = new();

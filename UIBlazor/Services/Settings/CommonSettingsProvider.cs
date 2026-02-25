@@ -1,7 +1,9 @@
 namespace UIBlazor.Services.Settings;
 
-public class CommonSettingsProvider(ILocalStorageService storage)
-    : BaseSettingsProvider<CommonOptions>(storage, "CommonSettings"), ICommonSettingsProvider
+public class CommonSettingsProvider(
+    ILocalStorageService storage,
+    ILogger<CommonSettingsProvider> logger)
+    : BaseSettingsProvider<CommonOptions>(storage, logger, "CommonSettings"), ICommonSettingsProvider
 {
     public override async Task ResetAsync()
     {

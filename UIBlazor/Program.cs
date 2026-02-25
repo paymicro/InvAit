@@ -1,5 +1,7 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+using Microsoft.JSInterop;
 using Radzen;
 using UIBlazor;
 using UIBlazor.Services;
@@ -23,8 +25,15 @@ builder.Services
     .AddScoped<IMessageParser, MessageParser>()
     .AddScoped<BuiltInAgent>()
     .AddScoped<IToolManager, ToolManager>()
-    .AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
+    .AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) })
+    .AddLocalization();
 
 var app = builder.Build();
+
+var commonSettings = app.Services.GetRequiredService<ICommonSettingsProvider>();
+await commonSettings.InitializeAsync();
+var culture = new CultureInfo(commonSettings.Current.Culture);
+CultureInfo.DefaultThreadCurrentCulture = culture;
+CultureInfo.DefaultThreadCurrentUICulture = culture;
 
 await app.RunAsync();

@@ -9,12 +9,18 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider, ID
     protected readonly string StorageKey;
     protected readonly Debouncer Debouncer;
     private bool _isInitializing;
+    private readonly ILogger _logger;
 
     public TOptions Current { get; } = new();
 
-    protected BaseSettingsProvider(ILocalStorageService storage, string storageKey, TimeSpan? debounceDelay = null)
+    protected BaseSettingsProvider(
+        ILocalStorageService storage,
+        ILogger logger,
+        string storageKey,
+        TimeSpan? debounceDelay = null)
     {
         Storage = storage;
+        _logger = logger;
         StorageKey = storageKey;
         Debouncer = new Debouncer(debounceDelay ?? TimeSpan.FromMilliseconds(750), SaveAsync);
         Current.PropertyChanged += OnPropertyChanged;
@@ -60,7 +66,7 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider, ID
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Failed to initialize settings for {StorageKey}: {ex.Message}");
+            _logger.LogError($"Failed to initialize settings for {StorageKey}: {ex.Message}");
         }
         finally
         {

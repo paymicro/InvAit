@@ -3,6 +3,7 @@ global using System.Text.Json;
 global using System.Text.RegularExpressions;
 global using Shared.Contracts;
 global using UIBlazor.Agents;
+global using UIBlazor.Localization;
 global using UIBlazor.Models;
 global using UIBlazor.Options;
 global using UIBlazor.Utils;

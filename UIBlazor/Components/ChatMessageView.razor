@@ -1,4 +1,5 @@
-﻿@using UIBlazor.Models
+@using UIBlazor.Constants
+@using UIBlazor.Models
 @using UIBlazor.Components.Chat
 
 <div class="rz-chat-message rz-chat-message-@Message.Role" @key="Message.Id">
@@ -41,12 +42,12 @@
                         <div class="plan-box rz-p-3 rz-mt-2 rz-mb-2" style="border: 1px solid var(--rz-primary-light); border-radius: 8px; background: var(--rz-base-background-color);">
                             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" class="rz-mb-2">
                                 <RadzenIcon Icon="assignment" IconStyle="IconStyle.Primary" />
-                                <RadzenText TextStyle="TextStyle.Subtitle2" Style="margin: 0; color: var(--rz-primary-light);">Proposed Plan</RadzenText>
+                                <RadzenText TextStyle="TextStyle.Subtitle2" Style="margin: 0; color: var(--rz-primary-light);">@SharedResource.ProposedPlan</RadzenText>
                             </RadzenStack>
                             <MarkdownBlock Content="@Message.PlanContent" />
                             @if (!IsLoading)
                             {
-                                <RadzenButton Text="Execute Plan" Icon="play_arrow" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small"
+                                <RadzenButton Text="@SharedResource.ExecutePlan" Icon="play_arrow" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small"
                                              Click="@(() => OnExecutePlan.InvokeAsync(Message))" class="rz-mt-2" />
                             }
                         </div>
@@ -55,7 +56,7 @@
                 
                 @if (!Message.IsEditing && !Message.IsExpanded && !Message.IsStreaming)
                 {
-                    <RadzenButton Text="Show More" Icon="expand_more" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.ExtraSmall"
+                    <RadzenButton Text="@SharedResource.ShowMore" Icon="expand_more" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.ExtraSmall"
                                  class="show-more-button rz-align-self-center" Click="@(() => Message.IsExpanded = true)" />
                 }
                 
@@ -91,13 +92,13 @@
         {
             <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.25rem" class="rz-chat-message-actions" Style="opacity: 0.4; transition: opacity 0.2s;">
                 <RadzenButton Icon="edit" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
-                Click="@(() => OnEdit.InvokeAsync(Message))" Title="Edit message" />
+                              Click="@(() => OnEdit.InvokeAsync(Message))" Title="@SharedResource.MessageEdit" />
                 <RadzenButton Icon="delete" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
-                Click="@(() => OnDelete.InvokeAsync(Message))" Title="Delete message" />
+                              Click="@(() => OnDelete.InvokeAsync(Message))" Title="@SharedResource.MessageDelete" />
                 @if (!IsLoading && IsLast && Message.Role == ChatMessageRole.Assistant)
                 {
                     <RadzenButton Icon="refresh" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
-                    Click="@OnRegenerate" Title="Regenerate response" />
+                                  Click="@OnRegenerate" Title="@SharedResource.MessageRegenerate" />
                 }
             </RadzenStack>
         }
@@ -106,7 +107,7 @@
 
 @code {
     [Parameter] public VisualChatMessage Message { get; set; } = null!;
-    [Parameter] public string UserAvatarText { get; set; } = "U";
+    [Parameter] public string UserAvatarText { get; set; } = "U"; // TODO сделать что-то поинтереснее
     [Parameter] public bool IsLoading { get; set; }
     [Parameter] public bool IsLast { get; set; }
     [Parameter] public EventCallback<(string MessageId, string SegmentId, bool Approved)> OnToolApproval { get; set; }

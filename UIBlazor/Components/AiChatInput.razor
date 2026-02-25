@@ -1,4 +1,4 @@
-﻿@using System.ComponentModel
+@using System.ComponentModel
 @using UIBlazor.Models
 @inherits RadzenComponent
 
@@ -41,8 +41,8 @@
                 </RadzenStack>
                 
                 <RadzenStack Orientation="Orientation.Horizontal" Gap="4px" JustifyContent="JustifyContent.End" AlignItems="AlignItems.Center">
-                    <RadzenButton Icon="gavel" ButtonStyle="ButtonStyle.Base" Variant="Variant.Text" Size="ButtonSize.Small" Click="@OpenRules" Title="Open Rules" />
-                    <RadzenButton Icon="extension" ButtonStyle="ButtonStyle.Base" Variant="Variant.Text" Size="ButtonSize.Small" Click="@OpenSkills" Title="Open Skills" />
+                    <RadzenButton Icon="gavel" ButtonStyle="ButtonStyle.Base" Variant="Variant.Text" Size="ButtonSize.Small" Click="@OpenRules" Title="@SharedResource.OpenRules" />
+                    <RadzenButton Icon="extension" ButtonStyle="ButtonStyle.Base" Variant="Variant.Text" Size="ButtonSize.Small" Click="@OpenSkills" Title="@SharedResource.OpenSkills" />
                     
                     <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" JustifyContent="JustifyContent.End" AlignItems="AlignItems.Center">
                         <RadzenButton Icon="send"
@@ -51,14 +51,14 @@
                                       Visible="@(!IsLoading)"
                                       Disabled="@(!CanSend())"
                                       Click="@OnSendClick"
-                                      title="Send message"
+                                      title="@SharedResource.SendMessage"
                                       class="rz-chat-send-btn" />
                         <RadzenButton Icon="dangerous"
                                       ButtonStyle="ButtonStyle.Danger"
                                       Variant="Variant.Text"
                                       Visible="@IsLoading"
                                       Click="@Cancel.InvokeAsync"
-                                      title="Cancel"
+                                      title="@SharedResource.Cancel"
                                       class="rz-chat-cancel-btn" />
                     </RadzenStack>
                 </RadzenStack>
@@ -94,7 +94,6 @@
 @code {
     [Parameter] public EventCallback<string> SendMessage { get; set; }
     [Parameter] public EventCallback<string> Cancel { get; set; }
-    [Parameter] public string Placeholder { get; set; } = "Type @ to mention files...";
     [Parameter] public bool IsLoading { get; set; }
 
     [Inject] private ChatService ChatService { get; set; } = null!;
@@ -114,9 +113,9 @@
 
     private string ModePlaceholder => CurrentMode switch
     {
-        AppMode.Plan => "Describe your goal to create a plan...",
-        AppMode.Agent => "Ask me to perform a task...",
-        _ => Placeholder
+        AppMode.Plan => SharedResource.InputPlaceholderPlan,
+        AppMode.Agent => SharedResource.InputPlaceholderAgent,
+        _ => SharedResource.InputPlaceholder
     };
 
     private AppMode CurrentMode

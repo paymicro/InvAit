@@ -4,8 +4,8 @@ using Microsoft.JSInterop;
 
 namespace UIBlazor.Services.Settings;
 
-public class ProfileService(ILocalStorageService localStorage, IJSRuntime jSRuntime)
-    : BaseSettingsProvider<ProfileOptions>(localStorage, "ProfileSettings"), IProfileManager
+public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileService> logger, IJSRuntime jSRuntime)
+    : BaseSettingsProvider<ProfileOptions>(localStorage, logger, "ProfileSettings"), IProfileManager
 {
     private ConnectionProfile? _activeProfile;
 

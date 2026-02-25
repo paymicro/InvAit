@@ -13,5 +13,6 @@ public interface IMcpSettingsProvider : IBaseSettingsProvider
     Task OpenSettingsFileAsync();
 
     Task<string> RefreshToolsAsync(McpServerConfig server);
+
     Task StopAllAsync();
 }

@@ -1,0 +1,41 @@
+<RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+    <RadzenIcon Icon="language" />
+    <RadzenDropDown TValue="string"
+                    Data="@Cultures"
+                    TextProperty="Name"
+                    ValueProperty="Value"
+                    Value="@CommonSettingsProvider.Current.Culture"
+                    Change="@OnCultureChange"
+                    Style="flex-grow: 1;" />
+</RadzenStack>
+
+@code {
+    [Inject] ICommonSettingsProvider CommonSettingsProvider { get; set; } = null!;
+
+    [Inject] NavigationManager NavManager { get; set; } = null!;
+
+    private List<CultureData> Cultures = new()
+    {
+        new CultureData { Name = "Русский", Value = "ru-RU" },
+        new CultureData { Name = "English", Value = "en-US" }
+    };
+
+    private async Task OnCultureChange(object value)
+    {
+        var culture = value.ToString();
+        if (culture != null && culture != CommonSettingsProvider.Current.Culture)
+        {
+            CommonSettingsProvider.Current.Culture = culture;
+            await CommonSettingsProvider.SaveAsync();
+
+            // Перезагружаем страницу для применения новой культуры
+            NavManager.NavigateTo(NavManager.Uri, forceLoad: true);
+        }
+    }
+
+    public class CultureData
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Value { get; set; } = string.Empty;
+    }
+}

@@ -1,5 +1,5 @@
 using System.Text.Json.Serialization;
-using UIBlazor.Components.Chat;
+using UIBlazor.Constants;
 
 namespace UIBlazor.Models;
 

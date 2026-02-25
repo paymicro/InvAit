@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Radzen;
 using Radzen.Blazor.Rendering;
-using UIBlazor.Components.Chat;
+using UIBlazor.Constants;
 using UIBlazor.Services;
 using UIBlazor.Services.Settings;
 
@@ -523,14 +523,15 @@ public partial class AiChat : RadzenComponent
 
     private async Task OnShowSettingsAsync()
     {
-        await DialogService.OpenSideAsync<SettingsDialog>("Settings", options: new SideDialogOptions
-        {
-            CloseDialogOnOverlayClick = true,
-            Resizable = true,
-            Position = DialogPosition.Right,
-            MinHeight = 250.0,
-            MinWidth = 400.0
-        });
+        await DialogService.OpenSideAsync<SettingsDialog>(@SharedResource.Settings,
+            options: new SideDialogOptions
+            {
+                CloseDialogOnOverlayClick = true,
+                Resizable = true,
+                Position = DialogPosition.Right,
+                MinHeight = 250.0,
+                MinWidth = 400.0
+            });
 
         // Reload profiles in case they were changed
         await InvokeAsync(StateHasChanged);

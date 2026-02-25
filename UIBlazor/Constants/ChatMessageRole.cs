@@ -1,4 +1,4 @@
-namespace UIBlazor.Models;
+namespace UIBlazor.Constants;
 
 public static class ChatMessageRole
 {

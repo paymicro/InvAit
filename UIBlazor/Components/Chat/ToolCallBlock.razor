@@ -5,7 +5,7 @@
 
 <div class="tool-call-block" data-tool="@Segment.ToolName">
     <div class="tool-call-header @statusClass">
-        Хочу вызвать: <strong>@DisplayName</strong>@(Segment.IsClosed ? "" : " ...")
+        @SharedResource.CallingTool: <strong>@DisplayName</strong>@(Segment.IsClosed ? "" : " ...")
     </div>
 
     @if (Segment.Lines.Count > 0)
@@ -27,7 +27,7 @@
         <div class="tool-approval-footer @statusClass">
             @if (Segment.ApprovalStatus == ToolApprovalStatus.Pending)
             {
-                <div class="tool-approval-label"><i class="rz-icon-notification rz-ml-2"></i>Требуется подтверждение</div>
+                <div class="tool-approval-label"><i class="rz-icon-notification rz-ml-2"></i>@SharedResource.ApproveRequired</div>
                 <div class="tool-approval-actions">
                     <RadzenButton Icon="check" class="tool-approve-btn rz-m-2" Click="@(async () => await OnApproval.InvokeAsync((Segment.Id, true)))" />
                     <RadzenButton Icon="close" class="tool-reject-btn rz-m-2" Click="@(async () => await OnApproval.InvokeAsync((Segment.Id, false)))" />

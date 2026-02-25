@@ -3,8 +3,12 @@ using Shared.Contracts.Mcp;
 
 namespace UIBlazor.Services.Settings;
 
-public class McpSettingsProvider(ILocalStorageService storage, IVsBridge vsBridge, HttpClient httpClient)
-    : BaseSettingsProvider<McpOptions>(storage, "McpSettings"), IMcpSettingsProvider
+public class McpSettingsProvider(
+    ILocalStorageService storage,
+    ILogger<McpSettingsProvider> logger,
+    IVsBridge vsBridge,
+    HttpClient httpClient)
+    : BaseSettingsProvider<McpOptions>(storage, logger, "McpSettings"), IMcpSettingsProvider
 {
     private static void Log(string message, string level = "INFO") =>
         Debug.WriteLine($"[MCP {level}] {message}");

@@ -5,8 +5,13 @@ using Shared.Contracts.Mcp;
 
 namespace UIBlazor.Services.Settings;
 
-public partial class ToolManager(BuiltInAgent builtInAgent, ILocalStorageService localStorage, IMcpSettingsProvider mcpSettingsProvider, IVsBridge vsBridge)
-    : BaseSettingsProvider<ToolSettings>(localStorage, "ToolSettings"), IToolManager
+public partial class ToolManager(
+    BuiltInAgent builtInAgent,
+    ILogger<ToolManager> logger,
+    ILocalStorageService localStorage,
+    IMcpSettingsProvider mcpSettingsProvider,
+    IVsBridge vsBridge)
+    : BaseSettingsProvider<ToolSettings>(localStorage, logger, "ToolSettings"), IToolManager
 {
     private readonly ConcurrentDictionary<string, Tool> _registeredTools = new();
 
