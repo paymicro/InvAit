@@ -1,7 +1,6 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
-using Microsoft.JSInterop;
 using Radzen;
 using UIBlazor;
 using UIBlazor.Services;
@@ -25,7 +24,12 @@ builder.Services
     .AddScoped<IMessageParser, MessageParser>()
     .AddScoped<BuiltInAgent>()
     .AddScoped<IToolManager, ToolManager>()
-    .AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) })
+    .AddScoped(sp =>
+    {
+        var client = new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) };
+        client.DefaultRequestHeaders.Add("X-Client-Name", "InvAit Visual Studio Plugin");
+        return client;
+    })
     .AddLocalization();
 
 var app = builder.Build();
