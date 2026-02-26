@@ -1,4 +1,4 @@
-﻿@using UIBlazor.Components.Chat
+@using UIBlazor.Components.Chat
 @inherits RadzenComponent
 
 @inject ChatService ChatService
@@ -16,8 +16,10 @@
                                 Placeholder="Select Profile"
                                 Style="width: 180px;" />
             }
-            <RadzenButton Icon="delete_history" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
-                            Click="@ClearChatAsync" Title="Clear chat history" class="rz-chat-header-clear" />
+            <RadzenButton Icon="add_comment" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
+                            Click="@NewSessionAsync" Title="New session" class="rz-chat-header-new" />
+            <RadzenButton Icon="history" Disabled="@(_recentSessions.Count == 0)" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
+                            Click="@OpenSessionsDialogAsync" Title="Session history" class="rz-chat-header-history" />
             <RadzenButton Icon="settings" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
                             Click="@OnShowSettingsAsync" Title="Settings" class="rz-chat-header-settings" />
         </RadzenStack>
@@ -27,10 +29,7 @@
     <div class="rz-chat-messages" id="chat-messages">
         @if (Messages.Count == 0)
         {
-            <RadzenStack class="rz-chat-empty" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="1rem">
-                <RadzenIcon Icon="chat_bubble_outline" class="rz-text-secondary-color" />
-                <RadzenText TextStyle="TextStyle.Body2" class="rz-mt-2 rz-text-tertiary-color">@EmptyMessage</RadzenText>
-            </RadzenStack>
+            <RecentSessionsPicker ShowTitle=true />
         }
         else
         {

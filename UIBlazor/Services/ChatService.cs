@@ -31,7 +31,7 @@ public class ChatService(
 
     public ConnectionProfile Options => profileManager.ActiveProfile;
 
-    public ConversationSession? Session
+    public ConversationSession Session
     {
         get;
         private set
@@ -42,52 +42,11 @@ public class ChatService(
                 NotifySessionChanged();
             }
         }
-    }
+    } = CreateNewSession();
 
     public event Action? OnSessionChanged;
 
     private void NotifySessionChanged() => OnSessionChanged?.Invoke();
-
-    /// <summary>
-    /// Determines if an exception is retryable (network errors, timeouts, etc.)
-    /// </summary>
-    private static bool IsRetryableException(Exception ex)
-    {
-        return ex is HttpRequestException ||
-               ex is TaskCanceledException ||
-               ex is TimeoutException ||
-               (ex is JsonException && ex.Message.Contains("deserialization", StringComparison.OrdinalIgnoreCase));
-    }
-
-    /// <summary>
-    /// Executes an async operation with retry logic
-    /// </summary>
-    private async Task<T> ExecuteWithRetryAsync<T>(
-        Func<CancellationToken, Task<T>> operation,
-        CancellationToken cancellationToken,
-        string operationName = "operation")
-    {
-        var maxRetries = Options.MaxRetryAttempts;
-        var retryDelay = TimeSpan.FromSeconds(Options.RetryDelaySeconds);
-
-        for (var attempt = 0; attempt <= maxRetries; attempt++)
-        {
-            try
-            {
-                return await operation(cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (attempt < maxRetries && IsRetryableException(ex) && !cancellationToken.IsCancellationRequested)
-            {
-                await Task.Delay(retryDelay, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (attempt == maxRetries || !IsRetryableException(ex))
-            {
-                throw new Exception($"{operationName} failed after {attempt + 1} attempts: {ex.Message}", ex);
-            }
-        }
-
-        throw new InvalidOperationException("Unexpected end of retry loop");
-    }
 
     /// <summary>
     /// Получение списка моделей по API
@@ -443,18 +402,90 @@ public class ChatService(
         }
     }
 
+    private const int _maxSessions = 5;
 
-    /// <summary>
-    /// Asynchronously clears the current session data and resets the session state.
-    /// </summary>
-    /// <remarks>
-    /// This method removes the session data from local storage and creates a new session instance.
-    /// After calling this method, any data associated with the previous session will no longer be available.
-    /// </remarks>
-    public async Task ClearSessionAsync()
+    public async Task<List<SessionSummary>> GetRecentSessionsAsync(int count = _maxSessions)
     {
-        await localStorage.RemoveItemAsync(Session.Id);
+        var sessionIds = await GetAllSessionIdsAsync();
+        var summaries = new List<SessionSummary>();
+
+        foreach (var id in sessionIds)
+        {
+            var session = await localStorage.GetItemAsync<ConversationSession>(id);
+            if (session != null)
+            {
+                var firstMessage = session.Messages.FirstOrDefault(m => m.Role == UIBlazor.Constants.ChatMessageRole.User)?.Content ?? "No messages";
+                var preview = firstMessage.Length > 80 ? firstMessage[..80] + "..." : firstMessage;
+                
+                summaries.Add(new SessionSummary
+                {
+                    Id = id,
+                    CreatedAt = session.CreatedAt,
+                    FirstUserMessage = preview
+                });
+            }
+        }
+
+        return summaries.OrderByDescending(s => s.CreatedAt).Take(count).ToList();
+    }
+
+    public async Task NewSessionAsync()
+    {
+        // Save current session if it has messages
+        if (Session?.Messages.Count > 0)
+        {
+            await SaveSessionAsync();
+        }
+
         Session = CreateNewSession();
+        Session.MaxMessages = Options.MaxMessages;
+
+        await CleanupOldSessionsAsync();
+    }
+    
+    private async Task CleanupOldSessionsAsync()
+    {
+        var sessionIds = await GetAllSessionIdsAsync();
+        if (sessionIds.Count > _maxSessions)
+        {
+            var sessions = new List<ConversationSession>();
+            foreach (var id in sessionIds)
+            {
+                var session = await localStorage.GetItemAsync<ConversationSession>(id);
+                if (session != null)
+                {
+                    session.Id = id;
+                    sessions.Add(session);
+                }
+            }
+
+            var sessionsToDelete = sessions.OrderBy(s => s.CreatedAt).Take(sessions.Count - _maxSessions);
+            foreach (var sessionToDelete in sessionsToDelete)
+            {
+                await DeleteSessionAsync(sessionToDelete.Id);
+            }
+        }
+    }
+
+    public async Task LoadSessionAsync(string id)
+    {
+        var session = await localStorage.GetItemAsync<ConversationSession>(id);
+        if (session != null)
+        {
+            session.Id = id;
+            session.MaxMessages = Options.MaxMessages;
+            Session = session;
+        }
+    }
+
+    public async Task DeleteSessionAsync(string id)
+    {
+        if (Session?.Id == id)
+        {
+            Session = CreateNewSession();
+            Session.MaxMessages = Options.MaxMessages;
+        }
+        await localStorage.RemoveItemAsync(id);
     }
 
     private async Task<List<string>> GetAllSessionIdsAsync()
@@ -462,9 +493,9 @@ public class ChatService(
         return [.. (await localStorage.GetAllKeysAsync()).Where(k => k.StartsWith("session_"))];
     }
 
-    private string GenerateSessionId() => $"session_{DateTime.Now:s}";
+    private static string GenerateSessionId() => $"session_{DateTime.Now:s}";
 
-    private ConversationSession CreateNewSession() => new() { Id = GenerateSessionId() };
+    private static ConversationSession CreateNewSession() => new() { Id = GenerateSessionId() };
 
     public async Task LoadLastSessionOrGenerateNewAsync()
     {

@@ -1,5 +1,3 @@
-using Shared.Contracts;
-
 namespace UIBlazor.Services;
 
 public class RuleService(IVsBridge vsBridge) : IRuleService

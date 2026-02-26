@@ -142,6 +142,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Are you sure?.
+        /// </summary>
+        public static string ConfirmQuestion {
+            get {
+                return ResourceManager.GetString("ConfirmQuestion", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Delete Profile.
         /// </summary>
         public static string DeleteProfile {
@@ -156,6 +165,24 @@ namespace UIBlazor.Localization {
         public static string DeleteProfileQuestion {
             get {
                 return ResourceManager.GetString("DeleteProfileQuestion", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Delete Session.
+        /// </summary>
+        public static string DeleteSession {
+            get {
+                return ResourceManager.GetString("DeleteSession", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to No messages yet. Start a conversation!.
+        /// </summary>
+        public static string EmptyMessage {
+            get {
+                return ResourceManager.GetString("EmptyMessage", resourceCulture);
             }
         }
         
@@ -390,6 +417,15 @@ namespace UIBlazor.Localization {
         public static string SendSolutionsStricture {
             get {
                 return ResourceManager.GetString("SendSolutionsStricture", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Continue conversation.
+        /// </summary>
+        public static string SessionsTitle {
+            get {
+                return ResourceManager.GetString("SessionsTitle", resourceCulture);
             }
         }
         

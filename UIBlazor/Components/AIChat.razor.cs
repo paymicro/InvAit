@@ -14,6 +14,8 @@ public partial class AiChat : RadzenComponent
     // TODO использовать из ChatService.Session.Messages
     private List<VisualChatMessage> Messages { get; set; } = [];
 
+    private List<SessionSummary> _recentSessions = [];
+
     private bool IsLoading { get; set; }
 
     private DotNetObjectReference<AiChat>? _dotNetRef;
@@ -35,8 +37,6 @@ public partial class AiChat : RadzenComponent
     [Inject] private IMessageParser MessageParser { get; set; } = null!;
 
     [Inject] private ILogger<AiChat> Logger { get; set; } = null!;
-
-    [Parameter] public string EmptyMessage { get; set; } = "No messages yet. Start a conversation!";
 
     /// <summary>
     /// Adds a message to the chat.
@@ -61,15 +61,30 @@ public partial class AiChat : RadzenComponent
     }
 
     /// <summary>
-    /// Clears all messages from the chat.
+    /// Starts a new session.
     /// </summary>
-    public async Task ClearChatAsync()
+    public async Task NewSessionAsync()
     {
         Messages.Clear();
+        await ChatService.NewSessionAsync();
+        _recentSessions = await ChatService.GetRecentSessionsAsync(3);
+        await InvokeAsync(StateHasChanged);
+    }
 
-        // Clear the session in the AI service
-        await ChatService.ClearSessionAsync();
+    /// <summary>
+    /// Opens the sessions dialog to view or load history.
+    /// </summary>
+    public async Task OpenSessionsDialogAsync()
+    {
+        await DialogService.OpenAsync<RecentSessionsPicker>(SharedResource.SessionsTitle,
+            options: new DialogOptions {
+                Width = "500px",
+                Height = "400px",
+                AutoFocusFirstElement = true,
+                CloseDialogOnOverlayClick = true
+            });
 
+        _recentSessions = await ChatService.GetRecentSessionsAsync(3);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -431,15 +446,18 @@ public partial class AiChat : RadzenComponent
 
         ToolManager.RegisterAllTools();
         await ProfileManager.InitializeAsync();
+        
+        _recentSessions = await ChatService.GetRecentSessionsAsync(3);
 
         await VsBridge.InitializeAsync();
         await InvokeAsync(StateHasChanged);
     }
 
-    private void HandleSessionChanged()
+    private async void HandleSessionChanged()
     {
         SyncSessionMessageWithUi();
-        InvokeAsync(StateHasChanged);
+        _recentSessions = await ChatService.GetRecentSessionsAsync(3);
+        await InvokeAsync(StateHasChanged);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

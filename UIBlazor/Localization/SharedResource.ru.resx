@@ -264,4 +264,16 @@
   <data name="Tools" xml:space="preserve">
     <value>Инструменты</value>
   </data>
+  <data name="EmptyMessage" xml:space="preserve">
+    <value>Пока нет сообщений.</value>
+  </data>
+  <data name="DeleteSession" xml:space="preserve">
+    <value>Удалить сессию</value>
+  </data>
+  <data name="ConfirmQuestion" xml:space="preserve">
+    <value>Вы уверены?</value>
+  </data>
+  <data name="SessionsTitle" xml:space="preserve">
+    <value>Продолжить обсуждение</value>
+  </data>
 </root>

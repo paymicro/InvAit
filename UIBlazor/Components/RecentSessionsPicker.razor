@@ -1,0 +1,63 @@
+@using UIBlazor.Models
+@inject DialogService DialogService
+
+@if (_sessions != null && _sessions.Any())
+{
+    <RadzenStack AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="1rem" Style="max-width: 600px; margin: 0 auto; padding-top: 2rem;">
+        @if (ShowTitle)
+        {
+            <RadzenText TextStyle="TextStyle.H6" class="rz-text-secondary-color">@SharedResource.SessionsTitle</RadzenText>
+        }
+        <RadzenDataList Data="@_sessions" TItem="SessionSummary" Count="@_sessions.Count" WrapItems="true">
+            <Template Context="session">
+                <RadzenCard class="rz-p-2 rz-w-100" Style="cursor: pointer;" @onclick="() => LoadSession(session.Id)">
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+                        <RadzenIcon Icon="chat_bubble_outline" class="rz-text-tertiary-color" />
+                        <RadzenStack Orientation="Orientation.Vertical" Gap="0.2rem" Style="flex: 1; overflow: hidden;">
+                            <RadzenText TextStyle="TextStyle.Caption" class="rz-color-info-light" Style="text-align: end;">@session.CreatedAt.ToString("g")</RadzenText>
+                            <RadzenText TextStyle="TextStyle.Body2" Style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@session.FirstUserMessage</RadzenText>
+                        </RadzenStack>
+                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text" Size="ButtonSize.Small" Click="args => DeleteSessionAsync(session.Id, args)" @onclick:stopPropagation="true" />
+                    </RadzenStack>
+                </RadzenCard>
+            </Template>
+        </RadzenDataList>
+    </RadzenStack>
+}
+else
+{
+    <RadzenStack class="rz-chat-empty" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="1rem">
+        <RadzenIcon Icon="chat_bubble_outline" class="rz-text-secondary-color" />
+        <RadzenText TextStyle="TextStyle.Body2" class="rz-mt-2 rz-text-tertiary-color">@SharedResource.EmptyMessage</RadzenText>
+    </RadzenStack>
+}
+
+@code {
+    private List<SessionSummary>? _sessions;
+
+    [Inject] ChatService ChatService { get; set; } = null!;
+
+    [Parameter] public bool ShowTitle { get; set; } = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _sessions = await ChatService.GetRecentSessionsAsync(5);
+    }
+
+    private async Task LoadSession(string id)
+    {
+        await ChatService.LoadSessionAsync(id);
+        DialogService.Close();
+    }
+
+    private async Task DeleteSessionAsync(string id, MouseEventArgs args)
+    {
+        var result = await DialogService.Confirm(SharedResource.ConfirmQuestion, SharedResource.DeleteSession);
+        if (result == true)
+        {
+            await ChatService.DeleteSessionAsync(id);
+            _sessions = await ChatService.GetRecentSessionsAsync(5);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}

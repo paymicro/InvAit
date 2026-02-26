@@ -24,6 +24,15 @@ indent_size = 2
 
 # Dotnet code style settings:
 [*.{cs,razor}]
+# Разрешить атрибуты на той же строке, что и члены (методы, свойства)
+dotnet_style_allow_multiple_attributes_per_line 				= true
+dotnet_style_allow_attributes_on_same_line_as_type_declaration 	= true
+dotnet_style_allow_attributes_on_same_line_as_method_declaration = true
+csharp_preserve_static_layout_with_attributes 					= true
+csharp_place_type_attribute_on_same_line 						= true
+csharp_place_method_attribute_on_same_line 						= true
+csharp_place_property_attribute_on_same_line                    = true
+
 # Sort using and Import directives with System.* appearing first
 dotnet_sort_system_directives_first                             = true
 dotnet_separate_import_directive_groups                         = false

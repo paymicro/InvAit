@@ -264,4 +264,16 @@
   <data name="Tools" xml:space="preserve">
     <value>Tools</value>
   </data>
+  <data name="EmptyMessage" xml:space="preserve">
+    <value>No messages yet. Start a conversation!</value>
+  </data>
+  <data name="DeleteSession" xml:space="preserve">
+    <value>Delete Session</value>
+  </data>
+  <data name="ConfirmQuestion" xml:space="preserve">
+    <value>Are you sure?</value>
+  </data>
+  <data name="SessionsTitle" xml:space="preserve">
+    <value>Continue conversation</value>
+  </data>
 </root>

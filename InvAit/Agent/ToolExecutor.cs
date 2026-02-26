@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Community.VisualStudio.Toolkit;
 using EnvDTE;
 using EnvDTE80;
 using InvAit.Utils;
@@ -572,9 +573,8 @@ public class ToolExecutor
         try
         {
             var tempFile = Path.Combine(Path.GetTempPath(), Path.GetFileName(filepath));
-            File.Copy(filepath, tempFile, true);
-            File.WriteAllLines(filepath, lines);
-            await FileDiffAsync(tempFile, filepath, "old", "new");
+            File.WriteAllLines(filepath, lines, Encoding.UTF8); // TODO настройка кодировки, может кому-то нужен BOM
+            await OpenEditorAndCleanUp(filepath);
             await Logger.LogAsync($"{totalReplacements} changes successfully applied to {inputFileName}.\r\nLooks good!");
         }
         catch (Exception e)
@@ -590,6 +590,29 @@ public class ToolExecutor
         {
             Payload = $"Changes successfully applied to {inputFileName}.\r\nLooks good!. Applied {totalReplacements}/{replacements.Count} replacements. Use read_files to get actual content."
         };
+    }
+
+    /// <summary>
+    /// Открываем файл в редакторе Visual Studio
+    /// </summary>
+    public async Task OpenEditorAndCleanUp(string filepath)
+    {
+        var docView = await VS.Documents.OpenAsync(filepath);
+
+        if (docView != null)
+        {
+            // Переключаемся на основной поток для выполнения команд IDE
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+            // 3. Запускаем Code Cleanup
+            var dte = Shell.Package.GetGlobalService(typeof(DTE)) as DTE;
+
+            // Выполняем очистку
+            dte?.ExecuteCommand("Analyze.RunCodeCleanup");
+
+            // охраняем файл после очистки
+            docView.Document.Save();
+        }
     }
 
     public int FindSubarrayIndex(List<string> bigArray, List<string> smallArray)

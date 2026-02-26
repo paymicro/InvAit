@@ -1,4 +1,4 @@
-﻿@using UIBlazor.Components
+@using UIBlazor.Components
 <HeadContent>
     <RadzenTheme Theme="standard-dark" />
     <link rel="stylesheet" href="css/app.css" />
@@ -25,9 +25,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // загрузка сессии перед показом чата
-        await ChatService.LoadLastSessionOrGenerateNewAsync();
-
         await base.OnInitializedAsync();
 
         // инициализация всех настроек
