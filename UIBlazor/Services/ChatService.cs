@@ -279,14 +279,13 @@ public class ChatService(
             }
         }
 
-        var response = await ExecuteWithRetryAsync(async ct =>
-            await httpClient.SendAsync(request, Options.Stream ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead, ct),
-            cancellationToken, "Chat completion").ConfigureAwait(false);
+        var response = await httpClient.SendAsync(request, Options.Stream ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead, cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {
             var message = Options.Stream ? "stream" : "request";
-            throw new Exception($"Chat {message} failed: {await response.Content.ReadAsStringAsync(cancellationToken)}");
+            var result = $"HttpCode: {response.StatusCode} | server failed: {await response.Content.ReadAsStringAsync(cancellationToken)}";
+            throw new Exception(result);
         }
 
         // если не стрим, то возвращаем как один чанк
@@ -325,7 +324,7 @@ public class ChatService(
         // чтобы html-теги <function> склеивать в один чанк
         var _pendingText = string.Empty;
 
-        while ((line = await reader.ReadLineAsync()) is not null && !cancellationToken.IsCancellationRequested)
+        while ((line = await reader.ReadLineAsync(cancellationToken)) is not null && !cancellationToken.IsCancellationRequested)
         {
             if (string.IsNullOrWhiteSpace(line) || !line.StartsWith("data:"))
             {

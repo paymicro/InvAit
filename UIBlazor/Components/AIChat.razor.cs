@@ -197,8 +197,10 @@ public partial class AiChat : RadzenComponent
         catch (Exception ex)
         {
             assistantMessage.Content = $"Sorry, I encountered an error: {ex.Message}";
+            // обновляем сегменты в сообщении
+            MessageParser.UpdateSegments(assistantMessage.Content, assistantMessage);
             assistantMessage.IsStreaming = false;
-            await InvokeAsync(StateHasChanged);
+            Logger.LogError(ex, "Getting response error");
         }
         finally
         {
@@ -319,7 +321,7 @@ public partial class AiChat : RadzenComponent
 #if DEBUG
                 // Безголовые (без Visual Studio) тесты
                 vsToolResult = HeadlessMocker.GetVsToolResult(vsToolResult);
-                Logger.LogInformation("{request} >>>>>> {result}", JsonUtils.Serialize(tool), JsonUtils.Serialize(vsToolResult));
+                Logger.LogTrace("{request} >>>>>> {result}", JsonUtils.Serialize(tool), JsonUtils.Serialize(vsToolResult));
 #endif
 
                 // для модели обогащаем результат и отправляем в чат
