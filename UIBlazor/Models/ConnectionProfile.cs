@@ -28,7 +28,7 @@ public class ConnectionProfile : BaseOptions
 
     public bool SkipSSL { get; set => SetIfChanged(ref field, value); } = false;
 
-    public string SystemPrompt { get; set => SetIfChanged(ref field, value); } = "You are a helpful AI code assistant.";
+    public string SystemPrompt { get; set => SetIfChanged(ref field, value); } = string.Empty;
 
     public int MaxMessages { get; set => SetIfChanged(ref field, value); } = 50;
 

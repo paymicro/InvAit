@@ -257,38 +257,47 @@ public partial class ToolManager(
             sb.AppendLine("""
                       ## Tool use instructions
 
-                      You have access to several "tools" that you can use at any time to retrieve information and/or perform tasks for the User.
+                      You have access to several tools/functions that you can use at any time to retrieve information and/or perform tasks for the User.
 
-                      You MUST invoke tools exclusively with the following literal syntax:
-                      <function name="toolName">
-                      Parameters
-                      </function>
+                      ## Execution Rules
 
-                      DONT use <function> tag if you don`t want to call tool! This tag is a trigger to calling tool. Be careful.
+                      **Multi-call:** You SHOULD invoke multiple tools within a single message if the task requires it. Do not limit yourself to one tool per response.
 
-                      Immediately after using any toll - stop generation, no explanatory text.
+                      **Prioritize Examples:** Each tool has a specific usage example below. Always follow the tool's specific example and parameter format, as requirements vary between tools.
+                      
+                      **Syntax:** You MUST invoke tools exclusively with the following literal syntax:
+
+                            <function name="toolName">
+                            Parameters
+                            </function>
+
+                      **Constraints:**
+                            - Use <function> tags ONLY for actual tool calls.
+                            - Stop generation immediately after the last tool call.
+                            - No conversational filler or explanations after tools.
 
                       The following tools/functions are available to you:
 
                       """);
+
+            foreach (var tool in enabledTools)
+            {
+                sb.AppendLine("---");
+                sb.AppendLine($"### Tool: {tool.Name}");
+                sb.AppendLine($"**Description:** {tool.Description}");
+                sb.AppendLine("**Calling:**");
+                sb.AppendLine(tool.ExampleToSystemMessage);
+                sb.AppendLine();
+            }
+
+            sb.AppendLine("""
+
+                          If it seems like the User's request could be solved with the tools, choose the BEST tool for the job based on the user's request and the tool descriptions
+                          Do not perform actions with/for hypothetical files. Use tools to deduce which files are relevant.
+                          You can call multiple tools once.
+                          """);
         }
 
-        foreach (var tool in enabledTools)
-        {
-            sb.AppendLine("---");
-            sb.AppendLine($"### Tool: {tool.Name}");
-            sb.AppendLine($"**Description:** {tool.Description}");
-            sb.AppendLine("**Calling:**");
-            sb.AppendLine(tool.ExampleToSystemMessage);
-            sb.AppendLine();
-        }
-
-        sb.AppendLine("""
-
-                      If it seems like the User's request could be solved with the tools, choose the BEST tool for the job based on the user's request and the tool descriptions
-                      Do not perform actions with/for hypothetical files. Use tools to deduce which files are relevant.
-                      You can call multiple tools once.
-                      """);
         return sb.ToString();
     }
 
