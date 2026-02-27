@@ -249,7 +249,8 @@ public partial class ToolManager(
 
         if (mode == AppMode.Agent)
         {
-            sb.AppendLine("You are a function-calling agent. You should take actions to fulfill the user's request.");
+            sb.AppendLine("You are a tool-calling agent. You should take actions to fulfill the user's request.");
+            sb.AppendLine();
         }
 
         if (enabledTools.Count > 0)

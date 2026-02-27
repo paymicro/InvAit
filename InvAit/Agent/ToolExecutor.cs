@@ -599,20 +599,21 @@ public class ToolExecutor
     {
         var docView = await VS.Documents.OpenAsync(filepath);
 
-        if (docView != null)
-        {
-            // Переключаемся на основной поток для выполнения команд IDE
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        // TODO не работает. Надо смотреть другие варианты
+        //if (docView != null)
+        //{
+        //    // Переключаемся на основной поток для выполнения команд IDE
+        //    await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-            // 3. Запускаем Code Cleanup
-            var dte = Shell.Package.GetGlobalService(typeof(DTE)) as DTE;
+        //    // 3. Запускаем Code Cleanup
+        //    var dte = Shell.Package.GetGlobalService(typeof(DTE)) as DTE;
 
-            // Выполняем очистку
-            dte?.ExecuteCommand("Analyze.RunCodeCleanup");
+        //    // Выполняем очистку
+        //    dte?.ExecuteCommand("Analyze.RunCodeCleanup");
 
-            // охраняем файл после очистки
-            docView.Document.Save();
-        }
+        //    // охраняем файл после очистки
+        //    docView.Document.Save();
+        //}
     }
 
     public int FindSubarrayIndex(List<string> bigArray, List<string> smallArray)
