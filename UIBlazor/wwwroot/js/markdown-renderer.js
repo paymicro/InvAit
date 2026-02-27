@@ -200,7 +200,11 @@ function renderMarkdownToElement(elementId, text) {
                 // Check cache
                 const cached = mermaidCache.get(renderId);
                 if (cached && cached.code === content) {
-                    diagram.innerHTML = cached.svg;
+                    if (cached.error) {
+                        renderMermaidError(diagram, content, cached.errorMessage);
+                    } else {
+                        diagram.innerHTML = cached.svg;
+                    }
                     return;
                 }
 
@@ -217,8 +221,43 @@ function renderMarkdownToElement(elementId, text) {
                     })
                     .catch((error) => {
                         console.error('Mermaid render error:', error);
+                        const errorMessage = error.message || error.toString();
+
+                        // Save failure to cache so we don't try again for the same content/id
+                        mermaidCache.set(renderId, {
+                            code: content,
+                            error: true,
+                            errorMessage: errorMessage
+                        });
+
+                        renderMermaidError(diagram, content, errorMessage);
                     });
             });
         }
     }
+}
+
+function renderMermaidError(element, code, error) {
+    // Escaping code content to prevent HTML injection in pre tag
+    const escapedCode = code
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+
+    element.innerHTML = `
+        <div class="mermaid-error-container">
+            <div class="mermaid-error-header">
+                <i class="fas fa-exclamation-triangle"></i> Mermaid Render Error
+            </div>
+            <div class="mermaid-error-body">
+                <div class="mermaid-error-message">${error}</div>
+                <details class="mermaid-error-details">
+                    <summary>Show diagram code</summary>
+                    <pre><code>${escapedCode}</code></pre>
+                </details>
+            </div>
+        </div>
+    `;
 }

@@ -36,16 +36,16 @@ details {
     color: var(--rz-base-400);
 }
 
-details[open] summary {
-    margin-bottom: 10px;
-}
+    details[open] summary {
+        margin-bottom: 10px;
+    }
 
-details summary {
-    cursor: pointer;
-    user-select: none;
-    transition: margin 150ms ease-out;
-    color: var(--rz-base-400);
-}
+    details summary {
+        cursor: pointer;
+        user-select: none;
+        transition: margin 150ms ease-out;
+        color: var(--rz-base-400);
+    }
 
 .reasoning-details {
     white-space: normal;
@@ -100,6 +100,7 @@ details summary {
 .tool-description {
     display: -webkit-box;
     -webkit-line-clamp: 4;
+    line-clamp: 4;
     -webkit-box-orient: vertical;
     overflow: hidden;
     margin-left: 2.2em;
@@ -131,26 +132,26 @@ details summary {
     max-width: 300px;
 }
 
-.usage-indicators .usage-label {
-    font-size: 9px;
-    line-height: 1;
-    display: flex;
-    justify-content: space-between;
-    color: var(--rz-text-secondary-color);
-}
+    .usage-indicators .usage-label {
+        font-size: 9px;
+        line-height: 1;
+        display: flex;
+        justify-content: space-between;
+        color: var(--rz-text-secondary-color);
+    }
 
-.usage-indicators .usage-bar-container {
-    height: 3px;
-    background: rgba(0, 0, 0, 0.1);
-    border-radius: 1.5px;
-    overflow: hidden;
-}
+    .usage-indicators .usage-bar-container {
+        height: 3px;
+        background: rgba(0, 0, 0, 0.1);
+        border-radius: 1.5px;
+        overflow: hidden;
+    }
 
-.usage-indicators .usage-bar-container .usage-bar {
-    height: 100%;
-    background: var(--rz-primary);
-    transition: width 0.3s;
-}
+        .usage-indicators .usage-bar-container .usage-bar {
+            height: 100%;
+            background: var(--rz-primary);
+            transition: width 0.3s;
+        }
 
 .message-content-wrapper {
     position: relative;
@@ -159,22 +160,22 @@ details summary {
     transition: max-height 0.3s ease-out;
 }
 
-.message-content-wrapper.collapsed {
-    max-height: 18em !important;
-    overflow: hidden !important;
-}
+    .message-content-wrapper.collapsed {
+        max-height: 18em !important;
+        overflow: hidden !important;
+    }
 
-.message-content-wrapper.collapsed::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    height: 40px;
-    background: linear-gradient(transparent, rgba(36, 37, 39, 0.9) 70%, #242527);
-    pointer-events: none;
-    z-index: 5;
-}
+        .message-content-wrapper.collapsed::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 40px;
+            background: linear-gradient(transparent, rgba(36, 37, 39, 0.9) 70%, #242527);
+            pointer-events: none;
+            z-index: 5;
+        }
 
 .show-more-button {
     margin-top: -20px;
@@ -190,19 +191,19 @@ details summary {
     padding: 0.5rem;
 }
 
-.message-tool-results pre {
-    max-height: 15em;
-    overflow-y: auto;
-}
+    .message-tool-results pre {
+        max-height: 15em;
+        overflow-y: auto;
+    }
 
 .plan-box {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     transition: transform 0.2s;
 }
 
-.plan-box:hover {
-    transform: translateY(-2px);
-}
+    .plan-box:hover {
+        transform: translateY(-2px);
+    }
 
 .tool-call-block {
     background-color: var(--rz-base-800);
@@ -223,11 +224,11 @@ details summary {
     white-space: normal;
 }
 
-.tool-call-header strong {
-    color: var(--rz-info-light);
-    margin-left: 0.3rem;
-    font-weight: 600;
-}
+    .tool-call-header strong {
+        color: var(--rz-info-light);
+        margin-left: 0.3rem;
+        font-weight: 600;
+    }
 
 .tool-call-args {
     padding: 0.6rem 0.8rem;
@@ -236,14 +237,14 @@ details summary {
     overflow-y: auto;
 }
 
-.tool-call-args pre {
-    margin: 0;
-    font-size: 0.85rem;
-    color: var(--rz-base-400);
-    padding: 0;
-    white-space: pre-wrap;
-    word-break: break-all;
-}
+    .tool-call-args pre {
+        margin: 0;
+        font-size: 0.85rem;
+        color: var(--rz-base-400);
+        padding: 0;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
 
 /* Tool Call Custom Rendering */
 .tool-file-header {
@@ -261,15 +262,15 @@ details summary {
     overflow-x: auto;
 }
 
-.tool-file-content pre {
-    margin: 0;
-    background: transparent;
-    border: none;
-    padding: 0;
-    font-family: Consolas, "Courier New", monospace;
-    font-size: 0.85rem;
-    color: var(--rz-base-400);
-}
+    .tool-file-content pre {
+        margin: 0;
+        background: transparent;
+        border: none;
+        padding: 0;
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 0.85rem;
+        color: var(--rz-base-400);
+    }
 
 .diff-block {
     margin: 0.5rem 0;
@@ -277,7 +278,7 @@ details summary {
     overflow: hidden;
 }
 
-.diff-header-search, 
+.diff-header-search,
 .diff-header-replace,
 .diff-header-separator {
     display: none;
@@ -302,16 +303,18 @@ details summary {
 .diff-line-removed {
     background-color: rgba(255, 0, 0, 0.15);
 }
-.diff-line-removed .diff-marker {
-    color: #ff6b6b;
-}
+
+    .diff-line-removed .diff-marker {
+        color: #ff6b6b;
+    }
 
 .diff-line-added {
     background-color: rgba(0, 255, 0, 0.15);
 }
-.diff-line-added .diff-marker {
-    color: #51cf66;
-}
+
+    .diff-line-added .diff-marker {
+        color: #51cf66;
+    }
 
 .diff-line-context {
     font-family: Consolas, "Courier New", monospace;
@@ -362,7 +365,8 @@ details summary {
     display: flex;
 }
 
-.tool-approve-btn, .tool-reject-btn {
+.tool-approve-btn,
+.tool-reject-btn {
     background: none;
     border-radius: 4px;
     cursor: pointer;
@@ -379,10 +383,10 @@ details summary {
     color: var(--rz-success);
 }
 
-.tool-approve-btn:hover {
-    background: var(--rz-success);
-    color: white;
-}
+    .tool-approve-btn:hover {
+        background: var(--rz-success);
+        color: white;
+    }
 
 .tool-reject-btn {
     background: var(--rz-danger-dark) !important;
@@ -398,12 +402,70 @@ details summary {
         box-shadow: 0 0 0 0 rgba(var(--rz-primary-rgb), 0.4);
         border-color: var(--rz-primary-light);
     }
+
     70% {
         box-shadow: 0 0 0 6px rgba(var(--rz-primary-rgb), 0);
         border-color: var(--rz-primary);
     }
+
     100% {
         box-shadow: 0 0 0 0 rgba(var(--rz-primary-rgb), 0);
         border-color: var(--rz-primary-light);
     }
 }
+
+/* Mermaid Errors */
+.mermaid-error-container {
+    border: 1px solid var(--rz-danger);
+    border-radius: 4px;
+    margin: 10px 0;
+    overflow: hidden;
+    background-color: var(--rz-base-800);
+}
+
+.mermaid-error-header {
+    background-color: var(--rz-danger);
+    color: white;
+    padding: 6px 12px;
+    font-weight: bold;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mermaid-error-body {
+    padding: 10px;
+}
+
+.mermaid-error-message {
+    color: var(--rz-danger-light);
+    font-family: monospace;
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+    margin-bottom: 8px;
+    padding: 8px;
+    background: rgba(var(--rz-danger-rgb), 0.05);
+    border-radius: 4px;
+}
+
+.mermaid-error-details {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+    .mermaid-error-details summary {
+        font-size: 0.75rem !important;
+        font-weight: normal !important;
+        color: var(--rz-base-400) !important;
+    }
+
+    .mermaid-error-details pre {
+        margin: 5px 0 0 0 !important;
+        padding: 8px !important;
+        background: var(--rz-base-900) !important;
+        border-radius: 4px !important;
+        font-size: 0.75rem !important;
+        color: var(--rz-base-400) !important;
+        text-wrap: pre !important;
+    }
