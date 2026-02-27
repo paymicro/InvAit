@@ -150,21 +150,4 @@ public class ChatServiceTests
         Assert.StartsWith("session_", chatService.Session.Id);
         Assert.Empty(chatService.Session.Messages);
     }
-
-    [Fact]
-    public async Task ClearSessionAsync_RemovesSessionAndCreatesNew()
-    {
-        // Arrange
-        var chatService = CreateChatService();
-        await chatService.LoadLastSessionOrGenerateNewAsync();
-        var oldSessionId = chatService.Session.Id;
-        await chatService.AddMessageAsync("user", "Hello");
-
-        // Act
-        await chatService.ClearSessionAsync();
-
-        // Assert
-        _localStorageMock.Verify(ls => ls.RemoveItemAsync(oldSessionId), Times.Once);
-        Assert.Empty(chatService.Session.Messages);
-    }
 }

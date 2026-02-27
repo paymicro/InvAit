@@ -4,12 +4,10 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using Community.VisualStudio.Toolkit;
 using EnvDTE;
 using EnvDTE80;
 using InvAit.Utils;
@@ -40,8 +38,7 @@ public class ToolExecutor
                 BuiltInToolEnum.Exec => await ExecAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.SearchFiles => await SearchFilesAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GrepSearch => await GrepSearchAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BuiltInToolEnum.Ls => await ListDirectoryAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BuiltInToolEnum.FetchUrl => await FetchUrlContentAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.Dir => await ListDirectoryAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.ApplyDiff => await ApplyDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.Build => await BuildSolutionAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GetErrors => await GetErrorListAsync(),
@@ -449,68 +446,6 @@ public class ToolExecutor
         {
             Payload = $"Listed directory {args.GetString("dirPath")}{Environment.NewLine}{items}"
         };
-    }
-
-    private async Task<VsResponse> FetchUrlContentAsync(IReadOnlyDictionary<string, object> args)
-    {
-        var url = args.GetString("param1");
-        if (string.IsNullOrEmpty(url))
-        {
-            return new VsResponse
-            {
-                Success = false,
-                Error = "Error: url is empty."
-            };
-        }
-
-        try
-        {
-            var request = WebRequest.CreateHttp(url);
-            request.Method = "GET";
-            request.UserAgent = "InvAit";
-            request.Timeout = 3000;
-
-            using var response = await request.GetResponseAsync();
-            using var stream = response.GetResponseStream();
-            if (stream == null)
-            {
-                return new VsResponse
-                {
-                    Success = false,
-                    Error = "Error: response stream is null."
-                };
-            }
-
-            var buffer = new char[1000];
-            using var reader = new StreamReader(stream);
-            var read = await reader.ReadAsync(buffer, 0, buffer.Length);
-            var content = new string(buffer, 0, read);
-            if (content.Length >= 1000)
-            {
-                content = content.Substring(0, 1000) + " ...";
-            }
-
-            return new VsResponse
-            {
-                Payload = content
-            };
-        }
-        catch (WebException ex)
-        {
-            return new VsResponse
-            {
-                Success = false,
-                Error = $"Web error: {ex.Message}"
-            };
-        }
-        catch (Exception ex)
-        {
-            return new VsResponse
-            {
-                Success = false,
-                Error = $"Error fetching URL: {ex.Message}"
-            };
-        }
     }
 
     private async Task<VsResponse> ApplyDiffAsync(IReadOnlyDictionary<string, object> args)

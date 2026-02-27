@@ -511,11 +511,182 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Apply diff.
+        /// </summary>
+        public static string ToolApplyDiff {
+            get {
+                return ResourceManager.GetString("ToolApplyDiff", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Build solution.
+        /// </summary>
+        public static string ToolBuild {
+            get {
+                return ResourceManager.GetString("ToolBuild", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Create file.
+        /// </summary>
+        public static string ToolCreateFile {
+            get {
+                return ResourceManager.GetString("ToolCreateFile", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Delete file.
+        /// </summary>
+        public static string ToolDeleteFile {
+            get {
+                return ResourceManager.GetString("ToolDeleteFile", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to List of files.
+        /// </summary>
+        public static string ToolDir {
+            get {
+                return ResourceManager.GetString("ToolDir", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Exec.
+        /// </summary>
+        public static string ToolExec {
+            get {
+                return ResourceManager.GetString("ToolExec", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Get errors.
+        /// </summary>
+        public static string ToolGetErrors {
+            get {
+                return ResourceManager.GetString("ToolGetErrors", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Project info.
+        /// </summary>
+        public static string ToolGetProjectInfo {
+            get {
+                return ResourceManager.GetString("ToolGetProjectInfo", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Solution structure.
+        /// </summary>
+        public static string ToolGetSolutionStructure {
+            get {
+                return ResourceManager.GetString("ToolGetSolutionStructure", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Git branches.
+        /// </summary>
+        public static string ToolGitBranches {
+            get {
+                return ResourceManager.GetString("ToolGitBranches", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Git diff.
+        /// </summary>
+        public static string ToolGitDiff {
+            get {
+                return ResourceManager.GetString("ToolGitDiff", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Git log.
+        /// </summary>
+        public static string ToolGitLog {
+            get {
+                return ResourceManager.GetString("ToolGitLog", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Git status.
+        /// </summary>
+        public static string ToolGitStatus {
+            get {
+                return ResourceManager.GetString("ToolGitStatus", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Grep search.
+        /// </summary>
+        public static string ToolGrepSearch {
+            get {
+                return ResourceManager.GetString("ToolGrepSearch", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Read files.
+        /// </summary>
+        public static string ToolReadFiles {
+            get {
+                return ResourceManager.GetString("ToolReadFiles", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Read opened file.
+        /// </summary>
+        public static string ToolReadOpenFile {
+            get {
+                return ResourceManager.GetString("ToolReadOpenFile", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Read skill content.
+        /// </summary>
+        public static string ToolReadSkillContent {
+            get {
+                return ResourceManager.GetString("ToolReadSkillContent", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Tools.
         /// </summary>
         public static string Tools {
             get {
                 return ResourceManager.GetString("Tools", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Search files.
+        /// </summary>
+        public static string ToolSearchFiles {
+            get {
+                return ResourceManager.GetString("ToolSearchFiles", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Switch mode.
+        /// </summary>
+        public static string ToolSwitchMode {
+            get {
+                return ResourceManager.GetString("ToolSwitchMode", resourceCulture);
             }
         }
         

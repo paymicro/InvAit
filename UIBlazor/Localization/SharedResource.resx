@@ -276,4 +276,61 @@
   <data name="SessionsTitle" xml:space="preserve">
     <value>Continue conversation</value>
   </data>
+  <data name="ToolReadFiles" xml:space="preserve">
+    <value>Read files</value>
+  </data>
+  <data name="ToolReadOpenFile" xml:space="preserve">
+    <value>Read opened file</value>
+  </data>
+  <data name="ToolCreateFile" xml:space="preserve">
+    <value>Create file</value>
+  </data>
+  <data name="ToolApplyDiff" xml:space="preserve">
+    <value>Apply diff</value>
+  </data>
+  <data name="ToolSearchFiles" xml:space="preserve">
+    <value>Search files</value>
+  </data>
+  <data name="ToolGrepSearch" xml:space="preserve">
+    <value>Grep search</value>
+  </data>
+  <data name="ToolDir" xml:space="preserve">
+    <value>List of files</value>
+  </data>
+  <data name="ToolBuild" xml:space="preserve">
+    <value>Build solution</value>
+  </data>
+  <data name="ToolGetErrors" xml:space="preserve">
+    <value>Get errors</value>
+  </data>
+  <data name="ToolGetProjectInfo" xml:space="preserve">
+    <value>Project info</value>
+  </data>
+  <data name="ToolGetSolutionStructure" xml:space="preserve">
+    <value>Solution structure</value>
+  </data>
+  <data name="ToolExec" xml:space="preserve">
+    <value>Exec</value>
+  </data>
+  <data name="ToolGitStatus" xml:space="preserve">
+    <value>Git status</value>
+  </data>
+  <data name="ToolGitLog" xml:space="preserve">
+    <value>Git log</value>
+  </data>
+  <data name="ToolGitDiff" xml:space="preserve">
+    <value>Git diff</value>
+  </data>
+  <data name="ToolGitBranches" xml:space="preserve">
+    <value>Git branches</value>
+  </data>
+  <data name="ToolSwitchMode" xml:space="preserve">
+    <value>Switch mode</value>
+  </data>
+  <data name="ToolReadSkillContent" xml:space="preserve">
+    <value>Read skill content</value>
+  </data>
+  <data name="ToolDeleteFile" xml:space="preserve">
+    <value>Delete file</value>
+  </data>
 </root>

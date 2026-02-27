@@ -175,7 +175,7 @@ public class ChatService(
         return string.Join(Environment.NewLine,
             Options.SystemPrompt,
             rules ?? string.Empty,
-            toolManager.GetToolUseSystemInstructions(Session?.Mode ?? AppMode.Chat),
+            toolManager.GetToolUseSystemInstructions(Session?.Mode ?? AppMode.Chat, skillsMetadata.Count != 0),
             skillsSection,
             contextSection);
     }

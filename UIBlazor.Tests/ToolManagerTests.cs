@@ -121,7 +121,7 @@ public class ToolManagerTests
         // Assert
         Assert.Contains("test_tool", instructions);
         Assert.Contains("Test tool", instructions);
-        Assert.Contains("function-calling agent", instructions);
+        Assert.Contains("tool-calling agent", instructions);
     }
 
     [Fact]

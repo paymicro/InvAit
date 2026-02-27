@@ -196,9 +196,14 @@ public partial class ToolManager(
             : ToolApprovalMode.AutoApprove;
     }
 
-    public string GetToolUseSystemInstructions(AppMode mode)
+    public string GetToolUseSystemInstructions(AppMode mode, bool hasSkills)
     {
         var enabledTools = GetEnabledTools().ToList();
+
+        if (!hasSkills) // если нет скиллов, то не нужно их читать
+        {
+            enabledTools = [.. enabledTools.Where(t => t.Name != BasicEnum.ReadSkillContent)];
+        }
 
         // Filter tools based on mode
         enabledTools = mode switch
@@ -213,7 +218,7 @@ public partial class ToolManager(
         sb.AppendLine($"Current date: {DateTime.Now:f}");
         sb.AppendLine($"Current Application Mode: {mode}");
         sb.AppendLine("Available modes: Chat (for discussion, reading and explanations), Agent (for taking actions and applying changes), Plan (for planning).");
-        sb.AppendLine("Use Mermaid diagrams for clarity in explanations. This will help you better visualize the answer formula. Don`t use \", {, }, (, ) in Mermaid node names.");
+        sb.AppendLine("Use Mermaid diagrams for clarity in explanations. This will help you better visualize the answer formula. Don`t use \", {, }, (, ), [, ], in Mermaid node names.");
 
         if (mode == AppMode.Plan)
         {

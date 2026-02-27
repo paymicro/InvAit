@@ -14,7 +14,7 @@ public interface IToolManager : IBaseSettingsProvider, IDisposable
 
     ToolApprovalMode GetApprovalModeByToolName(string name);
 
-    string GetToolUseSystemInstructions(AppMode mode);
+    string GetToolUseSystemInstructions(AppMode mode, bool hasSkills);
 
     void UpdateCategorySettings(ToolCategory category, bool isEnabled, ToolApprovalMode approvalMode);
 

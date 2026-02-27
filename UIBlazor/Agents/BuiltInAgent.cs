@@ -8,7 +8,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.ReadFiles,
-            DisplayName = "Чтение файлов",
+            DisplayName = SharedResource.ToolReadFiles,
             Category = ToolCategory.ReadFiles,
             Description = "Request to read the contents of one or more files. Use start_line and line_count to read specific parts of large files.",
             ExampleToSystemMessage = $"""
@@ -32,7 +32,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.ReadOpenFile,
-            DisplayName = "Чтение открытого файла",
+            DisplayName = SharedResource.ToolReadOpenFile,
             Category = ToolCategory.ReadFiles,
             Description = $"""
                           To view the user's currently open file, use the {BuiltInToolEnum.ReadOpenFile} tool. 
@@ -48,7 +48,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.CreateFile,
-            DisplayName = "Создание файла",
+            DisplayName = SharedResource.ToolCreateFile,
             Category = ToolCategory.WriteFiles,
             Description = "To create a NEW file with the relative or absolute filepath and new contents.",
             ExampleToSystemMessage = $"""
@@ -64,7 +64,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.ApplyDiff,
-            DisplayName = "Применение изменений",
+            DisplayName = SharedResource.ToolApplyDiff,
             Category = ToolCategory.WriteFiles,
             Description = $"""
                           Request to apply PRECISE, TARGETED modifications to an existing file by searching for specific sections of content and replacing them. This tool is for SURGICAL EDITS ONLY - specific changes to existing code.
@@ -111,7 +111,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.SearchFiles,
-            DisplayName = "Поиск файлов",
+            DisplayName = SharedResource.ToolSearchFiles,
             Category = ToolCategory.ReadFiles,
             Description = "To return a list of files with patches in solution directory based on a search regex pattern, use the search_files tool.",
             ExampleToSystemMessage = $"""
@@ -125,7 +125,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GrepSearch,
-            DisplayName = "Поиск по содержимому",
+            DisplayName = SharedResource.ToolGrepSearch,
             Category = ToolCategory.ReadFiles,
             Description = "To perform a grep search within the project, call the grep_search tool with the regex pattern to match.",
             ExampleToSystemMessage = $"""
@@ -138,25 +138,25 @@ public class BuiltInAgent(IVsBridge vsBridge)
         },
         new()
         {
-            Name = BuiltInToolEnum.Ls,
-            DisplayName = "Список файлов",
+            Name = BuiltInToolEnum.Dir,
+            DisplayName = SharedResource.ToolDir,
             Category = ToolCategory.ReadFiles,
-            Description = "To list files and folders in a given directory, call the ls tool with \"dirPath\" and \"recursive\".",
+            Description = "To list files and folders in a given directory, call this tool with \"dirPath\" and \"recursive\".",
             ExampleToSystemMessage = $"""
                                      For example:
-                                     <function name="{BuiltInToolEnum.Ls}">
+                                     <function name="{BuiltInToolEnum.Dir}">
                                      C:\path\to\dir
                                      false
                                      </function>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Ls, args)
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Dir, args)
         },
         
         // Project and build
         new()
         {
             Name = BuiltInToolEnum.Build,
-            DisplayName = "Сборка проекта",
+            DisplayName = SharedResource.ToolBuild,
             Category = ToolCategory.Execution,
             Description = "To build solution in Visual Studio. With action - Build, Rebuild or Clean. When any errors returns errors list.",
             ExampleToSystemMessage = $"""
@@ -170,7 +170,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GetErrors,
-            DisplayName = "Список ошибок",
+            DisplayName = SharedResource.ToolGetErrors,
             Category = ToolCategory.ReadFiles,
             Description = "To get error list of current solution and current file from Visual Studio.",
             ExampleToSystemMessage = $"""
@@ -182,7 +182,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GetProjectInfo,
-            DisplayName = "Информация о проекте",
+            DisplayName = SharedResource.ToolGetProjectInfo,
             Category = ToolCategory.ReadFiles,
             Description = "Get information about the solution and projects. Returns list of projects, their types, target frameworks, and file structure.",
             ExampleToSystemMessage = $"""
@@ -194,7 +194,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GetSolutionStructure,
-            DisplayName = "Структура решения",
+            DisplayName = SharedResource.ToolGetSolutionStructure,
             Category = ToolCategory.ReadFiles,
             Description = "Get a tree-like structure of the entire solution, including projects, folders, and files.",
             ExampleToSystemMessage = $"""
@@ -208,7 +208,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.Exec,
-            DisplayName = "Выполнение команды",
+            DisplayName = SharedResource.ToolExec,
             Category = ToolCategory.Execution,
             Description = """
                           To run a terminal command, use the execute_command tool in
@@ -227,26 +227,12 @@ public class BuiltInAgent(IVsBridge vsBridge)
                                       """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Exec, args)
         },
-        new()
-        {
-            Name = BuiltInToolEnum.FetchUrl,
-            DisplayName = "Загрузка страницы",
-            Category = ToolCategory.Browser,
-            Description = "To fetch the content of a URL.",
-            ExampleToSystemMessage = $"""
-                                     For example, to read the contents of a webpage, you might respond with:
-                                     <function name="{BuiltInToolEnum.FetchUrl}">
-                                     https://example.com
-                                     </function>
-                                     """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.FetchUrl, args)
-        },
         
         // Git operations
         new()
         {
             Name = BuiltInToolEnum.GitStatus,
-            DisplayName = "Статус Git",
+            DisplayName = SharedResource.ToolGitStatus,
             Category = ToolCategory.ReadFiles,
             Description = "Check git status of the current repository. Shows modified, staged, and untracked files.",
             ExampleToSystemMessage = $"""
@@ -258,7 +244,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GitLog,
-            DisplayName = "Лог Git",
+            DisplayName = SharedResource.ToolGitLog,
             Category = ToolCategory.ReadFiles,
             Description = "View git commit history. Can specify number of commits to display.",
             ExampleToSystemMessage = $"""
@@ -272,7 +258,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GitDiff,
-            DisplayName = "Дифф Git",
+            DisplayName = SharedResource.ToolGitDiff,
             Category = ToolCategory.ReadFiles,
             Description = "View git diff for files. Can compare working directory with staged or specific commits.",
             ExampleToSystemMessage = $"""
@@ -286,7 +272,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.GitBranch,
-            DisplayName = "Ветки Git",
+            DisplayName = SharedResource.ToolGitBranches,
             Category = ToolCategory.ReadFiles,
             Description = "List git branches or get current branch information.",
             ExampleToSystemMessage = $"""
@@ -298,7 +284,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BasicEnum.SwitchMode,
-            DisplayName = "Переключение режима",
+            DisplayName = SharedResource.ToolSwitchMode,
             Category = ToolCategory.ModeSwitch,
             Description = "Switch the current application mode. Available modes: Chat, Agent, Plan. Use this when you need tools from another mode.",
             ExampleToSystemMessage = $"""
@@ -315,7 +301,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BasicEnum.ReadSkillContent,
-            DisplayName = "Чтение скилла",
+            DisplayName = SharedResource.ToolReadSkillContent,
             Category = ToolCategory.ReadFiles,
             Description = """
                           Load the full content of a skill when you need detailed instructions.
@@ -333,13 +319,13 @@ public class BuiltInAgent(IVsBridge vsBridge)
         new()
         {
             Name = BuiltInToolEnum.DeleteFile,
-            DisplayName = "Удаление файла",
+            DisplayName = SharedResource.ToolDeleteFile,
             Category = ToolCategory.DeleteFiles,
-            Description = "To delete a file, use the delete_file tool with the relative or absolute filepath.",
+            Description = "To delete a file, use this tool with the relative or absolute filepath.",
             ExampleToSystemMessage = $"""
                                      For example, to delete a file located at 'path\\to\\file.cs', you would respond with:
                                      <function name="{BuiltInToolEnum.DeleteFile}">
-                                     \path\to\file.cs
+                                     C:\path\to\file.cs
                                      </function>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.DeleteFile, args)

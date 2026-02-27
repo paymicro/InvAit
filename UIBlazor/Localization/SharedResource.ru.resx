@@ -276,4 +276,61 @@
   <data name="SessionsTitle" xml:space="preserve">
     <value>Продолжить обсуждение</value>
   </data>
+  <data name="ToolReadFiles" xml:space="preserve">
+    <value>Чтение файлов</value>
+  </data>
+  <data name="ToolReadOpenFile" xml:space="preserve">
+    <value>Чтение открытого файла</value>
+  </data>
+  <data name="ToolCreateFile" xml:space="preserve">
+    <value>Создание файла</value>
+  </data>
+  <data name="ToolApplyDiff" xml:space="preserve">
+    <value>Применение изменений</value>
+  </data>
+  <data name="ToolSearchFiles" xml:space="preserve">
+    <value>Поиск файлов</value>
+  </data>
+  <data name="ToolGrepSearch" xml:space="preserve">
+    <value>Поиск по содержимому</value>
+  </data>
+  <data name="ToolDir" xml:space="preserve">
+    <value>Список файлов</value>
+  </data>
+  <data name="ToolBuild" xml:space="preserve">
+    <value>Сборка проекта</value>
+  </data>
+  <data name="ToolGetErrors" xml:space="preserve">
+    <value>Список ошибок</value>
+  </data>
+  <data name="ToolGetProjectInfo" xml:space="preserve">
+    <value>Информация о проекте</value>
+  </data>
+  <data name="ToolGetSolutionStructure" xml:space="preserve">
+    <value>Структура решения</value>
+  </data>
+  <data name="ToolExec" xml:space="preserve">
+    <value>Выполнение команды</value>
+  </data>
+  <data name="ToolGitStatus" xml:space="preserve">
+    <value>Статус Git</value>
+  </data>
+  <data name="ToolGitLog" xml:space="preserve">
+    <value>Лог Git</value>
+  </data>
+  <data name="ToolGitDiff" xml:space="preserve">
+    <value>Изменения Git</value>
+  </data>
+  <data name="ToolGitBranches" xml:space="preserve">
+    <value>Ветки Git</value>
+  </data>
+  <data name="ToolSwitchMode" xml:space="preserve">
+    <value>Переключение режима</value>
+  </data>
+  <data name="ToolReadSkillContent" xml:space="preserve">
+    <value>Чтение скилла</value>
+  </data>
+  <data name="ToolDeleteFile" xml:space="preserve">
+    <value>Удаление файла</value>
+  </data>
 </root>
