@@ -33,11 +33,10 @@
             <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween"  AlignItems="AlignItems.Center">
                 <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" AlignItems="AlignItems.Center">
                     <RadzenDropDown TValue="AppMode" class="mode-dropdown" Data="@AppModeValues" @bind-Value="@CurrentMode" />
-                    <RadzenDropDown TValue="string" class="model-dropdown"
-                                    Data="@(ProfileManager.ActiveProfile.AvailableModels ?? [])"
-                                    @bind-Value="@ProfileManager.ActiveProfile.Model"
-                                    @bind-Value:after="OnModelChanged"
-                                    Placeholder="Model" />
+                        <RadzenDropDown TValue="string" class="model-dropdown"
+                                        Data="@ProfileManager.ActiveProfile.AvailableModels"
+                                        @bind-Value="@ProfileManager.ActiveProfile.Model"
+                                        Placeholder="Model" />
                 </RadzenStack>
                 
                 <RadzenStack Orientation="Orientation.Horizontal" Gap="4px" JustifyContent="JustifyContent.End" AlignItems="AlignItems.Center">
@@ -251,9 +250,6 @@
         }
     }
 
-    private async Task OnModelChanged()
-        => await ProfileManager.SaveProfileAsync(ProfileManager.ActiveProfile);
-
     private async Task OnSendClick()
     {
         if (!CanSend()) return;
@@ -341,7 +337,7 @@
         base.OnInitialized();
         ChatService.OnSessionChanged += HandleSessionChanged;
         VsBridge.OnModeSwitched += HandleModeSwitched;
-        ProfileManager.Current.PropertyChanged += HandleProfileChanged;
+        ProfileManager.OnSaved += HandleProfileChanged;
     }
 
     private void HandleModeSwitched(AppMode mode)
@@ -355,13 +351,9 @@
         InvokeAsync(StateHasChanged);
     }
 
-    private void HandleProfileChanged(object? sender, PropertyChangedEventArgs e)
+    private void HandleProfileChanged()
     {
-        if (e.PropertyName == nameof(ProfileOptions.ActiveProfileId))
-        {
-            // обновление состояния если изменился профиль - для обновления списка моделей
-            InvokeAsync(StateHasChanged);
-        }
+        InvokeAsync(StateHasChanged);
     }
 
     private async Task OpenRules()
@@ -379,6 +371,6 @@
         base.Dispose();
         ChatService.OnSessionChanged -= HandleSessionChanged;
         VsBridge.OnModeSwitched -= HandleModeSwitched;
-        ProfileManager.Current.PropertyChanged -= HandleProfileChanged;
+        ProfileManager.OnSaved -= HandleProfileChanged;
     }
 }

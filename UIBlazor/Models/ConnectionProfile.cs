@@ -1,5 +1,3 @@
-using UIBlazor.Options;
-
 namespace UIBlazor.Models;
 
 public class ConnectionProfile : BaseOptions

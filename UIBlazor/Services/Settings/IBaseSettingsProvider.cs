@@ -1,8 +1,10 @@
 namespace UIBlazor.Services.Settings;
 
-public interface IBaseSettingsProvider
+public interface IBaseSettingsProvider : IDisposable
 {
     Task InitializeAsync();
 
     Task ResetAsync();
+
+    event Action? OnSaved;
 }

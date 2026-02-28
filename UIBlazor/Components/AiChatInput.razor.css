@@ -1,4 +1,4 @@
-﻿.chat-input-wrapper {
+.chat-input-wrapper {
     position: relative;
     /* Чтобы меню позиционировалось относительно обертки */
     display: flex;
@@ -15,20 +15,18 @@
 }
 
 .input-container {
-    border: 1px solid var(--rz-base-400);
     border-radius: 8px;
     background: var(--rz-base-dark);
     display: flex;
     flex-direction: column;
     color: var(--rz-on-base-dark);
     overflow: hidden;
-    /* Чтобы футер не вылезал за скругления */
 }
 
-.input-container:focus-within {
-    border-color: var(--rz-primary);
-    box-shadow: 0 0 0 1px var(--rz-primary);
-}
+    .input-container:focus-within {
+        border-color: var(--rz-primary);
+        box-shadow: 0 0 0 1px var(--rz-primary);
+    }
 
 .input-footer {
     background: rgba(0, 0, 0, 0.05);
@@ -57,10 +55,10 @@
         opacity: 0.5;
     }
 
-.text-input:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
+    .text-input:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
 
 ::deep .mode-dropdown {
     border-radius: 26px;
@@ -117,38 +115,38 @@
     transition: background-color 0.15s;
 }
 
-.hint-item:last-child {
-    border-bottom: none;
-}
+    .hint-item:last-child {
+        border-bottom: none;
+    }
 
-.hint-item:hover,
-.hint-item.selected {
-    background-color: var(--rz-primary);
-    color: var(--rz-on-primary);
-}
+    .hint-item:hover,
+    .hint-item.selected {
+        background-color: var(--rz-primary);
+        color: var(--rz-on-primary);
+    }
 
-.hint-item .file-icon {
-    flex-shrink: 0;
-    font-size: 16px;
-}
+    .hint-item .file-icon {
+        flex-shrink: 0;
+        font-size: 16px;
+    }
 
-.hint-item .file-name {
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex-shrink: 0;
-    max-width: 200px;
-}
+    .hint-item .file-name {
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex-shrink: 0;
+        max-width: 200px;
+    }
 
-.hint-item .file-path {
-    opacity: 0.7;
-    font-size: 0.85em;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin-left: auto;
-    text-align: right;
-    flex-shrink: 1;
-    min-width: 0;
-}
+    .hint-item .file-path {
+        opacity: 0.7;
+        font-size: 0.85em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-left: auto;
+        text-align: right;
+        flex-shrink: 1;
+        min-width: 0;
+    }

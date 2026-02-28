@@ -36,7 +36,7 @@ public class ProfileServiceTests
 
         // Act
         await _service.InitializeAsync();
-        var result = await _service.GetProfilesAsync();
+        var result = _service.Current.Profiles;
         await Task.Delay(800, TestContext.Current.CancellationToken); // Wait for debounce
 
         // Assert
@@ -55,7 +55,7 @@ public class ProfileServiceTests
 
         // Act
         await _service.InitializeAsync();
-        var result = await _service.GetProfilesAsync();
+        var result = _service.Current.Profiles;
 
         // Assert
         Assert.Equal(options.Profiles, result);
@@ -123,7 +123,7 @@ public class ProfileServiceTests
     }
 
     [Fact]
-    public async Task DeleteProfileAsync_RemovesAndSaves()
+    public async Task DeleteProfileAsync_RemovesAndSaves_ShouldNotDeleteProfile()
     {
         // Arrange
         var profileToDelete = new ConnectionProfile { Id = "delete-me" };
@@ -133,12 +133,32 @@ public class ProfileServiceTests
         await _service.InitializeAsync();
 
         // Act
-        await _service.DeleteProfileAsync("delete-me");
+        await _service.DeleteProfileAsync(profileToDelete.Id);
         await Task.Delay(800, TestContext.Current.CancellationToken); // Wait for debounce
 
         // Assert
-        Assert.Empty(options.Profiles);
-        _localStorageMock.Verify(ls => ls.SetItemAsync("ProfileSettings", It.IsAny<ProfileOptions>()), Times.AtLeastOnce);
+        Assert.Single(options.Profiles);
+        _localStorageMock.Verify(ls => ls.SetItemAsync("ProfileSettings", It.IsAny<ProfileOptions>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteProfileAsync_RemovesAndSaves()
+    {
+        // Arrange
+        var profileFirst = new ConnectionProfile { Id = "first" };
+        var profileToDelete = new ConnectionProfile { Id = "delete-me" };
+        var options = new ProfileOptions { Profiles = [profileFirst, profileToDelete] };
+        _localStorageMock.Setup(ls => ls.GetItemAsync<ProfileOptions>("ProfileSettings"))
+            .ReturnsAsync(options);
+        await _service.InitializeAsync();
+
+        // Act
+        await _service.DeleteProfileAsync(profileToDelete.Id);
+        await Task.Delay(800, TestContext.Current.CancellationToken); // Wait for debounce
+
+        // Assert
+        Assert.Single(options.Profiles);
+        _localStorageMock.Verify(ls => ls.SetItemAsync("ProfileSettings", It.IsAny<ProfileOptions>()), Times.Once);
     }
 
     [Fact]
@@ -163,7 +183,7 @@ public class ProfileServiceTests
         await _service.InitializeAsync();
 
         // Act
-        await _service.ActivateProfileAsync("test-profile");
+        await _service.ActivateProfileAsync("test-profile", true);
 
         // Assert
         Assert.Equal("http://test", _service.ActiveProfile.Endpoint);

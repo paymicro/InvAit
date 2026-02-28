@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using Radzen.Blazor;
 using Shared.Contracts.Mcp;
 
 namespace UIBlazor.Services.Settings;
@@ -74,7 +73,7 @@ public partial class ToolManager(
         _ = InitializeAsync();
     }
 
-    protected override Task OnInitializedAsync()
+    protected override Task AfterInitAsync()
     {
         foreach (var tool in _registeredTools.Values)
         {

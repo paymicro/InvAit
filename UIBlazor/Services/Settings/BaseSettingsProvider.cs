@@ -3,7 +3,7 @@ using System.Reflection;
 
 namespace UIBlazor.Services.Settings;
 
-public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider, IDisposable where TOptions : BaseOptions, new()
+public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider where TOptions : BaseOptions, new()
 {
     protected readonly ILocalStorageService Storage;
     protected readonly string StorageKey;
@@ -44,15 +44,24 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider, ID
     }
 
     /// <summary>
+    /// Событие после сохранения настроек
+    /// </summary>
+    public event Action? OnSaved;
+
+    /// <summary>
     /// Немедленное сохранение Current объекта.<br/>
     /// Автоматически вызывается при изменении любого свойства, которое использует <see cref="BaseOptions.SetIfChanged"/>
     /// </summary>
     public virtual async Task SaveAsync()
     {
         await Storage.SetItemAsync(StorageKey, Current);
+        OnSaved?.Invoke();
     }
 
-    public virtual async Task InitializeAsync()
+    /// <summary>
+    /// Загрузка настроек
+    /// </summary>
+    public async Task InitializeAsync()
     {
         _isInitializing = true;
         try
@@ -62,7 +71,7 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider, ID
             {
                 CopyProperties(saved, Current);
             }
-            await OnInitializedAsync();
+            await AfterInitAsync();
         }
         catch (Exception ex)
         {
@@ -74,7 +83,11 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider, ID
         }
     }
 
-    protected virtual Task OnInitializedAsync() => Task.CompletedTask;
+    /// <summary>
+    /// Вызывается сразу после загрузки настроек
+    /// Сюда надо добавлять первичные манипуляции с настройками
+    /// </summary>
+    protected virtual Task AfterInitAsync() => Task.CompletedTask;
 
     protected virtual void CopyProperties(TOptions from, TOptions to)
     {

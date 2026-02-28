@@ -116,7 +116,7 @@ public class ToolManagerTests
         _toolManager.RegisterAllTools();
 
         // Act
-        var instructions = _toolManager.GetToolUseSystemInstructions(AppMode.Agent);
+        var instructions = _toolManager.GetToolUseSystemInstructions(AppMode.Agent, false);
 
         // Assert
         Assert.Contains("test_tool", instructions);
@@ -132,7 +132,7 @@ public class ToolManagerTests
         _toolManager.GetTool("test_tool")!.Enabled = false;
 
         // Act
-        var instructions = _toolManager.GetToolUseSystemInstructions(AppMode.Agent);
+        var instructions = _toolManager.GetToolUseSystemInstructions(AppMode.Agent, false);
 
         // Assert
         Assert.DoesNotContain("Tool use instructions", instructions);

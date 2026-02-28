@@ -7,11 +7,24 @@
 
 <RadzenComponents />
 
-<RadzenLayout>
-    <RadzenBody>
-        <AiChat class="rz-h-100" />
-    </RadzenBody>
-</RadzenLayout>
+@if (!isInitialized)
+{
+    <div class="loading-container">
+        <div class="loading-ball"></div>
+        <div class="loading-ball"></div>
+        <div class="loading-ball"></div>
+        <div class="loading-ball"></div>
+        <div class="loading-ball"></div>
+    </div>
+}
+else
+{
+    <RadzenLayout>
+        <RadzenBody>
+            <AiChat class="rz-h-100" />
+        </RadzenBody>
+    </RadzenLayout>
+}
 
 @code
 {
@@ -23,13 +36,17 @@
 
     [Inject] private ICommonSettingsProvider CommonSettingsProvider { get; set; } = null!;
 
+    private bool isInitialized;
+
     protected override async Task OnInitializedAsync()
     {
-        await base.OnInitializedAsync();
-
         // инициализация всех настроек
         await ProfileService.InitializeAsync();
         await CommonSettingsProvider.InitializeAsync();
         await McpSettingsProvider.InitializeAsync();
+
+        await base.OnInitializedAsync();
+        isInitialized = true;
+        StateHasChanged();
     }
 }

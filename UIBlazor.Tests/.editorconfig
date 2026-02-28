@@ -1,0 +1,3 @@
+# Dotnet code style settings:
+[*.{cs,razor}]
+dotnet_naming_rule.async_methods_must_end_with_async.severity = none

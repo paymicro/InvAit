@@ -7,68 +7,64 @@
             <RadzenStack Gap="1rem">
                 <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
                     <RadzenText TextStyle="TextStyle.Subtitle1">@SharedResource.Profile:</RadzenText>
-                    <RadzenDropDown Data="@_profiles" TextProperty="Name" ValueProperty="Id" 
-                                    @bind-Value="@_selectedProfileId" @bind-Value:after="@OnProfileChanged"
+                    <RadzenDropDown Data="@ProfileManager.Current.Profiles" TextProperty="Name" ValueProperty="Id"
+                                    @bind-Value="@ProfileManager.Current.ActiveProfileId"
                                     Style="flex: 1;" />
-                        <RadzenButton Icon="add" ButtonStyle="ButtonStyle.Success" Variant="Variant.Flat" Click="@OnAddProfile" />
-                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Flat" Click="@OnDeleteProfile" 
-                                  Disabled="@(_profiles.Count <= 1)" />
+                    <RadzenButton Icon="add" ButtonStyle="ButtonStyle.Success" Variant="Variant.Flat" Click="@OnAddProfile" />
+                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Flat" Click="@OnDeleteProfile"
+                                  Disabled="@(ProfileManager.Current.Profiles.Count <= 1)" />
                 </RadzenStack>
 
-                @if (_selectedProfile != null)
-                {
-                     <RadzenStack Gap="1rem">
-                        <RadzenFormField Text="@SharedResource.ProfileName" Variant="Variant.Outlined">
-                            <RadzenTextBox @bind-Value="@_selectedProfile.Name" @bind-Value:after="@OnFieldChanged" Immediate Style="width: 100%" />
-                        </RadzenFormField>
+                <RadzenStack Gap="1rem">
+                    <RadzenFormField Text="@SharedResource.ProfileName" Variant="Variant.Outlined">
+                        <RadzenTextBox @bind-Value="@ProfileManager.ActiveProfile.Name" Immediate Style="width: 100%" />
+                    </RadzenFormField>
 
-                        <RadzenFormField Text="@SharedResource.Provider" Variant="Variant.Outlined">
-                            <RadzenDropDown @bind-Value="@_selectedProfile.Provider" Data="@_providers" @bind-Value:after="@OnProviderChanged" Style="width: 100%" />
-                        </RadzenFormField>
+                    <RadzenFormField Text="@SharedResource.Provider" Variant="Variant.Outlined">
+                        <RadzenDropDown @bind-Value="@ProfileManager.ActiveProfile.Provider" Data="@_providers" Style="width: 100%" />
+                    </RadzenFormField>
 
-                        <RadzenFormField Text="@SharedResource.Endpoint" Variant="Variant.Outlined">
-                            <RadzenTextBox @bind-Value="@_selectedProfile.Endpoint" @bind-Value:after="@OnFieldChanged" Style="width: 100%" />
-                        </RadzenFormField>
+                    <RadzenFormField Text="@SharedResource.Endpoint" Variant="Variant.Outlined">
+                        <RadzenTextBox @bind-Value="@ProfileManager.ActiveProfile.Endpoint" Style="width: 100%" />
+                    </RadzenFormField>
 
-                        <RadzenFormField Text="ApiKey" Variant="Variant.Outlined">
-                            <RadzenPassword @bind-Value="@_selectedProfile.ApiKey" @bind-Value:after="@OnFieldChanged" Style="width: 100%" />
-                        </RadzenFormField>
+                    <RadzenFormField Text="ApiKey" Variant="Variant.Outlined">
+                        <RadzenPassword @bind-Value="@ProfileManager.ActiveProfile.ApiKey" Style="width: 100%" />
+                    </RadzenFormField>
 
-                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                            <RadzenDropDown TValue="string"
-                                            Data="@ProfileManager.ActiveProfile.AvailableModels"
-                                            @bind-Value="@_selectedProfile.Model"
-                                            @bind-Value:after="@OnFieldChanged"
-                                            Placeholder="@SharedResource.SelectModel"
-                                            AllowCustomText="true"
-                                            Style="width: 100%" />
-                             <RadzenButton Icon="autorenew" Click="() => UpdateModelsAsync(CancellationToken.None)" ButtonStyle="ButtonStyle.Light" />
-                        </RadzenStack>
-
-                        <Switch Text="@SharedResource.UseStream" @bind-Value=@_selectedProfile.Stream />
-                        <Switch Text="@SharedResource.SkipSSL" @bind-Value=@_selectedProfile.SkipSSL />
-
-                        <RadzenStack Gap="0.2rem">
-                            <RadzenLabel Text="@SharedResource.Temperature" />
-                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                                <RadzenSlider @bind-Value="@_selectedProfile.Temperature" Min="0" Max="2" Step="0.1" @bind-Value:after="@OnFieldChanged" Style="width: 100%; height: 20px;" />
-                                <RadzenLabel Text="@Math.Abs(_selectedProfile.Temperature).ToString("0.0")" Style="text-align: right; width: 50px;" />
-                            </RadzenStack>
-                        </RadzenStack>
-
-                        <RadzenStack Gap="0.2rem">
-                            <RadzenLabel Text="@SharedResource.MaxTokens" />
-                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                                <RadzenSlider @bind-Value="@_selectedProfile.MaxTokens" Min=1000 Max=256000 Step="1000" @bind-Value:after="@OnFieldChanged" Style="width: 100%; height: 20px;" />
-                                <RadzenLabel Text="@($"{_selectedProfile.MaxTokens / 1000}K")" Style="text-align: right; width: 50px;" />
-                            </RadzenStack>
-                        </RadzenStack>
-
-                        <RadzenFormField Text="@SharedResource.SystemPrompt" Variant="Variant.Outlined">
-                            <RadzenTextArea @bind-Value="@_selectedProfile.SystemPrompt" @bind-Value:after="@OnFieldChanged" Style="min-height: 90px" />
-                        </RadzenFormField>
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                        <RadzenDropDown TValue="string"
+                                        Data="@ProfileManager.ActiveProfile.AvailableModels"
+                                        @bind-Value="@ProfileManager.ActiveProfile.Model"
+                                        Placeholder="@SharedResource.SelectModel"
+                                        AllowCustomText="true"
+                                        Style="width: 100%" />
+                        <RadzenButton Icon="autorenew" Click="() => UpdateModelsAsync(CancellationToken.None)" ButtonStyle="ButtonStyle.Light" />
                     </RadzenStack>
-                }
+
+                    <Switch Text="@SharedResource.UseStream" @bind-Value=@ProfileManager.ActiveProfile.Stream />
+                    <Switch Text="@SharedResource.SkipSSL" @bind-Value=@ProfileManager.ActiveProfile.SkipSSL />
+
+                    <RadzenStack Gap="0.2rem">
+                        <RadzenLabel Text="@SharedResource.Temperature" />
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                            <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.Temperature" Min="0" Max="2" Step="0.1" Style="width: 100%; height: 20px;" />
+                            <RadzenLabel Text="@Math.Abs(ProfileManager.ActiveProfile.Temperature).ToString("0.0")" Style="text-align: right; width: 50px;" />
+                        </RadzenStack>
+                    </RadzenStack>
+
+                    <RadzenStack Gap="0.2rem">
+                        <RadzenLabel Text="@SharedResource.MaxTokens" />
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                            <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.MaxTokens" Min=1000 Max=256000 Step="1000" Style="width: 100%; height: 20px;" />
+                            <RadzenLabel Text="@($"{ProfileManager.ActiveProfile.MaxTokens / 1000}K")" Style="text-align: right; width: 50px;" />
+                        </RadzenStack>
+                    </RadzenStack>
+
+                    <RadzenFormField Text="@SharedResource.SystemPrompt" Variant="Variant.Outlined">
+                        <RadzenTextArea @bind-Value="@ProfileManager.ActiveProfile.SystemPrompt" Style="min-height: 90px" />
+                    </RadzenFormField>
+                </RadzenStack>
                 <Switch Text="@SharedResource.SendCurrentFile" @bind-Value="@CommonSettingsProvider.Current.SendCurrentFile" />
                 <Switch Text="@SharedResource.SendSolutionsStricture" @bind-Value="@CommonSettingsProvider.Current.SendSolutionsStricture" />
             </RadzenStack>
@@ -77,12 +73,12 @@
             <RadzenStack Gap="1rem">
                 @foreach (var category in Enum.GetValues<ToolCategory>())
                 {
-                    var state = ToolManager.Current.CategoryStates.ContainsKey(category) 
-                        ? ToolManager.Current.CategoryStates[category] 
-                        : new ToolCategorySettings();
+                    var state = ToolManager.Current.CategoryStates.ContainsKey(category)
+                    ? ToolManager.Current.CategoryStates[category]
+                    : new ToolCategorySettings();
 
                     <RadzenStack Gap="0.5rem">
-                        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" >
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
                             <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
                                 <RadzenLabel Text="@GetCategoryName(category)" Component="@($"cat_{category}")" Style="font-weight: 500; min-width: 150px;" />
                                 <RadzenSwitch @bind-Value="@state.IsEnabled" @bind-Value:after="() => OnCategorySettingChanged(category, state)" Name="@($"cat_{category}")" />
@@ -151,7 +147,7 @@
                         var hasError = McpSettingsProvider.Current.ServerErrors.TryGetValue(server.Name, out var errorMsg);
                         var borderColor = hasError ? "var(--rz-error-color)" : "var(--rz-border-color)";
                         var serverStyle = $"padding: 0.5rem; border: 1px solid {borderColor}; border-radius: var(--rz-border-radius);";
-                    
+
                         <RadzenStack Gap="0.5rem" Style="@serverStyle">
                             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
                                 <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
@@ -246,15 +242,7 @@
     [Inject] DialogService DialogService { get; set; } = null!;
     [Inject] IMcpSettingsProvider McpSettingsProvider { get; set; } = null!;
 
-    private List<ConnectionProfile> _profiles = [];
-    private ConnectionProfile? _selectedProfile;
-    private string _selectedProfileId = string.Empty;
     private readonly List<string> _providers = ["OpenAI Compatible"];
-
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadProfilesAsync();
-    }
 
     private string? _refreshingServerId;
 
@@ -274,7 +262,7 @@
 
     private async Task OnReloadMcpSettings()
     {
-        await McpSettingsProvider.LoadAsync();
+        await McpSettingsProvider.LoadMcpFileAsync();
         StateHasChanged();
     }
 
@@ -321,89 +309,26 @@
         await McpSettingsProvider.SaveAsync();
     }
 
-    private async Task LoadProfilesAsync()
-    {
-        _profiles = await ProfileManager.GetProfilesAsync();
-        var activeId = await ProfileManager.GetActiveProfileIdAsync();
-
-        if (string.IsNullOrEmpty(activeId) || !_profiles.Any(p => p.Id == activeId))
-        {
-            _selectedProfile = _profiles.FirstOrDefault();
-        }
-        else
-        {
-            _selectedProfile = _profiles.First(p => p.Id == activeId);
-        }
-
-        if (_selectedProfile != null)
-        {
-            _selectedProfileId = _selectedProfile.Id;
-            // Ensure global settings match selected profile initially
-            if (activeId != _selectedProfileId)
-            {
-                await ProfileManager.ActivateProfileAsync(_selectedProfileId);
-            }
-        }
-    }
-
-    private async Task OnProfileChanged()
-    {
-        var id = _selectedProfileId;
-        if (!string.IsNullOrEmpty(id))
-        {
-            _selectedProfile = _profiles.FirstOrDefault(p => p.Id == id);
-            if (_selectedProfile != null)
-            {
-                await ProfileManager.ActivateProfileAsync(id);
-                StateHasChanged();
-            }
-        }
-    }
-
     private async Task OnAddProfile()
     {
         var newProfile = new ConnectionProfile();
         await ProfileManager.SaveProfileAsync(newProfile);
-        await LoadProfilesAsync();
-
-        // Select the new profile
-        _selectedProfileId = newProfile.Id;
-        await OnProfileChanged();
+        await ProfileManager.ActivateProfileAsync(newProfile.Id);
     }
 
     private async Task OnDeleteProfile()
     {
-        if (_profiles.Count <= 1) return;
+        if (string.IsNullOrEmpty(ProfileManager.Current.ActiveProfileId))
+        {
+            return;
+        }
 
-        var confirm = await DialogService.Confirm($"{SharedResource.DeleteProfileQuestion} '{_selectedProfile?.Name}'?", SharedResource.DeleteProfile,
+        var confirm = await DialogService.Confirm($"{SharedResource.DeleteProfileQuestion} '{ProfileManager.ActiveProfile.Name}'?", SharedResource.DeleteProfile,
            new ConfirmOptions() { OkButtonText = SharedResource.Yes, CancelButtonText = SharedResource.No });
 
-        if (confirm == true && _selectedProfile != null)
+        if (confirm == true)
         {
-            await ProfileManager.DeleteProfileAsync(_selectedProfile.Id);
-            await LoadProfilesAsync();
-        }
-    }
-
-    private async Task OnFieldChanged()
-    {
-        if (_selectedProfile != null)
-        {
-            await ProfileManager.SaveProfileAsync(_selectedProfile);
-        }
-    }
-
-    private async Task OnProviderChanged()
-    {
-        if (_selectedProfile != null)
-        {
-            switch (_selectedProfile.Provider)
-            {
-                case "OpenAI Compatible":
-                    _selectedProfile.Endpoint = "https://api.openai.com";
-                    break;
-            }
-            await OnFieldChanged();
+            await ProfileManager.DeleteProfileAsync(ProfileManager.Current.ActiveProfileId);
         }
     }
 
@@ -411,20 +336,11 @@
     {
         try
         {
-            // Note: This uses the CURRENT options in ProfileManager. 
-            // Since we call ActivateProfileAsync/SaveProfileAsync on change, 
-            // the settings are already active.
             var models = await ChatService.GetModelsAsync(cancellationToken);
             var list = models.Data.Select(m => m.Id).ToList();
 
-            // Allow Custom Models logic?
+            // TODO возможность добавлять кастомную строку
             ProfileManager.ActiveProfile.AvailableModels = list;
-
-            if (!list.Contains(_selectedProfile!.Model))
-            {
-                _selectedProfile.Model = list.FirstOrDefault() ?? "";
-                await OnFieldChanged();
-            }
         }
         catch (Exception ex)
         {
@@ -487,8 +403,5 @@
                 }
             }
         }
-
-        // сохраняется автоматически Debouncer-ом
-        // await McpSettingsProvider.SaveAsync();
     }
 }

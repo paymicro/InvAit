@@ -46,7 +46,7 @@ public class ChatServiceTests
             RetryDelaySeconds = 1,
             MaxMessages = 50
         });
-        _toolManagerMock.Setup(tm => tm.GetToolUseSystemInstructions(It.IsAny<AppMode>()))
+        _toolManagerMock.Setup(tm => tm.GetToolUseSystemInstructions(It.IsAny<AppMode>(), false))
             .Returns("Tool instructions");
 
         // Default setup for session listing

@@ -6,7 +6,7 @@ public interface IMcpSettingsProvider : IBaseSettingsProvider
 {
     McpOptions Current { get; }
 
-    Task LoadAsync();
+    Task LoadMcpFileAsync();
 
     Task SaveAsync();
 

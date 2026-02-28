@@ -7,31 +7,20 @@ namespace UIBlazor.Services.Settings;
 public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileService> logger, IJSRuntime jSRuntime)
     : BaseSettingsProvider<ProfileOptions>(localStorage, logger, "ProfileSettings"), IProfileManager
 {
-    private ConnectionProfile? _activeProfile;
+    public ConnectionProfile ActiveProfile { get; private set; }
 
-    public ConnectionProfile ActiveProfile
+    protected override async Task AfterInitAsync()
     {
-        get
-        {
-            if (_activeProfile != null && _activeProfile.Id == Current.ActiveProfileId)
-                return _activeProfile;
-
-            _activeProfile = Current.Profiles.FirstOrDefault(p => p.Id == Current.ActiveProfileId)
-                             ?? Current.Profiles.FirstOrDefault()
-                             ?? new ConnectionProfile { Name = "Default" };
-
-            return _activeProfile;
-        }
-    }
-
-    public override async Task InitializeAsync()
-    {
-        await base.InitializeAsync();
-
         if (Current.Profiles.Count == 0)
         {
             await ResetAsync();
         }
+        else
+        {
+            Current.PropertyChanged += OnPropertyChanged;
+        }
+
+        ActiveProfile = Current.Profiles.FirstOrDefault(p => p.Id == Current.ActiveProfileId) ?? Current.Profiles.First();
 
         foreach (var profile in Current.Profiles)
         {
@@ -41,6 +30,13 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
         if (ActiveProfile.SkipSSL)
         {
             NotifySkipSsl(ActiveProfile.SkipSSL);
+        }
+    }
+
+    private void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ProfileOptions.ActiveProfileId)) {
+            ActiveProfile = Current.Profiles.FirstOrDefault(p => p.Id == Current.ActiveProfileId) ?? Current.Profiles.First();
         }
     }
 
@@ -63,11 +59,6 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
             new VsRequest { Action = BasicEnum.SkipSSL, Payload = skipSsl.ToString() });
     }
 
-    public Task<List<ConnectionProfile>> GetProfilesAsync()
-    {
-        return Task.FromResult(Current.Profiles);
-    }
-
     public async Task SaveProfileAsync(ConnectionProfile profile)
     {
         var existing = Current.Profiles.FirstOrDefault(p => p.Id == profile.Id);
@@ -86,39 +77,47 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
 
         if (Current.ActiveProfileId == profile.Id)
         {
-            await ActivateProfileAsync(Current.ActiveProfileId, skipPersistence: true);
+            await ActivateProfileAsync(Current.ActiveProfileId, saveImediatly: true);
         }
     }
 
-    public Task DeleteProfileAsync(string profileId)
+    public async Task DeleteProfileAsync(string profileId)
     {
+        if (Current.Profiles.Count < 2)
+        {
+            return; // нельзя удалять единственный профиль.
+        }
+
         var profile = Current.Profiles.FirstOrDefault(p => p.Id == profileId);
         if (profile != null)
         {
             profile.PropertyChanged -= OnProfilePropertyChanged;
             Current.Profiles.Remove(profile);
-            Debouncer.Trigger();
+
+            // актуализация активного профиля
+            if (profileId == Current.ActiveProfileId)
+            {
+                await ActivateProfileAsync(Current.Profiles.First().Id, saveImediatly: true);
+            }
+            else
+            {
+                Debouncer.Trigger();
+            }
         }
 
-        return Task.CompletedTask;
+        return;
     }
 
-    public Task ActivateProfileAsync(string profileId)
-    {
-        return ActivateProfileAsync(profileId, skipPersistence: false);
-    }
-
-    private async Task ActivateProfileAsync(string profileId, bool skipPersistence)
+    public async Task ActivateProfileAsync(string profileId, bool saveImediatly = false)
     {
         var profile = Current.Profiles.FirstOrDefault(p => p.Id == profileId);
         if (profile != null)
         {
             Current.ActiveProfileId = profileId;
-            _activeProfile = profile;
 
             NotifySkipSsl(profile.SkipSSL);
 
-            if (skipPersistence)
+            if (!saveImediatly)
             {
                 Debouncer.Trigger();
             }
@@ -129,33 +128,34 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
         }
     }
 
-    public Task<string?> GetActiveProfileIdAsync()
+    public override async Task ResetAsync()
     {
-        return Task.FromResult(Current.ActiveProfileId);
-    }
-
-    public override Task ResetAsync()
-    {
-        foreach (var p in Current.Profiles) p.PropertyChanged -= OnProfilePropertyChanged;
+        foreach (var p in Current.Profiles)
+        {
+            p.PropertyChanged -= OnProfilePropertyChanged;
+        }
 
         var defaultProfile = new ConnectionProfile
         {
             Name = "default",
             Endpoint = "https://api.openai.com"
         };
-        defaultProfile.PropertyChanged += OnProfilePropertyChanged;
 
+        defaultProfile.PropertyChanged += OnProfilePropertyChanged;
         Current.Profiles = [defaultProfile];
         Current.ActiveProfileId = defaultProfile.Id;
-        _activeProfile = defaultProfile;
+        ActiveProfile = defaultProfile;
 
-        return SaveAsync();
+        await SaveAsync();
     }
 
     public override void Dispose()
     {
         base.Dispose();
-        foreach (var p in Current.Profiles) p.PropertyChanged -= OnProfilePropertyChanged;
+        foreach (var p in Current.Profiles)
+        {
+            p.PropertyChanged -= OnProfilePropertyChanged;
+        }
     }
 
     private static void CopyProfileProperties(ConnectionProfile from, ConnectionProfile to)

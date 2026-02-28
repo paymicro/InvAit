@@ -55,7 +55,7 @@ public class McpSettingsProviderTests
             .ReturnsAsync(new VsToolResult { Success = true, Result = "" });
 
         // Act
-        await _provider.LoadAsync();
+        await _provider.LoadMcpFileAsync();
 
         // Assert
         Assert.Empty(_provider.Current.Servers);
@@ -85,7 +85,7 @@ public class McpSettingsProviderTests
             .ReturnsAsync(new VsToolResult { Success = true, Result = JsonUtils.Serialize(toolsResult) });
 
         // Act
-        await _provider.LoadAsync();
+        await _provider.LoadMcpFileAsync();
 
         // Assert
         Assert.Single(_provider.Current.Servers);

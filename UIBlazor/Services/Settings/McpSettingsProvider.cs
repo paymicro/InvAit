@@ -29,15 +29,15 @@ public class McpSettingsProvider(
         await SaveAsync();
     }
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task AfterInitAsync()
     {
-        await LoadAsync();
+        await LoadMcpFileAsync();
     }
 
     /// <summary>
     /// Load servers from %APPDATA%\Agent\mcp.json via VsBridge
     /// </summary>
-    public async Task LoadAsync()
+    public async Task LoadMcpFileAsync()
     {
         try
         {

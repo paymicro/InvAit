@@ -12,6 +12,8 @@ namespace UIBlazor.Components;
 public partial class AiChat : RadzenComponent
 {
     // TODO использовать из ChatService.Session.Messages
+    // для этого нужно переработать сохранение сообщений
+    // сейчас тулзы сохраняются в сессии как отдельные Messages. А тут они идут в массив ToolMessages
     private List<VisualChatMessage> Messages { get; set; } = [];
 
     private List<SessionSummary> _recentSessions = [];
@@ -441,12 +443,10 @@ public partial class AiChat : RadzenComponent
         await base.OnInitializedAsync();
         _dotNetRef = DotNetObjectReference.Create(this);
 
-
         ChatService.OnSessionChanged += HandleSessionChanged;
 
         ToolManager.RegisterAllTools();
-        await ProfileManager.InitializeAsync();
-        
+
         _recentSessions = await ChatService.GetRecentSessionsAsync(3);
 
         await VsBridge.InitializeAsync();
@@ -552,9 +552,6 @@ public partial class AiChat : RadzenComponent
                 MinHeight = 250.0,
                 MinWidth = 400.0
             });
-
-        // Reload profiles in case they were changed
-        await InvokeAsync(StateHasChanged);
     }
 
     /// <inheritdoc />
