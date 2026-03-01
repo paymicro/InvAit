@@ -6,6 +6,7 @@
 ![.NET Framework 4.8](https://img.shields.io/badge/.NET%20Framework-4.8-blue)
 ![.NET Standard 2.0](https://img.shields.io/badge/.NET%20Standard-2.0-blue)
 ![.NET 10](https://img.shields.io/badge/.NET-10-blue)
+[![Code Coverage](https://paymicro.github.io/InvAit/badge_shieldsio_linecoverage_blue.svg)](https://paymicro.github.io/InvAit)
 ![License](https://img.shields.io/github/license/paymicro/InvAit)
 
 ---
