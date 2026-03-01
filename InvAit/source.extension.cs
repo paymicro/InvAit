@@ -15,6 +15,6 @@ namespace InvAit
         public const string Version = "0.0.5";
         public const string Author = "Pavel Yakovlev";
         public const string Tags = "chatGPT, LLM, AI, OpenAI, Private, Local, Visual Studio";
-        public const bool IsPreview = true;
+        public const bool IsPreview = false;
     }
 }

@@ -4,8 +4,7 @@
         <Identity Id="InvAit.a3200071-b4f2-4ba3-a720-1fb1c0267b47" Version="0.0.5" Language="en-US" Publisher="Pavel Yakovlev" />
         <DisplayName>InvAit</DisplayName>
         <Description xml:space="preserve">Simple private LLM chat for Visual Studio</Description>
-        <Icon>Resources\icon_nano.png</Icon>
-        <Preview>true</Preview>
+        <Icon>Resources\icon.png</Icon>
         <Tags>chatGPT, LLM, AI, OpenAI, Private, Local, Visual Studio</Tags>
         <Categories>AI</Categories>
         <Repository>https://github.com/paymicro/InvAit</Repository>
