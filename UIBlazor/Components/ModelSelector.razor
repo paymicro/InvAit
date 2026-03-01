@@ -1,0 +1,60 @@
+<RadzenDropDown TValue="string"
+                @attributes="AdditionalAttributes"
+                Data="@viewModels"
+                @bind-Value="@ProfileManager.ActiveProfile.Model"
+                Placeholder="Model"
+                AllowFiltering="true"
+                LoadData="@OnLoadData"
+                Change="@OnValueChange" />
+
+@code {
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object> AdditionalAttributes { get; set; }
+
+    [Inject] private IProfileManager ProfileManager { get; set; } = null!;
+
+    // Список для отображения (включает оригинальные данные или опцию добавления)
+    IEnumerable<string> viewModels;
+
+    protected override void OnInitialized()
+    {
+        viewModels = ProfileManager.ActiveProfile.AvailableModels;
+    }
+
+    void OnLoadData(LoadDataArgs args)
+    {
+        var allModels = ProfileManager.ActiveProfile.AvailableModels;
+
+        if (string.IsNullOrEmpty(args.Filter))
+        {
+            viewModels = allModels;
+        }
+        else
+        {
+            // Фильтруем существующие модели
+            var filtered = allModels
+                .Where(m => m.Contains(args.Filter, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            // Если точного совпадения нет - добавляем пункт-команду
+            if (filtered.Count == 0)
+            {
+                filtered.Insert(0, $"➕ {args.Filter}");
+            }
+
+            viewModels = filtered;
+        }
+    }
+
+    void OnValueChange(object value)
+    {
+        var selectedValue = value?.ToString();
+
+        if (!string.IsNullOrEmpty(selectedValue) && selectedValue.StartsWith("➕ "))
+        {
+            var newModelName = selectedValue.Substring(2).Trim();
+            ProfileManager.ActiveProfile.Model = newModelName;
+            viewModels = ProfileManager.ActiveProfile.AvailableModels;
+        }
+    }
+}

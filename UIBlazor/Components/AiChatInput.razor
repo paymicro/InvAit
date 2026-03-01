@@ -9,8 +9,8 @@
         <div class="chips-list">
             @foreach (var token in tokens.OfType<FileToken>())
             {
-                <FileChip Token="token" 
-                          Icon="@GetFileIcon(token.FileName)" 
+                <FileChip Token="token"
+                          Icon="@GetFileIcon(token.FileName)"
                           OnRemoveClick="RemoveToken" />
             }
         </div>
@@ -30,19 +30,16 @@
 
         @* Нижняя панель с кнопками *@
         <div class="input-footer">
-            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween"  AlignItems="AlignItems.Center">
+            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center">
                 <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" AlignItems="AlignItems.Center">
                     <RadzenDropDown TValue="AppMode" class="mode-dropdown" Data="@AppModeValues" @bind-Value="@CurrentMode" />
-                        <RadzenDropDown TValue="string" class="model-dropdown"
-                                        Data="@ProfileManager.ActiveProfile.AvailableModels"
-                                        @bind-Value="@ProfileManager.ActiveProfile.Model"
-                                        Placeholder="Model" />
+                    <ModelSelector class="model-dropdown" />
                 </RadzenStack>
-                
+
                 <RadzenStack Orientation="Orientation.Horizontal" Gap="4px" JustifyContent="JustifyContent.End" AlignItems="AlignItems.Center">
                     <RadzenButton Icon="gavel" ButtonStyle="ButtonStyle.Base" Variant="Variant.Text" Size="ButtonSize.Small" Click="@OpenRules" Title="@SharedResource.OpenRules" />
                     <RadzenButton Icon="extension" ButtonStyle="ButtonStyle.Base" Variant="Variant.Text" Size="ButtonSize.Small" Click="@OpenSkills" Title="@SharedResource.OpenSkills" />
-                    
+
                     <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" JustifyContent="JustifyContent.End" AlignItems="AlignItems.Center">
                         <RadzenButton Icon="send"
                                       ButtonStyle="ButtonStyle.Primary"
@@ -78,7 +75,7 @@
                     var fileName = Path.GetFileName(file.Replace('\\', '/'));
                     var fileDir = Path.GetDirectoryName(file.Replace('\\', '/')) ?? "";
                     var icon = GetFileIcon(fileName);
-                    <li class="hint-item @(isSelected ? "selected" : "")" 
+                    <li class="hint-item @(isSelected ? "selected" : "")"
                         @onclick="() => AddFileToken(file)">
                         <span class="file-icon">@icon</span>
                         <span class="file-name">@fileName</span>
@@ -139,7 +136,7 @@
         if (currentInput.EndsWith(" @"))
         {
             // Показываем все файлы
-            var source = VsCodeContextService.CurrentContext?.SolutionFiles ?? 
+            var source = VsCodeContextService.CurrentContext?.SolutionFiles ??
                          ["test1.cs", "C:\\asdtes\\t2aksjhdgj\\ahsghd hjagshjdg\\ajhsgdahjkg.cs"];
             filteredFiles = source.Take(10).ToList();
             selectedIndex = 0;
@@ -150,7 +147,7 @@
             var lastAtIndex = currentInput.LastIndexOf('@');
             var query = currentInput.Substring(lastAtIndex + 1);
 
-            var source = VsCodeContextService.CurrentContext?.SolutionFiles ?? 
+            var source = VsCodeContextService.CurrentContext?.SolutionFiles ??
                          ["test1.cs", "C:\\asdtes\\t2aksjhdgj\\ahsghd hjagshjdg\\ajhsgdahjkg.cs"];
 
             filteredFiles = source
@@ -177,8 +174,8 @@
         }
 
         // Добавляем токен файла
-        tokens.Add(new FileToken 
-        { 
+        tokens.Add(new FileToken
+        {
             FilePath = filePath,
             FileName = fileName
         });
