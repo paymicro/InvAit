@@ -1,9 +1,10 @@
 <RadzenDropDown TValue="string"
                 @attributes="AdditionalAttributes"
-                Data="@viewModels"
+                Data="@_viewModels"
                 @bind-Value="@ProfileManager.ActiveProfile.Model"
                 Placeholder="Model"
                 AllowFiltering="true"
+                ClearSearchAfterSelection="true"
                 LoadData="@OnLoadData"
                 Change="@OnValueChange" />
 
@@ -14,21 +15,21 @@
     [Inject] private IProfileManager ProfileManager { get; set; } = null!;
 
     // Список для отображения (включает оригинальные данные или опцию добавления)
-    IEnumerable<string> viewModels;
+    private IEnumerable<string> _viewModels;
 
     protected override void OnInitialized()
     {
-        viewModels = ProfileManager.ActiveProfile.AvailableModels;
+        _viewModels = ProfileManager.ActiveProfile.AvailableModels;
         ProfileManager.OnSaved += HandleProfileChanged;
     }
 
-    void OnLoadData(LoadDataArgs args)
+    private void OnLoadData(LoadDataArgs args)
     {
         var allModels = ProfileManager.ActiveProfile.AvailableModels;
 
         if (string.IsNullOrEmpty(args.Filter))
         {
-            viewModels = allModels;
+            _viewModels = allModels;
         }
         else
         {
@@ -43,11 +44,11 @@
                 filtered.Insert(0, $"➕ {args.Filter}");
             }
 
-            viewModels = filtered;
+            _viewModels = filtered;
         }
     }
 
-    void OnValueChange(object value)
+    private void OnValueChange(object value)
     {
         var selectedValue = value?.ToString();
 
@@ -55,7 +56,6 @@
         {
             var newModelName = selectedValue.Substring(2).Trim();
             ProfileManager.ActiveProfile.Model = newModelName;
-            viewModels = ProfileManager.ActiveProfile.AvailableModels;
         }
     }
 
