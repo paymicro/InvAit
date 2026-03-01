@@ -18,14 +18,22 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Restore
-        run: dotnet restore
+      - name: Install Blazor Workload
+        run: dotnet workload install wasm-tools
+
+      - name: Install Workloads (Blazor only)
+        run: dotnet workload restore UIBlazor/UIBlazor.csproj
+
+      - name: Restore (Only .NET 10 Projects)
+        run: |
+          dotnet restore UIBlazor/UIBlazor.csproj
+          dotnet restore UIBlazor.Tests/UIBlazor.Tests.csproj
 
       - name: Test & Collect Coverage
         run: dotnet test UIBlazor.Tests/UIBlazor.Tests.csproj --configuration Release --collect:"XPlat Code Coverage;Format=cobertura;Threshold=70;ThresholdType=line;ThresholdStat=total" --results-directory ./TestResults
 
       - name: Generate Report
-        uses: danielpalme/ReportGenerator-Action@5.2.4
+        uses: danielpalme/ReportGenerator-GitHub-Action@5.5.2
         with:
           reports: 'TestResults/**/coverage.cobertura.xml'
           targetdir: 'coveragereport'

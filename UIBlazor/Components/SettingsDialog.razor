@@ -33,7 +33,12 @@
                     </RadzenFormField>
 
                     <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                        <ModelSelector Style="width: 100%" />
+                        <RadzenDropDown TValue="string"
+                                        Data="@ProfileManager.ActiveProfile.AvailableModels"
+                                        @bind-Value="@ProfileManager.ActiveProfile.Model"
+                                        Placeholder="@SharedResource.SelectModel"
+                                        AllowCustomText="true"
+                                        Style="width: 100%" />
                         <RadzenButton Icon="autorenew" Click="() => UpdateModelsAsync(CancellationToken.None)" ButtonStyle="ButtonStyle.Light" />
                     </RadzenStack>
 
@@ -333,6 +338,8 @@
         {
             var models = await ChatService.GetModelsAsync(cancellationToken);
             var list = models.Data.Select(m => m.Id).ToList();
+
+            // TODO возможность добавлять кастомную строку
             ProfileManager.ActiveProfile.AvailableModels = list;
         }
         catch (Exception ex)
