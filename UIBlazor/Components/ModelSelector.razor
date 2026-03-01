@@ -19,6 +19,7 @@
     protected override void OnInitialized()
     {
         viewModels = ProfileManager.ActiveProfile.AvailableModels;
+        ProfileManager.OnSaved += HandleProfileChanged;
     }
 
     void OnLoadData(LoadDataArgs args)
@@ -56,5 +57,15 @@
             ProfileManager.ActiveProfile.Model = newModelName;
             viewModels = ProfileManager.ActiveProfile.AvailableModels;
         }
+    }
+
+    private void HandleProfileChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        ProfileManager.OnSaved -= HandleProfileChanged;
     }
 }

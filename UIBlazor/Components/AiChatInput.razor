@@ -96,7 +96,6 @@
     [Inject] private IVsCodeContextService VsCodeContextService { get; set; } = null!;
     [Inject] private IJSRuntime JS { get; set; } = null!;
     [Inject] private IVsBridge VsBridge { get; set; } = null!;
-    [Inject] private IProfileManager ProfileManager { get; set; } = null!;
 
     private ElementReference textareaRef;
     private List<InputToken> tokens = new();
@@ -334,7 +333,6 @@
         base.OnInitialized();
         ChatService.OnSessionChanged += HandleSessionChanged;
         VsBridge.OnModeSwitched += HandleModeSwitched;
-        ProfileManager.OnSaved += HandleProfileChanged;
     }
 
     private void HandleModeSwitched(AppMode mode)
@@ -368,6 +366,5 @@
         base.Dispose();
         ChatService.OnSessionChanged -= HandleSessionChanged;
         VsBridge.OnModeSwitched -= HandleModeSwitched;
-        ProfileManager.OnSaved -= HandleProfileChanged;
     }
 }
