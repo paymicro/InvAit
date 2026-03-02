@@ -1,0 +1,47 @@
+using Bunit;
+using Radzen;
+using Radzen.Blazor;
+using UIBlazor.Components;
+
+namespace UIBlazor.Tests.Components;
+
+public class CheckBoxTests : Bunit.TestContext
+{
+    public CheckBoxTests()
+    {
+        JSInterop.SetupVoid("Radzen.preventArrows", _ => true);
+        Services.AddRadzenComponents();
+    }
+
+    [Fact]
+    public void ShouldRenderCorrectTextAndValue()
+    {
+        // Arrange
+        var text = "Enable Feature";
+        var value = true;
+
+        // Act
+        var cut = RenderComponent<CheckBox>(parameters => parameters
+            .Add(p => p.Text, text)
+            .Add(p => p.Value, value));
+
+        // Assert
+        var label = cut.FindComponent<RadzenLabel>();
+        Assert.Equal(text, label.Instance.Text);
+
+        var radzenSwitch = cut.FindComponent<RadzenCheckBox<bool>>();
+        Assert.Equal(value, radzenSwitch.Instance.Value);
+    }
+
+    [Fact]
+    public void ShouldBeDisabledWhenDisabledParameterIsTrue()
+    {
+        // Act
+        var cut = RenderComponent<CheckBox>(parameters => parameters
+            .Add(p => p.Disabled, true));
+
+        // Assert
+        var radzenSwitch = cut.FindComponent<RadzenCheckBox<bool>>();
+        Assert.True(radzenSwitch.Instance.Disabled);
+    }
+}

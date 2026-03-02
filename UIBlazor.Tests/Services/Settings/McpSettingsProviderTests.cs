@@ -13,7 +13,7 @@ using UIBlazor.Tests.Utils;
 using UIBlazor.Utils;
 using UIBlazor.VS;
 
-namespace UIBlazor.Tests;
+namespace UIBlazor.Tests.Services.Settings;
 
 public class McpSettingsProviderTests
 {

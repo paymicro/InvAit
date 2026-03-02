@@ -10,7 +10,7 @@ using UIBlazor.Services.Settings;
 using UIBlazor.Tests.Utils;
 using UIBlazor.VS;
 
-namespace UIBlazor.Tests;
+namespace UIBlazor.Tests.Services.Settings;
 
 public class ToolManagerMcpTests
 {

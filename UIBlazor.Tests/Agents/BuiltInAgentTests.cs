@@ -3,7 +3,7 @@ using Shared.Contracts;
 using UIBlazor.Agents;
 using UIBlazor.VS;
 
-namespace UIBlazor.Tests;
+namespace UIBlazor.Tests.Agents;
 
 public class BuiltInAgentTests
 {

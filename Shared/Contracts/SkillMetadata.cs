@@ -15,9 +15,4 @@ public class SkillMetadata
     /// Краткое описание скилла (триггер для активации)
     /// </summary>
     public string Description { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Относительный путь к SKILL.md файлу
-    /// </summary>
-    public string FilePath { get; set; } = string.Empty;
 }

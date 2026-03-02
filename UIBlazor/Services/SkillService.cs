@@ -30,9 +30,8 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
             _skillsCache = metadataJson?.Select(m => new SkillMetadata
             {
                 Name = m.GetValueOrDefault("name", ""),
-                Description = m.GetValueOrDefault("description", ""),
-                FilePath = m.GetValueOrDefault("filePath", "")
-            }).ToList() ?? new List<SkillMetadata>();
+                Description = m.GetValueOrDefault("description", "")
+            }).ToList() ?? [];
 
             _lastCacheUpdate = DateTime.UtcNow;
             return _skillsCache;
@@ -47,17 +46,17 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
     /// Загрузить полное содержимое скилла (с кешированием)
     /// Вызывается только когда агент активирует скилл
     /// </summary>
-    public async Task<SkillContent?> LoadSkillContentAsync(string filePath)
+    public async Task<SkillContent?> LoadSkillContentAsync(string skillName)
     {
         // Проверяем кеш содержимого
-        if (_contentCache.TryGetValue(filePath, out var cachedContent))
+        if (_contentCache.TryGetValue(skillName, out var cachedContent))
         {
             return cachedContent;
         }
 
         var args = new Dictionary<string, object>
         {
-            { "param1", filePath }
+            { "param1", skillName }
         };
 
         var result = await vsBridge.ExecuteToolAsync(BasicEnum.ReadSkillContent, args);
@@ -89,7 +88,7 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
                 var oldestKey = _contentCache.Keys.First();
                 _contentCache.Remove(oldestKey);
             }
-            _contentCache[filePath] = skillContent;
+            _contentCache[skillName] = skillContent;
 
             return skillContent;
         }
@@ -121,9 +120,10 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
             sb.AppendLine($"");
             sb.AppendLine($"""
                            - **{skill.Name}**: {skill.Description}
-                           Activate with: `<function name="{BasicEnum.ReadSkillContent}">
-                                           {skill.FilePath}
-                                           </function>`
+                           To read instructions:
+                           <function name="{BasicEnum.ReadSkillContent}">
+                           {skill.Name}
+                           </function>
                            """);
             sb.AppendLine();
         }

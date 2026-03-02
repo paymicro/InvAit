@@ -5,7 +5,7 @@ using UIBlazor.Options;
 using UIBlazor.Services;
 using UIBlazor.Services.Settings;
 
-namespace UIBlazor.Tests;
+namespace UIBlazor.Tests.Services;
 
 public class ChatServiceTests
 {

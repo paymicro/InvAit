@@ -7,7 +7,7 @@ using UIBlazor.Options;
 using UIBlazor.Services.Settings;
 using UIBlazor.Tests.Utils;
 
-namespace UIBlazor.Tests;
+namespace UIBlazor.Tests.Services.Settings;
 
 public class ProfileServiceTests
 {
