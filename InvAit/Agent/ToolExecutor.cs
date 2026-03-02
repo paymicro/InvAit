@@ -724,19 +724,34 @@ public class ToolExecutor
     private async Task<VsResponse> GetRulesAsync()
     {
         var solutionPath = await GetSolutionPathAsync();
-        var rulesPath = Path.Combine(solutionPath, ".agent", "rules.md");
+        var localRulesPath = Path.Combine(solutionPath, ".agent", "rules.md");
+
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var globalRulesPath = Path.Combine(appData, "Agent", "rules.md");
 
         await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-        if (!File.Exists(rulesPath))
+        if (!File.Exists(localRulesPath) && !File.Exists(globalRulesPath))
         {
             return new VsResponse { Success = true, Payload = string.Empty };
         }
 
         try
         {
-            var content = File.ReadAllText(rulesPath);
-            return new VsResponse { Success = true, Payload = content };
+            var content = new StringBuilder();
+
+            if (File.Exists(globalRulesPath))
+            {
+                content.AppendLine(File.ReadAllText(globalRulesPath));
+                content.AppendLine();
+            }
+
+            if (File.Exists(localRulesPath))
+            {
+                content.AppendLine(File.ReadAllText(localRulesPath));
+            }
+
+            return new VsResponse { Success = true, Payload = content.ToString().Trim() };
         }
         catch (Exception ex)
         {
@@ -758,6 +773,30 @@ public class ToolExecutor
 
         try
         {
+            var normalizedPath = relativePath.Replace('\\', '/');
+            if (normalizedPath.Equals(".agent/rules.md", StringComparison.OrdinalIgnoreCase))
+            {
+                var localPath = GetAbsolutePath(relativePath, solutionPath);
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                var globalPath = Path.Combine(appData, "Agent", "rules.md");
+
+                if (!File.Exists(localPath) && File.Exists(globalPath))
+                {
+                    relativePath = globalPath;
+                }
+            }
+            else if (normalizedPath.Equals(".agent/skills/readme.md", StringComparison.OrdinalIgnoreCase))
+            {
+                var localPath = GetAbsolutePath(relativePath, solutionPath);
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                var globalPath = Path.Combine(appData, "Agent", "skills", "README.md");
+
+                if (!File.Exists(localPath) && File.Exists(globalPath))
+                {
+                    relativePath = globalPath;
+                }
+            }
+
             var absolutePath = GetAbsolutePath(relativePath, solutionPath);
             var directory = Path.GetDirectoryName(absolutePath);
             if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
@@ -805,9 +844,39 @@ public class ToolExecutor
 
     private IEnumerable<string> GetSkillsPaths(string solutionPath)
     {
-        // на .Net Framework EnumerateFileSystemEntries не чувствителен к регистру, так что будут все скиллы
-        return Directory.EnumerateFileSystemEntries(solutionPath, "*SKILL.md", SearchOption.AllDirectories)
-            .Where(path => path.Split(Path.DirectorySeparatorChar).Contains("skills"));
+        var yieldedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // 1. Локальные скиллы (приоритет)
+        if (!string.IsNullOrEmpty(solutionPath) && Directory.Exists(solutionPath))
+        {
+            var localSkills = Directory.EnumerateFileSystemEntries(solutionPath, "*SKILL.md", SearchOption.AllDirectories)
+                .Where(path => path.Split(Path.DirectorySeparatorChar).Contains("skills"));
+
+            foreach (var path in localSkills)
+            {
+                var fileName = Path.GetFileName(path);
+                if (yieldedNames.Add(fileName))
+                {
+                    yield return path;
+                }
+            }
+        }
+
+        // 2. Глобальные скиллы
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var globalSkillsDir = Path.Combine(appData, "Agent", "skills");
+        if (Directory.Exists(globalSkillsDir))
+        {
+            var globalSkills = Directory.EnumerateFileSystemEntries(globalSkillsDir, "*SKILL.md", SearchOption.AllDirectories);
+            foreach (var path in globalSkills)
+            {
+                var fileName = Path.GetFileName(path);
+                if (yieldedNames.Add(fileName))
+                {
+                    yield return path;
+                }
+            }
+        }
     }
 
     /// <summary>
