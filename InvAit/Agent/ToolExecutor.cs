@@ -896,7 +896,6 @@ public class ToolExecutor
             {
                 var firstFiveLines = File.ReadLines(file).Take(5).ToList();
                 var (name, description) = ParseYamlFrontmatter(firstFiveLines);
-                var relativePath = MakeRelativeToSolution(file, solutionPath);
 
                 if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(description))
                 {
@@ -906,8 +905,7 @@ public class ToolExecutor
                 metadataList.Add(new Dictionary<string, string>
                 {
                     { "name", name },
-                    { "description", description },
-                    { "filePath", relativePath }
+                    { "description", description }
                 });
                 await Logger.LogAsync($"Added skill metadata. {name} - {file}");
             }

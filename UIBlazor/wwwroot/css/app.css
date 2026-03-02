@@ -4,7 +4,11 @@
     --rz-text-h2-font-size: 2.0rem;
     --rz-text-h3-font-size: 1.8rem;
     --rz-text-h4-font-size: 1.4rem;
-    background: #242527;
+    background: var(--rz-base-800);
+    --rz-checkbox-checked-icon-background-color: var(--rz-primary-dark);
+    --rz-checkbox-checked-background-color: var(--rz-primary-dark);
+    --rz-checkbox-checked-hover-background-color: var(--rz-primary-dark);
+    --rz-checkbox-checked-color: var(--rz-on-primary-dark);
 }
 
 html,
@@ -87,15 +91,11 @@ details {
         display: block !important;
     }
 
-.switch {
+.checkbox {
     padding: 0.5em;
     border-radius: var(--rz-input-border-radius);
     border: var(--rz-border-width) solid transparent;
 }
-
-    .switch:hover {
-        border: var(--rz-input-border);
-    }
 
 .tool-description {
     display: -webkit-box;
@@ -467,5 +467,5 @@ details {
         border-radius: 4px !important;
         font-size: 0.75rem !important;
         color: var(--rz-base-400) !important;
-        text-wrap: pre !important;
+        white-space: pre !important;
     }

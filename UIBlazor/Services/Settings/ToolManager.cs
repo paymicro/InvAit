@@ -207,9 +207,9 @@ public partial class ToolManager(
         // Filter tools based on mode
         enabledTools = mode switch
         {
-            AppMode.Chat => [.. enabledTools.Where(t => t.Category is ToolCategory.ModeSwitch or ToolCategory.Browser)],
+            AppMode.Chat => [.. enabledTools.Where(t => t.Category is ToolCategory.ModeSwitch)],
             AppMode.Agent => enabledTools,
-            AppMode.Plan => [.. enabledTools.Where(t => t.Category is ToolCategory.ReadFiles or ToolCategory.ModeSwitch or ToolCategory.Browser or ToolCategory.Mcp)],
+            AppMode.Plan => [.. enabledTools.Where(t => t.Category is ToolCategory.ReadFiles or ToolCategory.ModeSwitch or ToolCategory.Mcp)],
             _ => enabledTools
         };
 

@@ -42,8 +42,8 @@
                         <RadzenButton Icon="autorenew" Click="() => UpdateModelsAsync(CancellationToken.None)" ButtonStyle="ButtonStyle.Light" />
                     </RadzenStack>
 
-                    <Switch Text="@SharedResource.UseStream" @bind-Value=@ProfileManager.ActiveProfile.Stream />
-                    <Switch Text="@SharedResource.SkipSSL" @bind-Value=@ProfileManager.ActiveProfile.SkipSSL />
+                    <CheckBox Text="@SharedResource.UseStream" @bind-Value=@ProfileManager.ActiveProfile.Stream />
+                    <CheckBox Text="@SharedResource.SkipSSL" @bind-Value=@ProfileManager.ActiveProfile.SkipSSL />
 
                     <RadzenStack Gap="0.2rem">
                         <RadzenLabel Text="@SharedResource.Temperature" />
@@ -65,13 +65,13 @@
                         <RadzenTextArea @bind-Value="@ProfileManager.ActiveProfile.SystemPrompt" Style="min-height: 90px" />
                     </RadzenFormField>
                 </RadzenStack>
-                <Switch Text="@SharedResource.SendCurrentFile" @bind-Value="@CommonSettingsProvider.Current.SendCurrentFile" />
-                <Switch Text="@SharedResource.SendSolutionsStricture" @bind-Value="@CommonSettingsProvider.Current.SendSolutionsStricture" />
+                <CheckBox Text="@SharedResource.SendCurrentFile" @bind-Value="@CommonSettingsProvider.Current.SendCurrentFile" />
+                <CheckBox Text="@SharedResource.SendSolutionsStricture" @bind-Value="@CommonSettingsProvider.Current.SendSolutionsStricture" />
             </RadzenStack>
         </RadzenTabsItem>
         <RadzenTabsItem Text="@SharedResource.SettingsTools">
             <RadzenStack Gap="1rem">
-                @foreach (var category in Enum.GetValues<ToolCategory>())
+                @foreach (var category in _toolCategories)
                 {
                     var state = ToolManager.Current.CategoryStates.ContainsKey(category)
                     ? ToolManager.Current.CategoryStates[category]
@@ -79,11 +79,7 @@
 
                     <RadzenStack Gap="0.5rem">
                         <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
-                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
-                                <RadzenLabel Text="@GetCategoryName(category)" Component="@($"cat_{category}")" Style="font-weight: 500; min-width: 150px;" />
-                                <RadzenSwitch @bind-Value="@state.IsEnabled" @bind-Value:after="() => OnCategorySettingChanged(category, state)" Name="@($"cat_{category}")" />
-                            </RadzenStack>
-
+                            <CheckBox Text="@GetCategoryName(category)" @bind-Value="@state.IsEnabled" @bind-Value:after="() => OnCategorySettingChanged(category, state)" />
                             <RadzenDropDown TValue="ToolApprovalMode" Data="@(Enum.GetValues<ToolApprovalMode>())"
                                             @bind-Value="@state.ApprovalMode" @bind-Value:after="() => OnCategorySettingChanged(category, state)" />
                         </RadzenStack>
@@ -242,7 +238,14 @@
     [Inject] DialogService DialogService { get; set; } = null!;
     [Inject] IMcpSettingsProvider McpSettingsProvider { get; set; } = null!;
 
-    private readonly List<string> _providers = ["OpenAI Compatible"];
+    private readonly ToolCategory[] _toolCategories = [
+        ToolCategory.ReadFiles,
+        ToolCategory.WriteFiles,
+        ToolCategory.DeleteFiles,
+        ToolCategory.ModeSwitch,
+        ToolCategory.Execution
+    ];
+    private readonly string[] _providers = ["OpenAI Compatible"];
 
     private string? _refreshingServerId;
 
@@ -363,8 +366,6 @@
             ToolCategory.ReadFiles => SharedResource.CategoryReadFiles,
             ToolCategory.WriteFiles => SharedResource.CategoryWriteFiles,
             ToolCategory.DeleteFiles => SharedResource.CategoryDeleteFiles,
-            ToolCategory.Browser => SharedResource.CategoryBrowser,
-            ToolCategory.Mcp => "MCP",
             ToolCategory.ModeSwitch => SharedResource.CategoryModeSwitch,
             ToolCategory.Execution => SharedResource.CategoryExecution,
             _ => category.ToString()

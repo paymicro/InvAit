@@ -129,9 +129,6 @@
   <data name="Cancel" xml:space="preserve">
     <value>Отмена</value>
   </data>
-  <data name="CategoryBrowser" xml:space="preserve">
-    <value>Браузер</value>
-  </data>
   <data name="CategoryDeleteFiles" xml:space="preserve">
     <value>Удаление файлов</value>
   </data>

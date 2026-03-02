@@ -88,15 +88,6 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Browser.
-        /// </summary>
-        public static string CategoryBrowser {
-            get {
-                return ResourceManager.GetString("CategoryBrowser", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to Delete files.
         /// </summary>
         public static string CategoryDeleteFiles {

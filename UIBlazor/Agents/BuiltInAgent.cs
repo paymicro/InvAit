@@ -307,11 +307,12 @@ public class BuiltInAgent(IVsBridge vsBridge)
                           Load the full content of a skill when you need detailed instructions.
                           Skills are pre-listed in your system prompt with name and description.
                           Use this tool only when you determine a skill is relevant to the current task.
+                          For parameter use skill name.
                           """,
             ExampleToSystemMessage = $"""
                                      For example, to load a specific skill:
                                      <function name="{BasicEnum.ReadSkillContent}">
-                                     .agent/skills/debugging/SKILL.md
+                                     ExampleSkillNameForWriteTests
                                      </function>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BasicEnum.ReadSkillContent, args)

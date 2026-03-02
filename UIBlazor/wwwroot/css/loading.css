@@ -8,17 +8,17 @@
     background: #242527;
 }
 
+    .loading-container.settings .loading-ball {
+        background: #3ccb4e;
+    }
+
 .loading-ball {
     width: 18px;
     height: 18px;
-    background: #007bff;
+    background: #0e6dd2;
     border-radius: 50%;
     animation: bounce 1.2s infinite;
 }
-
-    .loading-ball .settings {
-        background: #4cff00;
-    }
 
     .loading-ball:nth-child(2) {
         animation-delay: 0.2s;
