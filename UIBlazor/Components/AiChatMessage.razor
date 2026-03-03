@@ -23,8 +23,8 @@
             if (segment.Type == SegmentType.Tool)
             {
                 <ToolCallBlock @key="segment.Id"
-                Segment="@segment"
-                OnApproval="@OnToolApprovalHandler" />
+                    Segment="@segment"
+                    OnApproval="@OnToolApprovalHandler" />
             }
             else if (segment.Type is SegmentType.Markdown)
             {

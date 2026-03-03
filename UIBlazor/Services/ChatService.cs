@@ -414,7 +414,7 @@ public class ChatService(
             var session = await localStorage.GetItemAsync<ConversationSession>(id);
             if (session != null)
             {
-                var firstMessage = session.Messages.FirstOrDefault(m => m.Role == UIBlazor.Constants.ChatMessageRole.User)?.Content ?? "No messages";
+                var firstMessage = session.Messages.FirstOrDefault(m => m.Role == Constants.ChatMessageRole.User)?.Content ?? "No messages";
                 var preview = firstMessage.Length > 80 ? firstMessage[..80] + "..." : firstMessage;
                 
                 summaries.Add(new SessionSummary
@@ -426,7 +426,7 @@ public class ChatService(
             }
         }
 
-        return summaries.OrderByDescending(s => s.CreatedAt).Take(count).ToList();
+        return [.. summaries.OrderByDescending(s => s.CreatedAt).Take(count)];
     }
 
     public async Task NewSessionAsync()

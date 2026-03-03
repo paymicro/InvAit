@@ -29,8 +29,6 @@
                 <div class="rz-chat-message-time"> @Message.Model </div>
             }
         </RadzenStack>
-        @if (Message.Role != ChatMessageRole.Tool) 
-        {
             <div class="rz-chat-message-text" style="display: grid; width: 100%; position: relative;">
                 <div class="message-content-wrapper @(Message.IsExpanded ? "expanded" : "collapsed")" 
                      style="grid-area: 1/1; opacity: @(Message.IsEditing ? 0 : 1); visibility: @(Message.IsEditing ? "hidden" : "visible"); pointer-events: @(Message.IsEditing ? "none" : "all");">
@@ -75,17 +73,15 @@
                 {
                     <RadzenIcon Icon="more_horiz" class="rz-chat-message-streaming-icon" />
                 }
+
+                @if (Message.IsRetrying)
+                {
+                    <div class="retry-countdown" style="margin-top: 0.5rem; color: var(--rz-warning); font-size: 0.85rem; display: flex; align-items: center; gap: 0.25rem;">
+                        <RadzenIcon Icon="autorenew" class="rz-spin" Style="font-size: 1rem;" />
+                        <span>@SharedResource.RetryIn @Message.RetryCountdown... (@Message.RetryAttempt / @Message.MaxRetryAttempts)</span>
+                    </div>
+                }
             </div>
-        }
-        else
-        {
-            <details class="tool-details">
-                <summary>@Message.ToolDisplayName</summary>
-                <pre>
-                    @Message.Content
-                </pre>
-            </details>
-        }
         
         <!-- Message Actions -->
         @if (!Message.IsStreaming && !Message.IsEditing)
@@ -123,11 +119,13 @@
     private bool _oldIsLast;
     private bool _oldIsLoading;
     private bool _oldIsExpanded;
+    private int _oldRetryCountdown;
     private string _oldContent = string.Empty;
 
     protected override bool ShouldRender()
     {
         if (Message.IsStreaming || _oldIsStreaming ||
+            Message.IsRetrying || _oldRetryCountdown != Message.RetryCountdown ||
             Message.IsEditing || _oldIsEditing ||
             IsLast || _oldIsLast != IsLast ||
             IsLoading || _oldIsLoading != IsLoading ||
@@ -147,6 +145,7 @@
         _oldIsLast = IsLast;
         _oldIsLoading = IsLoading;
         _oldIsExpanded = Message.IsExpanded;
+        _oldRetryCountdown = Message.RetryCountdown;
         _oldContent = Message.Content;
     }
 }

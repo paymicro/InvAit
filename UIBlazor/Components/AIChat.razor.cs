@@ -32,6 +32,8 @@ public partial class AiChat : RadzenComponent
 
     [Inject] private IProfileManager ProfileManager { get; set; } = null!;
 
+    [Inject] private ICommonSettingsProvider CommonSettingsProvider { get; set; } = null!;
+
     [Inject] private IVsBridge VsBridge { get; set; } = null!;
 
     [Inject] private IJSRuntime JsRuntime { get; set; } = null!;
@@ -86,7 +88,6 @@ public partial class AiChat : RadzenComponent
                 CloseDialogOnOverlayClick = true
             });
 
-        _recentSessions = await ChatService.GetRecentSessionsAsync(3);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -163,10 +164,14 @@ public partial class AiChat : RadzenComponent
 
     private async Task GetAiResponseAsync()
     {
-        IsLoading = true;
-
         await _cts.CancelAsync();
         _cts = new CancellationTokenSource();
+        await GetAiResponseInternalAsync(0);
+    }
+
+    private async Task GetAiResponseInternalAsync(int retryCount)
+    {
+        IsLoading = true;
 
         // Add assistant message placeholder
         var assistantMessage = AddVisualMessage(new VisualChatMessage
@@ -211,19 +216,66 @@ public partial class AiChat : RadzenComponent
             // Думаю нужно выдавать ошибку модели
             await HandleToolCallAsync(assistantMessage, [.. assistantMessage.Segments.Where(s => s.Type == SegmentType.Tool && s.IsClosed)]);
         }
+        catch (OperationCanceledException)
+        {
+            assistantMessage.IsStreaming = false;
+        }
         catch (Exception ex)
         {
-            assistantMessage.Content = $"Sorry, I encountered an error: {ex.Message}";
+            var maxRetries = CommonSettingsProvider.Current.MaxRetries;
+            assistantMessage.Content = $"Error: {ex.Message} [{retryCount}/{maxRetries}]";
             // обновляем сегменты в сообщении
             MessageParser.UpdateSegments(assistantMessage.Content, assistantMessage);
             assistantMessage.IsStreaming = false;
             Logger.LogError(ex, "Getting response error");
+
+            if (retryCount < maxRetries)
+            {
+                retryCount++;
+                var delay = GetRetryDelay(retryCount);
+
+                assistantMessage.MaxRetryAttempts = maxRetries;
+                assistantMessage.RetryAttempt = retryCount;
+
+                try
+                {
+                    for (var i = delay; i > 0; i--)
+                    {
+                        assistantMessage.RetryCountdown = i;
+                        await InvokeAsync(StateHasChanged);
+                        await Task.Delay(1000, _cts.Token);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    assistantMessage.RetryCountdown = 0;
+                    return;
+                }
+
+                assistantMessage.RetryCountdown = 0;
+                Messages.Remove(assistantMessage);
+                ChatService.Session.RemoveMessage(assistantMessage.Id);
+                IsLoading = false;
+                await GetAiResponseInternalAsync(retryCount);
+                return;
+            }
         }
         finally
         {
             IsLoading = false;
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    private static int GetRetryDelay(int attempt)
+    {
+        return attempt switch
+        {
+            1 => 2,
+            2 => 5,
+            3 => 10,
+            _ => 20
+        };
     }
 
     private static void ParsePlan(VisualChatMessage message)

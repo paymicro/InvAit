@@ -4,6 +4,7 @@ using Shared.Contracts;
 using UIBlazor.Agents;
 using UIBlazor.Models;
 using UIBlazor.Options;
+using UIBlazor.Services;
 using UIBlazor.Services.Settings;
 using UIBlazor.Tests.Utils;
 using UIBlazor.VS;
@@ -32,7 +33,7 @@ public class ToolManagerTests
             Description = "Test tool",
             ExecuteAsync = _ => Task.FromResult(new VsToolResult { Success = true, Result = "test result" })
         };
-        _builtInAgent = new BuiltInAgent(vsBridgeMock.Object) { Tools = [tool] };
+        _builtInAgent = new BuiltInAgent(vsBridgeMock.Object, Mock.Of<ISkillService>()) { Tools = [tool] };
 
         _toolManager = new ToolManager(_builtInAgent, _logger, _localStorageMock.Object, mcpSettingsMock.Object, vsBridgeMock.Object);
     }

@@ -32,8 +32,4 @@ public class ConnectionProfile : BaseOptions
 
     // TODO: нужно реализовать
     public int SessionMaxAgeHours { get; set => SetIfChanged(ref field, value); } = 24;
-
-    public int MaxRetryAttempts { get; set => SetIfChanged(ref field, value); } = 3;
-
-    public int RetryDelaySeconds { get; set => SetIfChanged(ref field, value); } = 2;
 }

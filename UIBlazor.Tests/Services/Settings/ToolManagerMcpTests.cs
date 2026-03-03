@@ -6,6 +6,7 @@ using Shared.Contracts.Mcp;
 using UIBlazor.Agents;
 using UIBlazor.Models;
 using UIBlazor.Options;
+using UIBlazor.Services;
 using UIBlazor.Services.Settings;
 using UIBlazor.Tests.Utils;
 using UIBlazor.VS;
@@ -25,7 +26,7 @@ public class ToolManagerMcpTests
         _mcpSettingsMock = new Mock<IMcpSettingsProvider>();
         _vsBridgeMock = new Mock<IVsBridge>();
         var storageMock = new Mock<ILocalStorageService>();
-        var builtInAgent = new BuiltInAgent(_vsBridgeMock.Object);
+        var builtInAgent = new BuiltInAgent(_vsBridgeMock.Object, Mock.Of<ISkillService>());
         _logger = new LoggerMock<ToolManager>();
         foreach (var item in builtInAgent.Tools)
         {

@@ -14,4 +14,6 @@ public class CommonOptions : BaseOptions
     public bool IsDarkTheme { get; set => SetIfChanged(ref field, value); } = true;
 
     public string Culture { get; set => SetIfChanged(ref field, value); } = CultureInfo.CurrentCulture.Name;
+
+    public int MaxRetries { get; set => SetIfChanged(ref field, value); } = 10;
 }

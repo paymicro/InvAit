@@ -330,4 +330,10 @@
   <data name="ToolDeleteFile" xml:space="preserve">
     <value>Удаление файла</value>
   </data>
+  <data name="MaxRetries" xml:space="preserve">
+    <value>Максимум повторов</value>
+  </data>
+  <data name="RetryIn" xml:space="preserve">
+    <value>Повтор через</value>
+  </data>
 </root>

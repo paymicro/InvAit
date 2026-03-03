@@ -99,4 +99,16 @@ public class VisualChatMessage
     /// </summary>
     [JsonIgnore]
     public Dictionary<int, ToolApprovalStatus> ToolApprovalStates { get; set; } = [];
+
+    [JsonIgnore]
+    public int RetryCountdown { get; set; }
+
+    [JsonIgnore]
+    public int RetryAttempt { get; set; }
+
+    [JsonIgnore]
+    public int MaxRetryAttempts { get; set; }
+
+    [JsonIgnore]
+    public bool IsRetrying => RetryCountdown > 0;
 }

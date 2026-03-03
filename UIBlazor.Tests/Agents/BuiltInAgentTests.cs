@@ -1,6 +1,7 @@
 using Moq;
 using Shared.Contracts;
 using UIBlazor.Agents;
+using UIBlazor.Services;
 using UIBlazor.VS;
 
 namespace UIBlazor.Tests.Agents;
@@ -13,7 +14,7 @@ public class BuiltInAgentTests
     public BuiltInAgentTests()
     {
         _vsBridgeMock = new Mock<IVsBridge>();
-        _agent = new BuiltInAgent(_vsBridgeMock.Object);
+        _agent = new BuiltInAgent(_vsBridgeMock.Object, Mock.Of<ISkillService>());
     }
 
     [Fact]

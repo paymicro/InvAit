@@ -330,4 +330,10 @@
   <data name="ToolDeleteFile" xml:space="preserve">
     <value>Delete file</value>
   </data>
+  <data name="MaxRetries" xml:space="preserve">
+    <value>Max retries</value>
+  </data>
+  <data name="RetryIn" xml:space="preserve">
+    <value>Retry in</value>
+  </data>
 </root>

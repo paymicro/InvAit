@@ -42,8 +42,6 @@ public class ChatServiceTests
             MaxTokens = 1000,
             Stream = true,
             SystemPrompt = "Test system prompt",
-            MaxRetryAttempts = 3,
-            RetryDelaySeconds = 1,
             MaxMessages = 50
         });
         _toolManagerMock.Setup(tm => tm.GetToolUseSystemInstructions(It.IsAny<AppMode>(), false))

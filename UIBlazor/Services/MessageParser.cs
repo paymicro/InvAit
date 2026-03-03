@@ -65,7 +65,7 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
                 }
 
                 // Находим конец тега '>', чтобы знать, где кончаются параметры (name="...")
-                var tagEndIdx = incomingText.IndexOf(">");
+                var tagEndIdx = incomingText.IndexOf('>');
                 if (tagEndIdx != -1)
                 {
                     var consumptionLength = tagEndIdx + 1;
@@ -84,7 +84,7 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
                                 : ToolApprovalStatus.Approved;
                         }
                     }
-                    incomingText = incomingText.Substring(consumptionLength);
+                    incomingText = incomingText[consumptionLength..];
                     continue;
                 }
             }
@@ -155,7 +155,7 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
         if (segment.Type != SegmentType.Markdown && !string.IsNullOrEmpty(segment.TagName))
         {
             // Удаляем <function...>, <plan...>, </function>, </plan>
-            cleanToken = Regex.Replace(token, $@".*<{segment.TagName}[^>]*>|<\/{segment.TagName}>.*", "", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            cleanToken = Regex.Replace(token, $@".*<{segment.TagName}[^>]*>|<\/{segment.TagName}>.*", "", RegexOptions.NonBacktracking);
         }
 
         if (string.IsNullOrEmpty(cleanToken) && token.Contains('>'))
