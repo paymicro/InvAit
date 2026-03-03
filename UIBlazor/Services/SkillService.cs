@@ -21,7 +21,7 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
         var result = await vsBridge.ExecuteToolAsync(BasicEnum.GetSkillsMetadata);
         if (!result.Success)
         {
-            return _skillsCache ?? new List<SkillMetadata>();
+            return _skillsCache ?? [];
         }
 
         try
@@ -38,7 +38,7 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
         }
         catch
         {
-            return _skillsCache ?? new List<SkillMetadata>();
+            return _skillsCache ?? [];
         }
     }
 
@@ -75,11 +75,10 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
                 Name = contentJson.GetValueOrDefault("name", default).GetString() ?? "",
                 Description = contentJson.GetValueOrDefault("description", default).GetString() ?? "",
                 Content = contentJson.GetValueOrDefault("content", default).GetString() ?? "",
-                Resources = contentJson.GetValueOrDefault("resources", default)
+                Resources = [.. contentJson.GetValueOrDefault("resources", default)
                     .EnumerateArray()
                     .Select(r => r.GetString() ?? "")
-                    .Where(r => !string.IsNullOrEmpty(r))
-                    .ToList()
+                    .Where(r => !string.IsNullOrEmpty(r))]
             };
 
             // Кешируем содержимое (максимум 10 скиллов в кеше)
@@ -142,5 +141,43 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
         _lastCacheUpdate = DateTime.MinValue; // Сбрасываем кеш
         _contentCache.Clear(); // Очищаем кеш содержимого
         await GetSkillsMetadataAsync(); // Перезагружаем метаданные
+    }
+
+    public async Task<VsToolResult> LoadSkillContentMarkDownAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var skillName = args.GetString("param1");
+        if (string.IsNullOrEmpty(skillName))
+        {
+            return new VsToolResult
+            {
+                Success = false,
+                Result = "Skill name is required parameter!"
+            };
+        }
+        var skillContent = await LoadSkillContentAsync(skillName);
+
+        if (skillContent == null)
+        {
+            return new VsToolResult
+            {
+                Success = false,
+                Result = "Skill content is empty..."
+            };
+        }
+        var sb = new StringBuilder();
+        sb.AppendLine();
+        sb.AppendLine($"## Skill {skillName}");
+        sb.AppendLine(skillContent.Content);
+
+        // TODO тут надо почитать как это работает и зачем
+        if (skillContent.Resources.Count > 0) {
+            sb.AppendLine($"### Skill Resources");
+            foreach (var resource in skillContent.Resources)
+            {
+                sb.AppendLine($"- {resource}");
+            }
+        }
+
+        return new VsToolResult { Result = sb.ToString() };
     }
 }

@@ -1,6 +1,8 @@
+using UIBlazor.Services;
+
 namespace UIBlazor.Agents;
 
-public class BuiltInAgent(IVsBridge vsBridge)
+public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService)
 {
     public IReadOnlyList<Tool> Tools =
     [
@@ -296,8 +298,8 @@ public class BuiltInAgent(IVsBridge vsBridge)
             // TODO тут нужен другой класс, например internalToolExec и туда же отправить браузер
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BasicEnum.SwitchMode, args)
         },
-        
-        // Skills operations
+
+        // Skills
         new()
         {
             Name = BasicEnum.ReadSkillContent,
@@ -315,7 +317,7 @@ public class BuiltInAgent(IVsBridge vsBridge)
                                      ExampleSkillNameForWriteTests
                                      </function>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BasicEnum.ReadSkillContent, args)
+            ExecuteAsync = (args) => skillService.LoadSkillContentMarkDownAsync(args)
         },
         new()
         {

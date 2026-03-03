@@ -23,8 +23,9 @@ namespace InvAit.Agent;
 
 public class ToolExecutor
 {
-    private readonly ConcurrentDictionary<string, DateTime> _skillsCache = new();
     private readonly McpProcessManager _mcpProcessManager = new();
+    private readonly Dictionary<string, string> _skillPathByName = [];
+
     public async Task<VsResponse> ExecuteAsync(VsRequest vsRequest)
     {
         try
@@ -828,20 +829,6 @@ public class ToolExecutor
     }
 
     #region Skills Support
-    private void OnSkillFileChanged(object sender, FileSystemEventArgs e)
-    {
-        _skillsCache.AddOrUpdate(e.FullPath, DateTime.UtcNow, (k, v) => DateTime.UtcNow);
-        Logger.Log($"Skill file changed: {e.Name}");
-        // TODO: Уведомить UIBlazor через WebView2 о необходимости обновления
-    }
-
-    private void OnSkillFileRenamed(object sender, RenamedEventArgs e)
-    {
-        _skillsCache.TryRemove(e.OldFullPath, out _);
-        _skillsCache.AddOrUpdate(e.FullPath, DateTime.UtcNow, (k, v) => DateTime.UtcNow);
-        Logger.Log($"Skill file renamed: {e.OldName} -> {e.Name}");
-    }
-
     private IEnumerable<string> GetSkillsPaths(string solutionPath)
     {
         var yieldedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -885,11 +872,11 @@ public class ToolExecutor
     private async Task<VsResponse> GetSkillsMetadataAsync()
     {
         var solutionPath = await GetSolutionPathAsync();
-        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         var skillFiles = GetSkillsPaths(solutionPath);
 
         var metadataList = new List<Dictionary<string, string>>();
-
+        _skillPathByName.Clear();
         foreach (var file in skillFiles)
         {
             try
@@ -907,6 +894,7 @@ public class ToolExecutor
                     { "name", name },
                     { "description", description }
                 });
+                _skillPathByName.Add(name, file);
                 await Logger.LogAsync($"Added skill metadata. {name} - {file}");
             }
             catch (Exception ex)
@@ -917,7 +905,7 @@ public class ToolExecutor
 
         return new VsResponse
         {
-            Payload = JsonSerializer.Serialize(metadataList)
+            Payload = JsonUtils.Serialize(metadataList)
         };
     }
 
@@ -927,12 +915,9 @@ public class ToolExecutor
     private async Task<VsResponse> ReadSkillContentAsync(IReadOnlyDictionary<string, object> args)
     {
         var skillName = args.GetString("param1");
-        var solutionPath = await GetSolutionPathAsync();
-        var fullPath = GetSkillsPaths(solutionPath)
-            .FirstOrDefault(path => path.Split(Path.DirectorySeparatorChar).Last().Equals(skillName, StringComparison.OrdinalIgnoreCase))
-            ?? string.Empty;
 
-        if (!File.Exists(fullPath))
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        if (!_skillPathByName.TryGetValue(skillName, out var fullPath))
         {
             return new VsResponse
             {
@@ -941,9 +926,18 @@ public class ToolExecutor
             };
         }
 
+        if (!File.Exists(fullPath))
+        {
+            return new VsResponse
+            {
+                Success = false,
+                Error = $"Skill file not exits: {skillName}"
+            };
+        }
+
         try
         {
-            var content = File.ReadAllText(fullPath);
+            var content = File.ReadAllText(fullPath, Encoding.UTF8);
             var (name, description) = ParseYamlFrontmatter(content);
             var markdownContent = StripYamlFrontmatter(content);
             var resources = ExtractResources(markdownContent);
@@ -958,7 +952,7 @@ public class ToolExecutor
 
             return new VsResponse
             {
-                Payload = JsonSerializer.Serialize(skillContent)
+                Payload = JsonUtils.Serialize(skillContent)
             };
         }
         catch (Exception ex)

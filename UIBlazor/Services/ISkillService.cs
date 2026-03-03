@@ -7,6 +7,8 @@ public interface ISkillService
     /// </summary>
     Task<List<SkillMetadata>> GetSkillsMetadataAsync();
 
+    Task<VsToolResult> LoadSkillContentMarkDownAsync(IReadOnlyDictionary<string, object> args);
+
     /// <summary>
     /// Загрузить полное содержимое скилла (только при активации)
     /// </summary>
