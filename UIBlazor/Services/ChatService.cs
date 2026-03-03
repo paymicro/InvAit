@@ -110,6 +110,31 @@ public class ChatService(
     public async Task SaveSessionAsync()
     {
         await localStorage.SetItemAsync(Session.Id, Session);
+        UpdateSessionCache(Session);
+    }
+
+    private void UpdateSessionCache(ConversationSession session)
+    {
+        if (_recentSessionsCache == null) return;
+        
+        var existing = _recentSessionsCache.FirstOrDefault(s => s.Id == session.Id);
+        var firstMessage = session.Messages.FirstOrDefault(m => m.Role == Constants.ChatMessageRole.User)?.Content ?? "No messages";
+        var preview = firstMessage.Length > 40 ? firstMessage[..40] + "..." : firstMessage;
+
+        if (existing != null)
+        {
+            existing.FirstUserMessage = preview;
+        }
+        else
+        {
+            _recentSessionsCache.Add(new SessionSummary
+            {
+                Id = session.Id,
+                CreatedAt = session.CreatedAt,
+                FirstUserMessage = preview
+            });
+            _recentSessionsCache = [.. _recentSessionsCache.OrderByDescending(s => s.CreatedAt)];
+        }
     }
 
     /// <summary>
@@ -403,30 +428,36 @@ public class ChatService(
     }
 
     private const int _maxSessions = 5;
+    private List<SessionSummary>? _recentSessionsCache;
 
     public async Task<List<SessionSummary>> GetRecentSessionsAsync(int count = _maxSessions)
     {
-        var sessionIds = await GetAllSessionIdsAsync();
-        var summaries = new List<SessionSummary>();
-
-        foreach (var id in sessionIds)
+        if (_recentSessionsCache == null)
         {
-            var session = await localStorage.GetItemAsync<ConversationSession>(id);
-            if (session != null)
+            var sessionIds = await GetAllSessionIdsAsync();
+            var summaries = new List<SessionSummary>();
+
+            foreach (var id in sessionIds)
             {
-                var firstMessage = session.Messages.FirstOrDefault(m => m.Role == Constants.ChatMessageRole.User)?.Content ?? "No messages";
-                var preview = firstMessage.Length > 80 ? firstMessage[..80] + "..." : firstMessage;
-                
-                summaries.Add(new SessionSummary
+                var session = await localStorage.GetItemAsync<ConversationSession>(id);
+                if (session != null)
                 {
-                    Id = id,
-                    CreatedAt = session.CreatedAt,
-                    FirstUserMessage = preview
-                });
+                    var firstMessage = session.Messages.FirstOrDefault(m => m.Role == Constants.ChatMessageRole.User)?.Content ?? "No messages";
+                    var preview = firstMessage.Length > 40 ? firstMessage[..40] + "..." : firstMessage;
+                    
+                    summaries.Add(new SessionSummary
+                    {
+                        Id = id,
+                        CreatedAt = session.CreatedAt,
+                        FirstUserMessage = preview
+                    });
+                }
             }
+
+            _recentSessionsCache = [.. summaries.OrderByDescending(s => s.CreatedAt)];
         }
 
-        return [.. summaries.OrderByDescending(s => s.CreatedAt).Take(count)];
+        return [.. _recentSessionsCache.Take(count)];
     }
 
     public async Task NewSessionAsync()
@@ -445,21 +476,10 @@ public class ChatService(
     
     private async Task CleanupOldSessionsAsync()
     {
-        var sessionIds = await GetAllSessionIdsAsync();
-        if (sessionIds.Count > _maxSessions)
+        var recent = await GetRecentSessionsAsync(int.MaxValue);
+        if (recent.Count > _maxSessions)
         {
-            var sessions = new List<ConversationSession>();
-            foreach (var id in sessionIds)
-            {
-                var session = await localStorage.GetItemAsync<ConversationSession>(id);
-                if (session != null)
-                {
-                    session.Id = id;
-                    sessions.Add(session);
-                }
-            }
-
-            var sessionsToDelete = sessions.OrderBy(s => s.CreatedAt).Take(sessions.Count - _maxSessions);
+            var sessionsToDelete = recent.Skip(_maxSessions).ToList();
             foreach (var sessionToDelete in sessionsToDelete)
             {
                 await DeleteSessionAsync(sessionToDelete.Id);
@@ -486,6 +506,11 @@ public class ChatService(
             Session.MaxMessages = Options.MaxMessages;
         }
         await localStorage.RemoveItemAsync(id);
+        
+        if (_recentSessionsCache != null)
+        {
+            _recentSessionsCache.RemoveAll(s => s.Id == id);
+        }
     }
 
     private async Task<List<string>> GetAllSessionIdsAsync()
