@@ -32,6 +32,21 @@ public partial class ChatControl
         InitializeComponent();
         _toolExecutor = new ToolExecutor();
         Loaded += (_, _) => _ = HandleLoadedAsync();
+
+        VSColorTheme.ThemeChanged += _ => UpdateTheme();
+    }
+
+    private void UpdateTheme()
+    {
+        if (!_webView2Installed)
+        {
+            return;
+        }
+
+        var bgColor = VSColorTheme.GetThemedColor(EnvironmentColors.ToolWindowBackgroundBrushKey);
+        _webView?.DefaultBackgroundColor = bgColor;
+        var isDarkTheme = bgColor.GetBrightness() <= 0.3; // яркость меньше 30% - темная тема
+        _webView?.CoreWebView2.Profile.PreferredColorScheme = isDarkTheme ? CoreWebView2PreferredColorScheme.Dark : CoreWebView2PreferredColorScheme.Light;
     }
 
     private async Task HandleLoadedAsync()
@@ -98,8 +113,6 @@ public partial class ChatControl
             // При падении процесса WebView, нужно его перезагрузить.
             // Иначе он будет показывать только чистый экран.
             _webView.CoreWebView2.Reload();
-
-            // TODO: сделать отрисовку WPF кнопки для ручного перезапуска webView
         };
         _webView.CoreWebView2.NewWindowRequested += (s, e) =>
         {
@@ -107,8 +120,6 @@ public partial class ChatControl
             e.Handled = true;
             Logger.Log($"Blocked attempt to open new window with URL: {e.Uri}", "WARNING");
         };
-
-        //_webView.CoreWebView2.AddHostObjectToScript("mcpHost", new McpProxyHost());
     }
 
     /// <summary>
@@ -151,9 +162,11 @@ public partial class ChatControl
         _webView.CoreWebView2.Settings.IsScriptEnabled = true;
         _webView.CoreWebView2.Settings.IsZoomControlEnabled = true;
         _webView.CoreWebView2.Settings.IsWebMessageEnabled = true;
-        _webView.DefaultBackgroundColor = VSColorTheme.GetThemedColor(EnvironmentColors.ToolWindowBackgroundBrushKey);
         _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = true;
         _webView.CoreWebView2.Settings.UserAgent = $"VisualStudio/{_vsVersion} ({Vsix.Name}/{Vsix.Version})";
+
+        UpdateTheme();
+
         try
         {
             _webView.CoreWebView2.MemoryUsageTargetLevel = CoreWebView2MemoryUsageTargetLevel.Low;

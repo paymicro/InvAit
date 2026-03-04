@@ -128,11 +128,8 @@
         <RadzenTabsItem Text="MCP">
             <RadzenStack Gap="0.5rem">
                 <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
-                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
-                        <RadzenLabel Text="Enable MCP" Component="McpGlobalEnabled" />
-                        <RadzenSwitch @bind-Value="@McpSettingsProvider.Current.Enabled" @bind-Value:after="OnMcpEnabledChanged" Name="McpGlobalEnabled" />
-                    </RadzenStack>
-                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.3rem">
+                    <CheckBox Text="Enable MCP" @bind-Value="@McpSettingsProvider.Current.Enabled" @bind-Value:after="OnMcpEnabledChanged" />
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.3rem" JustifyContent="JustifyContent.End">
                         <RadzenButton Icon="edit_note" ButtonStyle="ButtonStyle.Info" Size="ButtonSize.Small" Click="@OnOpenMcpSettings" />
                         <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@OnReloadMcpSettings" />
                     </RadzenStack>
@@ -156,8 +153,7 @@
                         <RadzenStack Gap="0.5rem" Style="@serverStyle">
                             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
                                 <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
-                                    <RadzenCheckBox @bind-Value="@server.Enabled" @bind-Value:after="OnMcpToolSettingChanged" Name="@($"mcp_server_{server.Name}")" />
-                                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="margin: 0; font-weight: bold;">@server.Name</RadzenText>
+                                    <CheckBox Text="@server.Name" @bind-Value="@server.Enabled" @bind-Value:after="OnMcpToolSettingChanged" />
                                     <RadzenBadge Text="@server.Transport" Style="font-size: 0.7rem;" />
                                     @if (hasError)
                                     {
@@ -228,10 +224,6 @@
             </RadzenStack>
         </RadzenTabsItem>
         <RadzenTabsItem Text="UI">
-            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="margin-block-end: 0.5em">
-                <RadzenAppearanceToggle Variant="Variant.Filled" ButtonStyle="ButtonStyle.Base" />
-            </RadzenStack>
-
             <LanguageSelector />
         </RadzenTabsItem>
     </Tabs>
