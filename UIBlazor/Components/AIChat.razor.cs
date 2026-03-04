@@ -346,7 +346,17 @@ public partial class AiChat : RadzenComponent
 
             var tool = ToolManager.GetTool(segment.ToolName);
 
-            if (tool != null)
+            VsToolResult vsToolResult;
+            if (tool == null)
+            {
+                vsToolResult = new VsToolResult
+                {
+                    Name = segment.ToolName,
+                    Success = false,
+                    ErrorMessage = "Tool not found."
+                };
+            }
+            else
             {
                 // Спрашиваем разрешение если нужно
                 if (segment.ApprovalStatus == ToolApprovalStatus.Pending)
@@ -377,7 +387,7 @@ public partial class AiChat : RadzenComponent
                 }
 
                 // Уже должен быть известен статус тулза - или разрешен, или запрещен.
-                var vsToolResult = segment.ApprovalStatus switch
+                vsToolResult = segment.ApprovalStatus switch
                 {
                     ToolApprovalStatus.Approved => await tool.ExecuteAsync(MessageParser.Parse(segment.ToolName, segment.Lines)),
                     _ => new VsToolResult
@@ -387,40 +397,40 @@ public partial class AiChat : RadzenComponent
                         ErrorMessage = "Execution was denied by user."
                     }
                 };
+            }
 #if DEBUG
-                // Безголовые (без Visual Studio) тесты
-                vsToolResult = HeadlessMocker.GetVsToolResult(vsToolResult);
-                Logger.LogTrace("{request} >>>>>> {result}", JsonUtils.Serialize(tool), JsonUtils.Serialize(vsToolResult));
+            // Безголовые (без Visual Studio) тесты
+            vsToolResult = HeadlessMocker.GetVsToolResult(vsToolResult);
+            Logger.LogTrace("{request} >>>>>> {result}", JsonUtils.Serialize(tool), JsonUtils.Serialize(vsToolResult));
 #endif
 
-                // для модели обогащаем результат и отправляем в чат
-                var result = $"""
+            // для модели обогащаем результат и отправляем в чат
+            var result = $"""
                              <tool_result name="{tool.Name}" success={vsToolResult.Success}>
                              {(vsToolResult.Success ? vsToolResult.Result : vsToolResult.ErrorMessage)}
                              </tool_result>
                              """;
 
-                var toolSessionMessage = new VisualChatMessage
-                {
-                    Role = vsToolResult.Role,
-                    Content = result
-                };
+            var toolSessionMessage = new VisualChatMessage
+            {
+                Role = vsToolResult.Role,
+                Content = result
+            };
 
-                // идет в сессию
-                await ChatService.AddMessageAsync(toolSessionMessage);
+            // идет в сессию
+            await ChatService.AddMessageAsync(toolSessionMessage);
 
-                var toolResultMessage = new VisualChatMessage
-                {
-                    Id = toolSessionMessage.Id, // синхронизируем Id. Для показа в UI и удаления
-                    Role = ChatMessageRole.Tool,
-                    Content = vsToolResult.Result,
-                    ToolDisplayName = (vsToolResult.Success ? "✅ " : "❌ ") + tool.DisplayName ?? tool.Name,
-                };
+            var toolResultMessage = new VisualChatMessage
+            {
+                Id = toolSessionMessage.Id, // синхронизируем Id. Для показа в UI и удаления
+                Role = ChatMessageRole.Tool,
+                Content = vsToolResult.Result,
+                ToolDisplayName = (vsToolResult.Success ? "✅ " : "❌ ") + tool.DisplayName ?? tool.Name,
+            };
 
-                assistantMessage.ToolMessages.Add(toolResultMessage);
+            assistantMessage.ToolMessages.Add(toolResultMessage);
 
-                await InvokeAsync(StateHasChanged);
-            }
+            await InvokeAsync(StateHasChanged);
         }
 
         if (_cts.Token.IsCancellationRequested)

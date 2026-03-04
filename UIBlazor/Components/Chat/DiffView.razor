@@ -8,11 +8,9 @@
     }
 
     <div class="diff-block">
-        @for (var i = 0; i < _blocks.Count; i++)
-        {
-            var block = _blocks[i];
-            <DiffLine @key="block.Id" Model="block" />
-        }
+        <Virtualize Items="@_blocks" Context="block" ItemSize="16" >@* Обязательно все элементы 16px *@
+            <DiffLine Model="block" />
+        </Virtualize>
     </div>
 </div>
 
@@ -54,7 +52,7 @@
             // ВАЖНО: Обновляем свойства существующего объекта.
             // Blazor увидит, что экземпляр тот же, и проверит только Content.
             var block = _blocks[index];
-            if (block.Type != type || block.Content != line)
+            if (block.Type != type || block.Content.Length < line.Length)
             {
                 block.Type = type;
                 block.Content = line;
@@ -95,43 +93,6 @@
         return DiffBlockType.Context;
     }
 
-    private void ProcessLine(string line, ref bool inSearch, ref bool inReplace)
-    {
-        var trimmed = line.Trim();
-        if (trimmed.StartsWith("<<<<<<< SEARCH"))
-        {
-            inSearch = true;
-            _blocks.Add(new DiffBlock { Type = DiffBlockType.SearchHeader });
-            return;
-        }
-        if (trimmed.StartsWith("======="))
-        {
-            inSearch = false;
-            inReplace = true;
-            _blocks.Add(new DiffBlock { Type = DiffBlockType.Separator });
-            return;
-        }
-        if (trimmed.StartsWith(">>>>>>> REPLACE"))
-        {
-            inReplace = false;
-            _blocks.Add(new DiffBlock { Type = DiffBlockType.ReplaceHeader });
-            return;
-        }
-
-        if (inSearch)
-        {
-            _blocks.Add(new DiffBlock { Type = DiffBlockType.Removed, Content = line });
-        }
-        else if (inReplace)
-        {
-            _blocks.Add(new DiffBlock { Type = DiffBlockType.Added, Content = line });
-        }
-        else
-        {
-            _blocks.Add(new DiffBlock { Type = DiffBlockType.Context, Content = line });
-        }
-    }
-
     public enum DiffBlockType
     {
         SearchHeader,
@@ -144,7 +105,6 @@
 
     public class DiffBlock
     {
-        public Guid Id { get; } = Guid.NewGuid();
         public DiffBlockType Type { get; set; }
         public string Content { get; set; } = string.Empty;
     }

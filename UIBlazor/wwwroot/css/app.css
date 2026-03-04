@@ -233,8 +233,10 @@ details {
 .tool-call-args {
     padding: 0.6rem 0.8rem;
     white-space: nowrap;
-    max-height: 200px;
-    overflow-y: auto;
+    max-height: 600px;
+    overflow-y: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
     .tool-call-args pre {
@@ -254,6 +256,7 @@ details {
     font-weight: bold;
     border-bottom: 1px solid var(--rz-base-600);
     color: #e6e6e6;
+    white-space: pre-wrap;
 }
 
 .tool-file-content {
@@ -275,7 +278,8 @@ details {
 .diff-block {
     margin: 0.5rem 0;
     border-radius: 4px;
-    overflow: hidden;
+    max-height: 500px;
+    overflow-y: auto;
 }
 
 .diff-header-search,
@@ -288,8 +292,8 @@ details {
     font-family: Consolas, "Courier New", monospace;
     font-size: 0.85rem;
     padding: 0 4px;
-    white-space: pre-wrap;
-    display: flex;
+    white-space: pre;
+    height: 16px !important;
 }
 
 .diff-marker {
@@ -325,8 +329,7 @@ details {
 
 /* Tool Approval UI */
 .tool-approval-footer {
-    display: flex;
-    align-items: center;
+    display: block;
     justify-content: space-between;
     color: var(--rz-on-secondary);
     background: var(--rz-secondary);

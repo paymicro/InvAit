@@ -1,5 +1,3 @@
-using System.Text.Json.Serialization;
-
 namespace UIBlazor.Models;
 
 public class ConversationSession
@@ -29,7 +27,7 @@ public class ConversationSession
     /// Gets or sets the maximum number of messages to keep in memory.
     /// </summary>
     [JsonIgnore]
-    public int MaxMessages { get; set; } = 100;
+    public int MaxMessages { get; set; } = 50;
 
     /// <summary>
     /// Gets or sets the total tokens used in the conversation.
