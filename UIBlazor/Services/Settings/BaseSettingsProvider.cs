@@ -65,7 +65,7 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider whe
         _isInitializing = true;
         try
         {
-            var saved = await Storage.GetItemAsync<TOptions>(StorageKey);
+            var saved = await Storage.TryGetItemAsync<TOptions>(StorageKey);
             if (saved != null)
             {
                 CopyProperties(saved, Current);

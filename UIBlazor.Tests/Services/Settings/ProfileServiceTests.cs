@@ -29,9 +29,9 @@ public class ProfileServiceTests
     public async Task GetProfilesAsync_NoProfiles_ReturnsDefaultAndSaves()
     {
         // Arrange
-        _localStorageMock.Setup(ls => ls.GetItemAsync<ProfileOptions>("ProfileSettings"))
+        _localStorageMock.Setup(ls => ls.TryGetItemAsync<ProfileOptions>("ProfileSettings"))
             .ReturnsAsync((ProfileOptions?)null);
-        _localStorageMock.Setup(ls => ls.GetItemAsync<List<ConnectionProfile>>("model_profiles"))
+        _localStorageMock.Setup(ls => ls.TryGetItemAsync<List<ConnectionProfile>>("model_profiles"))
             .ReturnsAsync((List<ConnectionProfile>?)null);
 
         // Act
@@ -50,7 +50,7 @@ public class ProfileServiceTests
     {
         // Arrange
         var options = new ProfileOptions { Profiles = [new() { Name = "test" }] };
-        _localStorageMock.Setup(ls => ls.GetItemAsync<ProfileOptions>("ProfileSettings"))
+        _localStorageMock.Setup(ls => ls.TryGetItemAsync<ProfileOptions>("ProfileSettings"))
             .ReturnsAsync(options);
 
         // Act
@@ -67,7 +67,7 @@ public class ProfileServiceTests
         // Arrange
         var profileToDelete = new ConnectionProfile { Id = "delete-me" };
         var options = new ProfileOptions { Profiles = [profileToDelete] };
-        _localStorageMock.Setup(ls => ls.GetItemAsync<ProfileOptions>("ProfileSettings"))
+        _localStorageMock.Setup(ls => ls.TryGetItemAsync<ProfileOptions>("ProfileSettings"))
             .ReturnsAsync(options);
         await _service.InitializeAsync();
 
@@ -87,7 +87,7 @@ public class ProfileServiceTests
         var profileFirst = new ConnectionProfile { Id = "first" };
         var profileToDelete = new ConnectionProfile { Id = "delete-me" };
         var options = new ProfileOptions { Profiles = [profileFirst, profileToDelete] };
-        _localStorageMock.Setup(ls => ls.GetItemAsync<ProfileOptions>("ProfileSettings"))
+        _localStorageMock.Setup(ls => ls.TryGetItemAsync<ProfileOptions>("ProfileSettings"))
             .ReturnsAsync(options);
         await _service.InitializeAsync();
 
@@ -117,7 +117,7 @@ public class ProfileServiceTests
             SystemPrompt = "prompt"
         };
         var options = new ProfileOptions { Profiles = [profile] };
-        _localStorageMock.Setup(ls => ls.GetItemAsync<ProfileOptions>("ProfileSettings"))
+        _localStorageMock.Setup(ls => ls.TryGetItemAsync<ProfileOptions>("ProfileSettings"))
             .ReturnsAsync(options);
         await _service.InitializeAsync();
 
@@ -143,7 +143,7 @@ public class ProfileServiceTests
         // Arrange
         var profile = new ConnectionProfile { Id = "active", SkipSSL = false };
         var options = new ProfileOptions { Profiles = [profile], ActiveProfileId = "active" };
-        _localStorageMock.Setup(ls => ls.GetItemAsync<ProfileOptions>("ProfileSettings"))
+        _localStorageMock.Setup(ls => ls.TryGetItemAsync<ProfileOptions>("ProfileSettings"))
             .ReturnsAsync(options);
         await _service.InitializeAsync();
 

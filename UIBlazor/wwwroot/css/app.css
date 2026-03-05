@@ -329,7 +329,8 @@ details {
 
 /* Tool Approval UI */
 .tool-approval-footer {
-    display: block;
+    display: flex;
+    align-items: center;
     justify-content: space-between;
     color: var(--rz-on-secondary);
     background: var(--rz-secondary);

@@ -7,7 +7,7 @@ namespace UIBlazor.Services.Settings;
 public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileService> logger, IJSRuntime jSRuntime)
     : BaseSettingsProvider<ProfileOptions>(localStorage, logger, "ProfileSettings"), IProfileManager
 {
-    public ConnectionProfile ActiveProfile { get; private set; }
+    public ConnectionProfile ActiveProfile { get; private set; } = null!;
 
     protected override async Task AfterInitAsync()
     {
@@ -52,7 +52,7 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
 
     private void NotifySkipSsl(bool skipSsl)
     {
-        jSRuntime.InvokeAsync<string>("postVsMessage", new VsRequest { Action = BasicEnum.SkipSSL, Payload = skipSsl.ToString() });
+        _ = jSRuntime.InvokeAsync<string>("postVsMessage", new VsRequest { Action = BasicEnum.SkipSSL, Payload = skipSsl.ToString() });
     }
 
     public async Task DeleteProfileAsync(string profileId)

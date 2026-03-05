@@ -1,11 +1,4 @@
 @using UIBlazor.Components
-<HeadContent>
-    <RadzenTheme />
-    <link rel="stylesheet" href="css/app.css" />
-    <link rel="stylesheet" href="css/markdown.css" />
-</HeadContent>
-
-<RadzenComponents />
 
 @if (!isInitialized)
 {
@@ -17,6 +10,14 @@
 }
 else
 {
+    <HeadContent>
+        <RadzenTheme />
+        <link rel="stylesheet" href="css/app.css" />
+        <link rel="stylesheet" href="css/markdown.css" />
+    </HeadContent>
+
+    <RadzenComponents />
+
     <RadzenLayout>
         <RadzenBody>
             <AiChat class="rz-h-100" />

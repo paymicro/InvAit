@@ -1,4 +1,3 @@
-@using UIBlazor.Components.Chat
 @inherits RadzenComponent
 
 @inject ChatService ChatService
@@ -33,20 +32,21 @@
         }
         else
         {
+            var lastMessage = Messages.LastOrDefault();
             @foreach (var message in Messages)
             {
-                <ChatMessageView 
+                <ChatMessageView
                     @key="message.Id"
-                    Message="@message" 
-                    IsLast="@(message == Messages.LastOrDefault())"
-                    IsLoading="@IsLoading"
-                    OnToolApproval="@HandleToolApprovalAsync"
-                    OnExecutePlan="@ExecutePlanAsync"
-                    OnEdit="@((m) => OnEditMessage(m))"
-                    OnCancelEdit="@((m) => OnCancelEdit(m))"
-                    OnSaveEdit="@OnSaveEditAsync"
-                    OnDelete="@OnDeleteMessageAsync"
-                    OnRegenerate="@OnRegenerateLastAsync" />
+                    Message="message"
+                    IsLast="(message == lastMessage)"
+                    IsLoading="IsLoading"
+                    OnToolApproval="HandleToolApprovalAsync"
+                    OnExecutePlan="ExecutePlanAsync"
+                    OnEdit="((m) => OnEditMessage(m))"
+                    OnCancelEdit="((m) => OnCancelEdit(m))"
+                    OnSaveEdit="OnSaveEditAsync"
+                    OnDelete="OnDeleteMessageAsync"
+                    OnRegenerate="OnRegenerateLastAsync" />
             }
         }
     </div>

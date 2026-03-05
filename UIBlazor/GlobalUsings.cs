@@ -4,6 +4,7 @@ global using System.Text.Json.Serialization;
 global using System.Text.RegularExpressions;
 global using Shared.Contracts;
 global using UIBlazor.Agents;
+global using UIBlazor.Constants;
 global using UIBlazor.Localization;
 global using UIBlazor.Models;
 global using UIBlazor.Options;

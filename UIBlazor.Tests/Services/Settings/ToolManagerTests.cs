@@ -59,7 +59,7 @@ public class ToolManagerTests
     public async Task LoadToolSettingsAsync_HandlesExceptionGracefully()
     {
         // Arrange
-        _localStorageMock.Setup(ls => ls.GetItemAsync<ToolSettings>(It.IsAny<string>()))
+        _localStorageMock.Setup(ls => ls.TryGetItemAsync<ToolSettings>(It.IsAny<string>()))
             .ThrowsAsync(new Exception("Storage error"));
 
         // Act & Assert - should not throw

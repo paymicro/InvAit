@@ -1,5 +1,3 @@
-@using UIBlazor.Constants
-@using UIBlazor.Models
 @using UIBlazor.Components.Chat
 
 <div class="rz-chat-message rz-chat-message-@Message.Role" @key="Message.Id">
@@ -32,8 +30,8 @@
             <div class="rz-chat-message-text" style="display: grid; width: 100%; position: relative;">
                 <div class="message-content-wrapper @(Message.IsExpanded ? "expanded" : "collapsed")" 
                      style="grid-area: 1/1; opacity: @(Message.IsEditing ? 0 : 1); visibility: @(Message.IsEditing ? "hidden" : "visible"); pointer-events: @(Message.IsEditing ? "none" : "all");">
-                    
-                    <AiChatMessage Message="@Message" OnToolApproval="@OnToolApproval" />
+
+                    <MessageContent Message="@Message" OnToolApproval="@OnToolApproval" />
 
                     @if (Message.HasPlan)
                     {

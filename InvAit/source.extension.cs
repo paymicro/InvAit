@@ -12,7 +12,7 @@ namespace InvAit
         public const string Name = "InvAit";
         public const string Description = @"Simple private LLM chat for Visual Studio";
         public const string Language = "en-US";
-        public const string Version = "0.0.7";
+        public const string Version = "0.0.8";
         public const string Author = "Pavel Yakovlev";
         public const string Tags = "chatGPT, LLM, AI, OpenAI, Private, Local, Visual Studio";
         public const bool IsPreview = false;

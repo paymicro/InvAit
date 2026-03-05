@@ -118,7 +118,7 @@ public class ChatServiceTests
         var existingSession = new ConversationSession { Id = sessionId, Messages = [new() { Content = "Hi" }] };
         _localStorageMock.Setup(ls => ls.GetAllKeysAsync())
             .ReturnsAsync([sessionId]);
-        _localStorageMock.Setup(ls => ls.GetItemAsync<ConversationSession>(sessionId))
+        _localStorageMock.Setup(ls => ls.TryGetItemAsync<ConversationSession>(sessionId))
             .ReturnsAsync(existingSession);
 
         var chatService = CreateChatService();

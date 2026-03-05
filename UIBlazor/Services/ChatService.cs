@@ -438,7 +438,7 @@ public class ChatService(
 
             foreach (var id in sessionIds)
             {
-                var session = await localStorage.GetItemAsync<ConversationSession>(id);
+                var session = await localStorage.TryGetItemAsync<ConversationSession>(id);
                 if (session != null)
                 {
                     var firstMessage = session.Messages.FirstOrDefault(m => m.Role == Constants.ChatMessageRole.User)?.Content ?? "No messages";
@@ -488,7 +488,7 @@ public class ChatService(
 
     public async Task LoadSessionAsync(string id)
     {
-        var session = await localStorage.GetItemAsync<ConversationSession>(id);
+        var session = await localStorage.TryGetItemAsync<ConversationSession>(id);
         if (session != null)
         {
             session.Id = id;
@@ -535,7 +535,7 @@ public class ChatService(
         }).FirstOrDefault();
         if (lastSessionId != default)
         {
-            var fromStorage = await localStorage.GetItemAsync<ConversationSession>(lastSessionId);
+            var fromStorage = await localStorage.TryGetItemAsync<ConversationSession>(lastSessionId);
             fromStorage?.Id = lastSessionId;
             Session = fromStorage ?? CreateNewSession();
         }

@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Radzen;
 using Radzen.Blazor.Rendering;
-using UIBlazor.Constants;
 using UIBlazor.Services;
 using UIBlazor.Services.Settings;
 
@@ -490,7 +489,6 @@ public partial class AiChat : RadzenComponent
                 AddVisualMessage(chatMessage, updateState: false);
             }
         }
-
 
         InvokeAsync(StateHasChanged);
     }
