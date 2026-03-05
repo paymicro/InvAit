@@ -15,10 +15,6 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
         {
             await ResetAsync();
         }
-        else
-        {
-            Current.PropertyChanged += OnPropertyChanged;
-        }
 
         ActiveProfile = Current.Profiles.FirstOrDefault(p => p.Id == Current.ActiveProfileId) ?? Current.Profiles.First();
 
@@ -33,9 +29,10 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
         }
     }
 
-    private void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    protected override void OnAnyPropertyChanged(string? propertyName)
     {
-        if (e.PropertyName == nameof(ProfileOptions.ActiveProfileId)) {
+        if (propertyName == nameof(ProfileOptions.ActiveProfileId))
+        {
             ActiveProfile = Current.Profiles.FirstOrDefault(p => p.Id == Current.ActiveProfileId) ?? Current.Profiles.First();
         }
     }
@@ -55,30 +52,7 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
 
     private void NotifySkipSsl(bool skipSsl)
     {
-        jSRuntime.InvokeAsync<string>("postVsMessage",
-            new VsRequest { Action = BasicEnum.SkipSSL, Payload = skipSsl.ToString() });
-    }
-
-    public async Task SaveProfileAsync(ConnectionProfile profile)
-    {
-        var existing = Current.Profiles.FirstOrDefault(p => p.Id == profile.Id);
-        if (existing == null)
-        {
-            Current.Profiles.Add(profile);
-            profile.PropertyChanged += OnProfilePropertyChanged;
-        }
-        else if (!ReferenceEquals(existing, profile))
-        {
-            // Copy properties from incoming profile to existing one to maintain references and trigger notifications
-            CopyProfileProperties(profile, existing);
-        }
-
-        Debouncer.Trigger();
-
-        if (Current.ActiveProfileId == profile.Id)
-        {
-            await ActivateProfileAsync(Current.ActiveProfileId, saveImediatly: true);
-        }
+        jSRuntime.InvokeAsync<string>("postVsMessage", new VsRequest { Action = BasicEnum.SkipSSL, Payload = skipSsl.ToString() });
     }
 
     public async Task DeleteProfileAsync(string profileId)

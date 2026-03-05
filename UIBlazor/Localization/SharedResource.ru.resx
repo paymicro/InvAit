@@ -178,7 +178,7 @@
     <value>Открыть файл правил</value>
   </data>
   <data name="OpenSkills" xml:space="preserve">
-    <value>Открыть файл скиллов</value>
+    <value>Открыть папку скиллов</value>
   </data>
   <data name="Profile" xml:space="preserve">
     <value>Профиль</value>
@@ -330,10 +330,22 @@
   <data name="ToolDeleteFile" xml:space="preserve">
     <value>Удаление файла</value>
   </data>
+  <data name="ToolOpenFolder" xml:space="preserve">
+    <value>Открыть папку в проводнике</value>
+  </data>
   <data name="MaxRetries" xml:space="preserve">
     <value>Максимум повторов</value>
   </data>
   <data name="RetryIn" xml:space="preserve">
     <value>Повтор через</value>
+  </data>
+  <data name="ApprovalModeAuto" xml:space="preserve">
+    <value>Авто</value>
+  </data>
+  <data name="ApprovalModeAsk" xml:space="preserve">
+    <value>Спросить</value>
+  </data>
+  <data name="ApprovalModeDeny" xml:space="preserve">
+    <value>Запретить</value>
   </data>
 </root>

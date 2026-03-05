@@ -34,4 +34,5 @@ public static class BasicEnum
     public const string UIReady             = "ui_ready";
     public const string SkipSSL             = "skip_ssl_validation";
     public const string OpenFile            = "open_file";
+    public const string OpenFolder          = "open_folder";
 }

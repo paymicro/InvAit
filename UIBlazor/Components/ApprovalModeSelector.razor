@@ -1,0 +1,44 @@
+<RadzenDropDown TValue="ToolApprovalMode"
+                Data="@(Enum.GetValues<ToolApprovalMode>())"
+                Value="@Value"
+                Change="@(args => ValueChanged.InvokeAsync((ToolApprovalMode)args))"
+                @attributes="AdditionalAttributes"
+                Style="width: 135px;">
+
+    <Template>
+        @render(context)
+    </Template>
+
+    <ValueTemplate>
+        @render(context)
+    </ValueTemplate>
+
+</RadzenDropDown>
+
+@code {
+    [Parameter] public ToolApprovalMode Value { get; set; }
+    [Parameter] public EventCallback<ToolApprovalMode> ValueChanged { get; set; }
+
+    // Локальный RenderFragment для исключения дублирования кода шаблонов
+    private RenderFragment render(ToolApprovalMode mode) => __builder =>
+    {
+        var info = GetModeInfo(mode);
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <RadzenIcon Icon="@info.Icon" Style="@($"color: {info.Color}; vertical-align: middle;")" />
+            <span>@info.Text</span>
+        </div>
+    };
+
+    private (string Icon, string Color, string Text) GetModeInfo(ToolApprovalMode mode) => mode switch
+    {
+        ToolApprovalMode.Allow => ("check_circle", "var(--rz-success)", SharedResource.ApprovalModeAuto),
+        ToolApprovalMode.Ask => ("help_outline", "var(--rz-warning)", SharedResource.ApprovalModeAsk),
+        ToolApprovalMode.Deny => ("cancel", "var(--rz-danger)", SharedResource.ApprovalModeDeny),
+        // лучше просто выключить вместо Deny, но вдруг захочется показать агенту тулзу, но не давать ее выполнить...
+        _ => ("info", "gray", mode.ToString())
+    };
+
+    // Позволяет передавать любые другие атрибуты RadzenSwitch (напр. Title, TabIndex)
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+}

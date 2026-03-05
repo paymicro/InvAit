@@ -125,13 +125,13 @@ public class ToolManagerMcpTests
         // Arrange
         var serverName = "protected-server";
         var toolName = $"mcp__{serverName}__any-tool";
-        _mcpOptions.ServerApprovalModes[serverName] = ToolApprovalMode.AlwaysAsk;
+        _mcpOptions.ServerApprovalModes[serverName] = ToolApprovalMode.Ask;
 
         // Act
         var mode = _toolManager.GetApprovalModeByToolName(toolName);
 
         // Assert
-        Assert.Equal(ToolApprovalMode.AlwaysAsk, mode);
+        Assert.Equal(ToolApprovalMode.Ask, mode);
     }
 
     [Fact]
@@ -141,6 +141,6 @@ public class ToolManagerMcpTests
         var mode = _toolManager.GetApprovalModeByToolName("mcp__unknown__tool");
 
         // Assert
-        Assert.Equal(ToolApprovalMode.AutoApprove, mode);
+        Assert.Equal(ToolApprovalMode.Allow, mode);
     }
 }

@@ -79,9 +79,13 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
                         else
                         {
                             // ну и сразу ставим статус, чтобы не было гонки между рендером и обновлением статуса после получения всех параметров
-                            activeSegment.ApprovalStatus = toolManager.GetApprovalModeByToolName(activeSegment.ToolName) == ToolApprovalMode.AlwaysAsk
-                                ? ToolApprovalStatus.Pending
-                                : ToolApprovalStatus.Approved;
+                            var mode = toolManager.GetApprovalModeByToolName(activeSegment.ToolName);
+                            activeSegment.ApprovalStatus = mode switch
+                            {
+                                ToolApprovalMode.Ask => ToolApprovalStatus.Pending,
+                                ToolApprovalMode.Deny => ToolApprovalStatus.Rejected,
+                                _ => ToolApprovalStatus.Approved
+                            };
                         }
                     }
                     incomingText = incomingText[consumptionLength..];

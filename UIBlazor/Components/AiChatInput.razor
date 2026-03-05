@@ -353,12 +353,12 @@
 
     private async Task OpenRules()
     {
-        await VsBridge.ExecuteToolAsync(BasicEnum.OpenFile, new Dictionary<string, object> { { "param1", ".agent/rules.md" } });
+        await VsBridge.ExecuteToolAsync(BasicEnum.OpenFile, new Dictionary<string, object> { { "param1", ".agents/rules.md" } });
     }
 
     private async Task OpenSkills()
     {
-        await VsBridge.ExecuteToolAsync(BasicEnum.OpenFile, new Dictionary<string, object> { { "param1", ".agent/skills/README.md" } });
+        await VsBridge.ExecuteToolAsync(BasicEnum.OpenFolder, new Dictionary<string, object> { { "param1", ".agents/skills/" } });
     }
 
     public override void Dispose()

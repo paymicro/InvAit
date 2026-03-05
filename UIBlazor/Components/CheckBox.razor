@@ -1,5 +1,7 @@
 <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center" Style="@Style" class="checkbox">
-    <RadzenCheckBox @bind-Value="@Value"
+    <RadzenCheckBox Value="@Value"
+                    TValue="bool"
+                    Change="@OnInternalValueChanged"
                     Name="@ComponentId"
                     Disabled="@Disabled"
                     @attributes="AdditionalAttributes" />
@@ -9,6 +11,7 @@
 @code {
     [Parameter] public string Text { get; set; } = string.Empty;
     [Parameter] public bool Value { get; set; }
+    [Parameter] public EventCallback<bool> ValueChanged { get; set; }
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public string? Style { get; set; }
 
@@ -17,4 +20,10 @@
     public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string ComponentId = $"switch_{Guid.NewGuid()}";
+
+    private async Task OnInternalValueChanged(bool newValue)
+    {
+        // Уведомляем родителя об изменении
+        await ValueChanged.InvokeAsync(newValue);
+    }
 }

@@ -12,8 +12,9 @@ public enum ToolCategory
 
 public enum ToolApprovalMode
 {
-    AutoApprove,
-    AlwaysAsk
+    Allow,
+    Ask,
+    Deny
 }
 
 public enum ToolApprovalStatus

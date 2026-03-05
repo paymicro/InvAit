@@ -6,8 +6,6 @@ public interface IProfileManager : IBaseSettingsProvider, IDisposable
 
     ConnectionProfile ActiveProfile { get; }
 
-    Task SaveProfileAsync(ConnectionProfile profile);
-
     Task DeleteProfileAsync(string profileId);
 
     Task ActivateProfileAsync(string profileId, bool saveImediatly = false);

@@ -3,10 +3,13 @@ namespace UIBlazor.Models;
 public class ToolSettings : BaseOptions
 {
     /// <summary>
-    /// По умолчанию все категории имеют <see cref="ToolApprovalMode.AutoApprove"/> в <seealso cref="ToolCategorySettings"/>
+    /// По умолчанию все категории имеют <see cref="ToolApprovalMode.Allow"/> в <seealso cref="ToolCategorySettings"/>
     /// </summary>
     public Dictionary<ToolCategory, ToolCategorySettings> CategoryStates { get; set; }
-        = new() { { ToolCategory.Execution, new ToolCategorySettings { ApprovalMode = ToolApprovalMode.AlwaysAsk } } }; // кроме выполнения
+        = new() {
+            { ToolCategory.Execution, new ToolCategorySettings { ApprovalMode = ToolApprovalMode.Ask } }, // кроме выполнения
+            { ToolCategory.DeleteFiles, new ToolCategorySettings { ApprovalMode = ToolApprovalMode.Ask } }, // и удаления
+        };
 
     /// <summary>
     /// Список выключенных тулзов

@@ -178,7 +178,7 @@
     <value>Open Rules</value>
   </data>
   <data name="OpenSkills" xml:space="preserve">
-    <value>Open Skills</value>
+    <value>Open skills folder</value>
   </data>
   <data name="Profile" xml:space="preserve">
     <value>Profile</value>
@@ -330,10 +330,22 @@
   <data name="ToolDeleteFile" xml:space="preserve">
     <value>Delete file</value>
   </data>
+  <data name="ToolOpenFolder" xml:space="preserve">
+    <value>Open folder in Explorer</value>
+  </data>
   <data name="MaxRetries" xml:space="preserve">
     <value>Max retries</value>
   </data>
   <data name="RetryIn" xml:space="preserve">
     <value>Retry in</value>
+  </data>
+  <data name="ApprovalModeAuto" xml:space="preserve">
+    <value>Auto</value>
+  </data>
+  <data name="ApprovalModeAsk" xml:space="preserve">
+    <value>Ask</value>
+  </data>
+  <data name="ApprovalModeDeny" xml:space="preserve">
+    <value>Deny</value>
   </data>
 </root>

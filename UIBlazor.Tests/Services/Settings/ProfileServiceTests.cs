@@ -62,67 +62,6 @@ public class ProfileServiceTests
     }
 
     [Fact]
-    public async Task SaveProfileAsync_NewProfile_AddsAndSaves()
-    {
-        // Arrange
-        var options = new ProfileOptions { Profiles = [new() { Id = "default", Name = "default" }] };
-        _localStorageMock.Setup(ls => ls.GetItemAsync<ProfileOptions>("ProfileSettings"))
-            .ReturnsAsync(options);
-        await _service.InitializeAsync();
-
-        var newProfile = new ConnectionProfile { Id = "new", Name = "New Profile" };
-
-        // Act
-        await _service.SaveProfileAsync(newProfile);
-        await Task.Delay(800, TestContext.Current.CancellationToken); // Wait for debounce
-
-        // Assert
-        _localStorageMock.Verify(ls => ls.SetItemAsync("ProfileSettings", It.Is<ProfileOptions>(o =>
-            o.Profiles.Any(p => p.Id == "new"))), Times.Once);
-    }
-
-    [Fact]
-    public async Task SaveProfileAsync_ExistingProfile_UpdatesAndSaves()
-    {
-        // Arrange
-        var existingProfile = new ConnectionProfile { Id = "existing", Name = "Old Name" };
-        var options = new ProfileOptions { Profiles = [existingProfile] };
-        _localStorageMock.Setup(ls => ls.GetItemAsync<ProfileOptions>("ProfileSettings"))
-            .ReturnsAsync(options);
-        await _service.InitializeAsync();
-
-        var updatedProfile = new ConnectionProfile { Id = "existing", Name = "New Name" };
-
-        // Act
-        await _service.SaveProfileAsync(updatedProfile);
-        await Task.Delay(800, TestContext.Current.CancellationToken); // Wait for debounce
-
-        // Assert
-        Assert.Equal("New Name", options.Profiles[0].Name);
-        _localStorageMock.Verify(ls => ls.SetItemAsync("ProfileSettings", It.IsAny<ProfileOptions>()), Times.AtLeastOnce);
-    }
-
-    [Fact]
-    public async Task SaveProfileAsync_ActiveProfile_Activates()
-    {
-        // Arrange
-        var existingProfile = new ConnectionProfile { Id = "active", Name = "Active", Endpoint = "http://old" };
-        var options = new ProfileOptions { Profiles = [existingProfile], ActiveProfileId = "active" };
-        _localStorageMock.Setup(ls => ls.GetItemAsync<ProfileOptions>("ProfileSettings"))
-            .ReturnsAsync(options);
-        await _service.InitializeAsync();
-
-        var updatedProfile = new ConnectionProfile { Id = "active", Name = "Active", Endpoint = "http://new" };
-
-        // Act
-        await _service.SaveProfileAsync(updatedProfile);
-        await Task.Delay(800, TestContext.Current.CancellationToken); // Wait for debounce
-
-        // Assert
-        Assert.Equal("http://new", _service.ActiveProfile.Endpoint); // Should be updated in options
-    }
-
-    [Fact]
     public async Task DeleteProfileAsync_RemovesAndSaves_ShouldNotDeleteProfile()
     {
         // Arrange

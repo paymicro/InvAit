@@ -25,7 +25,7 @@ public partial class ToolManager(
                     state = new ToolCategorySettings
                     {
                         IsEnabled = true,
-                        ApprovalMode = ToolApprovalMode.AutoApprove
+                        ApprovalMode = ToolApprovalMode.Allow
                     };
                     Current.CategoryStates[group.Key] = state;
                 }
@@ -92,7 +92,7 @@ public partial class ToolManager(
         foreach (var state in Current.CategoryStates.Values)
         {
             state.IsEnabled = true;
-            state.ApprovalMode = ToolApprovalMode.AutoApprove;
+            state.ApprovalMode = ToolApprovalMode.Allow;
         }
 
         Current.DisabledTools.Clear();
@@ -186,13 +186,13 @@ public partial class ToolManager(
                     return mode;
                 }
             }
-            return ToolApprovalMode.AutoApprove;
+            return ToolApprovalMode.Allow;
         }
 
         var tool = GetTool(name);
         return tool != null && Current.CategoryStates.TryGetValue(tool.Category, out var state)
             ? state.ApprovalMode
-            : ToolApprovalMode.AutoApprove;
+            : ToolApprovalMode.Allow;
     }
 
     public string GetToolUseSystemInstructions(AppMode mode, bool hasSkills)

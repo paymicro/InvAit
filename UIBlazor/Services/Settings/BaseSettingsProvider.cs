@@ -23,7 +23,6 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider whe
         _logger = logger;
         StorageKey = storageKey;
         Debouncer = new Debouncer(debounceDelay ?? TimeSpan.FromMilliseconds(750), SaveAsync);
-        Current.PropertyChanged += OnPropertyChanged;
     }
 
     private void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -71,6 +70,8 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider whe
             {
                 CopyProperties(saved, Current);
             }
+
+            Current.PropertyChanged += OnPropertyChanged;
             await AfterInitAsync();
         }
         catch (Exception ex)

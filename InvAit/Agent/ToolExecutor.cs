@@ -51,6 +51,7 @@ public class ToolExecutor
                 BuiltInToolEnum.GitBranch => await GitBranchAsync(),
                 BasicEnum.SwitchMode => new VsResponse { Success = true, Payload = "Mode switched" },
                 BasicEnum.OpenFile => await OpenFileInEditorAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BasicEnum.OpenFolder => await OpenFolderInExplorerAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BasicEnum.GetSkillsMetadata => await GetSkillsMetadataAsync(),
                 BasicEnum.ReadSkillContent => await ReadSkillContentAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BasicEnum.GetRules => await GetRulesAsync(),
@@ -727,7 +728,7 @@ public class ToolExecutor
     private async Task<VsResponse> GetRulesAsync()
     {
         var solutionPath = await GetSolutionPathAsync();
-        var localRulesPath = Path.Combine(solutionPath, ".agent", "rules.md");
+        var localRulesPath = Path.Combine(solutionPath, ".agents", "rules.md");
 
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var globalRulesPath = Path.Combine(appData, "Agent", "rules.md");
@@ -777,22 +778,11 @@ public class ToolExecutor
         try
         {
             var normalizedPath = relativePath.Replace('\\', '/');
-            if (normalizedPath.Equals(".agent/rules.md", StringComparison.OrdinalIgnoreCase))
+            if (normalizedPath.Equals(".agents/rules.md", StringComparison.OrdinalIgnoreCase))
             {
                 var localPath = GetAbsolutePath(relativePath, solutionPath);
                 var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                 var globalPath = Path.Combine(appData, "Agent", "rules.md");
-
-                if (!File.Exists(localPath) && File.Exists(globalPath))
-                {
-                    relativePath = globalPath;
-                }
-            }
-            else if (normalizedPath.Equals(".agent/skills/readme.md", StringComparison.OrdinalIgnoreCase))
-            {
-                var localPath = GetAbsolutePath(relativePath, solutionPath);
-                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                var globalPath = Path.Combine(appData, "Agent", "skills", "README.md");
 
                 if (!File.Exists(localPath) && File.Exists(globalPath))
                 {
@@ -827,6 +817,40 @@ public class ToolExecutor
         catch (Exception ex)
         {
             return new VsResponse { Success = false, Error = $"Error opening {relativePath}: {ex.Message}" };
+        }
+    }
+
+    private async Task<VsResponse> OpenFolderInExplorerAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var relativePath = args.GetString("param1");
+        var solutionPath = await GetSolutionPathAsync();
+        var folderPath = string.IsNullOrEmpty(relativePath) ? solutionPath : GetAbsolutePath(relativePath, solutionPath);
+
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+        try
+        {
+            Directory.CreateDirectory(folderPath);
+            if (Directory.Exists(folderPath))
+            {
+                Process.Start("explorer.exe", folderPath);
+                return new VsResponse { Success = true, Payload = $"Folder {folderPath} opened in Explorer" };
+            }
+            else if (File.Exists(folderPath))
+            {
+                // If it's a file, open the containing folder and select the file
+                Process.Start("explorer.exe", $"/select,\"{folderPath}\"");
+                return new VsResponse { Success = true, Payload = $"Folder containing {folderPath} opened in Explorer" };
+            }
+            else
+            {
+                // Try to create directory if it doesn't exist? No, better just return error for folder opening
+                return new VsResponse { Success = false, Error = $"Path {folderPath} does not exist" };
+            }
+        }
+        catch (Exception ex)
+        {
+            return new VsResponse { Success = false, Error = $"Error opening folder: {ex.Message}" };
         }
     }
 
