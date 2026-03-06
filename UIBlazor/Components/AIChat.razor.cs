@@ -10,10 +10,7 @@ namespace UIBlazor.Components;
 
 public partial class AiChat : RadzenComponent
 {
-    // TODO использовать из ChatService.Session.Messages
-    // для этого нужно переработать сохранение сообщений
-    // сейчас тулзы сохраняются в сессии как отдельные Messages. А тут они идут в массив ToolMessages
-    private List<VisualChatMessage> Messages { get; set; } = [];
+    private List<VisualChatMessage> Messages => ChatService.Session.Messages;
 
     private List<SessionSummary> _recentSessions = [];
 
@@ -48,13 +45,6 @@ public partial class AiChat : RadzenComponent
     {
         // если не обновляем состояние - то это загрузка истории
         MessageParser.UpdateSegments(chatMessage.Content, chatMessage, isHistory: !updateState);
-        Messages.Add(chatMessage);
-
-        // Limit the number of messages
-        if (Messages.Count > ChatService.Options.MaxMessages)
-        {
-            Messages.RemoveAt(0);
-        }
 
         if (updateState)
         {
@@ -68,7 +58,6 @@ public partial class AiChat : RadzenComponent
     /// </summary>
     public async Task NewSessionAsync()
     {
-        Messages.Clear();
         await ChatService.NewSessionAsync();
         _recentSessions = await ChatService.GetRecentSessionsAsync(3);
         await InvokeAsync(StateHasChanged);
@@ -109,8 +98,8 @@ public partial class AiChat : RadzenComponent
             Role = ChatMessageRole.User,
             IsExpanded = IsShortMessage(processedContent)
         };
-        AddVisualMessage(userMessage);
         await ChatService.AddMessageAsync(userMessage);
+        AddVisualMessage(userMessage);
 
         // Get AI response
         await GetAiResponseAsync();
@@ -173,12 +162,14 @@ public partial class AiChat : RadzenComponent
         IsLoading = true;
 
         // Add assistant message placeholder
-        var assistantMessage = AddVisualMessage(new VisualChatMessage
+        var assistantMessage = new VisualChatMessage
         {
             Role = ChatMessageRole.Assistant,
             IsStreaming = true,
             IsExpanded = true
-        });
+        };
+        await ChatService.AddMessageAsync(assistantMessage);
+        AddVisualMessage(assistantMessage);
 
         try
         {
@@ -209,7 +200,7 @@ public partial class AiChat : RadzenComponent
 
             ParsePlan(assistantMessage);
 
-            await ChatService.AddMessageAsync(assistantMessage);
+            await ChatService.SaveSessionAsync();
 
             // TODO: надо подумать что делать, если прервался на незакрытом тулзе...
             // Думаю нужно выдавать ошибку модели
@@ -252,7 +243,6 @@ public partial class AiChat : RadzenComponent
                 }
 
                 assistantMessage.RetryCountdown = 0;
-                Messages.Remove(assistantMessage);
                 ChatService.Session.RemoveMessage(assistantMessage.Id);
                 IsLoading = false;
                 await GetAiResponseInternalAsync(retryCount);
@@ -410,27 +400,20 @@ public partial class AiChat : RadzenComponent
                              </tool_result>
                              """;
 
-            var toolSessionMessage = new VisualChatMessage
-            {
-                Role = vsToolResult.Role,
-                Content = result
-            };
-
-            // идет в сессию
-            await ChatService.AddMessageAsync(toolSessionMessage);
-
             var toolResultMessage = new VisualChatMessage
             {
-                Id = toolSessionMessage.Id, // синхронизируем Id. Для показа в UI и удаления
-                Role = ChatMessageRole.Tool,
-                Content = vsToolResult.Result,
+                Role = vsToolResult.Role,
+                Content = result,
                 ToolDisplayName = (vsToolResult.Success ? "✅ " : "❌ ") + tool.DisplayName ?? tool.Name,
             };
 
+            // вложенные тулзы — часть сообщения ассистента
             assistantMessage.ToolMessages.Add(toolResultMessage);
 
             await InvokeAsync(StateHasChanged);
         }
+
+        await ChatService.SaveSessionAsync();
 
         if (_cts.Token.IsCancellationRequested)
         {
@@ -444,49 +427,26 @@ public partial class AiChat : RadzenComponent
     {
         if (ChatService.Session == null) return;
 
-        Messages.Clear();
-        VisualChatMessage? lastAssistantMessage = null;
-        foreach (var chatMessage in ChatService.Session.Messages)
+        foreach (var chatMessage in Messages)
         {
-            // тулзы показываем по особому (смотри HandleToolCallAsync)
-            var regex = Regex.Match(chatMessage.Content, "^<tool_result name=\"(?<name>.{2,40})\" success=(?<success>[T|t]rue|[F|f]alse)>(?<result>.*)</tool_result>", RegexOptions.Singleline);
-            if (regex.Success)
+            if (chatMessage.Role == ChatMessageRole.Assistant)
             {
-                var isSuccess = string.Equals(regex.Groups["success"].Value, "True", StringComparison.OrdinalIgnoreCase);
-                var toolDisplayName = (isSuccess ? "✅ " : "❌ ") + ToolManager.GetTool(regex.Groups["name"].Value)?.DisplayName ?? regex.Groups["name"].Value;
-
-                var toolResultMessage = new VisualChatMessage
-                {
-                    Id = chatMessage.Id,
-                    Role = ChatMessageRole.Tool,
-                    Content = regex.Groups["result"].Value,
-                    ToolDisplayName = toolDisplayName,
-                };
-
-                if (lastAssistantMessage != null)
-                {
-                    lastAssistantMessage.ToolMessages.Add(toolResultMessage);
-                }
-                else
-                {
-                    // Fallback if somehow there's a tool result without an assistant message before it
-                    AddVisualMessage(toolResultMessage, updateState: false);
-                }
+                ParsePlan(chatMessage);
             }
-            else
-            {
-                if (chatMessage.Role == ChatMessageRole.Assistant)
-                {
-                    ParsePlan(chatMessage);
-                    lastAssistantMessage = chatMessage;
-                }
-                else if (chatMessage.Role == ChatMessageRole.User)
-                {
-                    lastAssistantMessage = null;
-                }
 
-                chatMessage.IsExpanded = IsShortMessage(chatMessage.DisplayContent ?? chatMessage.Content);
-                AddVisualMessage(chatMessage, updateState: false);
+            chatMessage.IsExpanded = IsShortMessage(chatMessage.DisplayContent ?? chatMessage.Content);
+            // парсим сегменты для отображения
+            AddVisualMessage(chatMessage, updateState: false);
+
+            // восстанавливаем ToolDisplayName для вложенных тулзов
+            foreach (var toolMsg in chatMessage.ToolMessages)
+            {
+                var regex = Regex.Match(toolMsg.Content, "^<tool_result name=\"(?<name>.{2,40})\" success=(?<success>[T|t]rue|[F|f]alse)>", RegexOptions.NonBacktracking);
+                if (regex.Success)
+                {
+                    var isSuccess = string.Equals(regex.Groups["success"].Value, "True", StringComparison.OrdinalIgnoreCase);
+                    toolMsg.ToolDisplayName = (isSuccess ? "✅ " : "❌ ") + (ToolManager.GetTool(regex.Groups["name"].Value)?.DisplayName ?? regex.Groups["name"].Value);
+                }
             }
         }
 
@@ -572,14 +532,7 @@ public partial class AiChat : RadzenComponent
 
     private async Task OnDeleteMessageAsync(VisualChatMessage message)
     {
-        Messages.Remove(message);
         ChatService.Session.RemoveMessage(message.Id);
-
-        foreach (var toolMsg in message.ToolMessages)
-        {
-            ChatService.Session.RemoveMessage(toolMsg.Id);
-        }
-
         await ChatService.SaveSessionAsync();
         await InvokeAsync(StateHasChanged);
     }
@@ -589,14 +542,7 @@ public partial class AiChat : RadzenComponent
         var lastAssistantMessage = Messages.LastOrDefault(m => m.Role == ChatMessageRole.Assistant);
         if (lastAssistantMessage != null)
         {
-            Messages.Remove(lastAssistantMessage);
             ChatService.Session.RemoveMessage(lastAssistantMessage.Id);
-
-            foreach (var toolMsg in lastAssistantMessage.ToolMessages)
-            {
-                ChatService.Session.RemoveMessage(toolMsg.Id);
-            }
-
             await GetAiResponseAsync();
         }
     }

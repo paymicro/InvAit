@@ -108,10 +108,16 @@ public class ConversationSession
             new { role = "system", content = systemPrompt }
         };
 
-        // Add conversation messages
+        // Add conversation messages, flattening nested tool messages
         foreach (var message in Messages)
         {
             messages.Add(new { role = message.Role, content = message.Content });
+
+            // Tool results stored nested must be sent as separate messages to the LLM
+            foreach (var toolMessage in message.ToolMessages)
+            {
+                messages.Add(new { role = toolMessage.Role, content = toolMessage.Content });
+            }
         }
 
         return messages;

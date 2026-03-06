@@ -72,7 +72,6 @@ public class VisualChatMessage
     /// <summary>
     /// Nested tool messages for assistant messages.
     /// </summary>
-    [JsonIgnore]
     public List<VisualChatMessage> ToolMessages { get; set; } = [];
 
     /// <summary>
