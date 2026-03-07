@@ -33,7 +33,7 @@ public class ToolManagerTests
             Description = "Test tool",
             ExecuteAsync = _ => Task.FromResult(new VsToolResult { Success = true, Result = "test result" })
         };
-        _builtInAgent = new BuiltInAgent(vsBridgeMock.Object, Mock.Of<ISkillService>()) { Tools = [tool] };
+        _builtInAgent = new BuiltInAgent(vsBridgeMock.Object, Mock.Of<ISkillService>(), Mock.Of<IInternalExecutor>()) { Tools = [tool] };
 
         _toolManager = new ToolManager(_builtInAgent, _logger, _localStorageMock.Object, mcpSettingsMock.Object, vsBridgeMock.Object);
     }

@@ -1,4 +1,4 @@
-﻿let vsBridgeHandler;
+let vsBridgeHandler;
 
 // Функция для установки .NET обработчика UIBlazor
 window.setVsBridgeHandler = function (dotNetRef) {
@@ -42,7 +42,7 @@ if (window.chrome && window.chrome.webview) {
                 break;
             case 'VsMessage':
                 // TODO удалить логи или включать их опционально
-                console.log("Message: ", data.payload);
+                // console.log("Message: ", data.payload);
 
                 // вызов метода JSInvokable
                 vsBridgeHandler.invokeMethodAsync('HandleVsMessage', data.payload)

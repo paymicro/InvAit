@@ -10,16 +10,27 @@
 
     @if (Segment.Lines.Count > 0)
     {
-        <div class="tool-call-args">
-            @if (Segment.ToolName == BuiltInToolEnum.ApplyDiff)
-            {
-                <DiffView Lines="@Segment.Lines" />
-            }
-            else
-            {
-                <pre>@string.Join("\n", Segment.Lines[0..])</pre>
-            }
-        </div>
+        if (Segment.ToolName == BuiltInToolEnum.CreateFile)
+        {
+            @* TODO: Нужен отдельный компонент, который будет ставить charp в зависимости от расширения файла в первой строке  *@
+            <div class="tool-call-args">
+                <span>@Segment.Lines[0..]</span>
+            </div>
+            <MarkdownBlock Content="@string.Join("\n", Segment.Lines[1..].Prepend("```csharp").Append("```"))" />
+        }
+        else
+        {
+            <div class="tool-call-args">
+                @if (Segment.ToolName == BuiltInToolEnum.ApplyDiff)
+                {
+                    <DiffView Lines="@Segment.Lines" />
+                }
+                else
+                {
+                    <pre>@string.Join("\n", Segment.Lines[0..])</pre>
+                }
+            </div>
+        }
     }
 
     @if (Segment.IsClosed)

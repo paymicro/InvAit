@@ -32,7 +32,7 @@
         <div class="input-footer">
             <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center">
                 <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" AlignItems="AlignItems.Center">
-                    <RadzenDropDown TValue="AppMode" class="mode-dropdown" Data="@AppModeValues" @bind-Value="@CurrentMode" />
+                    <RadzenDropDown TValue="AppMode" class="mode-dropdown" Data="@AppModeValues" @bind-Value="@ChatService.Session.Mode" />
                     <ModelSelector class="model-dropdown" />
                 </RadzenStack>
 
@@ -106,18 +106,12 @@
 
     private List<AppMode> AppModeValues { get; } = [.. Enum.GetValues<AppMode>()];
 
-    private string ModePlaceholder => CurrentMode switch
+    private string ModePlaceholder => ChatService.Session.Mode switch
     {
         AppMode.Plan => SharedResource.InputPlaceholderPlan,
         AppMode.Agent => SharedResource.InputPlaceholderAgent,
         _ => SharedResource.InputPlaceholder
     };
-
-    private AppMode CurrentMode
-    {
-        get => ChatService.Session.Mode;
-        set => ChatService.Session.Mode = value;
-    }
 
     private bool CanSend()
     {

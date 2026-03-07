@@ -1,9 +1,11 @@
-using Moq;
+﻿using Moq;
 using Shared.Contracts;
+using UIBlazor.Constants;
 using UIBlazor.Models;
 using UIBlazor.Options;
 using UIBlazor.Services;
 using UIBlazor.Services.Settings;
+using UIBlazor.Tests.Utils;
 
 namespace UIBlazor.Tests.Services;
 
@@ -61,7 +63,8 @@ public class ChatServiceTests
             _localStorageMock.Object,
             _skillServiceMock.Object,
             _ruleServiceMock.Object,
-            _vsCodeContextServiceMock.Object);
+            _vsCodeContextServiceMock.Object,
+            new LoggerMock<IChatService>());
     }
 
     [Fact]
@@ -95,18 +98,23 @@ public class ChatServiceTests
         var chatService = CreateChatService();
         await chatService.LoadLastSessionOrGenerateNewAsync();
         var sessionId = chatService.Session.Id;
+        var message = new VisualChatMessage
+        {
+            Role = ChatMessageRole.User,
+            Content = "Hello"
+        };
 
         // Act
-        await chatService.AddMessageAsync("user", "Hello");
+        await chatService.AddMessageAsync(message);
 
         // Assert
         Assert.Single(chatService.Session.Messages);
-        Assert.Equal("user", chatService.Session.Messages[0].Role);
+        Assert.Equal(ChatMessageRole.User, chatService.Session.Messages[0].Role);
         Assert.Equal("Hello", chatService.Session.Messages[0].Content);
 
         _localStorageMock.Verify(ls => ls.SetItemAsync(sessionId, It.Is<ConversationSession>(s =>
             s.Messages.Count == 1 &&
-            s.Messages[0].Role == "user" &&
+            s.Messages[0].Role == ChatMessageRole.User &&
             s.Messages[0].Content == "Hello")), Times.Once);
     }
 

@@ -1,6 +1,7 @@
-﻿.markdown-content {
+.markdown-content {
     line-height: normal;
     white-space: wrap;
+    overflow: auto;
 }
 
 .markdown-content h1,
@@ -33,13 +34,13 @@
     margin: 0.1em 0;
 }
 
-.markdown-content blockquote {
-    border-left: 4px solid #ddd;
-    padding: 0 1em;
-    margin: 0.2em 0;
-    color: var(--rz-body-background-color);
-    font-style: italic;
-}
+    .markdown-content blockquote {
+        border-left: 4px solid #ddd;
+        padding: 0 1em;
+        margin: 0.2em 0;
+        font-style: italic;
+        margin-block: 0.6em;
+    }
 
     .markdown-content code {
         background-color: var(--rz-base);

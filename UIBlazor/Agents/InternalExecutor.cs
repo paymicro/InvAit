@@ -5,9 +5,9 @@ namespace UIBlazor.Agents;
 /// <summary>
 /// То что не должно идти в VS а обрабатывается прямо тут
 /// </summary>
-public class InternalExecutor(IServiceProvider serviceProvider)
+public class InternalExecutor(IServiceProvider serviceProvider) : IInternalExecutor
 {
-    public async Task<VsToolResult> ExecuteToolAsync(string name, IReadOnlyDictionary<string, object>? args = null)
+    public async Task<VsToolResult> ExecuteToolAsync(string name, IReadOnlyDictionary<string, object> args)
     {
         if (name == BasicEnum.SwitchMode)
         {

@@ -218,20 +218,6 @@ public class ToolExecutor
         };
     }
 
-    private async Task<Encoding> GetSaveFileEncoding()
-    {
-        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-        var dte = await VS.GetRequiredServiceAsync<SDTE, DTE>();
-
-        // Обращаемся к категории "Environment", подкатегории "Documents"
-        var properties = dte.Properties["Environment", "Documents"];
-
-        var useSpecificEncoding = (bool)properties.Item("SaveFilesWithSpecificEncoding").Value;
-        var codePage = (int)properties.Item("SaveEncoding").Value;
-
-        return useSpecificEncoding ? Encoding.GetEncoding(codePage) : Encoding.UTF8;
-    }
-
     private async Task<VsResponse> CreateNewFileAsync(IReadOnlyDictionary<string, object> args)
     {
         var solutionPath = await GetSolutionPathAsync();
@@ -248,7 +234,7 @@ public class ToolExecutor
                 Directory.CreateDirectory(directory);
             }
 
-            File.WriteAllLines(filepath, contents, await GetSaveFileEncoding());
+            File.WriteAllLines(filepath, contents, Encoding.UTF8);
             return new VsResponse
             {
                 Payload = $"File {fileParam} created successfully."
@@ -526,7 +512,7 @@ public class ToolExecutor
         try
         {
             var tempFile = Path.Combine(Path.GetTempPath(), Path.GetFileName(filepath));
-            File.WriteAllLines(filepath, lines, await GetSaveFileEncoding());
+            File.WriteAllLines(filepath, lines, Encoding.UTF8);
             await OpenEditorAndCleanUp(filepath);
             await Logger.LogAsync($"{totalReplacements} changes successfully applied to {inputFileName}.\r\nLooks good!");
         }

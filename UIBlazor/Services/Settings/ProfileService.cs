@@ -131,17 +131,4 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
             p.PropertyChanged -= OnProfilePropertyChanged;
         }
     }
-
-    private static void CopyProfileProperties(ConnectionProfile from, ConnectionProfile to)
-    {
-        var properties = typeof(ConnectionProfile)
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p is { CanRead: true, CanWrite: true } && p.Name != nameof(ConnectionProfile.Id));
-
-        foreach (var prop in properties)
-        {
-            var value = prop.GetValue(from);
-            prop.SetValue(to, value);
-        }
-    }
 }

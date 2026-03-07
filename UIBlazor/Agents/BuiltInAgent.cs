@@ -2,7 +2,7 @@ using UIBlazor.Services;
 
 namespace UIBlazor.Agents;
 
-public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, InternalExecutor internalExecutor)
+public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInternalExecutor internalExecutor)
 {
     public IReadOnlyList<Tool> Tools =
     [

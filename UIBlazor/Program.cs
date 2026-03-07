@@ -22,7 +22,7 @@ builder.Services
     .AddScoped<IRuleService, RuleService>()
     .AddScoped<IVsCodeContextService, VsCodeContextService>()
     .AddScoped<IMessageParser, MessageParser>()
-    .AddScoped<InternalExecutor>()
+    .AddScoped<IInternalExecutor, InternalExecutor>()
     .AddScoped<BuiltInAgent>()
     .AddScoped<IToolManager, ToolManager>()
     .AddScoped(sp =>

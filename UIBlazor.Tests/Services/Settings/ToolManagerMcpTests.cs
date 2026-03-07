@@ -26,7 +26,7 @@ public class ToolManagerMcpTests
         _mcpSettingsMock = new Mock<IMcpSettingsProvider>();
         _vsBridgeMock = new Mock<IVsBridge>();
         var storageMock = new Mock<ILocalStorageService>();
-        var builtInAgent = new BuiltInAgent(_vsBridgeMock.Object, Mock.Of<ISkillService>());
+        var builtInAgent = new BuiltInAgent(_vsBridgeMock.Object, Mock.Of<ISkillService>(), Mock.Of<IInternalExecutor>());
         _logger = new LoggerMock<ToolManager>();
         foreach (var item in builtInAgent.Tools)
         {
