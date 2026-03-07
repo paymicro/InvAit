@@ -2,7 +2,7 @@ using UIBlazor.Services;
 
 namespace UIBlazor.Agents;
 
-public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService)
+public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, InternalExecutor internalExecutor)
 {
     public IReadOnlyList<Tool> Tools =
     [
@@ -213,7 +213,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService)
             DisplayName = SharedResource.ToolExec,
             Category = ToolCategory.Execution,
             Description = """
-                          To run a terminal command, use the execute_command tool in
+                          To run a terminal command.
                           The shell is not stateful and will not remember any previous commands.
                           When a command is run in the background ALWAYS suggest using shell commands to stop it; NEVER suggest using Ctrl+C.
                           When suggesting subsequent shell commands ALWAYS format them in shell command blocks.
@@ -239,7 +239,8 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService)
             Description = "Check git status of the current repository. Shows modified, staged, and untracked files.",
             ExampleToSystemMessage = $"""
                                      For example:
-                                     <function name="{BuiltInToolEnum.GitStatus}"></function>
+                                     <function name="{BuiltInToolEnum.GitStatus}">
+                                     </function>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitStatus, args)
         },
@@ -279,7 +280,8 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService)
             Description = "List git branches or get current branch information.",
             ExampleToSystemMessage = $"""
                                      For example:
-                                     <function name="{BuiltInToolEnum.GitBranch}"></function>
+                                     <function name="{BuiltInToolEnum.GitBranch}">
+                                     </function>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitBranch, args)
         },
@@ -295,8 +297,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService)
                                      Agent
                                      </function>
                                      """,
-            // TODO тут нужен другой класс, например internalToolExec и туда же отправить браузер
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BasicEnum.SwitchMode, args)
+            ExecuteAsync = (args) => internalExecutor.ExecuteToolAsync(BasicEnum.SwitchMode, args)
         },
 
         // Skills
@@ -314,7 +315,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService)
             ExampleToSystemMessage = $"""
                                      For example, to load a specific skill:
                                      <function name="{BasicEnum.ReadSkillContent}">
-                                     ExampleSkillNameForWriteTests
+                                     Example skill name
                                      </function>
                                      """,
             ExecuteAsync = (args) => skillService.LoadSkillContentMarkDownAsync(args)

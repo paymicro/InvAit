@@ -1,6 +1,6 @@
 namespace UIBlazor.Models;
 
-public class ConversationSession
+public class ConversationSession : BaseOptions
 {
     /// <summary>
     /// Gets or sets the unique identifier for the conversation session.
@@ -37,7 +37,7 @@ public class ConversationSession
     /// <summary>
     /// Gets or sets the current application mode for this session.
     /// </summary>
-    public AppMode Mode { get; set; } = AppMode.Chat;
+    public AppMode Mode { get; set => SetIfChanged(ref field, value); } = AppMode.Chat;
 
     /// <summary>
     /// Adds a message to the conversation and manages memory limits.
@@ -114,9 +114,9 @@ public class ConversationSession
             messages.Add(new { role = message.Role, content = message.Content });
 
             // Tool results stored nested must be sent as separate messages to the LLM
-            foreach (var toolMessage in message.ToolMessages)
+            foreach (var toolMessage in message.ToolResults)
             {
-                messages.Add(new { role = toolMessage.Role, content = toolMessage.Content });
+                messages.Add(new { role = ChatMessageRole.User, content = toolMessage.Content });
             }
         }
 

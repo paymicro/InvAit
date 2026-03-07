@@ -12,7 +12,7 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 
 builder.Services
     .AddRadzenComponents()
-    .AddScoped<ChatService>()
+    .AddScoped<IChatService, ChatService>()
     .AddScoped<ILocalStorageService, LocalStorageService>()
     .AddScoped<IMcpSettingsProvider, McpSettingsProvider>()
     .AddScoped<IProfileManager, ProfileService>()
@@ -22,6 +22,7 @@ builder.Services
     .AddScoped<IRuleService, RuleService>()
     .AddScoped<IVsCodeContextService, VsCodeContextService>()
     .AddScoped<IMessageParser, MessageParser>()
+    .AddScoped<InternalExecutor>()
     .AddScoped<BuiltInAgent>()
     .AddScoped<IToolManager, ToolManager>()
     .AddScoped(sp =>

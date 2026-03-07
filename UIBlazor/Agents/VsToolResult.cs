@@ -1,5 +1,3 @@
-using UIBlazor.Constants;
-
 namespace UIBlazor.Agents;
 
 public record VsToolResult
@@ -8,11 +6,6 @@ public record VsToolResult
     /// Result showed to AI.
     /// </summary>
     public string Result { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Промпт-ориентированноый туллинг требует роли User или System для ответа на тулзу
-    /// </summary>
-    public string Role { get; set; } = ChatMessageRole.User;
 
     /// <summary>
     /// Tool arguments

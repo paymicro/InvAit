@@ -1,19 +1,17 @@
-@inject ChatService ChatService
-
 <div class="usage-indicators">
-    <div class="usage-item" title="@SharedResource.Messages: @Messages.Count / @ChatService.Options.MaxMessages">
+    <div class="usage-item" title="@SharedResource.Messages: @Messages.Count / @ProfileManager.ActiveProfile.MaxMessages">
         <div class="usage-label">
             <span>@SharedResource.Messages</span>
-            <span>@Messages.Count / @ChatService.Options.MaxMessages</span>
+            <span>@Messages.Count / @ProfileManager.ActiveProfile.MaxMessages</span>
         </div>
         <div class="usage-bar-container">
             <div class="usage-bar" style="width: @(MessageProgress)%;"></div>
         </div>
     </div>
-    <div class="usage-item" title="@SharedResource.Tokens: @ChatService.Session?.TotalTokens / @ChatService.Options.MaxTokens">
+    <div class="usage-item" title="@SharedResource.Tokens: @ChatService.Session?.TotalTokens / @ProfileManager.ActiveProfile.MaxTokens">
         <div class="usage-label">
             <span>@SharedResource.Tokens</span>
-            <span>@(ChatService.Session?.TotalTokens ?? 0) / @ChatService.Options.MaxTokens</span>
+            <span>@(ChatService.Session?.TotalTokens ?? 0) / @ProfileManager.ActiveProfile.MaxTokens</span>
         </div>
         <div class="usage-bar-container">
             <div class="usage-bar" style="width: @(TokenProgress)%; background: var(--rz-secondary);"></div>
@@ -22,13 +20,16 @@
 </div>
 
 @code {
+    [Inject] IProfileManager ProfileManager { get; set; } = null!;
+    [Inject] IChatService ChatService { get; set; } = null!;
+
     [Parameter] public List<VisualChatMessage> Messages { get; set; } = [];
 
-    private int MessageProgress => ChatService.Session != null && ChatService.Options.MaxMessages > 0
-        ? Math.Min(100, Messages.Count * 100 / ChatService.Options.MaxMessages)
+    private int MessageProgress => ChatService.Session != null && ProfileManager.ActiveProfile.MaxMessages > 0
+        ? Math.Min(100, Messages.Count * 100 / ProfileManager.ActiveProfile.MaxMessages)
         : 0;
 
-    private int TokenProgress => ChatService.Session != null && ChatService.Options.MaxTokens > 0
-        ? Math.Min(100, ChatService.Session.TotalTokens * 100 / ChatService.Options.MaxTokens)
+    private int TokenProgress => ChatService.Session != null && ProfileManager.ActiveProfile.MaxTokens > 0
+        ? Math.Min(100, ChatService.Session.TotalTokens * 100 / ProfileManager.ActiveProfile.MaxTokens)
         : 0;
 }

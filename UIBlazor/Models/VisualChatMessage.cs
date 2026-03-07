@@ -59,9 +59,7 @@ public class VisualChatMessage
     [JsonIgnore]
     public string TempContent { get; set; } = string.Empty;
 
-    [JsonIgnore]
-    public string ToolDisplayName { get; set; } = string.Empty;
-
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Model { get; set; }
 
     /// <summary>
@@ -72,7 +70,7 @@ public class VisualChatMessage
     /// <summary>
     /// Nested tool messages for assistant messages.
     /// </summary>
-    public List<VisualChatMessage> ToolMessages { get; set; } = [];
+    public List<ToolResult> ToolResults { get; set; } = [];
 
     /// <summary>
     /// Whether the message block is expanded or collapsed.

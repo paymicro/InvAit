@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Data;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Radzen;
@@ -37,21 +38,6 @@ public partial class AiChat : RadzenComponent
     [Inject] private IMessageParser MessageParser { get; set; } = null!;
 
     [Inject] private ILogger<AiChat> Logger { get; set; } = null!;
-
-    /// <summary>
-    /// Adds a message to the chat.
-    /// </summary>
-    public VisualChatMessage AddVisualMessage(VisualChatMessage chatMessage, bool updateState = true)
-    {
-        // если не обновляем состояние - то это загрузка истории
-        MessageParser.UpdateSegments(chatMessage.Content, chatMessage, isHistory: !updateState);
-
-        if (updateState)
-        {
-            InvokeAsync(StateHasChanged);
-        }
-        return chatMessage;
-    }
 
     /// <summary>
     /// Starts a new session.
@@ -98,9 +84,10 @@ public partial class AiChat : RadzenComponent
             Role = ChatMessageRole.User,
             IsExpanded = IsShortMessage(processedContent)
         };
-        await ChatService.AddMessageAsync(userMessage);
-        AddVisualMessage(userMessage);
 
+        ChatService.Session.AddMessage(userMessage);
+        await ChatService.SaveSessionAsync();
+        
         // Get AI response
         await GetAiResponseAsync();
     }
@@ -168,8 +155,9 @@ public partial class AiChat : RadzenComponent
             IsStreaming = true,
             IsExpanded = true
         };
-        await ChatService.AddMessageAsync(assistantMessage);
-        AddVisualMessage(assistantMessage);
+
+        ChatService.Session.AddMessage(assistantMessage);
+        await ChatService.SaveSessionAsync();
 
         try
         {
@@ -292,9 +280,6 @@ public partial class AiChat : RadzenComponent
         // Switch mode to Agent
         ChatService.Session.Mode = AppMode.Agent;
 
-        // Notify VS Host if needed (though it's mostly for system prompt generation in UI)
-        await VsBridge.ExecuteToolAsync(BasicEnum.SwitchMode, new Dictionary<string, object> { { "param1", "Agent" } });
-
         // Send confirmation message to start implementation
         await SendMessageAsync("Implement the plan.");
     }
@@ -392,23 +377,8 @@ public partial class AiChat : RadzenComponent
             vsToolResult = HeadlessMocker.GetVsToolResult(vsToolResult);
             Logger.LogTrace("{request} >>>>>> {result}", JsonUtils.Serialize(tool), JsonUtils.Serialize(vsToolResult));
 #endif
-
-            // для модели обогащаем результат и отправляем в чат
-            var result = $"""
-                             <tool_result name="{tool.Name}" success={vsToolResult.Success}>
-                             {(vsToolResult.Success ? vsToolResult.Result : vsToolResult.ErrorMessage)}
-                             </tool_result>
-                             """;
-
-            var toolResultMessage = new VisualChatMessage
-            {
-                Role = vsToolResult.Role,
-                Content = result,
-                ToolDisplayName = (vsToolResult.Success ? "✅ " : "❌ ") + tool.DisplayName ?? tool.Name,
-            };
-
             // вложенные тулзы — часть сообщения ассистента
-            assistantMessage.ToolMessages.Add(toolResultMessage);
+            assistantMessage.ToolResults.Add(ToolResult.Convert(vsToolResult, tool.DisplayName, tool.Name));
 
             await InvokeAsync(StateHasChanged);
         }
@@ -423,9 +393,12 @@ public partial class AiChat : RadzenComponent
         await GetAiResponseAsync();
     }
 
-    private void SyncSessionMessageWithUi()
+    private void LoadMessagesFromSession()
     {
-        if (ChatService.Session == null) return;
+        if (ChatService.Session == null)
+        {
+            return;
+        }
 
         foreach (var chatMessage in Messages)
         {
@@ -435,18 +408,12 @@ public partial class AiChat : RadzenComponent
             }
 
             chatMessage.IsExpanded = IsShortMessage(chatMessage.DisplayContent ?? chatMessage.Content);
-            // парсим сегменты для отображения
-            AddVisualMessage(chatMessage, updateState: false);
+            MessageParser.UpdateSegments(chatMessage.Content, chatMessage, isHistory: true);
 
             // восстанавливаем ToolDisplayName для вложенных тулзов
-            foreach (var toolMsg in chatMessage.ToolMessages)
+            foreach (var toolMsg in chatMessage.ToolResults)
             {
-                var regex = Regex.Match(toolMsg.Content, "^<tool_result name=\"(?<name>.{2,40})\" success=(?<success>[T|t]rue|[F|f]alse)>", RegexOptions.NonBacktracking);
-                if (regex.Success)
-                {
-                    var isSuccess = string.Equals(regex.Groups["success"].Value, "True", StringComparison.OrdinalIgnoreCase);
-                    toolMsg.ToolDisplayName = (isSuccess ? "✅ " : "❌ ") + (ToolManager.GetTool(regex.Groups["name"].Value)?.DisplayName ?? regex.Groups["name"].Value);
-                }
+                toolMsg.DisplayName = ToolResult.GetDisplayName(toolMsg.Success, ToolManager.GetTool(toolMsg.Name)?.DisplayName ?? toolMsg.Name);
             }
         }
 
@@ -475,7 +442,7 @@ public partial class AiChat : RadzenComponent
 
     private async void HandleSessionChanged()
     {
-        SyncSessionMessageWithUi();
+        LoadMessagesFromSession();
         _recentSessions = await ChatService.GetRecentSessionsAsync(3);
         await InvokeAsync(StateHasChanged);
     }

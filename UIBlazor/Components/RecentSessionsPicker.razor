@@ -35,7 +35,7 @@ else
 @code {
     private List<SessionSummary>? _sessions;
 
-    [Inject] ChatService ChatService { get; set; } = null!;
+    [Inject] IChatService ChatService { get; set; } = null!;
 
     [Parameter] public bool ShowTitle { get; set; } = false;
 

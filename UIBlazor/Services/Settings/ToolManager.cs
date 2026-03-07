@@ -215,8 +215,8 @@ public partial class ToolManager(
 
         var sb = new StringBuilder();
         sb.AppendLine($"Current date: {DateTime.Now:f}");
-        sb.AppendLine($"Current Application Mode: {mode}");
-        sb.AppendLine("Available modes: Chat (for discussion, reading and explanations), Agent (for taking actions and applying changes), Plan (for planning).");
+        sb.AppendLine($"Your current mode: {mode}");
+        sb.AppendLine("Available modes: Chat (for discussion, reading and explanations), Agent (for taking actions and applying changes), Plan (for planning before taking actions).");
         sb.AppendLine("Use Mermaid diagrams for clarity in explanations. This will help you better visualize the answer formula. Don`t use \", {, }, (, ), [, ], in Mermaid node names.");
 
         if (mode == AppMode.Plan)

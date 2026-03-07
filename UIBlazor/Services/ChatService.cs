@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Globalization;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -16,8 +17,9 @@ public class ChatService(
     ILocalStorageService localStorage,
     ISkillService skillService,
     IRuleService ruleService,
-    IVsCodeContextService vsCodeContextService
-    )
+    IVsCodeContextService vsCodeContextService,
+    ILogger<IChatService> logger
+    ) : IChatService
 {
     private const string _thinkStart    = "<think>";
     private const string _thinkEnd      = "</think>";
@@ -37,22 +39,18 @@ public class ChatService(
         {
             if (field != value)
             {
+                field?.PropertyChanged -= SessionPropertyChanged;
                 field = value;
-                NotifySessionChanged();
+                field?.PropertyChanged += SessionPropertyChanged;
+                OnSessionChanged?.Invoke();
             }
         }
     } = CreateNewSession();
 
     public event Action? OnSessionChanged;
 
-    private void NotifySessionChanged() => OnSessionChanged?.Invoke();
+    private void SessionPropertyChanged(object? sender, PropertyChangedEventArgs e) => OnSessionChanged?.Invoke();
 
-    /// <summary>
-    /// Получение списка моделей по API
-    /// </summary>
-    /// <exception cref="InvalidOperationException"></exception>
-    /// <exception cref="HttpRequestException"></exception>
-    /// <exception cref="JsonException"></exception>
     public async Task<AiModelList> GetModelsAsync(CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, $"{Options.Endpoint}{_models}");
@@ -88,12 +86,6 @@ public class ChatService(
 
         return await response.Content.ReadFromJsonAsync<AiModelList>(cancellationToken)
                ?? throw new JsonException("Models deserialization exception");
-    }
-
-    public async Task AddMessageAsync(string role, string content)
-    {
-        Session.AddMessage(role, content);
-        await SaveSessionAsync();
     }
 
     public async Task AddMessageAsync(VisualChatMessage message)
@@ -174,15 +166,17 @@ public class ChatService(
             if (commonSettingsProvider.Current.SendCurrentFile && !string.IsNullOrEmpty(currentContext.ActiveFilePath))
             {
                 contextSection.AppendLine($"""
-                                          Active file path: {currentContext.ActiveFilePath}
-                                          Selected lines: {currentContext.SelectionStartLine} - {currentContext.SelectionEndLine}
+                                          ## Current (active) file
+                                          - Path: {currentContext.ActiveFilePath}
+                                          - Selected lines: {currentContext.SelectionStartLine} - {currentContext.SelectionEndLine}
+                                          - Content:
                                           ```
                                           {currentContext.ActiveFileContent}
                                           ```
                                           """);
             }
 
-            if (commonSettingsProvider.Current.SendSolutionsStricture)
+            if (commonSettingsProvider.Current.SendSolutionsStricture && currentContext.SolutionFiles.Count != 0)
             {
                 contextSection.AppendLine($"""
                                           Solution files:
@@ -199,7 +193,7 @@ public class ChatService(
         return string.Join(Environment.NewLine,
             Options.SystemPrompt,
             rules ?? string.Empty,
-            toolManager.GetToolUseSystemInstructions(Session?.Mode ?? AppMode.Chat, skillsMetadata.Count != 0),
+            toolManager.GetToolUseSystemInstructions(Session.Mode, skillsMetadata.Count != 0),
             skillsSection,
             contextSection);
     }
@@ -429,7 +423,7 @@ public class ChatService(
     private const int _maxSessions = 5;
     private List<SessionSummary>? _recentSessionsCache;
 
-    public async Task<List<SessionSummary>> GetRecentSessionsAsync(int count = _maxSessions)
+    public async Task<List<SessionSummary>> GetRecentSessionsAsync(int count)
     {
         if (_recentSessionsCache == null)
         {
@@ -450,6 +444,11 @@ public class ChatService(
                         CreatedAt = session.CreatedAt,
                         FirstUserMessage = preview
                     });
+                }
+                else
+                {
+                    await localStorage.RemoveItemAsync(id);
+                    logger.LogError("Invalid session {id} is removed", id);
                 }
             }
 
@@ -506,10 +505,7 @@ public class ChatService(
         }
         await localStorage.RemoveItemAsync(id);
         
-        if (_recentSessionsCache != null)
-        {
-            _recentSessionsCache.RemoveAll(s => s.Id == id);
-        }
+        _recentSessionsCache?.RemoveAll(s => s.Id == id);
     }
 
     private async Task<List<string>> GetAllSessionIdsAsync()
@@ -519,7 +515,8 @@ public class ChatService(
 
     private static string GenerateSessionId() => $"session_{DateTime.Now:s}";
 
-    private static ConversationSession CreateNewSession() => new() { Id = GenerateSessionId() };
+    private static ConversationSession CreateNewSession() => new () { Id = GenerateSessionId() };
+
 
     public async Task LoadLastSessionOrGenerateNewAsync()
     {

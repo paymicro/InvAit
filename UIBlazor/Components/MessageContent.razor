@@ -27,14 +27,14 @@
             }
         }
 
-        @if (Message.ToolMessages.Any())
+        @if (Message.ToolResults.Count != 0)
         {
             <div class="message-tool-results rz-mt-2">
-                @foreach (var toolMsg in Message.ToolMessages)
+                @foreach (var toolResult in Message.ToolResults)
                 {
-                    <details class="tool-details" @key="toolMsg.Id">
-                        <summary>@toolMsg.ToolDisplayName</summary>
-                        <pre class="rz-p-2 rz-background-color-base-900 rz-color-white" style="font-size: 0.8rem; border-radius: 4px;">@toolMsg.Content</pre>
+                    <details class="tool-details" @key="toolResult.Id">
+                        <summary>@toolResult.DisplayName</summary>
+                        <pre class="rz-p-2 rz-background-color-base-900 rz-color-white" style="font-size: 0.8rem; border-radius: 4px;">@toolResult.GetDisplayContent</pre>
                     </details>
                 }
             </div>

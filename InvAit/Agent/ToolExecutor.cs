@@ -12,6 +12,7 @@ using EnvDTE;
 using EnvDTE80;
 using InvAit.Utils;
 using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Shell.Interop;
 using Shared.Contracts;
 using Shared.Contracts.Mcp;
 using Process = System.Diagnostics.Process;
@@ -49,7 +50,6 @@ public class ToolExecutor
                 BuiltInToolEnum.GitLog => await GitLogAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GitDiff => await GitDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GitBranch => await GitBranchAsync(),
-                BasicEnum.SwitchMode => new VsResponse { Success = true, Payload = "Mode switched" },
                 BasicEnum.OpenFile => await OpenFileInEditorAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BasicEnum.OpenFolder => await OpenFolderInExplorerAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BasicEnum.GetSkillsMetadata => await GetSkillsMetadataAsync(),
@@ -218,6 +218,20 @@ public class ToolExecutor
         };
     }
 
+    private async Task<Encoding> GetSaveFileEncoding()
+    {
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        var dte = await VS.GetRequiredServiceAsync<SDTE, DTE>();
+
+        // Обращаемся к категории "Environment", подкатегории "Documents"
+        var properties = dte.Properties["Environment", "Documents"];
+
+        var useSpecificEncoding = (bool)properties.Item("SaveFilesWithSpecificEncoding").Value;
+        var codePage = (int)properties.Item("SaveEncoding").Value;
+
+        return useSpecificEncoding ? Encoding.GetEncoding(codePage) : Encoding.UTF8;
+    }
+
     private async Task<VsResponse> CreateNewFileAsync(IReadOnlyDictionary<string, object> args)
     {
         var solutionPath = await GetSolutionPathAsync();
@@ -225,7 +239,7 @@ public class ToolExecutor
         var filepath = GetAbsolutePath(fileParam, solutionPath);
         var contents = args.Values.Skip(1).Select(x => x.ToString());
 
-        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         try
         {
             var directory = Path.GetDirectoryName(filepath);
@@ -234,7 +248,7 @@ public class ToolExecutor
                 Directory.CreateDirectory(directory);
             }
 
-            File.WriteAllLines(filepath, contents);
+            File.WriteAllLines(filepath, contents, await GetSaveFileEncoding());
             return new VsResponse
             {
                 Payload = $"File {fileParam} created successfully."
@@ -481,7 +495,7 @@ public class ToolExecutor
         var totalReplacements = 0;
         var appliedReplacements = new List<string>();
 
-        replacements = replacements.OrderByDescending(r => r.StartLine).ToList();
+        replacements = [.. replacements.OrderByDescending(r => r.StartLine)];
 
         var parser = new UniversalDiffParser();
 
@@ -512,7 +526,7 @@ public class ToolExecutor
         try
         {
             var tempFile = Path.Combine(Path.GetTempPath(), Path.GetFileName(filepath));
-            File.WriteAllLines(filepath, lines, Encoding.UTF8); // TODO настройка кодировки, может кому-то нужен BOM
+            File.WriteAllLines(filepath, lines, await GetSaveFileEncoding());
             await OpenEditorAndCleanUp(filepath);
             await Logger.LogAsync($"{totalReplacements} changes successfully applied to {inputFileName}.\r\nLooks good!");
         }

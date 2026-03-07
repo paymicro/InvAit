@@ -92,7 +92,7 @@
     [Parameter] public EventCallback<string> Cancel { get; set; }
     [Parameter] public bool IsLoading { get; set; }
 
-    [Inject] private ChatService ChatService { get; set; } = null!;
+    [Inject] private IChatService ChatService { get; set; } = null!;
     [Inject] private IVsCodeContextService VsCodeContextService { get; set; } = null!;
     [Inject] private IJSRuntime JS { get; set; } = null!;
     [Inject] private IVsBridge VsBridge { get; set; } = null!;
@@ -115,8 +115,8 @@
 
     private AppMode CurrentMode
     {
-        get => ChatService.Session?.Mode ?? AppMode.Chat;
-        set => ChatService.Session?.Mode = value;
+        get => ChatService.Session.Mode;
+        set => ChatService.Session.Mode = value;
     }
 
     private bool CanSend()
@@ -332,13 +332,6 @@
     {
         base.OnInitialized();
         ChatService.OnSessionChanged += HandleSessionChanged;
-        VsBridge.OnModeSwitched += HandleModeSwitched;
-    }
-
-    private void HandleModeSwitched(AppMode mode)
-    {
-        CurrentMode = mode;
-        InvokeAsync(StateHasChanged);
     }
 
     private void HandleSessionChanged()
@@ -365,6 +358,5 @@
     {
         base.Dispose();
         ChatService.OnSessionChanged -= HandleSessionChanged;
-        VsBridge.OnModeSwitched -= HandleModeSwitched;
     }
 }
