@@ -709,6 +709,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Run tests.
+        /// </summary>
+        public static string ToolRunTests {
+            get {
+                return ResourceManager.GetString("ToolRunTests", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Tools.
         /// </summary>
         public static string Tools {

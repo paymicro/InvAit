@@ -14,14 +14,15 @@ public static class BuiltInToolEnum
     public const string GrepSearch      = "grep_search";
     public const string Dir             = "dir";
     
-    // Project and build
+    // Project
     public const string GetErrors               = "get_error_list";
     public const string GetProjectInfo          = "get_project_info";
     public const string GetSolutionStructure    = "get_solution_structure";
-    
+    public const string RunTests                = "run_tests";
+    public const string Build                   = "build";
+
     // Execution
     public const string Exec            = "execute";
-    public const string Build           = "build";
 
     // Git operations
     public const string GitLog          = "git_log";

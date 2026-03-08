@@ -348,4 +348,7 @@
   <data name="ApprovalModeDeny" xml:space="preserve">
     <value>Deny</value>
   </data>
+  <data name="ToolRunTests" xml:space="preserve">
+    <value>Run tests</value>
+  </data>
 </root>

@@ -348,4 +348,7 @@
   <data name="ApprovalModeDeny" xml:space="preserve">
     <value>Запретить</value>
   </data>
+  <data name="ToolRunTests" xml:space="preserve">
+    <value>Запуск тестов</value>
+  </data>
 </root>

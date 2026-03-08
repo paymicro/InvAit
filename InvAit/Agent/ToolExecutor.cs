@@ -43,6 +43,7 @@ public class ToolExecutor
                 BuiltInToolEnum.Dir => await ListDirectoryAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.ApplyDiff => await ApplyDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.Build => await BuildSolutionAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.RunTests => await RunTestsAsync(),
                 BuiltInToolEnum.GetErrors => await GetErrorListAsync(),
                 BuiltInToolEnum.GetProjectInfo => await GetProjectInfoAsync(),
                 BuiltInToolEnum.GetSolutionStructure => await GetSolutionStructureAsync(),
@@ -562,7 +563,7 @@ public class ToolExecutor
             return -1;
         }
 
-        for (int i = 0; i <= bigArray.Count - smallArray.Count; i++)
+        for (var i = 0; i <= bigArray.Count - smallArray.Count; i++)
         {
             // Берем часть bigArray, начиная с i, длиной как smallArray
             // и сравниваем её с smallArray
@@ -586,15 +587,15 @@ public class ToolExecutor
 
         if (!result)
         {
-            var errorList = await GetErrorListAsync();
-
+            var errorList = await GetBuildErrorListAsync();
             return new VsResponse
             {
                 Success = false,
                 Error = $"""
                          {buildAction} is failed.
-
-                         {errorList.Error}
+                         ---
+                         Errors:
+                         {errorList}
                          """
             };
         }
@@ -607,16 +608,28 @@ public class ToolExecutor
 
     private async Task<VsResponse> GetErrorListAsync()
     {
-        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-        var dte = Shell.Package.GetGlobalService(typeof(DTE)) as DTE2;
-        var errorList = dte?.ToolWindows?.ErrorList?.ErrorItems;
-        if (errorList == null)
-        {
-            return new VsResponse
+        var errorList = await GetBuildErrorListAsync();
+        return string.IsNullOrEmpty(errorList)
+            ? new VsResponse
             {
                 Success = false,
                 Error = "Error list is null"
+            }
+            : new VsResponse
+            {
+                Payload = errorList
             };
+    }
+
+    private async Task<string> GetBuildErrorListAsync()
+    {
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+        var dte = Package.GetGlobalService(typeof(DTE)) as DTE2;
+        var errorList = dte?.ToolWindows?.ErrorList?.ErrorItems;
+        if (errorList == null)
+        {
+            return string.Empty;
         }
 
         var errors = new List<BuildError>();
@@ -626,12 +639,15 @@ public class ToolExecutor
             var errorItem = errorList.Item(i);
             try
             {
-                errors.Add(new BuildError
+                if (errorItem.ErrorLevel == vsBuildErrorLevel.vsBuildErrorLevelHigh) // только ошибки
                 {
-                    Message = errorItem.Description,
-                    FileName = errorItem.FileName,
-                    Line = errorItem.Line
-                });
+                    errors.Add(new BuildError
+                    {
+                        Message = errorItem.Description,
+                        FileName = errorItem.FileName,
+                        Line = errorItem.Line
+                    });
+                }
             }
             catch
             {
@@ -639,10 +655,42 @@ public class ToolExecutor
             }
         }
 
-        return new VsResponse
+        return string.Join("\n", errors.Select(e => $" - {e.FileName} | line:{e.Line}\n{e.Message}\n"));
+    }
+
+    private async Task <VsResponse> RunTestsAsync()
+    {
+        // Для начала запуск билда
+        var build = await BuildSolutionAsync(new Dictionary<string, object>() { { "param1", "build" } } );
+        if (!build.Success)
         {
-            Payload = JsonUtils.Serialize(errors)
-        };
+            return build;
+        }
+
+        // Запустить все тесты в решении - не дожидаясь завершения
+        await VS.Commands.ExecuteAsync("TestExplorer.RunAllTests");
+
+        await Task.Delay(5000);
+        // Получаем сервис состояния тестов
+        // var testRunService = Package.GetGlobalService(typeof(ITest));
+
+        // Теперь можно один раз считать ошибки
+        var errorList = await GetBuildErrorListAsync();
+        return string.IsNullOrEmpty(errorList)
+            ? new VsResponse
+            {
+                Payload = "All tests is passed."
+            }
+            : new VsResponse
+            {
+                Success = false,
+                Error = $"""
+                         Tests is failed.
+                         ---
+                         Errors:
+                         {errorList}
+                         """
+            };
     }
 
     private async Task<VsResponse> GetSolutionStructureAsync()

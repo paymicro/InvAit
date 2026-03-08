@@ -159,7 +159,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
         {
             Name = BuiltInToolEnum.Build,
             DisplayName = SharedResource.ToolBuild,
-            Category = ToolCategory.Execution,
+            Category = ToolCategory.ReadFiles,
             Description = "To build solution in Visual Studio. With action - Build, Rebuild or Clean. When any errors returns errors list.",
             ExampleToSystemMessage = $"""
                                      For example:
@@ -168,6 +168,19 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      </function>
                                      """,
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Build, args)
+        },
+        new()
+        {
+            Name = BuiltInToolEnum.RunTests,
+            DisplayName = SharedResource.ToolRunTests,
+            Category = ToolCategory.ReadFiles,
+            Description = "To run all tests in solution. When any errors returns errors list.",
+            ExampleToSystemMessage = $"""
+                                     For example:
+                                     <function name="{BuiltInToolEnum.RunTests}">
+                                     </function>
+                                     """,
+            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.RunTests, args)
         },
         new()
         {
