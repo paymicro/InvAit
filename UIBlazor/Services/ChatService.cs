@@ -297,6 +297,7 @@ public class ChatService(
         string? line;
         var isReasoningContent = false;
         var isStart = true;
+        string? role = null;
 
         // чтобы html-теги <function> склеивать в один чанк
         var _pendingText = string.Empty;
@@ -335,6 +336,7 @@ public class ChatService(
             LastCompletionsModel ??= chunk.Model;
             var delta = chunk.Choices[0].Delta;
             var content = delta!.Content;
+            role ??= delta?.Role;
 
             // Размышляющие модели по разному отдают размышления
             //
@@ -405,6 +407,7 @@ public class ChatService(
                     }
                 }
 
+                delta.Role ??= role;
                 delta.Content = incomingText;
             }
 

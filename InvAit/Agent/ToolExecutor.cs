@@ -670,7 +670,8 @@ public class ToolExecutor
         // Запустить все тесты в решении - не дожидаясь завершения
         await VS.Commands.ExecuteAsync("TestExplorer.RunAllTests");
 
-        await Task.Delay(5000);
+        await Task.Delay(15_000); // TODO: Костыль - 15 секунд просто ждем. Но пока так.
+                                  // Нет хорошего метода узать завершились тесты или нет (internal доступ к окну тестов VS)
         // Получаем сервис состояния тестов
         // var testRunService = Package.GetGlobalService(typeof(ITest));
 

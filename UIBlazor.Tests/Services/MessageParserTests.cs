@@ -110,6 +110,32 @@ public class MessageParserTests
     }
 
     [Fact]
+    public void UpdateSegments_IncrementalUpdate2()
+    {
+        // Arrange
+        var message = new VisualChatMessage { Role = ChatMessageRole.Assistant };
+
+        // Act
+        _parser.UpdateSegments("<function name=\"mcp__invaitmcp__get_service_info\">\nserviceName", message);
+        _parser.UpdateSegments(" : \"wow", message);
+        _parser.UpdateSegments("-service\"\n", message);
+        _parser.UpdateSegments("num :", message);
+        _parser.UpdateSegments(" 123\n", message);
+        _parser.UpdateSegments("</function>", message);
+        _parser.UpdateSegments("\n", message);
+        _parser.UpdateSegments("\n", message);
+
+        // Assert
+        Assert.Equal(2, message.Segments.Count);
+        var segment = message.Segments[0];
+        Assert.Equal(SegmentType.Tool, segment.Type);
+        Assert.Equal("mcp__invaitmcp__get_service_info", segment.ToolName);
+        Assert.Equal("serviceName : \"wow-service\"", segment.Lines[0]);
+        Assert.Equal("num : 123", segment.Lines[1]);
+        Assert.True(segment.IsClosed);
+    }
+
+    [Fact]
     public void Parse_ReadFiles()
     {
         // Arrange

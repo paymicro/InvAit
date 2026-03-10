@@ -118,7 +118,27 @@ public partial class ChatControl
         {
             // Блокируем открытие новых окон. Все должно работать в одном окне.
             e.Handled = true;
-            Logger.Log($"Blocked attempt to open new window with URL: {e.Uri}", "WARNING");
+            // В дефолтном браузере
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = e.Uri,
+                UseShellExecute = true
+            });
+        };
+        _webView.CoreWebView2.NavigationStarting += (s, e) =>
+        {
+            var url = e.Uri;
+            // Условие: если это не ваш локальный контент или не стартовая страница
+            if (url != _virtualUrl)
+            {
+                e.Cancel = true;
+                // В дефолтном браузере
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = url,
+                    UseShellExecute = true
+                });
+            }
         };
     }
 
@@ -223,9 +243,11 @@ public partial class ChatControl
         }
     }
 
+    private static readonly string _virtualHost = "blazorui.local";
+    private static readonly string _virtualUrl = $"https://{_virtualHost}/index.html";
+
     private void SetupVirtualHost()
     {
-        var virtualHost = "blazorui.local";
         var assemblyPath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
         var blazorRoot = Path.Combine(assemblyPath, "UI", "wwwroot");
 
@@ -238,10 +260,10 @@ public partial class ChatControl
 
         // virtualHost ссылается на папку UI
         _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
-            virtualHost,
+            _virtualHost,
             blazorRoot,
             CoreWebView2HostResourceAccessKind.Allow);
 
-        _webView.Source = new Uri($"https://{virtualHost}/index.html");
+        _webView.Source = new Uri(_virtualUrl);
     }
 }

@@ -11,6 +11,10 @@
     --rz-checkbox-checked-color: var(--rz-on-primary-dark);
 }
 
+a {
+    color: var(--rz-link-color);
+}
+
 html,
 body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;

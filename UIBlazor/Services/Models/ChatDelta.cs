@@ -8,7 +8,7 @@ public class ChatDelta
     /// The role of the message, which can be "system", "assistant", "user" or "tool"
     /// </summary>
     [JsonPropertyName("role")]
-    public string Role { get; set; } = string.Empty;
+    public string? Role { get; set; }
 
     /// <summary>
     /// The content of the message with think block

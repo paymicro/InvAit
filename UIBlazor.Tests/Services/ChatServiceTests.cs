@@ -1,11 +1,16 @@
-﻿using Moq;
+using Microsoft.AspNetCore.Hosting.Server;
+using Moq;
 using Shared.Contracts;
 using UIBlazor.Constants;
 using UIBlazor.Models;
 using UIBlazor.Options;
 using UIBlazor.Services;
+using UIBlazor.Services.Models;
 using UIBlazor.Services.Settings;
 using UIBlazor.Tests.Utils;
+using WireMock.RequestBuilders;
+using WireMock.ResponseBuilders;
+using WireMock.Server;
 
 namespace UIBlazor.Tests.Services;
 
@@ -36,7 +41,7 @@ public class ChatServiceTests
         _profileManagerMock.SetupGet(p => p.Current).Returns(options);
         _profileManagerMock.SetupGet(p => p.ActiveProfile).Returns(new ConnectionProfile
         {
-            Endpoint = "https://api.test.com",
+            Endpoint = "",
             ApiKey = "test-key",
             ApiKeyHeader = "Authorization",
             Model = "test-model",
@@ -51,6 +56,8 @@ public class ChatServiceTests
 
         // Default setup for session listing
         _localStorageMock.Setup(ls => ls.GetAllKeysAsync()).ReturnsAsync([]);
+
+        _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync()).ReturnsAsync([]);
     }
 
     private ChatService CreateChatService(HttpClient? httpClient = null)
@@ -155,5 +162,93 @@ public class ChatServiceTests
         Assert.NotNull(chatService.Session);
         Assert.StartsWith("session_", chatService.Session.Id);
         Assert.Empty(chatService.Session.Messages);
+    }
+
+    [Fact]
+    public async Task GetCompletionsAsync_StreamsSseDeltas_BasicContent()
+    {
+        // Arrange - SSE format with delta array
+        var sseResponse = """
+            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":"assistant","content":"Hello","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
+            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":" world","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
+            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"!","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
+            data: [DONE]
+            """;
+
+
+        var server = WireMockServer.Start();
+        var httpClient = server.CreateClient();
+        server
+            .Given(Request.Create().WithPath("/v1/chat/completions").UsingPost())
+            .RespondWith(
+                Response.Create()
+                    .WithStatusCode(200)
+                    .WithHeader("Content-Type", "text/event-stream")
+                    .WithHeader("Cache-Control", "no-cache")
+                    .WithBody(sseResponse)
+            );
+
+        var chatService = CreateChatService(httpClient);
+
+        // Act
+        var deltas = new List<ChatDelta>();
+        await foreach (var delta in chatService.GetCompletionsAsync(TestContext.Current.CancellationToken))
+        {
+            deltas.Add(delta);
+        }
+
+        // Assert
+        Assert.Equal(3, deltas.Count);
+        Assert.Equal("assistant", deltas[0].Role);
+        Assert.Equal("Hello", deltas[0].Content);
+        Assert.Equal(" world", deltas[1].Content);
+        Assert.Equal("!", deltas[2].Content);
+    }
+
+    [Fact]
+    public async Task GetCompletionsAsync_StreamsSseDeltas_ToolCallFragmented()
+    {
+        // Arrange
+        var sseResponse = """
+            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":"assistant","content":"<function name=\"m","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
+            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"cp__invaitm","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
+            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"cp__get_service","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
+            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"_info\">\nserviceName","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
+            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":" : \"wow","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
+            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"-service\"\n","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
+            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"num :","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
+            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":" 123\n","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
+            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"</function>","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
+            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"","reasoning_content":null,"tool_calls":null},"finish_reason":"stop"}],"usage":null}
+            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":{"prompt_tokens":9841,"completion_tokens":35,"total_tokens":9876}}
+            data: [DONE]
+            """;
+
+        var server = WireMockServer.Start();
+        var httpClient = server.CreateClient();
+        server
+            .Given(Request.Create().WithPath("/v1/chat/completions").UsingPost())
+            .RespondWith(
+                Response.Create()
+                    .WithStatusCode(200)
+                    .WithHeader("Content-Type", "text/event-stream")
+                    .WithHeader("Cache-Control", "no-cache")
+                    .WithBody(sseResponse)
+            );
+        var chatService = CreateChatService(httpClient);
+
+        // Act
+        var deltas = new List<ChatDelta>();
+        await foreach (var delta in chatService.GetCompletionsAsync(TestContext.Current.CancellationToken))
+        {
+            deltas.Add(delta);
+        }
+
+        // Assert
+        Assert.Equal(8, deltas.Count);
+        Assert.Equal("assistant", deltas[0].Role);
+        Assert.Equal("<function name=\"mcp__invaitmcp__get_service_info\">\nserviceName", deltas[0].Content);
+        Assert.Equal(" : \"wow", deltas[1].Content);
+        Assert.Equal("-service\"\n", deltas[2].Content);
     }
 }
