@@ -120,7 +120,9 @@ public class ConversationSession : BaseOptions
             }
         }
 
-        return messages;
+        return Messages[^1] is { Role: ChatMessageRole.Assistant, Content: "" }
+            ? messages[..^1]
+            : messages;
     }
 }
 

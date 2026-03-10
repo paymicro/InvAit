@@ -11,8 +11,10 @@ using System.Threading.Tasks;
 using EnvDTE;
 using EnvDTE80;
 using InvAit.Utils;
+using Microsoft.Build.Evaluation;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
+using Microsoft.VisualStudio.Threading;
 using Shared.Contracts;
 using Shared.Contracts.Mcp;
 using Process = System.Diagnostics.Process;
@@ -514,7 +516,7 @@ public class ToolExecutor
         {
             var tempFile = Path.Combine(Path.GetTempPath(), Path.GetFileName(filepath));
             File.WriteAllLines(filepath, lines, Encoding.UTF8);
-            await OpenEditorAndCleanUp(filepath);
+            await OpenEditor(filepath);
             await Logger.LogAsync($"{totalReplacements} changes successfully applied to {inputFileName}.\r\nLooks good!");
         }
         catch (Exception e)
@@ -535,25 +537,9 @@ public class ToolExecutor
     /// <summary>
     /// Открываем файл в редакторе Visual Studio
     /// </summary>
-    public async Task OpenEditorAndCleanUp(string filepath)
+    public async Task OpenEditor(string filepath)
     {
-        var docView = await VS.Documents.OpenAsync(filepath);
-
-        // TODO не работает. Надо смотреть другие варианты
-        //if (docView != null)
-        //{
-        //    // Переключаемся на основной поток для выполнения команд IDE
-        //    await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-
-        //    // 3. Запускаем Code Cleanup
-        //    var dte = Shell.Package.GetGlobalService(typeof(DTE)) as DTE;
-
-        //    // Выполняем очистку
-        //    dte?.ExecuteCommand("Analyze.RunCodeCleanup");
-
-        //    // охраняем файл после очистки
-        //    docView.Document.Save();
-        //}
+        await VS.Documents.OpenAsync(filepath);
     }
 
     public int FindSubarrayIndex(List<string> bigArray, List<string> smallArray)
@@ -658,6 +644,36 @@ public class ToolExecutor
         return string.Join("\n", errors.Select(e => $" - {e.FileName} | line:{e.Line}\n{e.Message}\n"));
     }
 
+    private async Task<List<string>> GetTestAssembliesAsync()
+    {
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        var projects = await VS.Solutions.GetAllProjectsAsync();
+        var dllPaths = new List<string>();
+
+        foreach (var project in projects)
+        {
+            // 1. Проверяем, является ли проект тестовым (по названию или по наличию свойств)
+            if (!project.Name.Contains("Test", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var msbuildProject = ProjectCollection.GlobalProjectCollection.GetLoadedProjects(project.FullPath).FirstOrDefault()
+                             ?? new Microsoft.Build.Evaluation.Project(project.FullPath);
+
+            var fullDllPath = msbuildProject.GetPropertyValue("TargetPath");
+
+            if (File.Exists(fullDllPath))
+            {
+                dllPaths.Add(fullDllPath);
+            }
+        }
+        return dllPaths;
+    }
+
+    /// <summary>
+    /// Запуск тестов через консоль
+    /// Через TestExplorer можно запустить, но не узнать о завершении и прочитать ошибки тоже нельзя
+    /// </summary>
+    /// <returns></returns>
     private async Task <VsResponse> RunTestsAsync()
     {
         // Для начала запуск билда
@@ -667,31 +683,39 @@ public class ToolExecutor
             return build;
         }
 
-        // Запустить все тесты в решении - не дожидаясь завершения
-        await VS.Commands.ExecuteAsync("TestExplorer.RunAllTests");
+        var solutionPath = await GetSolutionPathAsync();
+        var testDlls = await GetTestAssembliesAsync();
+        var allDlls = string.Join(" ", testDlls.Select(d => $"\"{d}\""));
 
-        await Task.Delay(15_000); // TODO: Костыль - 15 секунд просто ждем. Но пока так.
-                                  // Нет хорошего метода узать завершились тесты или нет (internal доступ к окну тестов VS)
-        // Получаем сервис состояния тестов
-        // var testRunService = Package.GetGlobalService(typeof(ITest));
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "dotnet",
+            Arguments = $"test {allDlls} -v d",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = solutionPath
+        };
 
-        // Теперь можно один раз считать ошибки
-        var errorList = await GetBuildErrorListAsync();
-        return string.IsNullOrEmpty(errorList)
-            ? new VsResponse
-            {
-                Payload = "All tests is passed."
-            }
-            : new VsResponse
+        using var process = Process.Start(startInfo);
+        if (process == null)
+            return new VsResponse
             {
                 Success = false,
-                Error = $"""
-                         Tests is failed.
-                         ---
-                         Errors:
-                         {errorList}
-                         """
+                Payload = "Failed to start process"
             };
+
+        var result = await process.StandardOutput.ReadToEndAsync();
+        await process.WaitForExitAsync();
+
+        // Теперь можно один раз считать ошибки
+        return new VsResponse
+        {
+            Payload = result
+        };
     }
 
     private async Task<VsResponse> GetSolutionStructureAsync()
@@ -720,7 +744,8 @@ public class ToolExecutor
             if (item.Type == Toolkit.SolutionItemType.PhysicalFile)
             {
                 var ext = Path.GetExtension(item.FullPath).ToLower();
-                if (ext is ".zip" or ".bin" or ".dll" or ".exe" or ".png" or ".jpg" or ".obj" or ".pdb") continue;
+                if (ext is ".zip" or ".bin" or ".dll" or ".exe" or ".png" or ".jpg" or ".obj" or ".pdb")
+                    continue;
 
                 sb.AppendLine($"{indentString}📄 {item.Name}");
             }
@@ -1194,30 +1219,32 @@ public class ToolExecutor
     private async Task<List<string>> GetAllSolutionFilesAsync()
     {
         var files = new List<string>();
+        List<string> skipEx = [".zip", ".bin", ".dll", ".exe"];
         var projects = await VS.Solutions.GetAllProjectsAsync();
         foreach (var project in projects)
         {
-            await WalkItemsAsync(project.Children, files);
+            await WalkItemsAsync(project.Children, files, skipEx);
         }
 
         return files;
     }
 
-    private async Task WalkItemsAsync(IEnumerable<Toolkit.SolutionItem> items, List<string> files)
+    private async Task WalkItemsAsync(IEnumerable<Toolkit.SolutionItem> items, List<string> files, List<string> skipExtensions)
     {
         foreach (var item in items)
         {
             switch (item.Type)
             {
-                case Toolkit.SolutionItemType.PhysicalFile when (item as Toolkit.PhysicalFile)?.Extension is not (".zip" or ".bin" or ".dll" or ".exe"):
-                    files.Add(item.FullPath);
+                case Toolkit.SolutionItemType.PhysicalFile:
+                    if (!skipExtensions.Contains((item as Toolkit.PhysicalFile).Extension))
+                        files.Add(item.FullPath);
                     break;
                 case Toolkit.SolutionItemType.Project:
                     files.Add(item.FullPath);
-                    await WalkItemsAsync(item.Children, files);
+                    await WalkItemsAsync(item.Children, files, skipExtensions);
                     break;
                 case Toolkit.SolutionItemType.PhysicalFolder or Toolkit.SolutionItemType.SolutionFolder:
-                    await WalkItemsAsync(item.Children, files);
+                    await WalkItemsAsync(item.Children, files, skipExtensions);
                     break;
             }
         }

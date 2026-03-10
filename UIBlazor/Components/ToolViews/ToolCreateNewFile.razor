@@ -1,0 +1,21 @@
+<div class="diff-view">
+    @if (!string.IsNullOrEmpty(FilePath))
+    {
+        <div @key="@FilePath" class="tool-file-header">@FilePath</div>
+    }
+
+    <div class="diff-block">
+        <pre>@string.Join("\n", Lines[1..])</pre>
+    </div>
+</div>
+
+@code {
+    [Parameter] public List<string> Lines { get; set; } = [];
+
+    private string? FilePath { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        FilePath = Lines[0];
+    }
+}

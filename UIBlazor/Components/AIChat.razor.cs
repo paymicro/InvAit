@@ -158,6 +158,7 @@ public partial class AiChat : RadzenComponent
 
         ChatService.Session.AddMessage(assistantMessage);
         await ChatService.SaveSessionAsync();
+        await InvokeAsync(StateHasChanged);
 
         try
         {

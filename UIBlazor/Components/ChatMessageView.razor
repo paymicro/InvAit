@@ -1,5 +1,3 @@
-@using UIBlazor.Components.Chat
-
 <div class="rz-chat-message rz-chat-message-@Message.Role" @key="Message.Id">
     <RadzenStack class="rz-chat-message-avatar" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0">
         <span class="rz-chat-avatar-initials" >
@@ -44,7 +42,7 @@
                             @if (!IsLoading)
                             {
                                 <RadzenButton Text="@SharedResource.ExecutePlan" Icon="play_arrow" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small"
-                                             Click="@(() => OnExecutePlan.InvokeAsync(Message))" class="rz-mt-2" />
+                                              Click="@(() => OnExecutePlan.InvokeAsync(Message))" class="rz-mt-2" />
                             }
                         </div>
                     }

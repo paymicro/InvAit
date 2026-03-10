@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Reflection;
 using Microsoft.JSInterop;
 
 namespace UIBlazor.Services.Settings;

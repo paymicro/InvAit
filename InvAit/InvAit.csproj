@@ -80,6 +80,7 @@
     </None>
   </ItemGroup>
   <ItemGroup>
+    <Reference Include="Microsoft.Build" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System" />
     <Reference Include="System.Data" />
