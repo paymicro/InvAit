@@ -100,7 +100,7 @@ public class ConversationSession : BaseOptions
     /// </summary>
     /// <param name="systemPrompt">The system prompt to include.</param>
     /// <returns>A list of message objects for the AI API.</returns>
-    public List<object> GetFormattedMessages(string systemPrompt)
+    public IEnumerable<object> GetFormattedMessages(string systemPrompt)
     {
         var messages = new List<object>
         {
@@ -120,8 +120,8 @@ public class ConversationSession : BaseOptions
             }
         }
 
-        return Messages[^1] is { Role: ChatMessageRole.Assistant, Content: "" }
-            ? messages[..^1]
+        return Messages is [.., { IsStreaming: true }] // не отправлять последнее сообщение, если оно стримится
+            ? messages.SkipLast(1)
             : messages;
     }
 }

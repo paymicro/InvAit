@@ -120,7 +120,7 @@ public class McpSettingsProvider(
     }
 
     /// <summary>
-    /// Open mcp.json
+    /// Открыть mcp.json в редакторе VS
     /// </summary>
     public async Task OpenSettingsFileAsync()
     {
@@ -158,7 +158,7 @@ public class McpSettingsProvider(
                 var mcpData = JsonUtils.Deserialize<McpResponse>(result.Result);
                 if (mcpData?.Result is JsonElement jsonElement)
                 {
-                    var updateResult = await UpdateServerTools(server, jsonElement);
+                    var updateResult = await UpdateServerToolsAsync(server, jsonElement);
                     Log($"Refresh result for {server.Name}: {updateResult}");
                     return updateResult;
                 }
@@ -231,7 +231,7 @@ public class McpSettingsProvider(
                             var mcpData = JsonUtils.Deserialize<McpResponse>(jsonData);
                             if (mcpData?.Id == mcpRequest.Id && mcpData.Result is JsonElement jsonElement)
                             {
-                                var updateResult = await UpdateServerTools(server, jsonElement);
+                                var updateResult = await UpdateServerToolsAsync(server, jsonElement);
                                 Log($"HTTP refresh result for {server.Name}: {updateResult}");
                                 return updateResult;
                             }
@@ -250,7 +250,7 @@ public class McpSettingsProvider(
         }
     }
 
-    private async Task<string> UpdateServerTools(McpServerConfig server, JsonElement resultElement)
+    private async Task<string> UpdateServerToolsAsync(McpServerConfig server, JsonElement resultElement)
     {
         var listResult = resultElement.GetObject<McpListToolsResult>();
         if (listResult == null)

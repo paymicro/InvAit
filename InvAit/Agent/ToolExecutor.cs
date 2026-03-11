@@ -1490,7 +1490,7 @@ public class ToolExecutor
             return new VsResponse
             {
                 Success = !responseJson.StartsWith("ERROR"),
-                Payload = responseJson,
+                Payload = responseJson, // TODO: сделать парсинг в MD
                 Error = responseJson.StartsWith("ERROR") ? responseJson : null
             };
         }
