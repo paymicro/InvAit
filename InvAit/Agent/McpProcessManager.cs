@@ -42,8 +42,8 @@ public class McpProcessManager
         {
             var startInfo = new ProcessStartInfo
             {
-                FileName = "cmd.exe",
-                Arguments = $"/c \"{command}\" {args}",
+                FileName = command,
+                Arguments = args,
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -81,6 +81,11 @@ public class McpProcessManager
 
                         try
                         {
+                            if (line.StartsWith("Active code page"))
+                            {
+                                continue; // Переключение раскладки не считаем за ошибку
+                            }
+
                             // Пытаемся распарсить как сообщение JSON-RPC
                             using var doc = JsonDocument.Parse(line);
                             var root = doc.RootElement;

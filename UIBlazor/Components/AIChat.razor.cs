@@ -6,6 +6,7 @@ using Radzen;
 using Radzen.Blazor.Rendering;
 using UIBlazor.Services;
 using UIBlazor.Services.Settings;
+using ConversationSession = UIBlazor.Models.ConversationSession;
 
 namespace UIBlazor.Components;
 
@@ -441,8 +442,11 @@ public partial class AiChat : RadzenComponent
         await InvokeAsync(StateHasChanged);
     }
 
-    private async void HandleSessionChanged()
+    private async void HandleSessionChanged(string propName)
     {
+        if (propName != nameof(ConversationSession))
+            return;
+
         LoadMessagesFromSession();
         _recentSessions = await ChatService.GetRecentSessionsAsync(3);
         await InvokeAsync(StateHasChanged);

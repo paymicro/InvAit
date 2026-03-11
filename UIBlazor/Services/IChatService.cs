@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using UIBlazor.Services.Models;
 
 namespace UIBlazor.Services;
@@ -7,7 +6,7 @@ public interface IChatService
 {
     ConversationSession Session { get; }
 
-    event Action? OnSessionChanged;
+    event Action<string>? OnSessionChanged;
 
     Task<List<SessionSummary>> GetRecentSessionsAsync(int count);
 

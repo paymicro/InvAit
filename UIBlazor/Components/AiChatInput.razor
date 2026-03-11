@@ -326,9 +326,12 @@
         ChatService.OnSessionChanged += HandleSessionChanged;
     }
 
-    private void HandleSessionChanged()
+    private void HandleSessionChanged(string propName)
     {
-        InvokeAsync(StateHasChanged);
+        if (propName == nameof(Models.ConversationSession.Mode))
+        {
+            InvokeAsync(StateHasChanged);
+        }
     }
 
     private void HandleProfileChanged()

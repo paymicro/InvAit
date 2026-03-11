@@ -42,14 +42,15 @@ public class ChatService(
                 field?.PropertyChanged -= SessionPropertyChanged;
                 field = value;
                 field?.PropertyChanged += SessionPropertyChanged;
-                OnSessionChanged?.Invoke();
+                OnSessionChanged?.Invoke(nameof(ConversationSession));
             }
         }
     } = CreateNewSession();
 
-    public event Action? OnSessionChanged;
+    public event Action<string>? OnSessionChanged;
 
-    private void SessionPropertyChanged(object? sender, PropertyChangedEventArgs e) => OnSessionChanged?.Invoke();
+    private void SessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        => OnSessionChanged?.Invoke(e.PropertyName ?? string.Empty);
 
     public async Task<AiModelList> GetModelsAsync(CancellationToken cancellationToken)
     {

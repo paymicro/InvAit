@@ -37,7 +37,7 @@
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <!-- Включает AOT (Ahead-of-Time) компиляцию -->
-    <!-- Код будет работать в 2-5 раз быстрее, но папка будет весить больше -->
+    <!-- Вызывает неизвестные ошибки MONO -->
     <RunAOTCompilation>true</RunAOTCompilation>
   </PropertyGroup>
 
