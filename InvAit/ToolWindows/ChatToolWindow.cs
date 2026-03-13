@@ -16,25 +16,27 @@ public class ChatToolWindow : BaseToolWindow<ChatToolWindow>, IDisposable
 {
     private VsCodeContextPublisher _contextPublisher;
 
+    private ChatControl _chatControl;
+
     public override string GetTitle(int toolWindowId) => "InvAit Chat";
 
     public override Type PaneType => typeof(ChatPane);
 
     public override async Task<FrameworkElement> CreateAsync(int toolWindowId, CancellationToken cancellationToken)
     {
-        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
-        var control = new ChatControl();
-        control.WebViewInitialized += OnWebViewInitializedAsync;
-        control.UIReady += () => _contextPublisher?.PushInitialContextAsync().FireAndForget();
+        _chatControl = new ChatControl();
+        _chatControl.WebViewInitialized += OnWebViewInitializedAsync;
+        _chatControl.UIReady += () => _contextPublisher?.PushInitialContextAsync().FireAndForget();
 
-        return control;
+        return _chatControl;
     }
 
     private async Task OnWebViewInitializedAsync(IWebView2 webView)
     {
-        var dte = Shell.Package.GetGlobalService(typeof(DTE)) as DTE2;
-        if (dte != null)
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        if (Shell.Package.GetGlobalService(typeof(DTE)) is DTE2 dte)
         {
             _contextPublisher = await VsCodeContextPublisher.CreateAsync(dte, (WebView2)webView);
         }
@@ -44,5 +46,7 @@ public class ChatToolWindow : BaseToolWindow<ChatToolWindow>, IDisposable
     {
         _contextPublisher?.Dispose();
         _contextPublisher = null;
+        _chatControl?.Dispose();
+        _chatControl = null;
     }
 }

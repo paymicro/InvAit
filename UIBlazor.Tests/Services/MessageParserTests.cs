@@ -136,6 +136,59 @@ public class MessageParserTests
     }
 
     [Fact]
+    public void UpdateSegments_ApplyDiff_Incremental_ShouldNotDuplicate()
+    {
+        // Arrange
+        var message = new VisualChatMessage { Role = ChatMessageRole.Assistant };
+        _toolManagerMock.Setup(x => x.GetApprovalModeByToolName("apply_diff"))
+            .Returns(ToolApprovalMode.Allow);
+
+        // Act
+        _parser.UpdateSegments("<function name=\"apply_diff\">", message);
+        _parser.UpdateSegments("\npath/to/file.txt\n", message);
+        _parser.UpdateSegments(":start_line:10\n", message);
+        _parser.UpdateSegments("<<<<<<< SEARCH\n", message);
+        _parser.UpdateSegments("old code\n", message);
+        _parser.UpdateSegments("=======\n", message);
+        _parser.UpdateSegments("new code\n", message);
+        _parser.UpdateSegments(">>>>>>> REPLACE\n", message);
+        _parser.UpdateSegments("</function>", message);
+
+        // Assert
+        Assert.Single(message.Segments);
+        var segment = message.Segments[0];
+        Assert.Equal(SegmentType.Tool, segment.Type);
+        Assert.Equal("apply_diff", segment.ToolName);
+        Assert.True(segment.IsClosed);
+
+        // Проверяем что строки НЕ дублируются
+        var lines = segment.Lines.Select(l => l.TrimEnd()).ToList();
+        Assert.DoesNotContain(lines, l => lines.Count(x => x == l) > 1); // Нет дубликатов
+    }
+
+    [Fact]
+    public void UpdateSegments_ApplyDiff_MultiLineInOneChunk()
+    {
+        // Arrange
+        var message = new VisualChatMessage { Role = ChatMessageRole.Assistant };
+        _toolManagerMock.Setup(x => x.GetApprovalModeByToolName("apply_diff"))
+            .Returns(ToolApprovalMode.Allow);
+
+        // Act - несколько строк в одном чанке (проблемный случай!)
+        _parser.UpdateSegments("<function name=\"apply_diff\">\nline1", message);
+        _parser.UpdateSegments("\nline2\nline3\n", message);
+        _parser.UpdateSegments("</function>", message);
+        // 3 строки сразу
+        _parser.UpdateSegments("", message);
+
+
+        // Assert
+        var segment = message.Segments[0];
+        var lines = segment.Lines.Select(l => l.TrimEnd()).ToList();
+        Assert.Equal(3, lines.Count);
+    }
+
+    [Fact]
     public void Parse_ReadFiles()
     {
         // Arrange

@@ -13,7 +13,6 @@ using EnvDTE80;
 using InvAit.Utils;
 using Microsoft.Build.Evaluation;
 using Microsoft.VisualStudio.Shell;
-using Microsoft.VisualStudio.Shell.Interop;
 using Microsoft.VisualStudio.Threading;
 using Shared.Contracts;
 using Shared.Contracts.Mcp;
@@ -24,7 +23,7 @@ using VS = Community.VisualStudio.Toolkit.VS;
 
 namespace InvAit.Agent;
 
-public class ToolExecutor
+public class ToolExecutor : IDisposable
 {
     private readonly McpProcessManager _mcpProcessManager = new();
     private readonly Dictionary<string, string> _skillPathByName = [];
@@ -112,7 +111,7 @@ public class ToolExecutor
         var solutionPath = await GetSolutionPathAsync();
         var fileParamsList = new List<ReadFileParams>();
 
-        // 1. Try to get structured parameters (file1, file2, ...)
+        // Try to get structured parameters (file1, file2, ...)
         var fileKeys = args.Keys.Where(k => k.StartsWith("file", StringComparison.OrdinalIgnoreCase)).ToList();
         if (fileKeys.Count > 0)
         {
@@ -123,43 +122,20 @@ public class ToolExecutor
             }
         }
 
-        // 2. Fallback to param* format
-        if (fileParamsList.Count == 0)
-        {
-            var paramKeys = args.Keys.Where(k => k.StartsWith("param", StringComparison.OrdinalIgnoreCase)).OrderBy(k => k).ToList();
-            if (paramKeys.Count > 0)
-            {
-                var startLine = args.GetInt("start_line", -1);
-                var lineCount = args.GetInt("line_count", -1);
-
-                foreach (var key in paramKeys)
-                {
-                    var path = args.GetString(key);
-                    if (!string.IsNullOrEmpty(path) && !path.StartsWith(":"))
-                    {
-                        fileParamsList.Add(new ReadFileParams
-                        {
-                            Name = path,
-                            StartLine = startLine,
-                            LineCount = lineCount
-                        });
-                    }
-                }
-            }
-        }
-
         if (fileParamsList.Count == 0)
         {
             return new VsResponse { Success = false, Error = "No files specified." };
         }
 
-        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         var sb = new StringBuilder();
         var isSuccess = true;
 
-        foreach (var rp in fileParamsList)
+        for (var i = 0; i < fileParamsList.Count; i++)
         {
+            var rp = fileParamsList[i];
             var absPath = GetAbsolutePath(rp.Name, solutionPath);
+
             if (!File.Exists(absPath))
             {
                 sb.AppendLine($"File \"{rp.Name}\" doesn't exist.");
@@ -167,43 +143,35 @@ public class ToolExecutor
                 continue;
             }
 
+            if (i > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("---");
+                sb.AppendLine();
+            }
+
             try
             {
-                // Title for multiple files
-                if (fileParamsList.Count > 1)
+                sb.AppendLine($"### {rp.Name}");
+
+                var lines = File.ReadLines(absPath);
+                var currentLine = 0;
+
+                if (rp.StartLine > 0)
                 {
-                    sb.AppendLine($"\"{rp.Name}\" content");
+                    var skipCount = Math.Max(0, rp.StartLine - 1);
+                    lines = lines.Skip(skipCount);
+                    currentLine = skipCount;
                 }
 
-                // If it's a snippet or we are reading multiple files, use line numbers
-                var useLineNumbers = rp.StartLine > 0 || rp.LineCount > 0 || fileParamsList.Count > 1;
-
-                if (!useLineNumbers)
+                if (rp.LineCount > 0)
                 {
-                    // Raw content for single file without range
-                    sb.Append(File.ReadAllText(absPath));
+                    lines = lines.Take(rp.LineCount);
                 }
-                else
+
+                foreach (var line in lines)
                 {
-                    var lines = File.ReadLines(absPath);
-                    var currentLine = 0;
-
-                    if (rp.StartLine > 0)
-                    {
-                        var skipCount = Math.Max(0, rp.StartLine - 1);
-                        lines = lines.Skip(skipCount);
-                        currentLine = skipCount;
-                    }
-
-                    if (rp.LineCount > 0)
-                    {
-                        lines = lines.Take(rp.LineCount);
-                    }
-
-                    foreach (var line in lines)
-                    {
-                        sb.AppendLine($"{++currentLine} | {line}");
-                    }
+                    sb.AppendLine($"{++currentLine} | {line}");
                 }
             }
             catch (Exception ex)
@@ -377,7 +345,7 @@ public class ToolExecutor
         }
 
         var solutionPath = await GetSolutionPathAsync();
-        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         var regex = new Regex(pattern, RegexOptions.Compiled);
         var files = (await GetAllSolutionFilesAsync()).Where(f => regex.IsMatch(f))
             .Select(f => MakeRelativeToSolution(f, solutionPath))
@@ -404,7 +372,7 @@ public class ToolExecutor
         var results = new List<string>();
         var solutionPath = await GetSolutionPathAsync();
 
-        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         var files = await GetAllSolutionFilesAsync();
         var regex = new Regex(query, RegexOptions.Multiline);
 
@@ -516,7 +484,7 @@ public class ToolExecutor
         {
             var tempFile = Path.Combine(Path.GetTempPath(), Path.GetFileName(filepath));
             File.WriteAllLines(filepath, lines, Encoding.UTF8);
-            await OpenEditor(filepath);
+            await OpenEditorAsync(filepath);
             await Logger.LogAsync($"{totalReplacements} changes successfully applied to {inputFileName}.\r\nLooks good!");
         }
         catch (Exception e)
@@ -537,7 +505,7 @@ public class ToolExecutor
     /// <summary>
     /// Открываем файл в редакторе Visual Studio
     /// </summary>
-    public async Task OpenEditor(string filepath)
+    public async Task OpenEditorAsync(string filepath)
     {
         await VS.Documents.OpenAsync(filepath);
     }
@@ -804,8 +772,8 @@ public class ToolExecutor
         var solutionPath = await GetSolutionPathAsync();
         var localRulesPath = Path.Combine(solutionPath, ".agents", "rules.md");
 
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var globalRulesPath = Path.Combine(appData, "Agent", "rules.md");
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var globalRulesPath = Path.Combine(appData, ".agents", "rules.md");
 
         await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
@@ -855,8 +823,8 @@ public class ToolExecutor
             if (normalizedPath.Equals(".agents/rules.md", StringComparison.OrdinalIgnoreCase))
             {
                 var localPath = GetAbsolutePath(relativePath, solutionPath);
-                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                var globalPath = Path.Combine(appData, "Agent", "rules.md");
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                var globalPath = Path.Combine(appData, ".agents", "rules.md");
 
                 if (!File.Exists(localPath) && File.Exists(globalPath))
                 {
@@ -950,8 +918,8 @@ public class ToolExecutor
         }
 
         // 2. Глобальные скиллы
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var globalSkillsDir = Path.Combine(appData, "Agent", "skills");
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var globalSkillsDir = Path.Combine(appData, ".agents", "skills");
         if (Directory.Exists(globalSkillsDir))
         {
             var globalSkills = Directory.EnumerateFileSystemEntries(globalSkillsDir, "*SKILL.md", SearchOption.AllDirectories);
@@ -1278,8 +1246,8 @@ public class ToolExecutor
 
     private static string GetMcpSettingsPath()
     {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        return Path.Combine(appData, "Agent", "mcp.json");
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return Path.Combine(appData, ".agents", "mcp.json");
     }
 
     private async Task<VsResponse> ReadMcpSettingsAsync()
@@ -1498,5 +1466,10 @@ public class ToolExecutor
         {
             return new VsResponse { Success = false, Error = ex.Message };
         }
+    }
+
+    public void Dispose()
+    {
+        _mcpProcessManager.Dispose();
     }
 }

@@ -1,7 +1,53 @@
-<div>
-    TODO
+@using Shared.Contracts
+
+<div class="tool-ask-options">
+<div class="tool-ask-question rz-mb-2">
+       <strong>@Question</strong>
+    </div>
+    
+    @if (Options.Count > 0)
+    {
+        <div class="tool-ask-buttons rz-d-flex rz-flex-wrap rz-gap-2">
+            @foreach (var option in Options)
+            {
+               <RadzenButton 
+                    Text="@option"
+                    ButtonStyle="ButtonStyle.Base"
+                    Size="ButtonSize.Small"
+                    Click="@(() => OnOptionSelected(option))" />
+            }
+        </div>
+    }
+    
+    <div class="tool-ask-custom rz-mt-2 rz-d-flex rz-gap-2">
+        <RadzenTextBox @bind-Value="_customOption" Placeholder="@SharedResource.YourOption" Style="flex: 1;" />
+        <RadzenButton 
+            Text="@SharedResource.SendMessage" 
+            ButtonStyle="ButtonStyle.Primary" 
+            Size="ButtonSize.Small"
+            Disabled="@string.IsNullOrWhiteSpace(_customOption)"
+            Click="@(() => OnOptionSelected(_customOption))" />
+    </div>
 </div>
 
 @code {
     [Parameter] public List<string> Lines { get; set; } = [];
+    [Parameter] public EventCallback<string> OnOptionSelectedCallback { get; set; }
+
+    private string _customOption = string.Empty;
+
+    private string Question => Lines.Count > 0 ? Lines[0] : string.Empty;
+    
+    private List<string> Options => Lines.Count > 1 ? Lines.Skip(1).ToList() : [];
+
+    private async Task OnOptionSelected(string selectedOption)
+    {
+        if (string.IsNullOrWhiteSpace(selectedOption))
+            return;
+            
+        if (OnOptionSelectedCallback.HasDelegate)
+        {
+            await OnOptionSelectedCallback.InvokeAsync(selectedOption);
+        }
+    }
 }

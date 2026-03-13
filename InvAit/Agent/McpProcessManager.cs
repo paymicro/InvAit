@@ -7,42 +7,135 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using InvAit.Utils;
+using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Threading;
 using Shared.Contracts.Mcp;
 
 namespace InvAit.Agent;
 
 /// <summary>
-/// Управление MCP процессами (NPX серверы)
+/// Управление MCP процессами (NPX серверы или dotnet tool например)
 /// </summary>
-public class McpProcessManager
+public class McpProcessManager : IDisposable
 {
     private readonly ConcurrentDictionary<string, Process> _processes = new();
     private readonly ConcurrentDictionary<string, ConcurrentQueue<McpNotification>> _notificationQueues = new();
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, TaskCompletionSource<string>>> _pendingRequests = new();
+    private readonly object _processLock = new();
+
+    private async Task<string> GetFullPathCommandAsync(string commandName)
+    {
+        var tcs = new TaskCompletionSource<string>();
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "where",
+            Arguments = commandName,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            StandardOutputEncoding = Encoding.UTF8
+        };
+
+        using var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
+
+        // Read output before process exits to avoid deadlock
+        var outputBuilder = new StringBuilder();
+        process.OutputDataReceived += (sender, e) =>
+        {
+            if (e.Data != null)
+            {
+                outputBuilder.AppendLine(e.Data);
+            }
+        };
+
+        process.Exited += (sender, args) =>
+        {
+            try
+            {
+                if (process.ExitCode == 0)
+                {
+                    var rawOutput = outputBuilder.ToString();
+                    var paths = rawOutput.Split([Environment.NewLine], StringSplitOptions.RemoveEmptyEntries);
+
+                    // Filter for executable extensions (.cmd, .bat, .exe)
+                    var executablePath = paths.FirstOrDefault(p =>
+                        p.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) ||
+                        p.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
+                        p.EndsWith(".bat", StringComparison.OrdinalIgnoreCase));
+
+                    tcs.TrySetResult(executablePath?.Trim());
+                }
+                else
+                {
+                    // Command not found or error
+                    tcs.TrySetResult(null);
+                }
+            }
+            catch
+            {
+                tcs.TrySetResult(null);
+            }
+        };
+
+        try
+        {
+            if (process.Start())
+            {
+                process.BeginOutputReadLine();
+            }
+            else
+            {
+                tcs.TrySetResult(null);
+            }
+        }
+        catch
+        {
+            tcs.TrySetResult(null);
+        }
+
+        return await tcs.Task;
+    }
 
     /// <summary>
     /// Запустить MCP процесс
     /// </summary>
     public async Task<string> StartProcessAsync(string serverId, string command, string args, string workingDirectory, Dictionary<string, string> env)
     {
-        if (_processes.TryGetValue(serverId, out var proc))
+        lock (_processLock)
         {
-            if (!proc.HasExited)
+            if (_processes.TryGetValue(serverId, out var proc))
             {
-                return $"OK: Process {serverId} already running.";
-            }
-            else
-            {
-                await Logger.LogAsync($"MCP [{serverId}] unexpected exited.", "WARNING");
-                _processes.TryRemove(serverId, out var _);
+                if (!proc.HasExited)
+                {
+                    return $"OK: Process {serverId} already running.";
+                }
+                else
+                {
+                    // Process exited unexpectedly, clean up
+                    _processes.TryRemove(serverId, out _);
+                    _notificationQueues.TryRemove(serverId, out _);
+                    _pendingRequests.TryRemove(serverId, out _);
+                    proc.Dispose();
+                }
             }
         }
 
         try
         {
+            var fullCommand = await GetFullPathCommandAsync(command);
+            if (string.IsNullOrEmpty(fullCommand))
+            {
+                var message = $"ERROR: Failed to get where {command} in system.";
+                await Logger.LogAsync(message, "ERROR");
+                return message;
+            }
+
+            await Logger.LogAsync($"MCP {command} > {fullCommand}");
             var startInfo = new ProcessStartInfo
             {
-                FileName = command,
+                FileName = fullCommand,
                 Arguments = args,
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
@@ -62,8 +155,24 @@ public class McpProcessManager
                 return "ERROR: Failed to start process";
             }
 
-            _processes[serverId] = process;
-            process.Exited += (s, e) => { _processes.TryRemove(serverId, out var _); };
+            process.EnableRaisingEvents = true;
+            process.Exited += (s, e) =>
+            {
+                _processes.TryRemove(serverId, out _);
+                _notificationQueues.TryRemove(serverId, out _);
+                if (_pendingRequests.TryRemove(serverId, out var requests))
+                {
+                    foreach (var tcs in requests.Values)
+                    {
+                        tcs.TrySetCanceled();
+                    }
+                }
+            };
+
+            lock (_processLock)
+            {
+                _processes[serverId] = process;
+            }
             _notificationQueues[serverId] = new ConcurrentQueue<McpNotification>();
             _pendingRequests[serverId] = new ConcurrentDictionary<string, TaskCompletionSource<string>>();
 
@@ -81,11 +190,6 @@ public class McpProcessManager
 
                         try
                         {
-                            if (line.StartsWith("Active code page"))
-                            {
-                                continue; // Переключение раскладки не считаем за ошибку
-                            }
-
                             // Пытаемся распарсить как сообщение JSON-RPC
                             using var doc = JsonDocument.Parse(line);
                             var root = doc.RootElement;
@@ -313,5 +417,10 @@ public class McpProcessManager
         {
             await StopProcessAsync(serverId);
         }
+    }
+
+    public void Dispose()
+    {
+        StopAllProcessesAsync().FileAndForget("ChatToolWindow.DisposeAll");
     }
 }

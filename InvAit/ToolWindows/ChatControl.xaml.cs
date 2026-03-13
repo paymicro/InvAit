@@ -16,7 +16,7 @@ using WV = Microsoft.Web.WebView2.Wpf;
 
 namespace InvAit.ToolWindows;
 
-public partial class ChatControl
+public partial class ChatControl : IDisposable
 {
     private bool _webView2Installed;
     private WV.IWebView2 _webView;
@@ -265,5 +265,10 @@ public partial class ChatControl
             CoreWebView2HostResourceAccessKind.Allow);
 
         _webView.Source = new Uri(_virtualUrl);
+    }
+
+    public void Dispose()
+    {
+        _toolExecutor.Dispose();
     }
 }

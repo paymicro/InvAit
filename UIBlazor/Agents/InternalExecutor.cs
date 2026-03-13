@@ -32,7 +32,7 @@ public class InternalExecutor(IServiceProvider serviceProvider) : IInternalExecu
 
         if (name == BasicEnum.AskUser)
         {
-            return await ExecuteAskUserAsync(args);
+            return ExecuteAskUserAsync(args);
         }
 
         return new VsToolResult
@@ -42,69 +42,36 @@ public class InternalExecutor(IServiceProvider serviceProvider) : IInternalExecu
         };
     }
 
-    private static Task<VsToolResult> ExecuteAskUserAsync(IReadOnlyDictionary<string, object> args)
+    /// <summary>
+    /// Execute ask_user tool.
+    /// param1 = question, param2+ = options
+    /// Returns JSON with question and options for UI to render.
+    /// </summary>
+    private static VsToolResult ExecuteAskUserAsync(IReadOnlyDictionary<string, object> args)
     {
-        string question = string.Empty;
+        var question = string.Empty;
         var options = new List<string>();
 
         if (args != null)
         {
-            // Extract question
-            if (args.TryGetValue("question", out var questionObj))
+            // Get param keys
+            var paramKeys = args.Keys.ToList();
+
+            // First param is the question
+            if (paramKeys.Count > 0 && args.TryGetValue(paramKeys[0], out var questionObj))
             {
-                question = questionObj?.ToString() ?? string.Empty;
+                question = questionObj?.ToString()?.Trim() ?? string.Empty;
             }
 
-            // Extract options - they come as param1, param2, etc. after "options" marker
-            // The parser puts each line as a separate param
-            var optionParams = args
-                .Where(kv => kv.Key.StartsWith("param"))
-                .OrderBy(kv => int.Parse(kv.Key[5..]))
-                .Select(kv => kv.Value?.ToString() ?? string.Empty)
-                .ToList();
-
-            // Find where "options" marker is and take everything after it
-            var optionsIndex = optionParams.IndexOf("options");
-            if (optionsIndex >= 0 && optionsIndex + 1 < optionParams.Count)
+            // Remaining params are options
+            for (var i = 1; i < paramKeys.Count; i++)
             {
-                // Check if next param after "options" is the question value (not another marker)
-                // Format: param1 = question, param2 =<question text>, param3 = options, param4+ = actual options
-                var questionIndex = optionParams.IndexOf("question");
-                if (questionIndex >= 0 && questionIndex + 1< optionParams.Count)
+                if (args.TryGetValue(paramKeys[i], out var optionObj))
                 {
-                    question = optionParams[questionIndex + 1];
-                }
-
-                // Options are after "options" marker
-                for (var i = optionsIndex + 1; i < optionParams.Count; i++)
-                {
-                    var opt = optionParams[i].Trim();
-                    if (!string.IsNullOrEmpty(opt) && opt != "question")
+                    var option = optionObj?.ToString()?.Trim();
+                    if (!string.IsNullOrEmpty(option))
                     {
-                        options.Add(opt);
-                    }
-                }
-            }
-            else
-            {
-                // Try alternate format: question is param after "question" marker
-                var questionIndex = optionParams.IndexOf("question");
-                if (questionIndex >= 0 && questionIndex + 1 < optionParams.Count)
-                {
-                    question = optionParams[questionIndex + 1];
-                }
-
-                // Options might be directly listed
-                optionsIndex = optionParams.IndexOf("options");
-                if (optionsIndex >= 0)
-                {
-                    for (var i = optionsIndex + 1; i < optionParams.Count; i++)
-                    {
-                        var opt = optionParams[i].Trim();
-                        if (!string.IsNullOrEmpty(opt))
-                        {
-                            options.Add(opt);
-                        }
+                        options.Add(option);
                     }
                 }
             }
@@ -113,10 +80,10 @@ public class InternalExecutor(IServiceProvider serviceProvider) : IInternalExecu
         // Return result with question and options as JSON
         var resultJson = JsonSerializer.Serialize(new { question, options });
 
-        return Task.FromResult(new VsToolResult
+        return new VsToolResult
         {
             Success = true,
             Result = resultJson
-        });
+        };
     }
 }

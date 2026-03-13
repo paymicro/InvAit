@@ -134,11 +134,13 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
                 segment.Type = SegmentType.Tool;
                 segment.TagName = "function";
                 segment.ToolName = functionMatch.Groups[1].Value;
+                return;
             }
             else if (raw.Contains("<plan>"))
             {
                 segment.Type = SegmentType.Plan;
                 segment.TagName = "plan";
+                return;
             }
             else if (!string.IsNullOrEmpty(raw))
             {
@@ -150,7 +152,7 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
         ProcessIncomingText(segment, token);
     }
 
-    private void ProcessIncomingText(ContentSegment segment, string token)
+    private static void ProcessIncomingText(ContentSegment segment, string token)
     {
         segment.CurrentLine.Append(token);
 
@@ -188,16 +190,6 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
                 segment.Lines.Add(lastLine.Replace($"</{segment.TagName}>", ""));
             }
             segment.CurrentLine.Clear();
-        }
-
-        // удаляем первый тег тулзы
-        if (segment.Lines.Count > 0)
-        {
-            var firstLine = segment.Lines[0].Trim();
-            if (firstLine.StartsWith($"<{segment.TagName}", StringComparison.OrdinalIgnoreCase) && firstLine.EndsWith('>'))
-            {
-                segment.Lines.RemoveAt(0);
-            }
         }
     }
 
@@ -336,6 +328,6 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
         return result;
     }
 
-    [GeneratedRegex(@"<function name=""([\w-_\.]+)"">$", RegexOptions.Compiled)]
+    [GeneratedRegex(@"<function name=""([\w-_\.]+)"">$", RegexOptions.Compiled | RegexOptions.NonBacktracking)]
     private static partial Regex FunctionRegex();
 }

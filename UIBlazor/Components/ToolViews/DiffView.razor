@@ -31,11 +31,16 @@
         bool inReplace = false;
         int blockIndex = 0;
 
+        if (Lines.Count < 2)
+        {
+            return;
+        }
+
         // Читаем первую строку для FilePath
         FilePath = Lines[0];
-        foreach (var line in Lines)
+        for (int i = 1; i < Lines.Count; i++)
         {
-            UpdateOrAddBlock(blockIndex++, line, ref inSearch, ref inReplace);
+            UpdateOrAddBlock(blockIndex++, Lines[i], ref inSearch, ref inReplace);
         }
 
         // Удаляем лишние блоки, если текст сократился
