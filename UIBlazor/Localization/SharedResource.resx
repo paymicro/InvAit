@@ -348,7 +348,16 @@
   <data name="ApprovalModeDeny" xml:space="preserve">
     <value>Deny</value>
   </data>
-  <data name="ToolRunTests" xml:space="preserve">
+<data name="ToolRunTests" xml:space="preserve">
     <value>Run tests</value>
+  </data>
+<data name="ToolAskUser" xml:space="preserve">
+    <value>Ask user</value>
+  </data>
+<data name="YourOption" xml:space="preserve">
+    <value>Your option...</value>
+  </data>
+ <data name="Selected" xml:space="preserve">
+    <value>Selected</value>
   </data>
 </root>

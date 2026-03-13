@@ -351,4 +351,7 @@
   <data name="ToolRunTests" xml:space="preserve">
     <value>Запуск тестов</value>
   </data>
+  <data name="Selected" xml:space="preserve">
+    <value>Выбрано</value>
+  </data>
 </root>

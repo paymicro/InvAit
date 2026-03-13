@@ -40,9 +40,7 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
             {
                 var closingTag = $"</{activeSegment.TagName}>";
                 var endOfTag = closeIdx + closingTag.Length;
-                AppendToken(activeSegment, incomingText.StartsWith('\n')
-                    ? incomingText[1..endOfTag] // убираем первый перенос строки после функции, если он есть
-                    : incomingText[..endOfTag]);
+                AppendToken(activeSegment, incomingText[..endOfTag]);
                 Close(activeSegment);
                 incomingText = incomingText[endOfTag..];
                 continue;
@@ -69,7 +67,7 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
                 if (tagEndIdx != -1)
                 {
                     var consumptionLength = tagEndIdx + 1;
-                    AppendToken(activeSegment, incomingText.Substring(0, consumptionLength));
+                    AppendToken(activeSegment, incomingText[..consumptionLength]);
                     if (activeSegment.Type == SegmentType.Tool && !string.IsNullOrEmpty(activeSegment.ToolName))
                     {
                         if (isHistory) // При загрузке истории все тулзы заапрувлены. Чтобы не было ложного Pending.
@@ -154,23 +152,10 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
 
     private void ProcessIncomingText(ContentSegment segment, string token)
     {
-        // Очищаем токен от управляющих тегов, чтобы парсеры их не видели
-        var cleanToken = token;
-        if (segment.Type != SegmentType.Markdown && !string.IsNullOrEmpty(segment.TagName))
-        {
-            // Удаляем <function...>, <plan...>, </function>, </plan>
-            cleanToken = Regex.Replace(token, $@".*<{segment.TagName}[^>]*>|<\/{segment.TagName}>.*", "", RegexOptions.NonBacktracking);
-        }
-
-        if (string.IsNullOrEmpty(cleanToken) && token.Contains('>'))
-        {
-            return;
-        }
-
-        segment.CurrentLine.Append(cleanToken);
+        segment.CurrentLine.Append(token);
 
         // Если есть перенос строки - фиксируем завершенные линии
-        if (segment.Type != SegmentType.Markdown && cleanToken.Contains('\n'))
+        if (segment.Type != SegmentType.Markdown && token.Contains('\n'))
         {
             var content = segment.CurrentLine.ToString();
             var parts = content.Split('\n');
@@ -196,8 +181,23 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
         // Переносим остаток из буфера в финальные линии, если он там есть
         if (segment.Type != SegmentType.Markdown && segment.CurrentLine.Length > 0)
         {
-            segment.Lines.Add(segment.CurrentLine.ToString());
+            var lastLine = segment.CurrentLine.ToString();
+            // только если последняя линия - не закрывающий тег (99,9% случаев)
+            if (!lastLine.Trim().Equals($"</{segment.TagName}>", StringComparison.OrdinalIgnoreCase))
+            {
+                segment.Lines.Add(lastLine.Replace($"</{segment.TagName}>", ""));
+            }
             segment.CurrentLine.Clear();
+        }
+
+        // удаляем первый тег тулзы
+        if (segment.Lines.Count > 0)
+        {
+            var firstLine = segment.Lines[0].Trim();
+            if (firstLine.StartsWith($"<{segment.TagName}", StringComparison.OrdinalIgnoreCase) && firstLine.EndsWith('>'))
+            {
+                segment.Lines.RemoveAt(0);
+            }
         }
     }
 

@@ -421,6 +421,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Selected.
+        /// </summary>
+        public static string Selected {
+            get {
+                return ResourceManager.GetString("Selected", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Select model.
         /// </summary>
         public static string SelectModel {
@@ -552,6 +561,15 @@ namespace UIBlazor.Localization {
         public static string ToolApplyDiff {
             get {
                 return ResourceManager.GetString("ToolApplyDiff", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Ask user.
+        /// </summary>
+        public static string ToolAskUser {
+            get {
+                return ResourceManager.GetString("ToolAskUser", resourceCulture);
             }
         }
         
@@ -759,6 +777,15 @@ namespace UIBlazor.Localization {
         public static string Yes {
             get {
                 return ResourceManager.GetString("Yes", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Your option....
+        /// </summary>
+        public static string YourOption {
+            get {
+                return ResourceManager.GetString("YourOption", resourceCulture);
             }
         }
     }

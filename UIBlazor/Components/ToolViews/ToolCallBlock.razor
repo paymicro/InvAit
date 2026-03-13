@@ -19,6 +19,10 @@
             {
                 <ToolCreateNewFile Lines="@Segment.Lines" />
             }
+            else if (Segment.ToolName == BasicEnum.AskUser)
+            {
+                <ToolAskOptions Lines="@Segment.Lines" />
+            }
             else
             {
                 <pre>@string.Join("\n", Segment.Lines)</pre>

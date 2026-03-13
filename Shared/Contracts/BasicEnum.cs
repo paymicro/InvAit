@@ -30,6 +30,9 @@ public static class BasicEnum
     public const string AdaptPlan           = "adapt_plan";
     public const string FinishPlan          = "finish_plan";
 
+    // User interaction
+    public const string AskUser             = "ask_user";
+
     // System heartbeat
     public const string UIReady             = "ui_ready";
     public const string SkipSSL             = "skip_ssl_validation";
