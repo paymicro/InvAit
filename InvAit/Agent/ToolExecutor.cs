@@ -1339,7 +1339,10 @@ public class ToolExecutor : IDisposable
     {
         if (!_mcpProcessManager.IsProcessRunning(serverId))
         {
-            if (string.IsNullOrEmpty(command)) return $"ERROR: Server {serverId} not running and no command provided to start it";
+            if (string.IsNullOrEmpty(command))
+            {
+                return $"ERROR: Server {serverId} not running and no command provided to start it";
+            }
 
             var solutionPath = await GetSolutionPathAsync();
             var startResult = await _mcpProcessManager.StartProcessAsync(serverId, command, arguments ?? "", solutionPath, env);

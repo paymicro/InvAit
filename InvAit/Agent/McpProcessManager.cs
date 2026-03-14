@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using InvAit.Utils;
 using Microsoft.VisualStudio.Shell;
@@ -22,10 +23,67 @@ namespace InvAit.Agent;
 /// </summary>
 public class McpProcessManager : IDisposable
 {
+    private static readonly List<string> _copyEnvs = ["PATH", "APPDATA", "LOCALAPPDATA", "TEMP", "SystemRoot", "SystemDrive"];
     private readonly ConcurrentDictionary<string, Process> _processes = new();
     private readonly ConcurrentDictionary<string, ConcurrentQueue<McpNotification>> _notificationQueues = new();
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, TaskCompletionSource<VsResponse>>> _pendingRequests = new();
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _processCancellationTokens = new();
     private readonly object _processLock = new();
+    private readonly ConcurrentDictionary<string, DateTime> _lastAccessTime = new();
+    private CancellationTokenSource _cleanupCts;
+    // время жизни MCP процесса без активности
+    private readonly TimeSpan _idleTimeout = TimeSpan.FromMinutes(1);
+
+    /// <summary>
+    /// Запустить фоновую задачу очистки неактивных процессов
+    /// </summary>
+    private void StartCleanupTask()
+    {
+        if (_cleanupCts != null) return;
+
+        _cleanupCts = new CancellationTokenSource();
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                while (!_cleanupCts.Token.IsCancellationRequested)
+                {
+                    await Task.Delay(1000, _cleanupCts.Token);
+
+                    var now = DateTime.UtcNow;
+                    var serverIds = _lastAccessTime.Keys.ToList();
+
+                    foreach (var serverId in serverIds)
+                    {
+                        if (_lastAccessTime.TryGetValue(serverId, out var lastAccess))
+                        {
+                            if (now - lastAccess > _idleTimeout)
+                            {
+                                await Logger.LogAsync($"MCP [{serverId}] idle timeout reached, stopping process");
+                                await StopProcessAsync(serverId);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected when cancellation is requested
+            }
+            catch (Exception ex)
+            {
+                await Logger.LogAsync($"MCP cleanup task error: {ex.Message}", "ERROR");
+            }
+        }, _cleanupCts.Token);
+    }
+
+    /// <summary>
+    /// Обновить время последнего доступа к процессу
+    /// </summary>
+    private void UpdateLastAccess(string serverId)
+    {
+        _lastAccessTime[serverId] = DateTime.UtcNow;
+    }
 
     private async Task<string> GetFullPathCommandAsync(string commandName)
     {
@@ -162,6 +220,13 @@ public class McpProcessManager : IDisposable
             process.EnableRaisingEvents = true;
             process.Exited += (s, e) =>
             {
+                // Cancel all reading tasks for this process
+                if (_processCancellationTokens.TryRemove(serverId, out var cts))
+                {
+                    cts.Cancel();
+                    cts.Dispose();
+                }
+
                 _processes.TryRemove(serverId, out _);
                 _notificationQueues.TryRemove(serverId, out _);
                 if (_pendingRequests.TryRemove(serverId, out var requests))
@@ -180,87 +245,126 @@ public class McpProcessManager : IDisposable
             _notificationQueues[serverId] = new ConcurrentQueue<McpNotification>();
             _pendingRequests[serverId] = new ConcurrentDictionary<string, TaskCompletionSource<VsResponse>>();
 
-            // Асинхронное чтение stdout
+            // Создаем CancellationTokenSource для процесса (связываем с cleanup токеном)
+            var processCts = CancellationTokenSource.CreateLinkedTokenSource(_cleanupCts?.Token ?? CancellationToken.None);
+            _processCancellationTokens[serverId] = processCts;
+            var cancellationToken = processCts.Token;
+
+            UpdateLastAccess(serverId);
+            StartCleanupTask();
+
+            // Асинхронное чтение stdout с поддержкой отмены
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    while (!process.HasExited && !process.StandardOutput.EndOfStream)
+                    while (!process.HasExited && !process.StandardOutput.EndOfStream && !cancellationToken.IsCancellationRequested)
                     {
-                        var line = await process.StandardOutput.ReadLineAsync();
-                        if (string.IsNullOrWhiteSpace(line)) continue;
+                        // Используем Task.WhenAny для возможности отмены ReadLineAsync
+                        var readTask = process.StandardOutput.ReadLineAsync();
+                        var completedTask = await Task.WhenAny(readTask, Task.Delay(Timeout.Infinite, cancellationToken));
 
-                        await Logger.LogAsync($"MCP [{serverId}] received: {line}");
+                        if (cancellationToken.IsCancellationRequested)
+                            break;
 
-                        try
+                        if (completedTask == readTask)
                         {
-                            // Это ответ?
-                            var response = JsonUtils.Deserialize<McpResponse>(line);
-                            if (response is { Id: not null })
+                            var line = await readTask;
+                            if (string.IsNullOrWhiteSpace(line)) continue;
+
+                            await Logger.LogAsync($"MCP [{serverId}] received: {line}");
+
+                            try
                             {
-                                if (_pendingRequests.TryGetValue(serverId, out var serverRequests)
-                                    && serverRequests.TryRemove(response.Id, out var tcs))
+                                // Это ответ?
+                                var response = JsonUtils.Deserialize<McpResponse>(line);
+                                if (response is { Id: not null })
                                 {
-                                    if (response.Error == null)
+                                    if (_pendingRequests.TryGetValue(serverId, out var serverRequests)
+                                        && serverRequests.TryRemove(response.Id, out var tcs))
                                     {
-                                        tcs.SetResult(new VsResponse
+                                        if (response.Error == null)
                                         {
-                                            Payload = JsonUtils.Serialize(response.Result),
-                                        });
-                                    }
-                                    else
-                                    {
-                                        tcs.SetResult(new VsResponse
+                                            tcs.SetResult(new VsResponse
+                                            {
+                                                Payload = JsonUtils.Serialize(response.Result),
+                                            });
+                                        }
+                                        else
                                         {
-                                            Success = false,
-                                            Payload = JsonUtils.Serialize(response.Error),
-                                        });
+                                            tcs.SetResult(new VsResponse
+                                            {
+                                                Success = false,
+                                                Payload = JsonUtils.Serialize(response.Error),
+                                            });
+                                        }
+                                        continue;
                                     }
-                                    continue;
+                                }
+
+                                // Это уведомление?
+                                var notification = JsonUtils.Deserialize<McpNotification>(line);
+                                if (notification != null)
+                                {
+                                    _notificationQueues[serverId].Enqueue(notification);
                                 }
                             }
-
-                            // Это уведомление?
-                            var notification = JsonUtils.Deserialize<McpNotification>(line);
-                            if (notification != null)
+                            catch (Exception ex)
                             {
-                                _notificationQueues[serverId].Enqueue(notification);
+                                await Logger.LogAsync($"MCP [{serverId}] parse error: {ex.Message}. Line: {line}", "WARN");
                             }
                         }
-                        catch (Exception ex)
-                        {
-                            await Logger.LogAsync($"MCP [{serverId}] parse error: {ex.Message}. Line: {line}", "WARN");
-                        }
-
-                        await Task.Delay(200);
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected when cancellation is requested
                 }
                 catch (Exception ex)
                 {
-                    await Logger.LogAsync($"MCP [{serverId}] stdout error: {ex.Message}", "ERROR");
+                    if (!cancellationToken.IsCancellationRequested)
+                    {
+                        await Logger.LogAsync($"MCP [{serverId}] stdout error: {ex.Message}", "ERROR");
+                    }
                 }
-            });
+            }, cancellationToken);
 
-            // Асинхронное чтение stderr для логирования
+            // Асинхронное чтение stderr для логирования с поддержкой отмены
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    while (!process.HasExited && !process.StandardError.EndOfStream)
+                    while (!process.HasExited && !process.StandardError.EndOfStream && !cancellationToken.IsCancellationRequested)
                     {
-                        var line = await process.StandardError.ReadLineAsync();
-                        if (line != null)
+                        // Используем Task.WhenAny для возможности отмены ReadLineAsync
+                        var readTask = process.StandardError.ReadLineAsync();
+                        var completedTask = await Task.WhenAny(readTask, Task.Delay(Timeout.Infinite, cancellationToken));
+
+                        if (cancellationToken.IsCancellationRequested)
+                            break;
+
+                        if (completedTask == readTask)
                         {
-                            await Logger.LogAsync($"MCP [{serverId}] stderr: {line}", "INFO");
+                            var line = await readTask;
+                            if (line != null)
+                            {
+                                await Logger.LogAsync($"MCP [{serverId}] stderr: {line}", "INFO");
+                            }
                         }
-                        await Task.Delay(200);
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected when cancellation is requested
                 }
                 catch (Exception ex)
                 {
-                    await Logger.LogAsync($"MCP [{serverId}] stderr error: {ex.Message}", "ERROR");
+                    if (!cancellationToken.IsCancellationRequested)
+                    {
+                        await Logger.LogAsync($"MCP [{serverId}] stderr error: {ex.Message}", "ERROR");
+                    }
                 }
-            });
+            }, cancellationToken);
 
             await Logger.LogAsync($"MCP process started: {serverId} ({command} {args})");
             return $"OK: Process started: {serverId}";
@@ -278,12 +382,10 @@ public class McpProcessManager : IDisposable
         startInfo.EnvironmentVariables.Clear();
 
         // Добавление системного минимума
-        startInfo.EnvironmentVariables["PATH"] = Environment.GetEnvironmentVariable("PATH");
-        startInfo.EnvironmentVariables["APPDATA"] = Environment.GetEnvironmentVariable("APPDATA");
-        startInfo.EnvironmentVariables["LOCALAPPDATA"] = Environment.GetEnvironmentVariable("LOCALAPPDATA");
-        startInfo.EnvironmentVariables["TEMP"] = Environment.GetEnvironmentVariable("TEMP");
-        startInfo.EnvironmentVariables["SystemRoot"] = Environment.GetEnvironmentVariable("SystemRoot");
-        startInfo.EnvironmentVariables["SystemDrive"] = Environment.GetEnvironmentVariable("SystemDrive");
+        foreach (var copyEnv in _copyEnvs)
+        {
+            startInfo.EnvironmentVariables[copyEnv] = Environment.GetEnvironmentVariable(copyEnv);
+        }
 
         // Добавление переменных окружения
         if (env != null)
@@ -300,6 +402,15 @@ public class McpProcessManager : IDisposable
     /// </summary>
     public async Task<string> StopProcessAsync(string serverId)
     {
+        _lastAccessTime.TryRemove(serverId, out _);
+
+        // Cancel reading tasks
+        if (_processCancellationTokens.TryRemove(serverId, out var processCts))
+        {
+            processCts.Cancel();
+            processCts.Dispose();
+        }
+
         if (!_processes.TryRemove(serverId, out var process))
         {
             return $"ERROR: Process {serverId} not found";
@@ -344,6 +455,8 @@ public class McpProcessManager : IDisposable
         {
             return new VsResponse { Success = false, Error = "ERROR: Process not found" };
         }
+
+        UpdateLastAccess(serverId);
 
         var tcs = new TaskCompletionSource<VsResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!_pendingRequests.TryGetValue(serverId, out var serverRequests))
@@ -400,6 +513,8 @@ public class McpProcessManager : IDisposable
             return "ERROR: Process not found";
         }
 
+        UpdateLastAccess(serverId);
+
         try
         {
             await process.StandardInput.WriteLineAsync(message);
@@ -440,6 +555,8 @@ public class McpProcessManager : IDisposable
 
     public void Dispose()
     {
+        _cleanupCts?.Cancel();
+        _cleanupCts?.Dispose();
         StopAllProcessesAsync().FileAndForget("ChatToolWindow.DisposeAll");
     }
 }

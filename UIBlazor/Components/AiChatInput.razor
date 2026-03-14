@@ -30,7 +30,7 @@
         <div class="input-footer">
             <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center">
                 <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" AlignItems="AlignItems.Center">
-                    <RadzenDropDown TValue="AppMode" class="mode-dropdown" Data="@AppModeValues" @bind-Value="@ChatService.Session.Mode" />
+                    <RadzenDropDown TValue="AppMode" class="mode-dropdown" Data="@AppModeValues" @bind-Value="@ChatService.Session.Mode" @bind-Value:after="OnModeChanged" />
                     <ModelSelector class="model-dropdown" />
                 </RadzenStack>
 
@@ -328,10 +328,7 @@
 
     private void HandleSessionChanged(string propName)
     {
-        if (propName == nameof(Models.ConversationSession.Mode))
-        {
-            InvokeAsync(StateHasChanged);
-        }
+        InvokeAsync(StateHasChanged);
     }
 
     private void HandleProfileChanged()
@@ -353,5 +350,9 @@
     {
         base.Dispose();
         ChatService.OnSessionChanged -= HandleSessionChanged;
+    }
+    private void OnModeChanged()
+    {
+        _ = ChatService.SaveSessionAsync();
     }
 }

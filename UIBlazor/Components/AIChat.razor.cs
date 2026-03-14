@@ -87,7 +87,6 @@ public partial class AiChat : RadzenComponent
         };
 
         ChatService.Session.AddMessage(userMessage);
-        await ChatService.SaveSessionAsync();
         
         // Get AI response
         await GetAiResponseAsync();

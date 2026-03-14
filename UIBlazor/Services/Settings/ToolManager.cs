@@ -163,7 +163,11 @@ public partial class ToolManager(
                         {
                             { "serverId", server.Name },
                             { "toolName", toolConfig.Name },
-                            { "arguments", arguments }
+                            { "arguments", arguments },
+                            // Command/Arguments for auto-start if needed
+                            { "command", server.Command },
+                            { "args", string.Join(" ", server.Args) },
+                            { "env", server.Env }
                         };
 
                         return vsBridge.ExecuteToolAsync(BasicEnum.McpCallTool, mcpArgs);
@@ -207,7 +211,7 @@ public partial class ToolManager(
         // Filter tools based on mode
         enabledTools = mode switch
         {
-            AppMode.Chat => [.. enabledTools.Where(t => t.Category is ToolCategory.ReadFiles or ToolCategory.ModeSwitch)],
+            AppMode.Chat => [.. enabledTools.Where(t => t.Category is ToolCategory.ReadFiles or ToolCategory.ModeSwitch or ToolCategory.Mcp)],
             AppMode.Agent => enabledTools,
             AppMode.Plan => [.. enabledTools.Where(t => t.Category is ToolCategory.ReadFiles or ToolCategory.ModeSwitch or ToolCategory.Mcp)],
             _ => enabledTools

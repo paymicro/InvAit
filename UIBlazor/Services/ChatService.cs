@@ -110,8 +110,8 @@ public class ChatService(
         if (_recentSessionsCache == null) return;
         
         var existing = _recentSessionsCache.FirstOrDefault(s => s.Id == session.Id);
-        var firstMessage = session.Messages.FirstOrDefault(m => m.Role == Constants.ChatMessageRole.User)?.Content ?? "No messages";
-        var preview = firstMessage.Length > 40 ? firstMessage[..40] + "..." : firstMessage;
+        var firstMessage = session.Messages.FirstOrDefault(m => m.Role == ChatMessageRole.User)?.Content ?? string.Empty;
+        var preview = firstMessage is { Length: > 40 } ? firstMessage[..40] + "..." : firstMessage;
 
         if (existing != null)
         {
@@ -437,11 +437,11 @@ public class ChatService(
             foreach (var id in sessionIds)
             {
                 var session = await localStorage.TryGetItemAsync<ConversationSession>(id);
-                if (session != null)
+                var firstMessage = session?.Messages.FirstOrDefault(m => m.Role == ChatMessageRole.User)?.Content;
+                if (session != null && firstMessage != null)
                 {
-                    var firstMessage = session.Messages.FirstOrDefault(m => m.Role == Constants.ChatMessageRole.User)?.Content ?? "No messages";
                     var preview = firstMessage.Length > 40 ? firstMessage[..40] + "..." : firstMessage;
-                    
+
                     summaries.Add(new SessionSummary
                     {
                         Id = id,
