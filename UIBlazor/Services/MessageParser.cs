@@ -133,7 +133,7 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
             {
                 segment.Type = SegmentType.Tool;
                 segment.TagName = "function";
-                segment.ToolName = functionMatch.Groups[1].Value;
+                segment.ToolName = functionMatch.Groups["name"].Value;
                 return;
             }
             else if (raw.Contains("<plan>"))
@@ -328,6 +328,6 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
         return result;
     }
 
-    [GeneratedRegex(@"<function name=""([\w-_\.]+)"">$", RegexOptions.Compiled | RegexOptions.NonBacktracking)]
+    [GeneratedRegex(@"<function name( {0,1})=( {0,1})""(?<name>[\w-_\.]+)"">$", RegexOptions.Compiled | RegexOptions.NonBacktracking)]
     private static partial Regex FunctionRegex();
 }

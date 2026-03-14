@@ -77,9 +77,20 @@ public class McpSettingsProviderTests
             .ReturnsAsync(new VsToolResult { Success = true, Result = JsonUtils.Serialize(mcpJson) });
 
         // Mock RefreshToolsAsync for stdio
-        var toolsResult = new McpResponse
+        var toolsResult = new
         {
-            Result = JsonDocument.Parse("{\"tools\": [{\"name\": \"tool1\", \"description\": \"desc1\", \"inputSchema\": {\"type\": \"object\", \"properties\": {}}}]}").RootElement
+            tools = new[]
+            {
+                new {
+                    name = "tool1",
+                    description = "desc1",
+                    inputSchema = new
+                    {
+                        type = "object",
+                        properties = new { }
+                    }
+                }
+            }
         };
         _vsBridgeMock.Setup(v => v.ExecuteToolAsync(BasicEnum.McpGetTools, It.IsAny<IReadOnlyDictionary<string, object>?>()))
             .ReturnsAsync(new VsToolResult { Success = true, Result = JsonUtils.Serialize(toolsResult) });

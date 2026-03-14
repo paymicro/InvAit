@@ -155,16 +155,10 @@ public class McpSettingsProvider(
                     return $"Error: {result.ErrorMessage}";
                 }
 
-                var mcpData = JsonUtils.Deserialize<McpResponse>(result.Result);
-                if (mcpData?.Result is JsonElement jsonElement)
-                {
-                    var updateResult = await UpdateServerToolsAsync(server, jsonElement);
-                    Log($"Refresh result for {server.Name}: {updateResult}");
-                    return updateResult;
-                }
-
-                Log($"Could not parse tools list from {server.Name}", "ERROR");
-                return "Error: Could not parse tools list";
+                var mcpData = JsonUtils.Deserialize<JsonElement>(result.Result);
+                var updateResult = await UpdateServerToolsAsync(server, mcpData);
+                Log($"Refresh result for {server.Name}: {updateResult}");
+                return updateResult;
             }
             else // http
             {

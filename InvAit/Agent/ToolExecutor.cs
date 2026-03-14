@@ -1362,7 +1362,7 @@ public class ToolExecutor : IDisposable
         };
 
         var responseJson = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(initRequest));
-        if (responseJson.StartsWith("ERROR")) return responseJson;
+        if (!responseJson.Success) return responseJson.Error;
 
         var initializedNotification = new McpNotification
         {
@@ -1397,14 +1397,7 @@ public class ToolExecutor : IDisposable
         {
             var requestId = Guid.NewGuid().ToString("N");
             var request = new McpRequest { Id = requestId, Method = "tools/list", Params = new { } };
-            var responseJson = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(request));
-
-            return new VsResponse
-            {
-                Success = !responseJson.StartsWith("ERROR"),
-                Payload = responseJson,
-                Error = responseJson.StartsWith("ERROR") ? responseJson : null
-            };
+            return await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(request));
         }
         catch (Exception ex)
         {
@@ -1454,13 +1447,7 @@ public class ToolExecutor : IDisposable
                 Params = new { name = toolName, arguments = toolArgs ?? new { } }
             };
 
-            var responseJson = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(request));
-            return new VsResponse
-            {
-                Success = !responseJson.StartsWith("ERROR"),
-                Payload = responseJson, // TODO: сделать парсинг в MD
-                Error = responseJson.StartsWith("ERROR") ? responseJson : null
-            };
+            return await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(request));
         }
         catch (Exception ex)
         {

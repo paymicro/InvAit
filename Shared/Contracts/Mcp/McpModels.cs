@@ -30,7 +30,7 @@ public class McpPrompt
 {
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
-    public List<McpPromptArgument> Arguments { get; set; } = new();
+    public List<McpPromptArgument> Arguments { get; set; } = [];
 }
 
 /// <summary>

@@ -322,7 +322,7 @@ public partial class ToolManager(
         var schema = schemaElement.Value;
 
         sb.AppendLine("For example:");
-        sb.AppendLine($"<function name =\"{toolName}\">");
+        sb.AppendLine($"<function name=\"{toolName}\">");
 
         var propDesc = new List<string>();
         // Get properties

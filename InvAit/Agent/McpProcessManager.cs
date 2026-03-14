@@ -4,23 +4,27 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
-using System.Text.Json;
 using System.Threading.Tasks;
 using InvAit.Utils;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
+using Shared.Contracts;
 using Shared.Contracts.Mcp;
 
 namespace InvAit.Agent;
 
 /// <summary>
 /// Управление MCP процессами (NPX серверы или dotnet tool например)
+/// 
+/// TODO перевести на официальный ModelContextProtocol.Core (хотя из-за него ошибка с загрузкой расширения - скорее всего конфликт версий System.Text.Json)
+/// Подумать над отдельным процессом-сервером. Который будет на asp .Net 10+ и уже в нем вся работа с MCP.
+/// Или уже полностью переходить на VS Extensibility.
 /// </summary>
 public class McpProcessManager : IDisposable
 {
     private readonly ConcurrentDictionary<string, Process> _processes = new();
     private readonly ConcurrentDictionary<string, ConcurrentQueue<McpNotification>> _notificationQueues = new();
-    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, TaskCompletionSource<string>>> _pendingRequests = new();
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, TaskCompletionSource<VsResponse>>> _pendingRequests = new();
     private readonly object _processLock = new();
 
     private async Task<string> GetFullPathCommandAsync(string commandName)
@@ -174,14 +178,14 @@ public class McpProcessManager : IDisposable
                 _processes[serverId] = process;
             }
             _notificationQueues[serverId] = new ConcurrentQueue<McpNotification>();
-            _pendingRequests[serverId] = new ConcurrentDictionary<string, TaskCompletionSource<string>>();
+            _pendingRequests[serverId] = new ConcurrentDictionary<string, TaskCompletionSource<VsResponse>>();
 
             // Асинхронное чтение stdout
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    while (!process.StandardOutput.EndOfStream)
+                    while (!process.HasExited && !process.StandardOutput.EndOfStream)
                     {
                         var line = await process.StandardOutput.ReadLineAsync();
                         if (string.IsNullOrWhiteSpace(line)) continue;
@@ -190,43 +194,45 @@ public class McpProcessManager : IDisposable
 
                         try
                         {
-                            // Пытаемся распарсить как сообщение JSON-RPC
-                            using var doc = JsonDocument.Parse(line);
-                            var root = doc.RootElement;
-
-                            // Это ответ? (содержит id и result или error)
-                            if (root.TryGetProperty("id", out var idProp))
+                            // Это ответ?
+                            var response = JsonUtils.Deserialize<McpResponse>(line);
+                            if (response is { Id: not null })
                             {
-                                var id = idProp.ValueKind == JsonValueKind.Number
-                                    ? idProp.GetInt32().ToString()
-                                    : idProp.GetString();
-
-                                if (id != null && _pendingRequests.TryGetValue(serverId, out var serverRequests) &&
-                                    serverRequests.TryRemove(id, out var tcs))
+                                if (_pendingRequests.TryGetValue(serverId, out var serverRequests)
+                                    && serverRequests.TryRemove(response.Id, out var tcs))
                                 {
-                                    tcs.SetResult(line);
+                                    if (response.Error == null)
+                                    {
+                                        tcs.SetResult(new VsResponse
+                                        {
+                                            Payload = JsonUtils.Serialize(response.Result),
+                                        });
+                                    }
+                                    else
+                                    {
+                                        tcs.SetResult(new VsResponse
+                                        {
+                                            Success = false,
+                                            Payload = JsonUtils.Serialize(response.Error),
+                                        });
+                                    }
                                     continue;
                                 }
                             }
 
-                            // Это уведомление? (содержит method, нет id)
-                            if (root.TryGetProperty("method", out var methodProp) && !root.TryGetProperty("id", out _))
+                            // Это уведомление?
+                            var notification = JsonUtils.Deserialize<McpNotification>(line);
+                            if (notification != null)
                             {
-                                var method = methodProp.GetString();
-                                if (method != null)
-                                {
-                                    var notification = JsonUtils.Deserialize<McpNotification>(line);
-                                    if (notification != null)
-                                    {
-                                        _notificationQueues[serverId].Enqueue(notification);
-                                    }
-                                }
+                                _notificationQueues[serverId].Enqueue(notification);
                             }
                         }
                         catch (Exception ex)
                         {
                             await Logger.LogAsync($"MCP [{serverId}] parse error: {ex.Message}. Line: {line}", "WARN");
                         }
+
+                        await Task.Delay(200);
                     }
                 }
                 catch (Exception ex)
@@ -240,13 +246,14 @@ public class McpProcessManager : IDisposable
             {
                 try
                 {
-                    while (!process.StandardError.EndOfStream)
+                    while (!process.HasExited && !process.StandardError.EndOfStream)
                     {
                         var line = await process.StandardError.ReadLineAsync();
                         if (line != null)
                         {
                             await Logger.LogAsync($"MCP [{serverId}] stderr: {line}", "INFO");
                         }
+                        await Task.Delay(200);
                     }
                 }
                 catch (Exception ex)
@@ -331,17 +338,21 @@ public class McpProcessManager : IDisposable
     /// <summary>
     /// Отправить сообщение и ждать ответа
     /// </summary>
-    public async Task<string> CallMethodAsync(string serverId, string id, string message, int timeoutMs = 10000)
+    public async Task<VsResponse> CallMethodAsync(string serverId, string id, string message, int timeoutMs = 10000)
     {
         if (!_processes.TryGetValue(serverId, out var process))
         {
-            return "ERROR: Process not found";
+            return new VsResponse { Success = false, Error = "ERROR: Process not found" };
         }
 
-        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tcs = new TaskCompletionSource<VsResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!_pendingRequests.TryGetValue(serverId, out var serverRequests))
         {
-            return "ERROR: Server requests dictionary not initialized";
+            return new VsResponse
+            {
+                Success = false,
+                Error = "ERROR: Server requests dictionary not initialized"
+            };
         }
 
         serverRequests[id] = tcs;
@@ -360,14 +371,22 @@ public class McpProcessManager : IDisposable
             else
             {
                 serverRequests.TryRemove(id, out _);
-                return "ERROR: Timeout waiting for response";
+                return new VsResponse
+                {
+                    Success = false,
+                    Error = "ERROR: Timeout waiting for response"
+                };
             }
         }
         catch (Exception ex)
         {
             serverRequests.TryRemove(id, out _);
             await Logger.LogAsync($"Error calling MCP method in {serverId}: {ex.Message}", "ERROR");
-            return $"ERROR: {ex.Message}";
+            return new VsResponse
+            {
+                Success = false,
+                Error = $"ERROR: {ex.Message}"
+            };
         }
     }
 

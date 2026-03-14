@@ -136,6 +136,26 @@ public class MessageParserTests
     }
 
     [Fact]
+    public void UpdateSegments_IncrementalUpdate3()
+    {
+        // Arrange
+        var message = new VisualChatMessage { Role = ChatMessageRole.Assistant };
+
+        // Act
+        _parser.UpdateSegments("<function name = \"read_files\">", message);
+        _parser.UpdateSegments("\nfile.txt\n", message);
+        _parser.UpdateSegments("</function>", message);
+
+        // Assert
+        Assert.Single(message.Segments);
+        var segment = message.Segments[0];
+        Assert.Equal(SegmentType.Tool, segment.Type);
+        Assert.Equal("read_files", segment.ToolName);
+        Assert.Equal("file.txt", segment.Lines[0]);
+        Assert.True(segment.IsClosed);
+    }
+
+    [Fact]
     public void UpdateSegments_ApplyDiff_Incremental_ShouldNotDuplicate()
     {
         // Arrange
