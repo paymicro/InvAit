@@ -132,7 +132,7 @@
     <PropertyGroup>
       <BlazorProjectPath>$(SolutionDir)UIBlazor\UIBlazor.csproj</BlazorProjectPath>
     </PropertyGroup>
-    <Exec Command="dotnet publish &quot;$(BlazorProjectPath)&quot; -c $(Configuration) --no-restore --self-contained --runtime browser-wasm --output UI" Condition="!Exists('UI\wwwroot\index.html')" />
+    <Exec Command="dotnet publish &quot;$(BlazorProjectPath)&quot; -c $(Configuration) --output UI" Condition="!Exists('UI\wwwroot\index.html')" />
     <ItemGroup>
       <Content Include="UI\**\*.*">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

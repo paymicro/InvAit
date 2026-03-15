@@ -62,23 +62,21 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
         }
 
         var profile = Current.Profiles.FirstOrDefault(p => p.Id == profileId);
-        if (profile != null)
+        if (profile == null) 
+            return;
+        
+        profile.PropertyChanged -= OnProfilePropertyChanged;
+        Current.Profiles.Remove(profile);
+
+        // актуализация активного профиля
+        if (profileId == Current.ActiveProfileId)
         {
-            profile.PropertyChanged -= OnProfilePropertyChanged;
-            Current.Profiles.Remove(profile);
-
-            // актуализация активного профиля
-            if (profileId == Current.ActiveProfileId)
-            {
-                await ActivateProfileAsync(Current.Profiles.First().Id, saveImediatly: true);
-            }
-            else
-            {
-                Debouncer.Trigger();
-            }
+            await ActivateProfileAsync(Current.Profiles.First().Id, saveImediatly: true);
         }
-
-        return;
+        else
+        {
+            Debouncer.Trigger();
+        }
     }
 
     public async Task ActivateProfileAsync(string profileId, bool saveImediatly = false)

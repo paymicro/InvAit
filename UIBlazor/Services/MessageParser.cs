@@ -30,9 +30,9 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
                 message.Segments.Add(activeSegment);
             }
 
-            var openIdx = FindOpeningTag(incomingText, out _);
+            var openIdx = FindOpeningTag(incomingText);
             var closeIdx = activeSegment.Type is not SegmentType.Unknown and not SegmentType.Markdown
-                           ? incomingText.IndexOf($"</{activeSegment.TagName}>")
+                           ? incomingText.IndexOf($"</{activeSegment.TagName}>", StringComparison.Ordinal)
                            : -1;
 
             // Сценарий А: Закрытие
@@ -56,7 +56,8 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
                     incomingText = incomingText[openIdx..];
                     continue;
                 }
-                else if (activeSegment is { IsClosed: false, Type: SegmentType.Markdown })
+
+                if (activeSegment is { IsClosed: false, Type: SegmentType.Markdown })
                 {
                     Close(activeSegment);
                     continue;
@@ -97,28 +98,25 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
         }
     }
 
-    private static int FindOpeningTag(string text, out string tagName)
+    private static int FindOpeningTag(string text)
     {
-        tagName = "";
-        var planIdx = text.IndexOf("<plan");
-        var funcIdx = text.IndexOf("<function");
+        var planIdx = text.IndexOf("<plan", StringComparison.Ordinal);
+        var funcIdx = text.IndexOf("<function", StringComparison.Ordinal);
 
         if (planIdx == -1 && funcIdx == -1) return -1;
 
         // Берем тот, что встретился раньше
         if (planIdx != -1 && (funcIdx == -1 || planIdx < funcIdx))
         {
-            tagName = "plan";
             return planIdx;
         }
-        tagName = "function";
         return funcIdx;
     }
 
     // Вспомогательный буфер для накопления "сырого" текста внутри сегмента
     private readonly StringBuilder _rawAccumulator = new();
 
-    public void AppendToken(ContentSegment segment, string token)
+    private void AppendToken(ContentSegment segment, string token)
     {
         if (segment.IsClosed || string.IsNullOrEmpty(token)) return;
 
@@ -136,13 +134,15 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
                 segment.ToolName = functionMatch.Groups["name"].Value;
                 return;
             }
-            else if (raw.Contains("<plan>"))
+
+            if (raw.Contains("<plan>"))
             {
                 segment.Type = SegmentType.Plan;
                 segment.TagName = "plan";
                 return;
             }
-            else if (!string.IsNullOrEmpty(raw))
+
+            if (!string.IsNullOrEmpty(raw))
             {
                 segment.Type = SegmentType.Markdown;
             }
@@ -210,31 +210,37 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
                 if (string.IsNullOrEmpty(trimmedLine))
                     continue;
 
-                if (trimmedLine == "start_line")
+                switch (trimmedLine)
                 {
-                    var valLine = toolLines[++i]?.Trim();
-                    if (fileParams != null && int.TryParse(valLine, out var startLine))
+                    case "start_line":
                     {
-                        fileParams.StartLine = startLine;
+                        var valLine = toolLines[++i]?.Trim();
+                        if (fileParams != null && int.TryParse(valLine, out var startLine))
+                        {
+                            fileParams.StartLine = startLine;
+                        }
+
+                        break;
                     }
-                }
-                else if (trimmedLine == "line_count")
-                {
-                    var valLine = toolLines[++i]?.Trim();
-                    if (fileParams != null && int.TryParse(valLine, out var lineCount))
+                    case "line_count":
                     {
-                        fileParams.LineCount = lineCount;
+                        var valLine = toolLines[++i]?.Trim();
+                        if (fileParams != null && int.TryParse(valLine, out var lineCount))
+                        {
+                            fileParams.LineCount = lineCount;
+                        }
+
+                        break;
                     }
-                }
-                else
-                {
-                    fileParams = new ReadFileParams
-                    {
-                        Name = trimmedLine,
-                        StartLine = -1,
-                        LineCount = -1
-                    };
-                    result[$"file{++paramIndex}"] = fileParams;
+                    default:
+                        fileParams = new ReadFileParams
+                        {
+                            Name = trimmedLine,
+                            StartLine = -1,
+                            LineCount = -1
+                        };
+                        result[$"file{++paramIndex}"] = fileParams;
+                        break;
                 }
             }
         }
@@ -295,32 +301,27 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
         }
         else if (toolName.StartsWith("mcp__")) // MCP
         {
-            for (var i = 0; i < toolLines.Count; i++)
+            foreach (var line in toolLines)
             {
-                var line = toolLines[i];
                 var devider = line.IndexOf(':');
-                if (devider > 1)
-                {
-                    var argName = line[..devider].Trim();
-                    var argValue = line[(devider + 1)..].Trim();
+                if (devider <= 1)
+                    continue;
+                var argName = line[..devider].Trim();
+                var argValue = line[(devider + 1)..].Trim();
 
-                    if (!string.IsNullOrEmpty(argName))
-                    {
-                        if (argValue.Length > 2 && argValue.StartsWith('\"') && argValue.EndsWith('\"'))
-                        {
-                            argValue = argValue[1..^1];
-                        }
-                        result[argName] = argValue;
-                        continue;
-                    }
+                if (string.IsNullOrEmpty(argName))
+                    continue;
+                if (argValue.Length > 2 && argValue.StartsWith('\"') && argValue.EndsWith('\"'))
+                {
+                    argValue = argValue[1..^1];
                 }
+                result[argName] = argValue;
             }
         }
         else // обычные тулзы
         {
-            for (var i = 0; i < toolLines.Count; i++)
+            foreach (var line in toolLines)
             {
-                var line = toolLines[i];
                 result[$"param{++paramIndex}"] = line;
             }
         }

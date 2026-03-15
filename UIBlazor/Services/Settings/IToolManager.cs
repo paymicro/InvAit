@@ -1,6 +1,6 @@
 namespace UIBlazor.Services.Settings;
 
-public interface IToolManager : IBaseSettingsProvider, IDisposable
+public interface IToolManager : IBaseSettingsProvider
 {
     ToolSettings Current { get; }
 

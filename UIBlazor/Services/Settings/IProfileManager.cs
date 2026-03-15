@@ -1,6 +1,6 @@
 namespace UIBlazor.Services.Settings;
 
-public interface IProfileManager : IBaseSettingsProvider, IDisposable
+public interface IProfileManager : IBaseSettingsProvider
 {
     ProfileOptions Current { get; }
 

@@ -37,13 +37,12 @@ public class ChatService(
         get;
         private set
         {
-            if (field != value)
-            {
-                field?.PropertyChanged -= SessionPropertyChanged;
-                field = value;
-                field?.PropertyChanged += SessionPropertyChanged;
-                OnSessionChanged?.Invoke(nameof(ConversationSession));
-            }
+            if (field == value)
+                return;
+            field?.PropertyChanged -= SessionPropertyChanged;
+            field = value;
+            field?.PropertyChanged += SessionPropertyChanged;
+            OnSessionChanged?.Invoke(nameof(ConversationSession));
         }
     } = CreateNewSession();
 
@@ -193,7 +192,7 @@ public class ChatService(
 
         return string.Join(Environment.NewLine,
             Options.SystemPrompt,
-            rules ?? string.Empty,
+            rules,
             toolManager.GetToolUseSystemInstructions(Session.Mode, skillsMetadata.Count != 0),
             skillsSection,
             contextSection);
@@ -261,7 +260,6 @@ public class ChatService(
 
         if (!response.IsSuccessStatusCode)
         {
-            var message = Options.Stream ? "stream" : "request";
             var result = $"HttpCode: {response.StatusCode} | server failed: {await response.Content.ReadAsStringAsync(cancellationToken)}";
             throw new Exception(result);
         }
@@ -361,10 +359,6 @@ public class ChatService(
                         delta.ReasoningContent = content.Replace(_thinkStart, string.Empty);
                         delta.Content = null;
                     }
-                    else
-                    {
-                        // Не думали - нечего и начинать.
-                    }
                 }
                 else // внутри <think> блока
                 {
@@ -429,35 +423,35 @@ public class ChatService(
 
     public async Task<List<SessionSummary>> GetRecentSessionsAsync(int count)
     {
-        if (_recentSessionsCache == null)
+        if (_recentSessionsCache != null)
+            return [.. _recentSessionsCache.Take(count)];
+        
+        var sessionIds = await GetAllSessionIdsAsync();
+        var summaries = new List<SessionSummary>();
+
+        foreach (var id in sessionIds)
         {
-            var sessionIds = await GetAllSessionIdsAsync();
-            var summaries = new List<SessionSummary>();
-
-            foreach (var id in sessionIds)
+            var session = await localStorage.TryGetItemAsync<ConversationSession>(id);
+            var firstMessage = session?.Messages.FirstOrDefault(m => m.Role == ChatMessageRole.User)?.Content;
+            if (session != null && firstMessage != null)
             {
-                var session = await localStorage.TryGetItemAsync<ConversationSession>(id);
-                var firstMessage = session?.Messages.FirstOrDefault(m => m.Role == ChatMessageRole.User)?.Content;
-                if (session != null && firstMessage != null)
-                {
-                    var preview = firstMessage.Length > 40 ? firstMessage[..40] + "..." : firstMessage;
+                var preview = firstMessage.Length > 40 ? firstMessage[..40] + "..." : firstMessage;
 
-                    summaries.Add(new SessionSummary
-                    {
-                        Id = id,
-                        CreatedAt = session.CreatedAt,
-                        FirstUserMessage = preview
-                    });
-                }
-                else
+                summaries.Add(new SessionSummary
                 {
-                    await localStorage.RemoveItemAsync(id);
-                    logger.LogError("Invalid session {id} is removed", id);
-                }
+                    Id = id,
+                    CreatedAt = session.CreatedAt,
+                    FirstUserMessage = preview
+                });
             }
-
-            _recentSessionsCache = [.. summaries.OrderByDescending(s => s.CreatedAt)];
+            else
+            {
+                await localStorage.RemoveItemAsync(id);
+                logger.LogError("Invalid session {id} is removed", id);
+            }
         }
+
+        _recentSessionsCache = [.. summaries.OrderByDescending(s => s.CreatedAt)];
 
         return [.. _recentSessionsCache.Take(count)];
     }

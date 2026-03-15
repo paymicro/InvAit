@@ -5,8 +5,8 @@ namespace UIBlazor.Services.Settings;
 
 public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider where TOptions : BaseOptions, new()
 {
-    protected readonly ILocalStorageService Storage;
-    protected readonly string StorageKey;
+    private readonly ILocalStorageService _storage;
+    private readonly string _storageKey;
     protected readonly Debouncer Debouncer;
     private bool _isInitializing;
     private readonly ILogger _logger;
@@ -19,19 +19,18 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider whe
         string storageKey,
         TimeSpan? debounceDelay = null)
     {
-        Storage = storage;
+        _storage = storage;
         _logger = logger;
-        StorageKey = storageKey;
+        _storageKey = storageKey;
         Debouncer = new Debouncer(debounceDelay ?? TimeSpan.FromMilliseconds(750), SaveAsync);
     }
 
     private void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (!_isInitializing)
-        {
-            OnAnyPropertyChanged(e.PropertyName);
-            Debouncer.Trigger();
-        }
+        if (_isInitializing)
+            return;
+        OnAnyPropertyChanged(e.PropertyName);
+        Debouncer.Trigger();
     }
 
     /// <summary>
@@ -53,7 +52,7 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider whe
     /// </summary>
     public virtual async Task SaveAsync()
     {
-        await Storage.SetItemAsync(StorageKey, Current);
+        await _storage.SetItemAsync(_storageKey, Current);
         OnSaved?.Invoke();
     }
 
@@ -65,7 +64,7 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider whe
         _isInitializing = true;
         try
         {
-            var saved = await Storage.TryGetItemAsync<TOptions>(StorageKey);
+            var saved = await _storage.TryGetItemAsync<TOptions>(_storageKey);
             if (saved != null)
             {
                 CopyProperties(saved, Current);
@@ -76,7 +75,7 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider whe
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Failed to initialize settings for {StorageKey}: {ex.Message}");
+            _logger.LogError($"Failed to initialize settings for {_storageKey}: {ex.Message}");
         }
         finally
         {
@@ -90,7 +89,7 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider whe
     /// </summary>
     protected virtual Task AfterInitAsync() => Task.CompletedTask;
 
-    protected virtual void CopyProperties(TOptions from, TOptions to)
+    private void CopyProperties(TOptions from, TOptions to)
     {
         var properties = typeof(TOptions).GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p is { CanRead: true, CanWrite: true });

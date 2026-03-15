@@ -6,13 +6,11 @@ public interface ISkillService
     /// Получить метаданные всех скиллов (только название + описание для системного промпта)
     /// </summary>
     Task<List<SkillMetadata>> GetSkillsMetadataAsync();
-
-    Task<VsToolResult> LoadSkillContentMarkDownAsync(IReadOnlyDictionary<string, object> args);
-
+    
     /// <summary>
     /// Загрузить полное содержимое скилла (только при активации)
     /// </summary>
-    Task<SkillContent?> LoadSkillContentAsync(string filePath);
+    Task<VsToolResult> LoadSkillContentMarkDownAsync(IReadOnlyDictionary<string, object> args);
 
     /// <summary>
     /// Форматировать метаданные скиллов для системного промпта

@@ -331,7 +331,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      Example skill name
                                      </function>
                                      """,
-            ExecuteAsync = (args) => skillService.LoadSkillContentMarkDownAsync(args)
+            ExecuteAsync = skillService.LoadSkillContentMarkDownAsync
         },
         new()
         {

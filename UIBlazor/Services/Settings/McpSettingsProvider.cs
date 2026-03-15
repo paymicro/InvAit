@@ -181,9 +181,9 @@ public class McpSettingsProvider(
                     var line = await reader.ReadLineAsync();
                     if (line == null) break;
 
-                    if (line.StartsWith("data: ") && !line.Contains("{"))
+                    if (line.StartsWith("data: ") && !line.Contains('{'))
                     {
-                        var path = line.Substring(6).Trim();
+                        var path = line[6..].Trim();
                         var baseUri = new Uri(server.Url);
                         postUrl = new Uri(baseUri, path).ToString();
                         Log($"HTTP MCP endpoint: {postUrl}");
@@ -278,17 +278,16 @@ public class McpSettingsProvider(
     private static List<string> ExtractRequiredArguments(object? rawSchema)
     {
         var required = new List<string>();
-        if (rawSchema is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Object)
+        if (rawSchema is not JsonElement { ValueKind: JsonValueKind.Object } jsonElement ||
+            !jsonElement.TryGetProperty("required", out var requiredProp) ||
+            requiredProp.ValueKind != JsonValueKind.Array)
+            return required;
+
+        foreach (var item in requiredProp.EnumerateArray())
         {
-            if (jsonElement.TryGetProperty("required", out var requiredProp) && requiredProp.ValueKind == JsonValueKind.Array)
+            if (item.ValueKind == JsonValueKind.String)
             {
-                foreach (var item in requiredProp.EnumerateArray())
-                {
-                    if (item.ValueKind == JsonValueKind.String)
-                    {
-                        required.Add(item.GetString()!);
-                    }
-                }
+                required.Add(item.GetString()!);
             }
         }
         return required;

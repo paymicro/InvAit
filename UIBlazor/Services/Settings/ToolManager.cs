@@ -4,7 +4,7 @@ using Shared.Contracts.Mcp;
 
 namespace UIBlazor.Services.Settings;
 
-public partial class ToolManager(
+public class ToolManager(
     BuiltInAgent builtInAgent,
     ILogger<ToolManager> logger,
     ILocalStorageService localStorage,

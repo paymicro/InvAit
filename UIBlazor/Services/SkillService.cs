@@ -103,7 +103,7 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
     /// </summary>
     public string FormatSkillsForSystemPrompt(List<SkillMetadata> skills)
     {
-        if (skills == null || skills.Count == 0)
+        if (skills.Count == 0)
         {
             return string.Empty;
         }
@@ -116,7 +116,7 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
 
         foreach (var skill in skills)
         {
-            sb.AppendLine($"");
+            sb.AppendLine();
             sb.AppendLine($"""
                            - **{skill.Name}**: {skill.Description}
                            To read instructions:
@@ -171,7 +171,7 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
 
         // TODO тут надо почитать как это работает и зачем
         if (skillContent.Resources.Count > 0) {
-            sb.AppendLine($"### Skill Resources");
+            sb.AppendLine("### Skill Resources");
             foreach (var resource in skillContent.Resources)
             {
                 sb.AppendLine($"- {resource}");
