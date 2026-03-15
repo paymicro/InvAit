@@ -485,7 +485,7 @@ public class ToolExecutor : IDisposable
             var tempFile = Path.Combine(Path.GetTempPath(), Path.GetFileName(filepath));
             File.WriteAllLines(filepath, lines, Encoding.UTF8);
             await OpenEditorAsync(filepath);
-            await Logger.LogAsync($"{totalReplacements} changes successfully applied to {inputFileName}.\r\nLooks good!");
+            await Logger.LogAsync($"{totalReplacements} changes successfully applied to {inputFileName}.");
         }
         catch (Exception e)
         {
@@ -498,7 +498,7 @@ public class ToolExecutor : IDisposable
 
         return new VsResponse
         {
-            Payload = $"Changes successfully applied to {inputFileName}.\r\nLooks good!. Applied {totalReplacements}/{replacements.Count} replacements. Use read_files to get actual content."
+            Payload = $"Changes successfully applied to {inputFileName}.\nApplied {totalReplacements}/{replacements.Count} replacements."
         };
     }
 

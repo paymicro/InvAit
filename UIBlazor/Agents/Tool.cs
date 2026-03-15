@@ -16,9 +16,14 @@ public class Tool
     /// Description for LLM
     /// </summary>
     public string Description { get; init; } = string.Empty;
+    
+    /// <summary>
+    /// Used for native tools_calling
+    /// </summary>
+    public NativeToolDefinition NativeTool { get; init; } = null!;
 
     /// <summary>
-    /// Example in system message
+    /// Example in system message. Only form prompt tool calling.
     /// </summary>
     public string ExampleToSystemMessage { get; init; } = string.Empty;
 

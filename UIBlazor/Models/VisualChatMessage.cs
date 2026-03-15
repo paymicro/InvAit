@@ -13,7 +13,7 @@ public class VisualChatMessage
     /// Gets or sets the unique identifier for the message.
     /// </summary>
     [JsonIgnore]
-    public string Id { get; set; } = DateTime.Now.ToString("s") + Guid.NewGuid().ToString();
+    public string Id { get; } = DateTime.Now.ToString("s") + Guid.NewGuid();
 
     /// <summary>
     /// Gets or sets the content of the message. Without thinking block.
@@ -21,7 +21,7 @@ public class VisualChatMessage
     public string Content { get; set; } = string.Empty;
 
     [JsonIgnore]
-    public List<ContentSegment> Segments { get; set; } = [];
+    public List<ContentSegment> Segments { get; } = [];
 
     /// <summary>
     /// Gets or sets the content of the message for display in the UI.
@@ -70,7 +70,7 @@ public class VisualChatMessage
     /// <summary>
     /// Nested tool messages for assistant messages.
     /// </summary>
-    public List<ToolResult> ToolResults { get; set; } = [];
+    public List<ToolResult> ToolResults { get; } = [];
 
     /// <summary>
     /// Whether the message block is expanded or collapsed.
@@ -89,13 +89,6 @@ public class VisualChatMessage
     /// </summary>
     [JsonIgnore]
     public bool HasPlan => !string.IsNullOrEmpty(PlanContent);
-
-    /// <summary>
-    /// Approval states for each tool call in this message.
-    /// Key is index from 0.
-    /// </summary>
-    [JsonIgnore]
-    public Dictionary<int, ToolApprovalStatus> ToolApprovalStates { get; set; } = [];
 
     [JsonIgnore]
     public int RetryCountdown { get; set; }

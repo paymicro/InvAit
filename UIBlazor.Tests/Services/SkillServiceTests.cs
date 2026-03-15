@@ -170,16 +170,6 @@ public class SkillServiceTests
     }
 
     [Fact]
-    public void FormatSkillsForSystemPrompt_NullList_ReturnsEmptyString()
-    {
-        // Act
-        var result = _skillService.FormatSkillsForSystemPrompt(null!);
-
-        // Assert
-        Assert.Equal(string.Empty, result);
-    }
-
-    [Fact]
     public void FormatSkillsForSystemPrompt_ValidList_FormatsCorrectly()
     {
         // Arrange

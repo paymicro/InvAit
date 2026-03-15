@@ -6,12 +6,12 @@ namespace UIBlazor.Models;
 public class ToolResult
 {
     [JsonIgnore]
-    public string Id { get; set; } = $"tool{Guid.NewGuid()}";
+    public string Id { get; } = $"tool{Guid.NewGuid()}";
 
     /// <summary>
     /// Имя тулзы
     /// </summary>
-    public string Name { get; set; } = string.Empty;
+    public string Name { get; init; } = string.Empty;
 
     /// <summary>
     /// Локализованное имя тулзы. Только для UI
@@ -22,7 +22,7 @@ public class ToolResult
     /// <summary>
     /// Полное содержание ответа включая теги <tool_result></tool_result>
     /// </summary>
-    public string Content { get; set; } = string.Empty;
+    public string Content { get; init; } = string.Empty;
 
     public string GetDisplayContent => string.Join("\n", Content.Split('\n').Skip(1).SkipLast(1));
 

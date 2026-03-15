@@ -23,12 +23,13 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      50
                                      </function>
 
-                                     Or to read the entire file:
+                                     Or to read the entire files:
                                      <function name="{BuiltInToolEnum.ReadFiles}">
                                      path/to/file.cs
                                      path/to/file2.cs
                                      </function>
                                      """,
+            NativeTool = BuiltInToolDefs.MapMethodToTool(typeof(BuiltInToolDefs).GetMethod(nameof(BuiltInToolDefs.ReadFiles))),
             ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, args)
         },
         new()

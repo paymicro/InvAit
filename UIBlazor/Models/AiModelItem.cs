@@ -1,5 +1,3 @@
-using System.Text.Json.Serialization;
-
 namespace UIBlazor.Models;
 
 public record AiModelItem(

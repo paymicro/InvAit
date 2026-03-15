@@ -20,10 +20,10 @@ public record VsToolResult
     /// <summary>
     /// Error message if operation failed
     /// </summary>
-    public string ErrorMessage { get; set; } = string.Empty;
+    public string ErrorMessage { get; init; } = string.Empty;
 
     /// <summary>
     /// Optional. Name of tool.
     /// </summary>
-    public string Name { get; set; } = string.Empty;
+    public string Name { get; init; } = string.Empty;
 }
