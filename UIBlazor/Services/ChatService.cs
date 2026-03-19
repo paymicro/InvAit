@@ -138,6 +138,8 @@ public class ChatService(
     /// </summary>
     public UsageInfo? LastUsage { get; private set; }
 
+    public string? FinishReason { get; private set; }
+
     /// <summary>
     /// Asynchronously prepares the system prompt by combining configured instructions, tool usage guidance, skill
     /// metadata, and the current code context.
@@ -197,6 +199,7 @@ public class ChatService(
             skillsSection,
             contextSection);
     }
+
 
     /// <summary>
     /// Asynchronously generates a sequence of chat completion deltas for the current conversation session.
@@ -300,7 +303,7 @@ public class ChatService(
 
         // чтобы html-теги <function> склеивать в один чанк
         var _pendingText = string.Empty;
-
+        ChatChoice lastChoise = null!;
         while ((line = await reader.ReadLineAsync(cancellationToken)) is not null && !cancellationToken.IsCancellationRequested)
         {
             if (string.IsNullOrWhiteSpace(line) || !line.StartsWith("data:"))
@@ -312,6 +315,7 @@ public class ChatService(
 
             if (json == "[DONE]")
             {
+                FinishReason = lastChoise?.FinishReason;
                 break;
             }
 
@@ -333,7 +337,8 @@ public class ChatService(
             }
 
             LastCompletionsModel ??= chunk.Model;
-            var delta = chunk.Choices[0].Delta;
+            lastChoise = chunk.Choices[0];
+            var delta = lastChoise.Delta;
             var content = delta!.Content;
             role ??= delta?.Role;
 

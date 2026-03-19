@@ -1,0 +1,47 @@
+.inserted-word {
+    background-color: var(--diff-addition-bg);
+    border-radius: var(--diff-word-radius);
+    padding: var(--diff-word-padding);
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+
+.modified-word {
+    background-color: var(--diff-modification-bg);
+    border-radius: var(--diff-word-radius);
+    padding: var(--diff-word-padding);
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+
+.deleted-word {
+    background-color: var(--diff-deletion-bg);
+    border-radius: var(--diff-word-radius);
+    padding: var(--diff-word-padding);
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+
+.inserted-character {
+    background-color: var(--diff-addition-highlight);
+    border-radius: var(--diff-char-radius);
+    padding: var(--diff-char-padding);
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+
+.modified-character {
+    background-color: var(--diff-modification-highlight);
+    border-radius: var(--diff-char-radius);
+    padding: var(--diff-char-padding);
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+
+.deleted-character {
+    background-color: var(--diff-deletion-highlight);
+    border-radius: var(--diff-char-radius);
+    padding: var(--diff-char-padding);
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}

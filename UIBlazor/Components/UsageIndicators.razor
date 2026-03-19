@@ -8,10 +8,10 @@
             <div class="usage-bar" style="width: @(MessageProgress)%;"></div>
         </div>
     </div>
-    <div class="usage-item" title="@SharedResource.Tokens: @ChatService.Session?.TotalTokens / @ProfileManager.ActiveProfile.MaxTokens">
+    <div class="usage-item" title="@SharedResource.Tokens: @ChatService.Session?.TotalTokens / @ProfileManager.ActiveProfile.ContextWindow">
         <div class="usage-label">
             <span>@SharedResource.Tokens</span>
-            <span>@(ChatService.Session?.TotalTokens ?? 0) / @ProfileManager.ActiveProfile.MaxTokens</span>
+            <span>@(ChatService.Session?.TotalTokens ?? 0) / @ProfileManager.ActiveProfile.ContextWindow</span>
         </div>
         <div class="usage-bar-container">
             <div class="usage-bar" style="width: @(TokenProgress)%; background: var(--rz-secondary);"></div>
@@ -29,7 +29,7 @@
         ? Math.Min(100, Messages.Count * 100 / ProfileManager.ActiveProfile.MaxMessages)
         : 0;
 
-    private int TokenProgress => ChatService.Session != null && ProfileManager.ActiveProfile.MaxTokens > 0
-        ? Math.Min(100, ChatService.Session.TotalTokens * 100 / ProfileManager.ActiveProfile.MaxTokens)
+    private int TokenProgress => ChatService.Session != null && ProfileManager.ActiveProfile.ContextWindow > 0
+        ? Math.Min(100, ChatService.Session.TotalTokens * 100 / ProfileManager.ActiveProfile.ContextWindow)
         : 0;
 }

@@ -20,7 +20,15 @@ public class ConnectionProfile : BaseOptions
 
     public double Temperature { get; set => SetIfChanged(ref field, value); } = 0.7;
 
-    public int MaxTokens { get; set => SetIfChanged(ref field, value); } = 50_000;
+    /// <summary>
+    /// Максимальное количество токенов для следующего ответа модели
+    /// </summary>
+    public int MaxTokens { get; set => SetIfChanged(ref field, value); } = 10_000;
+
+    /// <summary>
+    /// Контекстное окно = все промпты + <see cref="MaxTokens"/>
+    /// </summary>
+    public int ContextWindow { get; set => SetIfChanged(ref field, value); } = 128_000;
 
     public bool Stream { get; set => SetIfChanged(ref field, value); } = true;
 

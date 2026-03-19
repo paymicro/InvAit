@@ -166,8 +166,7 @@ public class MessageParserTests
         // Act
         _parser.UpdateSegments("<function name=\"apply_diff\">", message);
         _parser.UpdateSegments("\npath/to/file.txt\n", message);
-        _parser.UpdateSegments(":start_line:10\n", message);
-        _parser.UpdateSegments("<<<<<<< SEARCH\n", message);
+        _parser.UpdateSegments("<<<<<<< SEARCH :10:\n", message);
         _parser.UpdateSegments("old code\n", message);
         _parser.UpdateSegments("=======\n", message);
         _parser.UpdateSegments("new code\n", message);
@@ -261,8 +260,7 @@ public class MessageParserTests
         var lines = new List<string>
         {
             "path/to/file.txt",
-            ":start_line:10",
-            "<<<<<<< SEARCH",
+            "<<<<<<< SEARCH :10:",
             "old code",
             "=======",
             "new code {",
@@ -293,8 +291,7 @@ public class MessageParserTests
         var lines = new List<string>
         {
             "path/to/file.txt",
-            ":start_line:10",
-            "<<<<<<< SEARCH",
+            "<<<<<<< SEARCH :10:",
             "old code",
             "=======",
             "new code {",
@@ -302,8 +299,7 @@ public class MessageParserTests
             "}",
             ">>>>>>> REPLACE",
             "",
-            ":start_line:12",
-            "<<<<<<< SEARCH",
+            "<<<<<<< SEARCH :12:",
             "public class Test {",
             "    var bla = \"bla\"",
             "}",

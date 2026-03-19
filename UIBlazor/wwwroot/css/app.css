@@ -9,6 +9,34 @@
     --rz-checkbox-checked-background-color: var(--rz-primary-dark);
     --rz-checkbox-checked-hover-background-color: var(--rz-primary-dark);
     --rz-checkbox-checked-color: var(--rz-on-primary-dark);
+
+    --diff-addition-bg: #e6ffed;
+    --diff-addition-border: #2ea043;
+    --diff-addition-highlight: #7ce89b;
+    --diff-deletion-bg: #ffeef0;
+    --diff-deletion-border: #f85149;
+    --diff-deletion-highlight: #f9a8b0;
+    --diff-modification-bg: #fff8c5;
+    --diff-modification-border: #fb8500;
+    --diff-modification-highlight: #ffc833;
+    --diff-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    --diff-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --diff-addition-bg: #033a16;
+        --diff-addition-border: #2ea043;
+        --diff-addition-highlight: #196c2e;
+        --diff-deletion-bg: #490202;
+        --diff-deletion-border: #f85149;
+        --diff-deletion-highlight: #c93c37;
+        --diff-modification-bg: #341a00;
+        --diff-modification-border: #fb8500;
+        --diff-modification-highlight: #7d5200;
+        --diff-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        --diff-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.4);
+    }
 }
 
 a {

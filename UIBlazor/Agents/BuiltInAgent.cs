@@ -53,7 +53,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.CreateFile,
             DisplayName = SharedResource.ToolCreateFile,
             Category = ToolCategory.WriteFiles,
-            Description = "To create a NEW file with the relative or absolute filepath and new contents.",
+            Description = "To create a NEW file with the relative or absolute filepath and new contents. Note: The old file will be overwritten if it exists. Use this when you need to make large changes to a single file and it's easier to recreate it.",
             ExampleToSystemMessage = $"""
                                      For example, to create a file located at 'path\to\file.cs', you would respond with:
                                      <function name="{BuiltInToolEnum.CreateFile}">
@@ -70,38 +70,51 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             DisplayName = SharedResource.ToolApplyDiff,
             Category = ToolCategory.WriteFiles,
             Description = $"""
-                          Request to apply PRECISE, TARGETED modifications to an existing file by searching for specific sections of content and replacing them. This tool is for SURGICAL EDITS ONLY - specific changes to existing code.
-                          You can perform multiple distinct search and replace operations within a single `{BuiltInToolEnum.ApplyDiff}` call by providing multiple SEARCH/REPLACE blocks in the `diff` parameter. This is the preferred way to make several targeted changes efficiently.
-                          The SEARCH section must exactly match existing content including whitespace and indentation.
-                          If you're not confident in the exact content to search for, use the {BuiltInToolEnum.ReadFiles} tool first to get the exact content.
-                          When applying the diffs, be extra careful to remember to change any closing brackets or other syntax that may be affected by the diff farther down in the file.
-                          ALWAYS make as many changes in a single '{BuiltInToolEnum.ApplyDiff}' request as possible using multiple SEARCH/REPLACE blocks.
-                          An optional ":start_line:". The search will be 5 lines up and down.
-                          """,
+                Performs precise, surgical modifications to a file using SEARCH/REPLACE blocks. 
+                Use this tool to modify existing code with 100% accuracy.
+
+                STRUCTURE:
+                <<<<<<< SEARCH [:start_line:]
+                [exact content to find]
+                =======
+                [new content to replace with]
+                >>>>>>> REPLACE
+
+                OPTIONAL PARAMETERS:
+                - `:start_line:`: A hint for the line number where the search should begin.
+                - Format: `<<<<<<< SEARCH :10:` means "Start at line 10"
+
+                CRITICAL RULES:
+                1. EXACT MATCH: The SEARCH block must match the file content exactly, including spaces and indentation.
+                2. BREVITY: Keep SEARCH blocks under 10 lines. If the change is larger, use multiple consecutive SEARCH/REPLACE blocks.
+                3. EFFICIENCY: Combine all related changes for a single file into one `{BuiltInToolEnum.ApplyDiff}` call.
+                4. INTEGRITY: Ensure syntax balance (brackets, quotes) is maintained after the replacement.
+                5. UNCERTAINTY: If you don't have the exact text, you MUST use `{BuiltInToolEnum.ReadFiles}` first.
+                """,
             ExampleToSystemMessage = $"""
                                      For example:
                                      <function name="{BuiltInToolEnum.ApplyDiff}">
                                      C:\path\to\file.cs
-                                     :start_line:10
-                                     <<<<<<< SEARCH
+                                     <<<<<<< SEARCH :10:
                                      old code
                                      =======
                                      new code
                                      >>>>>>> REPLACE
                                      </function>
                                      
+                                     Example for multi replacments in one file:
                                      <function name="{BuiltInToolEnum.ApplyDiff}">
-                                     C:\path\to\file222.cs
+                                     C:\path\to\file.cs
                                      <<<<<<< SEARCH
                                      old code
                                      =======
                                      new code
                                      >>>>>>> REPLACE
                                      
-                                     :start_line:40
-                                     <<<<<<< SEARCH
+                                     <<<<<<< SEARCH :40:
                                          var z = "old code";
                                      =======
+                                         // this is new code
                                          var isNew = true;
                                          var z = isNew ? "new code" : "old code";
                                      >>>>>>> REPLACE
@@ -175,7 +188,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.RunTests,
             DisplayName = SharedResource.ToolRunTests,
             Category = ToolCategory.ReadFiles,
-            Description = "To run all tests in solution. When any errors returns errors list.",
+            Description = "To run all tests in solution. When any errors returns errors list. Note: the solution build will be triggered automatically when this tool is called.",
             ExampleToSystemMessage = $"""
                                      For example:
                                      <function name="{BuiltInToolEnum.RunTests}">

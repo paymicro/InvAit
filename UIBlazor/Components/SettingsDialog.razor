@@ -56,8 +56,16 @@
                     <RadzenStack Gap="0.2rem">
                         <RadzenLabel Text="@SharedResource.MaxTokens" />
                         <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                            <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.MaxTokens" Min=1000 Max=256000 Step="1000" Style="width: 100%; height: 20px;" />
-                            <RadzenLabel Text="@($"{ProfileManager.ActiveProfile.MaxTokens / 1000}K")" Style="text-align: right; width: 50px;" />
+                            <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.MaxTokens" Min=1000 Max=10000 Step="1000" Style="width: 100%; height: 20px;" />
+                            <RadzenLabel Text="@($"{ProfileManager.ActiveProfile.MaxTokens}")" Style="text-align: right; width: 50px;" />
+                        </RadzenStack>
+                    </RadzenStack>
+
+                    <RadzenStack Gap="0.2rem">
+                        <RadzenLabel Text="@SharedResource.ContextWindow" />
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                            <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.ContextWindow" Min=5000 Max=256000 Step="1000" Style="width: 100%; height: 20px;" />
+                            <RadzenLabel Text="@($"{ProfileManager.ActiveProfile.ContextWindow / 1000}K")" Style="text-align: right; width: 50px;" />
                         </RadzenStack>
                     </RadzenStack>
 

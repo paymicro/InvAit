@@ -16,11 +16,19 @@ public class ChatDelta
     [JsonPropertyName("content")]
     public string? Content { get; set; }
 
+    private string? _reasoning;
+
     /// <summary>
     /// Optional. Content of message showed in think block
     /// </summary>
     [JsonPropertyName("reasoning_content")]
-    public string? ReasoningContent { get; set; }
+    public string? ReasoningContent { get => _reasoning; set => _reasoning = value; }
+
+    /// <summary>
+    /// Некоторые модели сюда пишут размышления
+    /// </summary>
+    [JsonPropertyName("reasoning")]
+    public string? Reasoning { get => _reasoning; set => _reasoning = value; }
 
     /// <summary>
     /// Optional. Native tools to be executed

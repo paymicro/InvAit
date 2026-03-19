@@ -1,0 +1,72 @@
+@using DiffPlex.DiffBuilder.Model
+@implements IDisposable
+
+<div class="diff-pane" style="overflow: auto;">
+    <table class="diff">
+        @if (Model?.OldText.Lines is not null)
+        {
+            @for (var i = 0; i < Model.OldText.Lines.Count; i++)
+            {
+                var diffLine = Model.OldText.Lines[i];
+                var diffLineNew = Model.NewText.Lines[i];
+                <tr>
+                    @if (!isOldHidden)
+                    {
+                        <td class="line-number @diffLine.Type.ToString().ToLower()" @onclick="Toggle">
+                            @(diffLine.Position?.ToString() ?? " ")
+                        </td>
+                        <td class="line @diffLine.Type.ToString().ToLower()-line">
+                            <span class="line-text">
+                                <DiffViewLine Model="diffLine" />
+                            </span>
+                        </td>
+                    }
+                    <td class="line-number @diffLineNew.Type.ToString().ToLower()" @onclick="Toggle">
+                        @(diffLineNew.Position?.ToString() ?? " ")
+                    </td>
+                    <td class="line @diffLineNew.Type.ToString().ToLower()-line" style="width: @(isOldHidden ? "100%" : "50%")">
+                        <span class="line-text">
+                            <DiffViewLine Model="diffLineNew" />
+                        </span>
+                    </td>
+                </tr>
+            }
+        }
+    </table>
+</div>
+
+@code {
+    [Parameter] public SideBySideDiffModel Model { get; set; } = null!;
+
+    private bool isOldHidden = false;
+    private void Toggle()
+    {
+        isOldHidden = !isOldHidden;
+        _changed = true;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private DiffPaneModel _oldText = null!;
+    private DiffPaneModel _newText = null!;
+    private bool _changed;
+    private Throttler _throttler = new(500); // Интервал рендеренга от 500мс
+
+    protected override bool ShouldRender()
+    {
+        if (_changed && _throttler.ShouldRender(() => InvokeAsync(StateHasChanged)))
+        {
+            _changed = false;
+            return true;
+        }
+
+        return false;
+    }
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        _changed = true;
+    }
+
+    public void Dispose() => _throttler.Dispose();
+}

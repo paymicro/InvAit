@@ -258,11 +258,10 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
                 {
                     i++;
                     var diff = new DiffReplacement();
-                    var lastResult = result.LastOrDefault().Value?.ToString() ?? string.Empty;
-                    if (lastResult.StartsWith(":start_line:"))
+                    var options = line[14..].TrimStart();
+                    if (options.StartsWith(':'))
                     {
-                        diff.StartLine = int.Parse(lastResult.Split(':')[2]);
-                        result.Remove($"param{paramIndex}");
+                        diff.StartLine = int.Parse(options.Split(':')[1]);
                     }
                     var search = new List<string>();
                     for (; i < toolLines.Count; i++)

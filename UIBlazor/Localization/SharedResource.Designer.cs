@@ -169,6 +169,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Context window.
+        /// </summary>
+        public static string ContextWindow {
+            get {
+                return ResourceManager.GetString("ContextWindow", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Delete Profile.
         /// </summary>
         public static string DeleteProfile {
@@ -223,6 +232,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Limit Stop. Increase the maximum output tokens..
+        /// </summary>
+        public static string ErrorFinishByLength {
+            get {
+                return ResourceManager.GetString("ErrorFinishByLength", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Models not found.
         /// </summary>
         public static string ErrorModelsNotFound {
@@ -268,7 +286,7 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Max retries.
+        ///   Looks up a localized string similar to Error retries.
         /// </summary>
         public static string MaxRetries {
             get {
@@ -277,7 +295,7 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Max Tokens.
+        ///   Looks up a localized string similar to Max output tokens.
         /// </summary>
         public static string MaxTokens {
             get {

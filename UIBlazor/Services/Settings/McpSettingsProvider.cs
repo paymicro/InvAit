@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Shared.Contracts.Mcp;
 
 namespace UIBlazor.Services.Settings;
@@ -10,9 +9,6 @@ public class McpSettingsProvider(
     HttpClient httpClient)
     : BaseSettingsProvider<McpOptions>(storage, logger, "McpSettings"), IMcpSettingsProvider
 {
-    private static void Log(string message, string level = "INFO") =>
-        Debug.WriteLine($"[MCP {level}] {message}");
-
     public async Task StopAllAsync()
     {
         await vsBridge.ExecuteToolAsync(BasicEnum.McpStopAll);
@@ -41,7 +37,7 @@ public class McpSettingsProvider(
     {
         try
         {
-            Log("Loading MCP settings from mcp.json");
+            logger.LogInformation("Loading MCP settings from mcp.json");
             Current.ServerErrors.Clear();
             var result = await vsBridge.ExecuteToolAsync(BasicEnum.ReadMcpSettingsFile);
 
@@ -51,21 +47,22 @@ public class McpSettingsProvider(
 
             if (!result.Success || string.IsNullOrEmpty(result.Result))
             {
-                Log(result.Success ? "mcp.json is empty" : $"Failed to read mcp.json: {result.ErrorMessage}", "WARN");
+                logger.LogWarning(result.Success ? "mcp.json is empty" : $"Failed to read mcp.json: {result.ErrorMessage}");
                 return;
             }
 
             var settingsFile = JsonUtils.Deserialize<McpSettingsFile>(result.Result);
             if (settingsFile?.McpServers == null)
             {
-                Log("mcp.json has no servers defined", "WARN");
+                logger.LogWarning("mcp.json has no servers defined");
                 return;
             }
 
             var servers = new List<McpServerConfig>();
+            var initServerTasks = new List<Task>();
             foreach (var (name, entry) in settingsFile.McpServers)
             {
-                Log($"Loading server: {name}");
+                logger.LogInformation($"Loading server: {name}");
                 var isRemote = !string.IsNullOrEmpty(entry.Url);
                 var server = new McpServerConfig
                 {
@@ -79,43 +76,38 @@ public class McpSettingsProvider(
                     Enabled = true
                 };
 
-                if (server.Tools.Count == 0)
-                {
-                    var toolsResult = await RefreshToolsAsync(server);
-                    if (!toolsResult.StartsWith("Success"))
-                    {
-                        Log($"Failed to load tools for server {name}: {toolsResult}", "ERROR");
-                        Current.ServerErrors[name] = toolsResult;
-                        server.Enabled = false;
-                    }
-                    else
-                    {
-                        Log($"Loaded tools for server {name}: {toolsResult}");
-                        Current.ServerErrors.Remove(name);
-                    }
-                }
-
-                // Restore tool enabled state from persisted settings
-                if (server.Tools.Count > 0)
-                {
-                    foreach (var tool in server.Tools)
-                    {
-                        var toolKey = $"{name}:{tool.Name}";
-                        tool.Enabled = !Current.ToolDisabledStates.Contains(toolKey);
-                    }
-                }
-
                 servers.Add(server);
+                initServerTasks.Add(InitToolsAsync(server));
             }
 
+            await Task.WhenAll(initServerTasks);
             Current.Servers = servers;
-            Log($"MCP settings loaded: {servers.Count} servers");
+            logger.LogInformation($"MCP settings loaded: {servers.Count} servers");
             await SaveAsync();
         }
         catch (Exception ex)
         {
-            Log($"Error loading MCP settings: {ex.Message}", "ERROR");
+            logger.LogError($"Error loading MCP settings: {ex.Message}");
             Current.ServerErrors["__global__"] = ex.Message;
+        }
+    }
+
+    private async Task InitToolsAsync(McpServerConfig server)
+    {
+        if (server.Tools.Count == 0)
+        {
+            var toolsResult = await RefreshToolsAsync(server);
+            if (!toolsResult.StartsWith("Success"))
+            {
+                logger.LogError($"Failed to load tools for server {server.Name}: {toolsResult}");
+                Current.ServerErrors[server.Name] = toolsResult;
+                server.Enabled = false;
+            }
+            else
+            {
+                logger.LogInformation($"Loaded tools for server {server.Name}: {toolsResult}");
+                Current.ServerErrors.Remove(server.Name);
+            }
         }
     }
 
@@ -129,9 +121,10 @@ public class McpSettingsProvider(
 
     public async Task<string> RefreshToolsAsync(McpServerConfig server)
     {
+        var updateResult = $"Error refreshing tools for {server.Name}.";
         try
         {
-            Log($"Refreshing tools for server: {server.Name} ({server.Transport})");
+            logger.LogInformation($"Refreshing tools for server: {server.Name} ({server.Transport})");
 
             if (server.Transport == "stdio")
             {
@@ -144,31 +137,30 @@ public class McpSettingsProvider(
                     { "env", server.Env }
                 };
 
-                Log($"Starting stdio server: {server.Command} {argsString}");
+                logger.LogInformation($"Starting stdio server: {server.Command} {argsString}");
                 var result = await vsBridge.ExecuteToolAsync(BasicEnum.McpGetTools, toolArgs);
 #if DEBUG
                 result = HeadlessMocker.GetVsToolResult(result);
 #endif
                 if (!result.Success)
                 {
-                    Log($"Failed to get tools from {server.Name}: {result.ErrorMessage}", "ERROR");
+                    logger.LogError($"Failed to get tools from {server.Name}: {result.ErrorMessage}");
                     return $"Error: {result.ErrorMessage}";
                 }
 
                 var mcpData = JsonUtils.Deserialize<JsonElement>(result.Result);
-                var updateResult = await UpdateServerToolsAsync(server, mcpData);
-                Log($"Refresh result for {server.Name}: {updateResult}");
-                return updateResult;
+                updateResult = await UpdateServerToolsAsync(server, mcpData);
+                logger.LogInformation($"Refresh result for {server.Name}: {updateResult}");
             }
-            else // http
+            else // http sse
             {
-                Log($"Connecting to HTTP MCP server: {server.Url}");
+                logger.LogInformation($"Connecting to HTTP MCP server: {server.Url}");
                 // MCP SSE handshake
                 using var request = new HttpRequestMessage(HttpMethod.Get, server.Url);
                 using var handshakeResponse = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
                 if (!handshakeResponse.IsSuccessStatusCode)
                 {
-                    Log($"HTTP server {server.Name} returned status: {handshakeResponse.StatusCode}", "ERROR");
+                    logger.LogError($"HTTP server {server.Name} returned status: {handshakeResponse.StatusCode}");
                     return $"Error: HTTP {handshakeResponse.StatusCode}";
                 }
                 var stream = await handshakeResponse.Content.ReadAsStreamAsync();
@@ -186,7 +178,7 @@ public class McpSettingsProvider(
                         var path = line[6..].Trim();
                         var baseUri = new Uri(server.Url);
                         postUrl = new Uri(baseUri, path).ToString();
-                        Log($"HTTP MCP endpoint: {postUrl}");
+                        logger.LogInformation($"HTTP MCP endpoint: {postUrl}");
 
                         var nextLine = await reader.ReadLineAsync();
                         if (nextLine != null && nextLine.StartsWith("event: endpoint"))
@@ -209,39 +201,52 @@ public class McpSettingsProvider(
                 };
 
                 requestMessage.Content.Headers.ContentType!.CharSet = null;
-                Log($"Requesting tools list from {postUrl}");
+                logger.LogInformation($"Requesting tools list from {postUrl}");
                 var postResponse = await httpClient.SendAsync(requestMessage);
 
-                if (postResponse.IsSuccessStatusCode)
+                if (!postResponse.IsSuccessStatusCode)
                 {
-                    while (true)
-                    {
-                        var line = await reader.ReadLineAsync();
-                        if (line == null) break;
+                    logger.LogError($"HTTP server {server.Name} returned code: {postResponse.StatusCode}");
+                    return $"{updateResult} {postResponse.StatusCode}";
+                }
 
-                        if (line.StartsWith("data: "))
+                while (true)
+                {
+                    var line = await reader.ReadLineAsync();
+                    if (line == null)
+                        break;
+
+                    if (line.StartsWith("data: "))
+                    {
+                        var jsonData = line[6..].Trim();
+                        var mcpData = JsonUtils.Deserialize<McpResponse>(jsonData);
+                        if (mcpData?.Id == mcpRequest.Id && mcpData.Result is JsonElement jsonElement)
                         {
-                            var jsonData = line.Substring(6).Trim();
-                            var mcpData = JsonUtils.Deserialize<McpResponse>(jsonData);
-                            if (mcpData?.Id == mcpRequest.Id && mcpData.Result is JsonElement jsonElement)
-                            {
-                                var updateResult = await UpdateServerToolsAsync(server, jsonElement);
-                                Log($"HTTP refresh result for {server.Name}: {updateResult}");
-                                return updateResult;
-                            }
+                            updateResult = await UpdateServerToolsAsync(server, jsonElement);
+                            logger.LogInformation($"HTTP refresh result for {server.Name}: {updateResult}");
+                            break;
                         }
                     }
                 }
-
-                Log($"Could not parse tools list from HTTP server {server.Name}", "ERROR");
-                return "Error: Could not parse tools list";
             }
         }
         catch (Exception ex)
         {
-            Log($"Error refreshing tools for {server.Name}: {ex.Message}", "ERROR");
+            logger.LogError($"Error refreshing tools for {server.Name}: {ex.Message}");
             return $"Error: {ex.Message}";
         }
+
+        // Restore tool enabled state from persisted settings
+        if (server.Tools.Count > 0)
+        {
+            foreach (var tool in server.Tools)
+            {
+                var toolKey = $"{server.Name}:{tool.Name}";
+                tool.Enabled = !Current.ToolDisabledStates.Contains(toolKey);
+            }
+        }
+
+        return updateResult;
     }
 
     private async Task<string> UpdateServerToolsAsync(McpServerConfig server, JsonElement resultElement)
@@ -249,7 +254,7 @@ public class McpSettingsProvider(
         var listResult = resultElement.GetObject<McpListToolsResult>();
         if (listResult == null)
         {
-            Log($"No tools found in response for {server.Name}", "ERROR");
+            logger.LogError($"No tools found in response for {server.Name}");
             return $"Error: Not found tools";
         }
 
@@ -261,7 +266,7 @@ public class McpSettingsProvider(
             RequiredArguments = ExtractRequiredArguments(t.InputSchema)
         }).ToList();
 
-        Log($"Updating {server.Name} with {newTools.Count} tools");
+        logger.LogInformation($"Updating {server.Name} with {newTools.Count} tools");
 
         // Merge with existing tools (preserve enabled state)
         foreach (var tool in newTools)

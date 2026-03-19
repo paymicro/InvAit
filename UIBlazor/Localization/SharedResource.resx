@@ -166,7 +166,7 @@
     <value>Describe your goal to create a plan...</value>
   </data>
   <data name="MaxTokens" xml:space="preserve">
-    <value>Max Tokens</value>
+    <value>Max output tokens</value>
   </data>
   <data name="Messages" xml:space="preserve">
     <value>Messages</value>
@@ -334,7 +334,7 @@
     <value>Open folder in Explorer</value>
   </data>
   <data name="MaxRetries" xml:space="preserve">
-    <value>Max retries</value>
+    <value>Error retries</value>
   </data>
   <data name="RetryIn" xml:space="preserve">
     <value>Retry in</value>
@@ -348,16 +348,22 @@
   <data name="ApprovalModeDeny" xml:space="preserve">
     <value>Deny</value>
   </data>
-<data name="ToolRunTests" xml:space="preserve">
+  <data name="ToolRunTests" xml:space="preserve">
     <value>Run tests</value>
   </data>
-<data name="ToolAskUser" xml:space="preserve">
+  <data name="ToolAskUser" xml:space="preserve">
     <value>Ask user</value>
   </data>
-<data name="YourOption" xml:space="preserve">
+  <data name="YourOption" xml:space="preserve">
     <value>Your option...</value>
   </data>
- <data name="Selected" xml:space="preserve">
+  <data name="Selected" xml:space="preserve">
     <value>Selected</value>
+  </data>
+  <data name="ContextWindow" xml:space="preserve">
+    <value>Context window</value>
+  </data>
+  <data name="ErrorFinishByLength" xml:space="preserve">
+    <value>Limit Stop. Increase the maximum output tokens.</value>
   </data>
 </root>

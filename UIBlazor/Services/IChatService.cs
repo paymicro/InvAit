@@ -20,6 +20,8 @@ public interface IChatService
 
     string? LastCompletionsModel { get; }
 
+    string? FinishReason { get; }
+
     IAsyncEnumerable<ChatDelta> GetCompletionsAsync(CancellationToken cancellationToken);
 
     /// <summary>

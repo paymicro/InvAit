@@ -124,7 +124,7 @@
     <value>Требуется подтверждение</value>
   </data>
   <data name="CallingTool" xml:space="preserve">
-    <value>Хочу вызвать</value>
+    <value>Вызов</value>
   </data>
   <data name="Cancel" xml:space="preserve">
     <value>Отмена</value>
@@ -166,7 +166,7 @@
     <value>Опишите цель для создания плана...</value>
   </data>
   <data name="MaxTokens" xml:space="preserve">
-    <value>Максимум токенов</value>
+    <value>Максимум выходных токенов</value>
   </data>
   <data name="Messages" xml:space="preserve">
     <value>Сообщения</value>
@@ -334,7 +334,7 @@
     <value>Открыть папку в проводнике</value>
   </data>
   <data name="MaxRetries" xml:space="preserve">
-    <value>Максимум повторов</value>
+    <value>Повторы при ошибках</value>
   </data>
   <data name="RetryIn" xml:space="preserve">
     <value>Повтор через</value>
@@ -353,5 +353,11 @@
   </data>
   <data name="Selected" xml:space="preserve">
     <value>Выбрано</value>
+  </data>
+  <data name="ContextWindow" xml:space="preserve">
+    <value>Окно контекста</value>
+  </data>
+  <data name="ErrorFinishByLength" xml:space="preserve">
+    <value>Остановка по лимитам. Увеличьте максимум выходных токенов</value>
   </data>
 </root>

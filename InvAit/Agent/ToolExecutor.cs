@@ -440,7 +440,7 @@ public class ToolExecutor : IDisposable
         if (replacements.Count == 0)
             return new VsResponse { Success = false, Error = "Failed to get replacements" };
 
-        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
         if (!File.Exists(filepath))
             return new VsResponse { Success = false, Error = "File doesn't exist." };

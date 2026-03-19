@@ -1,24 +1,72 @@
 @using System.IO
 @using System.Text
+@using DiffPlex
+@using DiffPlex.Chunkers
+@using DiffPlex.DiffBuilder
+@using DiffPlex.DiffBuilder.Model
 
 <div class="diff-view">
     @if (!string.IsNullOrEmpty(FilePath))
     {
         <div @key="@FilePath" class="tool-file-header">@FilePath</div>
     }
-
     <div class="diff-block">
-        <Virtualize Items="@_blocks" Context="block" ItemSize="16" >@* Обязательно все элементы 16px *@
-            <DiffLine Model="block" />
-        </Virtualize>
+        @for (var i = 0; i < diffs.Count; i++)
+        {
+            @if (diffs[i] == null)
+            {
+                continue;
+            }
+            @if (i > 0)
+            {
+                <hr />
+            }
+            <DiffViewSection Model="diffs[i]" />
+        }
     </div>
 </div>
 
 @code {
     [Parameter] public List<string> Lines { get; set; } = [];
+    [Parameter] public bool IsClosed { get; set; } = true;
 
     private string? FilePath { get; set; }
-    private List<DiffBlock> _blocks = [];
+    private int blockIndex = 0;
+    private List<SideBySideDiffModel?> diffs = [null];
+    private bool showDiffSeparator = false;
+
+    private StringBuilder oldText { get; set; } = new();
+    private StringBuilder newText { get; set; } = new();
+    private bool inSearch = false;
+    private bool inReplace = false;
+    private bool _changed = false;
+    private DateTime _lastRenderTime = DateTime.MinValue;
+    private DateTime _lastDiffedTime = DateTime.MinValue;
+    private readonly int _interval = 500; // рендерить не чаще
+    private double elapsed => (DateTime.Now - _lastRenderTime).TotalMilliseconds;
+    private double elapsedDiffed => (DateTime.Now - _lastDiffedTime).TotalMilliseconds;
+
+    protected override bool ShouldRender()
+    {
+        if (!_changed) return false;
+
+        if (elapsed >= _interval)
+        {
+            _lastRenderTime = DateTime.Now;
+            _changed = false;
+            return true;
+        }
+
+        // Запускаем отложенную проверку для "последнего вызова"
+        _ = DelayRender();
+        return false;
+    }
+
+    private async Task DelayRender()
+    {
+        await Task.Delay(_interval);
+        StateHasChanged(); // Перезапустит логику ShouldRender
+    }
 
     protected override void OnParametersSet()
     {
@@ -27,10 +75,6 @@
 
     private void ParseDiff()
     {
-        bool inSearch = false;
-        bool inReplace = false;
-        int blockIndex = 0;
-
         if (Lines.Count < 2)
         {
             return;
@@ -38,62 +82,81 @@
 
         // Читаем первую строку для FilePath
         FilePath = Lines[0];
-        for (int i = 1; i < Lines.Count; i++)
+        var currentDiffIndex = diffs.Count - 1;
+        foreach (var line in Lines.Skip(blockIndex + 1))
         {
-            UpdateOrAddBlock(blockIndex++, Lines[i], ref inSearch, ref inReplace);
-        }
-
-        // Удаляем лишние блоки, если текст сократился
-        if (_blocks.Count > blockIndex)
-            _blocks.RemoveRange(blockIndex, _blocks.Count - blockIndex);
-    }
-
-    private void UpdateOrAddBlock(int index, string line, ref bool inSearch, ref bool inReplace)
-    {
-        var type = DetermineType(line, ref inSearch, ref inReplace);
-
-        if (index < _blocks.Count)
-        {
-            // ВАЖНО: Обновляем свойства существующего объекта.
-            // Blazor увидит, что экземпляр тот же, и проверит только Content.
-            var block = _blocks[index];
-            if (block.Type != type || block.Content.Length < line.Length)
+            var typeLine = DetermineType(line);
+            switch (typeLine)
             {
-                block.Type = type;
-                block.Content = line;
+                case DiffBlockType.SearchBlock:
+                    oldText.AppendLine(line);
+                    _changed = true;
+                    
+                    break;
+                case DiffBlockType.ReplaceBlock:
+                    newText.AppendLine(line);
+                    _changed = true;
+                    break;
+                case DiffBlockType.ReplaceHeader: 
+                    diffs[currentDiffIndex++] = BuildDiff();
+                    _lastDiffedTime = DateTime.Now;
+                    diffs.Add(null);
+                    oldText.Clear();
+                    newText.Clear();
+                    break;
             }
+            blockIndex++;
         }
-        else
+
+        if (_changed && elapsedDiffed >= _interval)
         {
-            _blocks.Add(new DiffBlock { Type = type, Content = line });
+            _lastDiffedTime = DateTime.Now;
+            diffs[currentDiffIndex] = BuildDiff();
         }
+
+        showDiffSeparator = diffs.Count > 1;
     }
 
-    private DiffBlockType DetermineType(string line, ref bool inSearch, ref bool inReplace)
+    private SideBySideDiffModel BuildDiff()
+    {
+        return SideBySideDiffBuilder.Diff(
+            Differ.Instance,
+            oldText.ToString(),
+            newText.ToString(),
+            false,
+            false,
+            lineChunker: LineChunker.Instance,
+            wordChunker: CharacterChunker.Instance
+        );
+    }
+
+    private DiffBlockType DetermineType(string line)
     {
         var trimmed = line.Trim();
 
-        if (trimmed.StartsWith("<<<<<<< SEARCH"))
+        if (!inReplace && trimmed.StartsWith("<<<<<<< SEARCH"))
         {
             inSearch = true;
-            inReplace = false; // Сброс на всякий случай
+            inReplace = false;
             return DiffBlockType.SearchHeader;
         }
-        if (trimmed.StartsWith("======="))
+        if (inSearch && trimmed.StartsWith("======="))
         {
             inSearch = false;
             inReplace = true;
             return DiffBlockType.Separator;
         }
-        if (trimmed.StartsWith(">>>>>>> REPLACE"))
+        if (!inSearch && trimmed.StartsWith(">>>>>>> REPLACE"))
         {
             inSearch = false;
             inReplace = false;
             return DiffBlockType.ReplaceHeader;
         }
 
-        if (inSearch) return DiffBlockType.Removed;
-        if (inReplace) return DiffBlockType.Added;
+        if (inSearch)
+            return DiffBlockType.SearchBlock;
+        if (inReplace)
+            return DiffBlockType.ReplaceBlock;
 
         return DiffBlockType.Context;
     }
@@ -101,16 +164,10 @@
     public enum DiffBlockType
     {
         SearchHeader,
-        Separator,
         ReplaceHeader,
-        Removed,
-        Added,
+        Separator,
+        SearchBlock,
+        ReplaceBlock,
         Context
-    }
-
-    public class DiffBlock
-    {
-        public DiffBlockType Type { get; set; }
-        public string Content { get; set; } = string.Empty;
     }
 }

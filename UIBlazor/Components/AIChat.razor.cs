@@ -187,6 +187,18 @@ public partial class AiChat : RadzenComponent
             assistantMessage.Content = response.ToString();
             assistantMessage.IsStreaming = false;
 
+            if (ChatService.FinishReason?.Equals("length", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = SharedResource.ErrorFinishByLength,
+                    Detail = string.Empty,
+                    Duration = 30_000,
+                    ShowProgress = true,
+                });
+            }
+
             ParsePlan(assistantMessage);
 
             await ChatService.SaveSessionAsync();

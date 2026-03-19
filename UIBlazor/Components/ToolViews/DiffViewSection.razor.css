@@ -1,0 +1,118 @@
+.diff-pane {
+    margin: 0;
+    padding: 0;
+    overflow: auto;
+    font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+    .diff-pane .line-number.modified {
+        background-color: var(--diff-modification-bg);
+        border-right: 3px solid var(--diff-modification-border);
+    }
+
+    .diff-pane .line-number.inserted {
+        background-color: var(--diff-addition-bg);
+        border-right: 3px solid var(--diff-addition-border);
+    }
+
+    .diff-pane .modified-line {
+        background-color: var(--diff-modification-bg);
+        border-left: 3px solid var(--diff-modification-border);
+    }
+
+    .diff-pane .inserted-line {
+        background-color: var(--diff-addition-bg);
+        border-left: 3px solid var(--diff-addition-border);
+    }
+
+    .diff-pane .deleted-line {
+        background-color: var(--diff-deletion-bg);
+        border-left: 3px solid var(--diff-deletion-border);
+    }
+
+/* Merge adjacent character highlights into smooth pill shapes */
+::deep .inserted-character + .inserted-character,
+::deep .modified-character + .modified-character,
+::deep .deleted-character + .deleted-character {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    padding-left: 0;
+}
+
+::deep .inserted-character:has(+ .inserted-character),
+::deep .modified-character:has(+ .modified-character),
+::deep .deleted-character:has(+ .deleted-character) {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    padding-right: 0;
+}
+
+
+/* Table styling */
+table.diff {
+    background-color: var(--rz-base-background-color);
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0;
+    border-spacing: 0;
+    table-layout: fixed;
+}
+
+    table.diff td.line-number {
+        width: 50px;
+        padding: 4px 12px;
+        font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', 'Courier New', monospace;
+        font-size: 12px;
+        line-height: 22px;
+        color: var(--rz-base-text-color);
+        text-align: right;
+        white-space: nowrap;
+        vertical-align: top;
+        user-select: none;
+        cursor: pointer;
+        background-color: var(--rz-base-dark);
+        border-right: var(--rz-border-base);
+        font-weight: 400;
+        transition: color 0.2s ease-in-out, background-color 0.2s ease-in-out;
+    }
+
+        table.diff td.line-number:hover {
+            color: var(--rz-base-text-accent);
+            background-color: var(--rz-base-darker);
+        }
+
+    table.diff td.line {
+        width: 50%;
+        padding: 4px 12px;
+        line-height: 22px;
+        vertical-align: top;
+        font-size: 14px;
+        font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', 'Courier New', monospace;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        color: var(--rz-base-text-primary);
+    }
+
+    table.diff td .unchanged-line {
+        background-color: var(--rz-base-background-color);
+    }
+
+    table.diff tr:hover td.line-number {
+        background-color: var(--rz-base-darker);
+    }
+
+    table.diff tr:hover td.line {
+        background-color: color-mix(in srgb, var(--rz-base-darker) 30%, transparent);
+    }
+
+@media (max-width: 45em) {
+    td:nth-child(-n+2) {
+        display: none;
+    }
+
+    td:nth-child(4) {
+        width: 100% !important;
+    }
+}

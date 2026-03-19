@@ -22,8 +22,6 @@ public sealed class InvAitPackage : ToolkitPackage
 
         await JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
         await this.RegisterCommandsAsync();
-
-        var test = JsonUtils.DeserializeParameters("{\"regex\": \" ^.*? main_services.* \"}");
         await Logger.InitializeAsync();
         await Logger.LogAsync("Started");
     }
