@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Hosting.Server;
 using Moq;
 using Shared.Contracts;
 using UIBlazor.Constants;
@@ -250,5 +249,67 @@ public class ChatServiceTests
         Assert.Equal("<function name=\"mcp__invaitmcp__get_service_info\">\nserviceName", deltas[0].Content);
         Assert.Equal(" : \"wow", deltas[1].Content);
         Assert.Equal("-service\"\n", deltas[2].Content);
+    }
+
+    [Fact]
+    public async Task GetCompletionsAsync_StreamsSseDeltas_ToolCallFragmentedBySymbol()
+    {
+        // Arrange
+        var content = """
+            <function name="someName">
+            /// <summary>
+            /// This is summary.
+            /// </summary>
+            </function>
+            """;
+        var sseResponse = content.Select(c => $"data: {{\"id\":\"123\",\"object\":\"chat.completion.chunk\",\"created\":555,\"model\":\"zai-org/GLM-5\",\"choices\":[{{\"index\":0,\"message\":null,\"delta\":{{\"role\":null,\"content\":\"{EscapeJsonChar(c)}\",\"reasoning_content\":null,\"tool_calls\":null}},\"finish_reason\":null}}],\"usage\":null}}").ToList();
+        sseResponse.Add("data: [DONE]");
+
+        var server = WireMockServer.Start();
+        var httpClient = server.CreateClient();
+        server
+            .Given(Request.Create().WithPath("/v1/chat/completions").UsingPost())
+            .RespondWith(
+                Response.Create()
+                    .WithStatusCode(200)
+                    .WithHeader("Content-Type", "text/event-stream")
+                    .WithHeader("Cache-Control", "no-cache")
+                    .WithBody(string.Join("\n", sseResponse))
+            );
+
+        var chatService = CreateChatService(httpClient);
+
+        // Act
+        var deltas = new List<ChatDelta>();
+        await foreach (var delta in chatService.GetCompletionsAsync(TestContext.Current.CancellationToken))
+        {
+            deltas.Add(delta);
+        }
+
+        // Assert
+        Assert.Equal(40, deltas.Count);
+        var ContentLines = deltas.Select(d => d.Content).ToList();
+        Assert.Equal("<function name=\"someName\">", deltas[0].Content);
+        Assert.Contains("</function>", ContentLines);
+        Assert.Contains("<summary>", ContentLines);
+        Assert.Contains("</summary>", ContentLines);
+        Assert.Equal(content, string.Join(null, ContentLines));
+    }
+
+    public static string EscapeJsonChar(char c)
+    {
+        return c switch
+        {
+            '\"' => "\\\"",
+            '\\' => "\\\\",
+            '/' => "\\/",
+            '\b' => "\\b",
+            '\f' => "\\f",
+            '\n' => "\\n",
+            '\r' => "\\r",
+            '\t' => "\\t",
+            _ when char.IsControl(c) => $"\\u{(int)c:x4}",
+            _ => c.ToString()
+        };
     }
 }

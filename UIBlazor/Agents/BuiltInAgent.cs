@@ -87,9 +87,9 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                 CRITICAL RULES:
                 1. EXACT MATCH: The SEARCH block must match the file content exactly (including spaces, tabs, and indentation).
                 2. BREVITY: Keep each SEARCH block under 15 lines. If the change is larger, use multiple consecutive SEARCH/REPLACE blocks for one file.
-                3. EFFICIENCY: Combine all related changes for a single file into one `{BuiltInToolEnum.ApplyDiff}` call with serial SEARCH/REPLACE blocks.
+                3. EFFICIENCY: Combine all related changes for a single file into one {BuiltInToolEnum.ApplyDiff} call with serial SEARCH/REPLACE blocks separated by a newline.
                 4. INTEGRITY: Ensure syntax balance (brackets, quotes) is maintained after the replacement.
-                5. UNCERTAINTY: If you don't have the exact text, you MUST use `{BuiltInToolEnum.ReadFiles}` first.
+                5. UNCERTAINTY: If you don't have the exact text, you MUST use {BuiltInToolEnum.ReadFiles} first.
                 """,
             ExampleToSystemMessage = $"""
                                      For example:
