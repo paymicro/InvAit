@@ -207,9 +207,14 @@ public partial class AiChat : RadzenComponent
             // Думаю нужно выдавать ошибку модели
             await HandleToolCallAsync(assistantMessage, [.. assistantMessage.Segments.Where(s => s.Type == SegmentType.Tool && s.IsClosed)]);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (_cts.IsCancellationRequested)
         {
-            assistantMessage.IsStreaming = false;
+            // если вручную отменили, тогда не включать повторы
+            if (string.IsNullOrEmpty(assistantMessage.Content))
+            {
+                assistantMessage.Content = "Cancelled by user...";
+                MessageParser.UpdateSegments(assistantMessage.Content, assistantMessage);
+            }
         }
         catch (Exception ex)
         {
@@ -217,7 +222,6 @@ public partial class AiChat : RadzenComponent
             assistantMessage.Content = $"Error: {ex.Message} [{retryCount}/{maxRetries}]";
             // обновляем сегменты в сообщении
             MessageParser.UpdateSegments(assistantMessage.Content, assistantMessage);
-            assistantMessage.IsStreaming = false;
             Logger.LogError(ex, "Getting response error");
 
             if (retryCount < maxRetries)
@@ -252,6 +256,7 @@ public partial class AiChat : RadzenComponent
         }
         finally
         {
+            assistantMessage.IsStreaming = false;
             IsLoading = false;
             await InvokeAsync(StateHasChanged);
         }

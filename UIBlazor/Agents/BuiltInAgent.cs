@@ -74,6 +74,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                 Use this tool to modify existing code with 100% accuracy.
 
                 STRUCTURE:
+                [file_path]
                 <<<<<<< SEARCH [:start_line:]
                 [exact content to find]
                 =======
@@ -81,13 +82,12 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                 >>>>>>> REPLACE
 
                 OPTIONAL PARAMETERS:
-                - `:start_line:`: A hint for the line number where the search should begin.
-                - Format: `<<<<<<< SEARCH :10:` means "Start at line 10"
+                - :start_line:: A hint for the line number to speed up searching. Example: `<<<<<<< SEARCH :10:`
 
                 CRITICAL RULES:
-                1. EXACT MATCH: The SEARCH block must match the file content exactly, including spaces and indentation.
-                2. BREVITY: Keep SEARCH blocks under 10 lines. If the change is larger, use multiple consecutive SEARCH/REPLACE blocks.
-                3. EFFICIENCY: Combine all related changes for a single file into one `{BuiltInToolEnum.ApplyDiff}` call.
+                1. EXACT MATCH: The SEARCH block must match the file content exactly (including spaces, tabs, and indentation).
+                2. BREVITY: Keep each SEARCH block under 15 lines. If the change is larger, use multiple consecutive SEARCH/REPLACE blocks for one file.
+                3. EFFICIENCY: Combine all related changes for a single file into one `{BuiltInToolEnum.ApplyDiff}` call with serial SEARCH/REPLACE blocks.
                 4. INTEGRITY: Ensure syntax balance (brackets, quotes) is maintained after the replacement.
                 5. UNCERTAINTY: If you don't have the exact text, you MUST use `{BuiltInToolEnum.ReadFiles}` first.
                 """,

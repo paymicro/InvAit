@@ -32,7 +32,6 @@ public class Throttler(int intervalMs) : IDisposable
                 _isWaiting = false;
                 if (_hasPendingWork)
                 {
-                    _lastExecution = DateTime.Now;
                     _hasPendingWork = false;
                     onTailUpdate();
                 }

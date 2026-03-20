@@ -56,7 +56,7 @@
                     <RadzenStack Gap="0.2rem">
                         <RadzenLabel Text="@SharedResource.MaxTokens" />
                         <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                            <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.MaxTokens" Min=1000 Max=10000 Step="1000" Style="width: 100%; height: 20px;" />
+                            <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.MaxTokens" Min=1000 Max=20000 Step="1000" Style="width: 100%; height: 20px;" />
                             <RadzenLabel Text="@($"{ProfileManager.ActiveProfile.MaxTokens}")" Style="text-align: right; width: 50px;" />
                         </RadzenStack>
                     </RadzenStack>
