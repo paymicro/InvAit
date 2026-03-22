@@ -93,17 +93,10 @@ public class ToolExecutor : IDisposable
                 Error = "No active document"
             };
 
-        var response = await ReadFileAsync(new Dictionary<string, object>
+        return await ReadFileAsync(new Dictionary<string, object>
         {
-            { "param1", docView.Document.FilePath }
+            { "file1", docView.Document.FilePath }
         });
-
-        if (response.Success)
-        {
-            response.Payload = $"Active file: {docView.Document.FilePath}{Environment.NewLine}{Environment.NewLine}{response.Payload}";
-        }
-
-        return response;
     }
 
     private async Task<VsResponse> ReadFileAsync(IReadOnlyDictionary<string, object> args)
@@ -1344,13 +1337,21 @@ public class ToolExecutor : IDisposable
                 return $"ERROR: Server {serverId} not running and no command provided to start it";
             }
 
+            _initializedServers.TryRemove(serverId, out _);
             var solutionPath = await GetSolutionPathAsync();
             var startResult = await _mcpProcessManager.StartProcessAsync(serverId, command, arguments ?? "", solutionPath, env);
-            if (!startResult.StartsWith("OK")) return startResult;
+            
+            if (!startResult.StartsWith("OK"))
+            {
+                return startResult;
+            }
+        }
+        else if (_initializedServers.ContainsKey(serverId))
+        {
+            return "OK";
         }
 
-        if (_initializedServers.ContainsKey(serverId)) return "OK";
-
+        // Этап инициализации (рупокожатия)
         var requestId = Guid.NewGuid().ToString("N");
         var initRequest = new McpRequest
         {
@@ -1360,12 +1361,13 @@ public class ToolExecutor : IDisposable
             {
                 protocolVersion = "2024-11-05",
                 capabilities = new { },
-                clientInfo = new { name = "InvAit", version = "1.0.0" }
+                clientInfo = new { name = "InvAit", version = Vsix.Version }
             }
         };
 
         var responseJson = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(initRequest));
-        if (!responseJson.Success) return responseJson.Error;
+        if (!responseJson.Success)
+            return responseJson.Error;
 
         var initializedNotification = new McpNotification
         {

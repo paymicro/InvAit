@@ -32,7 +32,7 @@ public class McpProcessManager : IDisposable
     private readonly ConcurrentDictionary<string, DateTime> _lastAccessTime = new();
     private CancellationTokenSource _cleanupCts;
     // время жизни MCP процесса без активности
-    private readonly TimeSpan _idleTimeout = TimeSpan.FromMinutes(1);
+    private readonly TimeSpan _idleTimeout = TimeSpan.FromMinutes(10);
 
     /// <summary>
     /// Запустить фоновую задачу очистки неактивных процессов
