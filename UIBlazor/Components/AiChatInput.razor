@@ -243,13 +243,14 @@
         if (!CanSend()) return;
 
         // Загружаем содержимое файлов перед отправкой
+        var fileIndex = 0;
         foreach (var fileToken in tokens.OfType<FileToken>())
         {
             if (string.IsNullOrEmpty(fileToken.FileContent))
             {
                 var readFileTool = await VsBridge.ExecuteToolAsync(
                     BuiltInToolEnum.ReadFiles,
-                    new Dictionary<string, object> { { "param1", fileToken.FilePath } });
+                    new Dictionary<string, object> { { $"file{++fileIndex}", fileToken.FilePath } });
 
                 fileToken.FileContent = readFileTool.Result;
             }
