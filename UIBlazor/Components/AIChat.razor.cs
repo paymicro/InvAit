@@ -75,66 +75,18 @@ public partial class AiChat : RadzenComponent
         if (string.IsNullOrWhiteSpace(content) || IsLoading)
             return;
 
-        // Process the CurrentInput (HTML) to extract chip data and fetch content
-        var processedContent = await ProcessMessageContentAsync(content);
-
         // Add user message
         var userMessage = new VisualChatMessage
         {
-            Content = processedContent,
+            Content = content,
             Role = ChatMessageRole.User,
-            IsExpanded = IsShortMessage(processedContent)
+            IsExpanded = IsShortMessage(content)
         };
 
         ChatService.Session.AddMessage(userMessage);
         
         // Get AI response
         await GetAiResponseAsync();
-    }
-
-    private async Task<string> ProcessMessageContentAsync(string htmlContent)
-    {
-        var processedContentBuilder = new StringBuilder();
-        var lastIndex = 0;
-
-        // Regex to find chip spans: <span contenteditable="false" class="chip" data-path="path_to_file">display_text</span>
-        var chipRegex = new Regex("<span\\s+contenteditable=\"false\"\\s+class=\"chip\"\\s+data-path=\"([^\"]+)\"[^>]*>.*?</span>", RegexOptions.Singleline);
-
-        foreach (Match match in chipRegex.Matches(htmlContent))
-        {
-            // Append text before the current chip
-            processedContentBuilder.Append(htmlContent.Substring(lastIndex, match.Index - lastIndex));
-
-            var dataPath = match.Groups[1].Value;
-
-            // Call the tool to get the content
-            var tool = ToolManager.GetTool(BuiltInToolEnum.ReadOpenFile.ToString());
-            if (tool != null)
-            {
-                var args = new Dictionary<string, object> { { "path", dataPath } };
-                var vsToolResult = await tool.ExecuteAsync(args);
-
-                if (vsToolResult.Success)
-                {
-                    processedContentBuilder.Append($"<file_content path=\"{dataPath}\">\n{vsToolResult.Result}\n</file_content>");
-                }
-                else
-                {
-                    processedContentBuilder.Append($"<error_reading_file path=\"{dataPath}\">{vsToolResult.ErrorMessage}</error_reading_file>");
-                }
-            }
-            else
-            {
-                processedContentBuilder.Append($"<error_tool_not_found path=\"{dataPath}\">Tool 'ReadOpenFile' not found.</error_tool_not_found>");
-            }
-
-            lastIndex = match.Index + match.Length;
-        }
-
-        // Append any remaining text after the last chip
-        processedContentBuilder.Append(htmlContent.Substring(lastIndex));
-
-        return processedContentBuilder.ToString();
     }
 
     private async Task GetAiResponseAsync()

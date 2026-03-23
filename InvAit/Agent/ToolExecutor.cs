@@ -95,7 +95,7 @@ public class ToolExecutor : IDisposable
 
         return await ReadFileAsync(new Dictionary<string, object>
         {
-            { "file1", docView.Document.FilePath }
+            { "file1", new ReadFileParams { Name = docView.Document.FilePath } }
         });
     }
 
@@ -146,7 +146,7 @@ public class ToolExecutor : IDisposable
             try
             {
                 sb.AppendLine($"### {rp.Name}");
-
+                sb.AppendLine("```");
                 var lines = File.ReadLines(absPath);
                 var currentLine = 0;
 
@@ -166,6 +166,7 @@ public class ToolExecutor : IDisposable
                 {
                     sb.AppendLine($"{++currentLine} | {line}");
                 }
+                sb.AppendLine("```");
             }
             catch (Exception ex)
             {

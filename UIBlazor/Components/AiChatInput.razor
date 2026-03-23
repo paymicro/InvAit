@@ -250,7 +250,7 @@
             {
                 var readFileTool = await VsBridge.ExecuteToolAsync(
                     BuiltInToolEnum.ReadFiles,
-                    new Dictionary<string, object> { { $"file{++fileIndex}", fileToken.FilePath } });
+                    new Dictionary<string, object> { { $"file{++fileIndex}", new ReadFileParams { Name = fileToken.FilePath } } });
 
                 fileToken.FileContent = readFileTool.Result;
             }
@@ -268,10 +268,7 @@
         // Добавляем файлы с их содержимым
         foreach (var fileToken in tokens.OfType<FileToken>())
         {
-            if (messageBuilder.Length > 0)
-                messageBuilder.AppendLine();
-
-            messageBuilder.Append(fileToken.GetLlmText());
+            messageBuilder.Append(fileToken.FileContent);
         }
 
         var message = messageBuilder.ToString();
