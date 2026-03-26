@@ -27,7 +27,7 @@ public class McpSettingsProvider(
 
     protected override async Task AfterInitAsync()
     {
-        await LoadMcpFileAsync();
+        _ = LoadMcpFileAsync();
     }
 
     /// <summary>
