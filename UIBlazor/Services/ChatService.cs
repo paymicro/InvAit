@@ -134,6 +134,11 @@ public class ChatService(
     public string? LastCompletionsModel { get; private set; }
 
     /// <summary>
+    /// Текст ошибки
+    /// </summary>
+    public string? LastError { get; private set; }
+
+    /// <summary>
     /// Последнее использование токенов
     /// </summary>
     public UsageInfo? LastUsage { get; private set; }
@@ -220,6 +225,8 @@ public class ChatService(
     {
         LastCompletionsModel = null;
         LastUsage = null;
+        LastError = null;
+        FinishReason = null;
 
         // Use runtime parameters or fall back to configured options
         var url = $"{Options.Endpoint}{_complitions}";
@@ -311,12 +318,18 @@ public class ChatService(
                 continue;
             }
 
-            var json = line["data:".Length..].Trim();
+            var json = line[6..];
 
             if (json == "[DONE]")
             {
                 FinishReason = lastChoise?.FinishReason;
                 break;
+            }
+            
+            if (json.StartsWith("{\"error\""))
+            {
+                LastError = json;
+                continue;
             }
 
             var chunk = JsonUtils.Deserialize<StreamChunk>(json);

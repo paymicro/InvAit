@@ -7,22 +7,10 @@ namespace UIBlazor.Agents;
 public class BuiltInToolDefs
 {
     [Description("Request to read the contents of one or more files.")]
-    public Task<string> ReadFiles([Description("File information")] FileToRead[] filePath)
+    public Task<string> ReadFiles([Description("File information")] ReadFileParams[] filePath)
     {
         // тут чтение файлов
         return Task.FromResult("");
-    }
-
-    public class FileToRead
-    {
-        [Description("Path to file. Absolute or relative")]
-        public required string Path { get; set; }
-
-        [Description("Start line")]
-        public int? StartLine { get; set; } = null;
-
-        [Description("Line count")]
-        public int? LineCount { get; set; } = null;
     }
 
     public static NativeToolDefinition MapMethodToTool(MethodInfo? method)

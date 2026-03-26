@@ -151,6 +151,18 @@ public partial class AiChat : RadzenComponent
                 });
             }
 
+            if (!string.IsNullOrEmpty(ChatService.LastError))
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = ChatService.LastError,
+                    Detail = string.Empty,
+                    Duration = 30_000,
+                    ShowProgress = true,
+                });
+            }
+
             ParsePlan(assistantMessage);
 
             await ChatService.SaveSessionAsync();

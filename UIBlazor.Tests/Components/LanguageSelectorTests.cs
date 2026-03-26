@@ -1,5 +1,4 @@
 using Bunit;
-using Bunit.TestDoubles;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
@@ -11,7 +10,7 @@ using UIBlazor.Services.Settings;
 
 namespace UIBlazor.Tests.Components;
 
-public class LanguageSelectorTests : Bunit.TestContext
+public class LanguageSelectorTests : BunitContext
 {
     private readonly Mock<ICommonSettingsProvider> _mockSettingsProvider;
 
@@ -31,7 +30,7 @@ public class LanguageSelectorTests : Bunit.TestContext
     public void ShouldRenderWithCorrectInitialCulture()
     {
         // Act
-        var cut = RenderComponent<LanguageSelector>();
+        var cut = Render<LanguageSelector>();
 
         // Assert
         var dropdown = cut.FindComponent<RadzenDropDown<string>>();
@@ -42,8 +41,8 @@ public class LanguageSelectorTests : Bunit.TestContext
     public async Task ShouldUpdateSettingsAndNavigateOnCultureChange()
     {
         // Arrange
-        var navManager = Services.GetRequiredService<NavigationManager>() as FakeNavigationManager;
-        var cut = RenderComponent<LanguageSelector>();
+        var navManager = Services.GetRequiredService<NavigationManager>();
+        var cut = Render<LanguageSelector>();
         var dropdown = cut.FindComponent<RadzenDropDown<string>>();
         var newCulture = "ru-RU";
 

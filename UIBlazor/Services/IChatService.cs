@@ -22,6 +22,8 @@ public interface IChatService
 
     string? FinishReason { get; }
 
+    public string? LastError { get; }
+
     IAsyncEnumerable<ChatDelta> GetCompletionsAsync(CancellationToken cancellationToken);
 
     /// <summary>

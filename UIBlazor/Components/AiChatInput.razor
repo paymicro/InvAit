@@ -262,7 +262,7 @@
         // Добавляем текущий ввод
         if (!string.IsNullOrWhiteSpace(currentInput))
         {
-            messageBuilder.Append(currentInput.Trim());
+            messageBuilder.AppendLine(currentInput.Trim());
         }
 
         // Добавляем файлы с их содержимым

@@ -5,7 +5,7 @@ using UIBlazor.Components;
 
 namespace UIBlazor.Tests.Components;
 
-public class CheckBoxTests : Bunit.TestContext
+public class CheckBoxTests : BunitContext
 {
     public CheckBoxTests()
     {
@@ -21,7 +21,7 @@ public class CheckBoxTests : Bunit.TestContext
         var value = true;
 
         // Act
-        var cut = RenderComponent<CheckBox>(parameters => parameters
+        var cut = Render<CheckBox>(parameters => parameters
             .Add(p => p.Text, text)
             .Add(p => p.Value, value));
 
@@ -37,7 +37,7 @@ public class CheckBoxTests : Bunit.TestContext
     public void ShouldBeDisabledWhenDisabledParameterIsTrue()
     {
         // Act
-        var cut = RenderComponent<CheckBox>(parameters => parameters
+        var cut = Render<CheckBox>(parameters => parameters
             .Add(p => p.Disabled, true));
 
         // Assert

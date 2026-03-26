@@ -296,6 +296,37 @@ public class ChatServiceTests
         Assert.Equal(content, string.Join(null, ContentLines));
     }
 
+    [Fact]
+    public async Task GetCompletionsAsync_Error_ReturnError()
+    {
+        // Arrange
+        var sseResponse = "data: {\"error\":{\"message\":\"The number of tokens to keep from the initial prompt is greater than the context length (n_keep: 23678>= n_ctx: 9472). Try to load the model with a larger context length, or provide a shorter input.\"}}";
+
+        var server = WireMockServer.Start();
+        var httpClient = server.CreateClient();
+        server
+            .Given(Request.Create().WithPath("/v1/chat/completions").UsingPost())
+            .RespondWith(
+                Response.Create()
+                    .WithStatusCode(200)
+                    .WithHeader("Content-Type", "text/event-stream")
+                    .WithHeader("Cache-Control", "no-cache")
+                    .WithBody(sseResponse)
+            );
+        var chatService = CreateChatService(httpClient);
+
+        // Act
+        var deltas = new List<ChatDelta>();
+        await foreach (var delta in chatService.GetCompletionsAsync(TestContext.Current.CancellationToken))
+        {
+            deltas.Add(delta);
+        }
+
+        // Assert
+        Assert.Empty(deltas);
+        Assert.Equal(sseResponse[6..], chatService.LastError);
+    }
+
     public static string EscapeJsonChar(char c)
     {
         return c switch
