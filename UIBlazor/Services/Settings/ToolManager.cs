@@ -199,6 +199,14 @@ public class ToolManager(
             : ToolApprovalMode.Allow;
     }
 
+    private string GetModeDesc(AppMode mode)
+        => mode switch
+        {
+            AppMode.Agent => $"{mode} (for taking actions and applying changes)",
+            AppMode.Plan => $"{mode} (for planning before taking actions)",
+            _ => $"{mode} (for discussion, reading and explanations)",
+        };
+
     public string GetToolUseSystemInstructions(AppMode mode, bool hasSkills)
     {
         var enabledTools = GetEnabledTools().ToList();
@@ -217,10 +225,15 @@ public class ToolManager(
             _ => enabledTools
         };
 
+        var otherModes = string.Join(", ", Enum.GetValues<AppMode>().Where(m => m != mode).Select(m => GetModeDesc(m)));
+
         var sb = new StringBuilder();
         sb.AppendLine($"Current date: {DateTime.Now:f}");
-        sb.AppendLine($"Your current mode: {mode}");
-        sb.AppendLine("Available modes: Chat (for discussion, reading and explanations), Agent (for taking actions and applying changes), Plan (for planning before taking actions).");
+        sb.AppendLine($"Your current mode: {GetModeDesc(mode)}");
+        if (enabledTools.FirstOrDefault(t => t.Category == ToolCategory.ModeSwitch)?.Enabled == true)
+        {
+            sb.AppendLine($"Other available modes: {otherModes}.");
+        }
         sb.AppendLine("Use Mermaid diagrams for clarity in explanations. This will help you better visualize the answer formula. Don`t use \", {, }, (, ), [, ], in Mermaid node names.");
 
         if (mode == AppMode.Plan)

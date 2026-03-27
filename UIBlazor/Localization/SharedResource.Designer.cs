@@ -286,7 +286,7 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Error retries.
+        ///   Looks up a localized string similar to Max Error Retries.
         /// </summary>
         public static string MaxRetries {
             get {

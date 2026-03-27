@@ -15,64 +15,70 @@
                                   Disabled="@(ProfileManager.Current.Profiles.Count <= 1)" />
                 </RadzenStack>
 
-                <RadzenStack Gap="1rem">
-                    <RadzenFormField Text="@SharedResource.ProfileName" Variant="Variant.Outlined">
-                        <RadzenTextBox @bind-Value="@ProfileManager.ActiveProfile.Name" Immediate Style="width: 100%" />
-                    </RadzenFormField>
+                <RadzenFormField Text="@SharedResource.ProfileName" Variant="Variant.Outlined" AllowFloatingLabel="false">
+                    <RadzenTextBox @bind-Value="@ProfileManager.ActiveProfile.Name" Immediate Style="width: 100%" />
+                </RadzenFormField>
 
-                    <RadzenFormField Text="@SharedResource.Provider" Variant="Variant.Outlined">
-                        <RadzenDropDown @bind-Value="@ProfileManager.ActiveProfile.Provider" Data="@_providers" Style="width: 100%" />
-                    </RadzenFormField>
+                <RadzenFormField Text="@SharedResource.Provider" Variant="Variant.Outlined" AllowFloatingLabel="false">
+                    <RadzenDropDown @bind-Value="@ProfileManager.ActiveProfile.Provider" Data="@_providers" Style="width: 100%" />
+                </RadzenFormField>
 
-                    <RadzenFormField Text="@SharedResource.Endpoint" Variant="Variant.Outlined">
-                        <RadzenTextBox @bind-Value="@ProfileManager.ActiveProfile.Endpoint" Style="width: 100%" />
-                    </RadzenFormField>
+                <RadzenFormField Text="@SharedResource.Endpoint" Variant="Variant.Outlined" AllowFloatingLabel="false">
+                    <RadzenTextBox @bind-Value="@ProfileManager.ActiveProfile.Endpoint" Style="width: 100%" />
+                </RadzenFormField>
 
-                    <RadzenFormField Text="ApiKey" Variant="Variant.Outlined">
-                        <RadzenPassword @bind-Value="@ProfileManager.ActiveProfile.ApiKey" Style="width: 100%" />
-                    </RadzenFormField>
+                <RadzenFormField Text="ApiKey" Variant="Variant.Outlined" AllowFloatingLabel="false">
+                    <RadzenPassword @bind-Value="@ProfileManager.ActiveProfile.ApiKey" Style="width: 100%" />
+                </RadzenFormField>
 
-                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                <RadzenFormField Text="@SharedResource.SelectModel" Variant="Variant.Outlined" AllowFloatingLabel="false">
+                    <ChildContent>
                         <RadzenDropDown TValue="string"
-                                        Data="@ProfileManager.ActiveProfile.AvailableModels"
-                                        @bind-Value="@ProfileManager.ActiveProfile.Model"
-                                        Placeholder="@SharedResource.SelectModel"
-                                        AllowCustomText="true"
-                                        Style="width: 100%" />
-                        <RadzenButton Icon="autorenew" Click="() => UpdateModelsAsync(CancellationToken.None)" ButtonStyle="ButtonStyle.Light" />
+                            Data="@ProfileManager.ActiveProfile.AvailableModels"
+                            @bind-Value="@ProfileManager.ActiveProfile.Model"
+                            Placeholder="@SharedResource.SelectModel" />
+                    </ChildContent>
+                    <End>
+                        <RadzenButton
+                            Icon="autorenew" Click="UpdateModelsAsync"
+                            class="@(isModelUpdating ? "icon-spin" : "")"
+                            Disabled="@isModelUpdating"
+                            ButtonStyle="ButtonStyle.Secondary" />
+                    </End>
+                </RadzenFormField>
+
+                <CheckBox Text="@SharedResource.UseStream" @bind-Value=@ProfileManager.ActiveProfile.Stream />
+
+                <RadzenStack Gap="0.2rem">
+                    <RadzenLabel Text="@SharedResource.MaxTokens" />
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                        <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.MaxTokens" Min=1000 Max=20000 Step="1000" Style="width: 100%; height: 20px;" />
+                        <RadzenLabel Text="@($"{ProfileManager.ActiveProfile.MaxTokens}")" Style="text-align: right; width: 50px;" />
                     </RadzenStack>
-
-                    <CheckBox Text="@SharedResource.UseStream" @bind-Value=@ProfileManager.ActiveProfile.Stream />
-                    <CheckBox Text="@SharedResource.SkipSSL" @bind-Value=@ProfileManager.ActiveProfile.SkipSSL />
-
-                    <RadzenStack Gap="0.2rem">
-                        <RadzenLabel Text="@SharedResource.Temperature" />
-                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                            <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.Temperature" Min="0" Max="2" Step="0.1" Style="width: 100%; height: 20px;" />
-                            <RadzenLabel Text="@Math.Abs(ProfileManager.ActiveProfile.Temperature).ToString("0.0")" Style="text-align: right; width: 50px;" />
-                        </RadzenStack>
-                    </RadzenStack>
-
-                    <RadzenStack Gap="0.2rem">
-                        <RadzenLabel Text="@SharedResource.MaxTokens" />
-                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                            <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.MaxTokens" Min=1000 Max=20000 Step="1000" Style="width: 100%; height: 20px;" />
-                            <RadzenLabel Text="@($"{ProfileManager.ActiveProfile.MaxTokens}")" Style="text-align: right; width: 50px;" />
-                        </RadzenStack>
-                    </RadzenStack>
-
-                    <RadzenStack Gap="0.2rem">
-                        <RadzenLabel Text="@SharedResource.ContextWindow" />
-                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                            <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.ContextWindow" Min=5000 Max=256000 Step="1000" Style="width: 100%; height: 20px;" />
-                            <RadzenLabel Text="@($"{ProfileManager.ActiveProfile.ContextWindow / 1000}K")" Style="text-align: right; width: 50px;" />
-                        </RadzenStack>
-                    </RadzenStack>
-
-                    <RadzenFormField Text="@SharedResource.SystemPrompt" Variant="Variant.Outlined">
-                        <RadzenTextArea @bind-Value="@ProfileManager.ActiveProfile.SystemPrompt" Style="min-height: 90px" />
-                    </RadzenFormField>
                 </RadzenStack>
+
+                <RadzenStack Gap="0.2rem">
+                    <RadzenLabel Text="@SharedResource.ContextWindow" />
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                        <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.ContextWindow" Min=5000 Max=256000 Step="1000" Style="width: 100%; height: 20px;" />
+                        <RadzenLabel Text="@($"{ProfileManager.ActiveProfile.ContextWindow / 1000}K")" Style="text-align: right; width: 50px;" />
+                    </RadzenStack>
+                </RadzenStack>
+
+                <RadzenStack Gap="0.2rem">
+                    <RadzenLabel Text="@SharedResource.Temperature" />
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                        <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.Temperature" Min="0" Max="2" Step="0.1" Style="width: 100%; height: 20px;" />
+                        <RadzenLabel Text="@Math.Abs(ProfileManager.ActiveProfile.Temperature).ToString("0.0")" Style="text-align: right; width: 50px;" />
+                    </RadzenStack>
+                </RadzenStack>
+
+                <RadzenFormField Text="@SharedResource.SystemPrompt" Variant="Variant.Outlined" AllowFloatingLabel="false">
+                    <RadzenTextArea @bind-Value="@ProfileManager.ActiveProfile.SystemPrompt" Style="min-height: 90px" />
+                </RadzenFormField>
+
+                <CheckBox Text="@SharedResource.SendCurrentFile" @bind-Value="@CommonSettingsProvider.Current.SendCurrentFile" />
+                <CheckBox Text="@SharedResource.SendSolutionsStricture" @bind-Value="@CommonSettingsProvider.Current.SendSolutionsStricture" />
 
                 <RadzenStack Gap="0.2rem">
                     <RadzenLabel Text="@SharedResource.MaxRetries" />
@@ -82,8 +88,7 @@
                     </RadzenStack>
                 </RadzenStack>
 
-                <CheckBox Text="@SharedResource.SendCurrentFile" @bind-Value="@CommonSettingsProvider.Current.SendCurrentFile" />
-                <CheckBox Text="@SharedResource.SendSolutionsStricture" @bind-Value="@CommonSettingsProvider.Current.SendSolutionsStricture" />
+                <CheckBox Text="@SharedResource.SkipSSL" @bind-Value=@ProfileManager.ActiveProfile.SkipSSL />
             </RadzenStack>
         </RadzenTabsItem>
         <RadzenTabsItem Text="@SharedResource.SettingsTools">
@@ -155,7 +160,7 @@
                     {
                         var hasError = McpSettingsProvider.Current.ServerErrors.TryGetValue(server.Name, out var errorMsg);
                         var borderColor = hasError ? "var(--rz-error-color)" : "var(--rz-border-color)";
-                        var serverStyle = $"padding: 0.5rem; border: 1px solid {borderColor}; border-radius: var(--rz-border-radius);";
+                        var serverStyle = $"border: 1px solid {borderColor}; border-radius: var(--rz-border-radius);";
 
                         <RadzenStack Gap="0.5rem" Style="@serverStyle">
                             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
@@ -346,14 +351,15 @@
         }
     }
 
-    private async Task UpdateModelsAsync(CancellationToken cancellationToken)
+    bool isModelUpdating;
+
+    private async Task UpdateModelsAsync()
     {
+        isModelUpdating = true;
         try
         {
-            var models = await ChatService.GetModelsAsync(cancellationToken);
+            var models = await ChatService.GetModelsAsync(CancellationToken.None);
             var list = models.Data.Select(m => m.Id).ToList();
-
-            // TODO возможность добавлять кастомную строку
             ProfileManager.ActiveProfile.AvailableModels = list;
         }
         catch (Exception ex)
@@ -366,6 +372,10 @@
                 Duration = 10_000,
                 ShowProgress = true,
             });
+        }
+        finally
+        {
+            isModelUpdating = false;
         }
         StateHasChanged();
     }

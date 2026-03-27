@@ -143,6 +143,10 @@ details {
     cursor: default;
 }
 
+.rz-form-field-end {
+    padding-inline-end: 0 !important;
+}
+
 .category-tools-hidden {
     max-height: 0;
     opacity: 0;
@@ -448,6 +452,20 @@ details {
         box-shadow: 0 0 0 0 rgba(var(--rz-primary-rgb), 0);
         border-color: var(--rz-primary-light);
     }
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.icon-spin i {
+    animation: spin 1s linear infinite;
 }
 
 /* Mermaid Errors */

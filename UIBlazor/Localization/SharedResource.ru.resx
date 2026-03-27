@@ -334,7 +334,7 @@
     <value>Открыть папку в проводнике</value>
   </data>
   <data name="MaxRetries" xml:space="preserve">
-    <value>Повторы при ошибках</value>
+    <value>Максимум попыток при ошибках</value>
   </data>
   <data name="RetryIn" xml:space="preserve">
     <value>Повтор через</value>
