@@ -334,52 +334,120 @@ public class ToolExecutor : IDisposable
             return new VsResponse
             {
                 Success = false,
-                Payload = "Regex pattern should be not empty."
+                Error = "Regex pattern should be not empty."
             };
         }
 
         var solutionPath = await GetSolutionPathAsync();
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         var regex = new Regex(pattern, RegexOptions.Compiled);
-        var files = (await GetAllSolutionFilesAsync()).Where(f => regex.IsMatch(f))
-            .Select(f => MakeRelativeToSolution(f, solutionPath))
-            .ToArray();
+        var matchedFiles = new List<SearchFileInfo>();
 
-        return new VsResponse
+        foreach (var file in await GetAllSolutionFilesAsync())
         {
-            Payload = files.Length == 0 ? "Nothing found." : string.Join(", ", files)
-        };
+            var relativePath = MakeRelativeToSolution(file, solutionPath);
+            if (!regex.IsMatch(relativePath)) continue;
+
+            var fileInfo = new FileInfo(file);
+            matchedFiles.Add(new SearchFileInfo
+            {
+                Path = relativePath,
+                Extension = fileInfo.Extension.ToLower(),
+                SizeKB = fileInfo.Length / 1024.0
+            });
+        }
+
+        if (matchedFiles.Count == 0)
+        {
+            return new VsResponse { Payload = "No files found matching pattern." };
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Found {matchedFiles.Count} files matching pattern:");
+        sb.AppendLine();
+
+        foreach (var f in matchedFiles)
+        {
+            var icon = f.Extension switch
+            {
+                ".csproj" => "📦",
+                ".sln" => "📦",
+                _ => "📄"
+            };
+            sb.AppendLine($"{icon} {f.Path} [{f.SizeKB:F1} KB]");
+        }
+
+        return new VsResponse { Payload = sb.ToString() };
     }
 
     private async Task<VsResponse> GrepSearchAsync(IReadOnlyDictionary<string, object> args)
     {
         var query = args.GetString("param1");
+        var contextLines = args.GetInt("contextLines", 3);
+        var maxMatches = args.GetInt("maxMatches", 50);
+
         if (string.IsNullOrEmpty(query))
         {
             return new VsResponse
             {
                 Success = false,
-                Payload = "Parameter 'query' is invalid."
+                Error = "Parameter 'query' is required."
             };
         }
 
-        var results = new List<string>();
         var solutionPath = await GetSolutionPathAsync();
-
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
         var files = await GetAllSolutionFilesAsync();
         var regex = new Regex(query, RegexOptions.Multiline);
+        var sb = new StringBuilder();
+        var totalMatches = 0;
 
         foreach (var file in files)
         {
+            if (totalMatches >= maxMatches) break;
+
             try
             {
-                var content = File.ReadAllText(file);
-                var matches = regex.Matches(content);
-                if (matches.Count <= 0)
-                    continue;
+                var lines = File.ReadAllLines(file);
+                var fileMatches = new List<int>();
+
+                for (var i = 0; i < lines.Length; i++)
+                {
+                    if (regex.IsMatch(lines[i]))
+                    {
+                        fileMatches.Add(i);
+                        totalMatches++;
+                        if (totalMatches >= maxMatches) break;
+                    }
+                }
+
+                if (fileMatches.Count == 0) continue;
+
                 var relativePath = MakeRelativeToSolution(file, solutionPath);
-                results.Add($"{relativePath} - {matches.Count} matches");
+                sb.AppendLine($"### {relativePath}");
+                sb.AppendLine($"Matches: {fileMatches.Count}");
+                sb.AppendLine();
+
+                foreach (var lineIdx in fileMatches)
+                {
+                    var lineNum = lineIdx + 1;
+                    sb.AppendLine($"Match at line {lineNum}:");
+
+                    var start = Math.Max(0, lineIdx - contextLines);
+                    var end = Math.Min(lines.Length - 1, lineIdx + contextLines);
+
+                    for (var i = start; i <= end; i++)
+                    {
+                        var marker = i == lineIdx ? ">" : " ";
+                        var num = (i + 1).ToString().PadLeft(4);
+                        sb.AppendLine($"{marker} {num} | {lines[i]}");
+                    }
+
+                    sb.AppendLine("---");
+                }
+
+                sb.AppendLine();
             }
             catch
             {
@@ -387,10 +455,16 @@ public class ToolExecutor : IDisposable
             }
         }
 
-        return new VsResponse
+        if (totalMatches == 0)
         {
-            Payload = results.Count == 0 ? "Nothing found." : string.Join("\n", results)
-        };
+            return new VsResponse { Payload = "No matches found." };
+        }
+
+        var header = totalMatches >= maxMatches
+            ? $"Found {totalMatches}+ matches (limited to {maxMatches}):\n\n"
+            : $"Found {totalMatches} matches:\n\n";
+
+        return new VsResponse { Payload = header + sb.ToString() };
     }
 
     private async Task<VsResponse> ListDirectoryAsync(IReadOnlyDictionary<string, object> args)
@@ -1464,5 +1538,12 @@ public class ToolExecutor : IDisposable
     public void Dispose()
     {
         _mcpProcessManager.Dispose();
+    }
+
+    private class SearchFileInfo
+    {
+        public string Path { get; set; }
+        public string Extension { get; set; }
+        public double SizeKB { get; set; }
     }
 }
