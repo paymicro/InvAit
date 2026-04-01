@@ -30,6 +30,39 @@
     padding-left: 2em;
 }
 
+    .markdown-content table {
+        border: 1px solid var(--rz-border-color);
+        table-layout: fixed;
+        width: 100%;
+        margin-bottom: 20px;
+        background: var(--rz-base-background-color);
+    }
+
+        .markdown-content table th {
+            font-weight: bold;
+            padding: 5px;
+            border: 1px solid var(--rz-border-color);
+        }
+
+        .markdown-content table thead tr {
+            background: var(--rz-primary-darker);
+            color: var(--rz-on-primary-darker);
+        }
+
+        .markdown-content table td {
+            padding: 5px 10px;
+            border: 1px solid var(--rz-border-color);
+            text-align: left;
+        }
+
+        .markdown-content table tbody tr:nth-child(odd) {
+            background: var(--rz-base-background-color);
+        }
+
+        .markdown-content table tbody tr:nth-child(even) {
+            background: var(--rz-base-700);
+        }
+
 .markdown-content li {
     margin: 0.1em 0;
 }

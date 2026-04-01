@@ -349,6 +349,9 @@ public class ChatService(
                 continue;
             }
 
+            // Динамический подсчёт токенов во время стрима (приблизительный)
+            Session.TotalTokens++;
+
             LastCompletionsModel ??= chunk.Model;
             lastChoise = chunk.Choices[0];
             var delta = lastChoise.Delta;

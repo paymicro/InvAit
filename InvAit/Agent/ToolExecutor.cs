@@ -609,6 +609,7 @@ public class ToolExecutor : IDisposable
 
         if (!result)
         {
+            await Task.Delay(2000); // ошибки на сразу появляются
             var errorList = await GetBuildErrorListAsync();
             return new VsResponse
             {
