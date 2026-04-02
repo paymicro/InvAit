@@ -56,7 +56,7 @@ public class ChatServiceTests
         // Default setup for session listing
         _localStorageMock.Setup(ls => ls.GetAllKeysAsync()).ReturnsAsync([]);
 
-        _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync()).ReturnsAsync([]);
+        _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
     }
 
     private ChatService CreateChatService(HttpClient? httpClient = null)

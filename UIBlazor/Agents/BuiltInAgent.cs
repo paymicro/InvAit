@@ -1,4 +1,5 @@
 using UIBlazor.Services;
+using UIBlazor.Services.Settings;
 
 namespace UIBlazor.Agents;
 
@@ -30,7 +31,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      </function>
                                      """,
             NativeTool = BuiltInToolDefs.MapMethodToTool(typeof(BuiltInToolDefs).GetMethod(nameof(BuiltInToolDefs.ReadFiles))),
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, args)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, args, c)
         },
         new()
         {
@@ -46,7 +47,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      For example
                                      <function name="{BuiltInToolEnum.ReadOpenFile}"></function>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ReadOpenFile, args)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ReadOpenFile, args, c)
         },
         new()
         {
@@ -62,7 +63,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      And second line of this file.
                                      </function>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.CreateFile, args)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.CreateFile, args, c)
         },
         new()
         {
@@ -120,7 +121,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      >>>>>>> REPLACE
                                      </function>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ApplyDiff, args)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ApplyDiff, args, c)
         },
         
         // Search and navigation
@@ -136,7 +137,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      ^.*\.cs$
                                      </function>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.SearchFiles, args)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.SearchFiles, args, c)
         },
         new()
         {
@@ -150,7 +151,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      ^.*?main_services.*
                                      </function>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GrepSearch, args)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GrepSearch, args, c)
         },
         new()
         {
@@ -165,7 +166,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      false
                                      </function>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Dir, args)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Dir, args, c)
         },
         
         // Project and build
@@ -181,7 +182,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      build
                                      </function>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Build, args)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Build, args, c)
         },
         new()
         {
@@ -194,7 +195,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      <function name="{BuiltInToolEnum.RunTests}">
                                      </function>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.RunTests, args)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.RunTests, args, c)
         },
         new()
         {
@@ -206,7 +207,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      For example:
                                      <function name="{BuiltInToolEnum.GetErrors}"></function>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetErrors)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetErrors)
         },
         new()
         {
@@ -218,7 +219,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      For example:
                                      <function name="{BuiltInToolEnum.GetProjectInfo}"></function>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetProjectInfo, args)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetProjectInfo, args, c)
         },
         new()
         {
@@ -230,7 +231,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      For example:
                                      <function name="{BuiltInToolEnum.GetSolutionStructure}"></function>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetSolutionStructure)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetSolutionStructure)
         },
         
         // Execution
@@ -254,7 +255,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                       dotnet restore
                                       </function>
                                       """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Exec, args)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Exec, args, c)
         },
         
         // Git operations
@@ -269,7 +270,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      <function name="{BuiltInToolEnum.GitStatus}">
                                      </function>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitStatus, args)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitStatus, args, c)
         },
         new()
         {
@@ -283,7 +284,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      10
                                      </function>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitLog, args)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitLog, args, c)
         },
         new()
         {
@@ -297,7 +298,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      false
                                      </function>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitDiff, args)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitDiff, args, c)
         },
         new()
         {
@@ -310,7 +311,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      <function name="{BuiltInToolEnum.GitBranch}">
                                      </function>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitBranch, args)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitBranch, args, c)
         },
         new()
         {
@@ -324,7 +325,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      Agent
                                      </function>
                                      """,
-            ExecuteAsync = (args) => internalExecutor.ExecuteToolAsync(BasicEnum.SwitchMode, args)
+            ExecuteAsync = (args, c) => internalExecutor.ExecuteToolAsync(BasicEnum.SwitchMode, args, c)
         },
 
         // Skills
@@ -359,7 +360,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      C:\path\to\file.cs
                                      </function>
                                      """,
-            ExecuteAsync = (args) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.DeleteFile, args)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.DeleteFile, args, c)
         },
 
         // TODO
@@ -386,7 +387,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
         //                             src/config.cs
         //                             </function>
         //                             """,
-        //    ExecuteAsync = (args) => internalExecutor.ExecuteToolAsync(BasicEnum.AskUser, args)
+        //    ExecuteAsync = (args, c) => internalExecutor.ExecuteToolAsync(BasicEnum.AskUser, args, c)
         //}
     ];
 }

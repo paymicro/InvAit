@@ -57,6 +57,7 @@ public class ToolExecutor : IDisposable
                 BasicEnum.GetSkillsMetadata => await GetSkillsMetadataAsync(),
                 BasicEnum.ReadSkillContent => await ReadSkillContentAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BasicEnum.GetRules => await GetRulesAsync(),
+                BasicEnum.GetAgents => await ReadFileBaseAsync(new List<ReadFileParams> { { new ReadFileParams { Name = "agents.md" } } }),
                 // MCP
                 BasicEnum.McpGetTools => await McpGetToolsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BasicEnum.McpCallTool => await McpCallToolAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
@@ -93,9 +94,9 @@ public class ToolExecutor : IDisposable
                 Error = "No active document"
             };
 
-        return await ReadFileAsync(new Dictionary<string, object>
+        return await ReadFileBaseAsync(new List<ReadFileParams>
         {
-            { "file1", new ReadFileParams { Name = docView.Document.FilePath } }
+            { new ReadFileParams { Name = docView.Document.FilePath } }
         });
     }
 
@@ -114,6 +115,13 @@ public class ToolExecutor : IDisposable
                 if (rp != null) fileParamsList.Add(rp);
             }
         }
+
+        return await ReadFileBaseAsync(fileParamsList);
+    }
+
+    private async Task<VsResponse> ReadFileBaseAsync(List<ReadFileParams> fileParamsList, bool onlyContent = false)
+    {
+        var solutionPath = await GetSolutionPathAsync();
 
         if (fileParamsList.Count == 0)
         {
@@ -145,8 +153,11 @@ public class ToolExecutor : IDisposable
 
             try
             {
-                sb.AppendLine($"### {rp.Name}");
-                sb.AppendLine("```");
+                if (!onlyContent)
+                {
+                    sb.AppendLine($"### {rp.Name}");
+                    sb.AppendLine("```");
+                }
                 var lines = File.ReadLines(absPath);
                 var currentLine = 0;
 
@@ -162,11 +173,21 @@ public class ToolExecutor : IDisposable
                     lines = lines.Take(rp.LineCount);
                 }
 
-                foreach (var line in lines)
+                if (!onlyContent)
                 {
-                    sb.AppendLine($"{++currentLine} | {line}");
+                    foreach (var line in lines)
+                    {
+                        sb.AppendLine($"{++currentLine} | {line}");
+                    }
+                    sb.AppendLine("```");
                 }
-                sb.AppendLine("```");
+                else
+                {
+                    foreach (var line in lines)
+                    {
+                        sb.AppendLine(line);
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -1018,8 +1039,23 @@ public class ToolExecutor : IDisposable
         {
             try
             {
-                var firstFiveLines = File.ReadLines(file).Take(5).ToList();
-                var (name, description) = ParseYamlFrontmatter(firstFiveLines);
+                var lines = new List<string>();
+
+                using (var reader = new StreamReader(file))
+                {
+                    string line;
+                    // Читаем, пока не наберем 10 строк или не кончится файл
+                    while (lines.Count < 10 && (line = await reader.ReadLineAsync()) != null)
+                    {
+                        // Если встретили разделитель — прекращаем чтение
+                        if (line == "---" && lines.Count > 0)
+                            break;
+
+                        lines.Add(line);
+                    }
+                }
+
+                var (name, description, _) = ParseYamlFrontmatter(lines);
 
                 if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(description))
                 {
@@ -1074,17 +1110,15 @@ public class ToolExecutor : IDisposable
 
         try
         {
-            var content = File.ReadAllText(fullPath, Encoding.UTF8);
-            var (name, description) = ParseYamlFrontmatter(content);
-            var markdownContent = StripYamlFrontmatter(content);
-            var resources = ExtractResources(markdownContent);
+            var contentLines = File.ReadAllLines(fullPath, Encoding.UTF8);
+            var (name, description, headerLines) = ParseYamlFrontmatter(contentLines);
+            var markdownContent = string.Join("\n", contentLines.Skip(headerLines));
 
-            var skillContent = new Dictionary<string, object>
+            var skillContent = new SkillContent
             {
-                { "name", name },
-                { "description", description },
-                { "content", markdownContent },
-                { "resources", resources }
+                Name = name,
+                Description = description,
+                Content = markdownContent
             };
 
             return new VsResponse
@@ -1102,14 +1136,17 @@ public class ToolExecutor : IDisposable
         }
     }
 
-    private (string name, string description) ParseYamlFrontmatter(IEnumerable<string> lines)
+    private (string name, string description, int headerLines) ParseYamlFrontmatter(IEnumerable<string> lines)
     {
         var inFrontmatter = false;
         var name = string.Empty;
         var description = string.Empty;
+        var headerLines = 0;
 
         foreach (var line in lines)
         {
+            headerLines++;
+
             if (line.Trim() == "---")
             {
                 if (!inFrontmatter)
@@ -1136,67 +1173,7 @@ public class ToolExecutor : IDisposable
             }
         }
 
-        return (name, description);
-    }
-
-    private (string name, string description) ParseYamlFrontmatter(string content)
-    {
-        return ParseYamlFrontmatter(content.Split('\n'));
-    }
-
-    private string StripYamlFrontmatter(string content)
-    {
-        var lines = content.Split('\n');
-        var inFrontmatter = false;
-        var resultLines = new List<string>();
-
-        foreach (var line in lines)
-        {
-            if (line.Trim() == "---")
-            {
-                inFrontmatter = !inFrontmatter;
-                continue;
-            }
-
-            if (!inFrontmatter)
-            {
-                resultLines.Add(line);
-            }
-        }
-
-        return string.Join("\n", resultLines).Trim();
-    }
-
-    private List<string> ExtractResources(string content)
-    {
-        var resources = new List<string>();
-        var lines = content.Split('\n');
-        var inResourcesSection = false;
-
-        foreach (var line in lines)
-        {
-            if (line.Trim().StartsWith("## Resources", StringComparison.OrdinalIgnoreCase))
-            {
-                inResourcesSection = true;
-                continue;
-            }
-
-            if (inResourcesSection && line.Trim().StartsWith("##"))
-            {
-                break;
-            }
-
-            if (inResourcesSection && line.Trim().StartsWith("-"))
-            {
-                var resource = line.Trim().TrimStart('-').Trim();
-                if (!string.IsNullOrEmpty(resource))
-                {
-                    resources.Add(resource);
-                }
-            }
-        }
-
-        return resources;
+        return (name, description, headerLines);
     }
 
     #endregion

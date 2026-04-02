@@ -4,5 +4,5 @@ public interface IVsBridge
 {
     Task InitializeAsync();
 
-    Task<VsToolResult> ExecuteToolAsync(string name, IReadOnlyDictionary<string, object>? args = null);
+    Task<VsToolResult> ExecuteToolAsync(string name, IReadOnlyDictionary<string, object>? args = null, CancellationToken cancellationToken = default);
 }

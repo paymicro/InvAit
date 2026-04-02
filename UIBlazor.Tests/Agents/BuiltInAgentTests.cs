@@ -34,10 +34,10 @@ public class BuiltInAgentTests
         var args = new Dictionary<string, object> { { "path", "test.cs" } };
 
         // Act
-        await tool.ExecuteAsync(args);
+        await tool.ExecuteAsync(args, CancellationToken.None);
 
         // Assert
-        _vsBridgeMock.Verify(b => b.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, args), Times.Once);
+        _vsBridgeMock.Verify(b => b.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, args, CancellationToken.None), Times.Once);
     }
 
     [Fact]
@@ -48,10 +48,10 @@ public class BuiltInAgentTests
         var args = new Dictionary<string, object> { { "path", "test.cs" } };
 
         // Act
-        await tool.ExecuteAsync(args);
+        await tool.ExecuteAsync(args, CancellationToken.None);
 
         // Assert
-        _vsBridgeMock.Verify(b => b.ExecuteToolAsync(BuiltInToolEnum.ApplyDiff, args), Times.Once);
+        _vsBridgeMock.Verify(b => b.ExecuteToolAsync(BuiltInToolEnum.ApplyDiff, args, CancellationToken.None), Times.Once);
     }
 
     [Fact]
@@ -62,9 +62,9 @@ public class BuiltInAgentTests
         var args = new Dictionary<string, object> { { "command", "dir" } };
 
         // Act
-        await tool.ExecuteAsync(args);
+        await tool.ExecuteAsync(args, CancellationToken.None);
 
         // Assert
-        _vsBridgeMock.Verify(b => b.ExecuteToolAsync(BuiltInToolEnum.Exec, args), Times.Once);
+        _vsBridgeMock.Verify(b => b.ExecuteToolAsync(BuiltInToolEnum.Exec, args, CancellationToken.None), Times.Once);
     }
 }

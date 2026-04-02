@@ -7,7 +7,7 @@ namespace UIBlazor.Agents;
 /// </summary>
 public class InternalExecutor(IServiceProvider serviceProvider) : IInternalExecutor
 {
-    public async Task<VsToolResult> ExecuteToolAsync(string name, IReadOnlyDictionary<string, object> args)
+    public async Task<VsToolResult> ExecuteToolAsync(string name, IReadOnlyDictionary<string, object> args, CancellationToken cancellationToken)
     {
         if (name == BasicEnum.SwitchMode)
         {

@@ -360,4 +360,7 @@
   <data name="ErrorFinishByLength" xml:space="preserve">
     <value>Остановка по лимитам. Увеличьте максимум выходных токенов</value>
   </data>
+  <data name="ToolRequestTimeoutSec" xml:space="preserve">
+    <value>Тайм-аут запроса</value>
+  </data>
 </root>

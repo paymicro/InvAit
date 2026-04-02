@@ -20,7 +20,7 @@ public class CommonSettingsProvider(
 
     public override async Task ResetAsync()
     {
-        Current.ToolTimeoutMs = 30_000;
+        Current.ToolTimeoutMs = 120_000;
         await SaveAsync();
     }
 }

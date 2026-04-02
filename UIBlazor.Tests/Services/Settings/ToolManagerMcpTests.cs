@@ -104,11 +104,11 @@ public class ToolManagerMcpTests
         var mcpTool = _toolManager.GetAllTools().First(t => t.Name == "mcp__my-server__my-tool");
         var args = new Dictionary<string, object> { { "arg1", "val1" }, { "other", "ignored" } };
 
-        _vsBridgeMock.Setup(v => v.ExecuteToolAsync(BasicEnum.McpCallTool, It.IsAny<IReadOnlyDictionary<string, object>?>()))
+        _vsBridgeMock.Setup(v => v.ExecuteToolAsync(BasicEnum.McpCallTool, It.IsAny<IReadOnlyDictionary<string, object>?>(), CancellationToken.None))
             .ReturnsAsync(new VsToolResult { Success = true, Result = "ok" });
 
         // Act
-        await mcpTool.ExecuteAsync(args);
+        await mcpTool.ExecuteAsync(args, CancellationToken.None);
 
         // Assert
         _vsBridgeMock.Verify(v => v.ExecuteToolAsync(BasicEnum.McpCallTool, It.Is<Dictionary<string, object>>(dict => 
@@ -116,7 +116,7 @@ public class ToolManagerMcpTests
             dict["toolName"].ToString() == "my-tool" &&
             ((Dictionary<string, object>)dict["arguments"])["arg1"].ToString() == "val1" &&
             !((Dictionary<string, object>)dict["arguments"]).ContainsKey("other")
-        )), Times.Once);
+        ), CancellationToken.None), Times.Once);
     }
 
     [Fact]

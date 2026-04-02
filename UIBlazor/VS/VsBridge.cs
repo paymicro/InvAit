@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using Microsoft.JSInterop;
-using Radzen;
 using UIBlazor.Services;
 using UIBlazor.Services.Settings;
 
@@ -9,7 +8,6 @@ namespace UIBlazor.VS;
 public class VsBridge : IVsBridge, IDisposable
 {
     private readonly IJSRuntime _jsRuntime;
-    private readonly NotificationService _notificationService;
     private readonly ICommonSettingsProvider _commonOptions;
     private readonly IVsCodeContextService _vsCodeContextService;
     private DotNetObjectReference<VsBridge> _dotNetRef;
@@ -17,12 +15,10 @@ public class VsBridge : IVsBridge, IDisposable
     private bool _isInitialized;
 
     public VsBridge(IJSRuntime jsRuntime,
-         NotificationService notificationService,
          ICommonSettingsProvider commonSettingsProvider,
          IVsCodeContextService vsCodeContextService)
     {
         _jsRuntime = jsRuntime;
-        _notificationService = notificationService;
         _commonOptions = commonSettingsProvider;
         _vsCodeContextService = vsCodeContextService;
         _pendingRequests = new ConcurrentDictionary<string, TaskCompletionSource<VsResponse>>();
@@ -44,7 +40,7 @@ public class VsBridge : IVsBridge, IDisposable
         }
     }
 
-    public async Task<VsToolResult> ExecuteToolAsync(string name, IReadOnlyDictionary<string, object>? args = null)
+    public async Task<VsToolResult> ExecuteToolAsync(string name, IReadOnlyDictionary<string, object>? args = null, CancellationToken cancellationToken = default)
     {
         var request = new VsRequest
         {
@@ -52,19 +48,7 @@ public class VsBridge : IVsBridge, IDisposable
             Payload = args != null ? JsonUtils.Serialize(args) : null
         };
 
-        var response = await SendRequestAsync(request);
-
-        if (!response.Success)
-        {
-            _notificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = $"Error getting response from Visual Studio '{request.Action}'",
-                Detail = response.Error ?? string.Empty,
-                Duration = 6_000,
-                ShowProgress = true
-            });
-        }
+        var response = await SendRequestAsync(request, cancellationToken);
 
         return Convert(request, response);
     }
@@ -81,7 +65,7 @@ public class VsBridge : IVsBridge, IDisposable
         };
     }
 
-    private async Task<VsResponse> SendRequestAsync(VsRequest request)
+    private async Task<VsResponse> SendRequestAsync(VsRequest request, CancellationToken cancellationToken)
     {
         await EnsureInitializedAsync();
 
@@ -91,7 +75,7 @@ public class VsBridge : IVsBridge, IDisposable
         try
         {
             // Отправляем запрос
-            var result = await _jsRuntime.InvokeAsync<string>("postVsMessage", request);
+            var result = await _jsRuntime.InvokeAsync<string>("postVsMessage", request, cancellationToken);
 
             if (result != "OK")
             {
@@ -102,12 +86,13 @@ public class VsBridge : IVsBridge, IDisposable
                 };
             }
 
-            var timeOut = TimeSpan.FromSeconds(_commonOptions.Current.ToolTimeoutMs);
+            var timeOut = TimeSpan.FromMilliseconds(_commonOptions.Current.ToolTimeoutMs);
 #if DEBUG
             // Дебаг не быстрый)
             timeOut = TimeSpan.FromDays(1);
 #endif
-            using var timeoutCts = new CancellationTokenSource(timeOut);
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(timeOut);
             timeoutCts.Token.Register(() =>
                 tcs.TrySetException(new TimeoutException("Request timed out")));
 

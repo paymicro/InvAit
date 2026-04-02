@@ -41,5 +41,5 @@ public class Tool
     /// Function to execute the tool
     /// </summary>
     [JsonIgnore]
-    public Func<IReadOnlyDictionary<string, object>, Task<VsToolResult>> ExecuteAsync { get; init; } = null!;
+    public Func<IReadOnlyDictionary<string, object>, CancellationToken, Task<VsToolResult>> ExecuteAsync { get; init; } = null!;
 }

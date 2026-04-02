@@ -156,7 +156,7 @@ public class ToolManager(
                     Category = ToolCategory.Mcp,
                     Enabled = isEnabled,
                     ExampleToSystemMessage = BuildSchemaDescription(toolName, toolConfig),
-                    ExecuteAsync = (args) =>
+                    ExecuteAsync = (args, cancellationToken) =>
                     {
                         var arguments = GetArgumentNamesFromSchema(toolConfig.InputSchema, args);
                         var mcpArgs = new Dictionary<string, object>
@@ -170,7 +170,7 @@ public class ToolManager(
                             { "env", server.Env }
                         };
 
-                        return vsBridge.ExecuteToolAsync(BasicEnum.McpCallTool, mcpArgs);
+                        return vsBridge.ExecuteToolAsync(BasicEnum.McpCallTool, mcpArgs, cancellationToken);
                     }
                 };
             }

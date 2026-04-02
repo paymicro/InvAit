@@ -10,6 +10,9 @@ public static class BasicEnum
     public const string GetSkillsMetadata   = "get_skills_metadata";   // Только метаданные (кеш)
     public const string ReadSkillContent    = "read_skill_content";    // Полное содержимое по требованию
 
+    // Read agents.md
+    public const string GetAgents           = "get_agents";
+
     // Rules
     public const string GetRules            = "get_rules";
 

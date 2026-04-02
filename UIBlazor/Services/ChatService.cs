@@ -158,10 +158,10 @@ public class ChatService(
     /// A string containing the complete system prompt, including instructions, tool information, skill details, and
     /// code context if available.
     /// </returns>
-    private async Task<string> PrepareSystemPromptAsync()
+    private async Task<string> PrepareSystemPromptAsync(CancellationToken cancellationToken)
     {
         // Загружаем метаданные скиллов и добавляем в системный промпт
-        var skillsMetadata = await skillService.GetSkillsMetadataAsync();
+        var skillsMetadata = await skillService.GetSkillsMetadataAsync(cancellationToken);
         var skillsSection = skillService.FormatSkillsForSystemPrompt(skillsMetadata);
 
         var contextSection = new StringBuilder();
@@ -195,11 +195,14 @@ public class ChatService(
         }
 
         // Загружаем правила
-        var rules = await ruleService.GetRulesAsync();
+        var rules = await ruleService.GetRulesAsync(cancellationToken);
+        // файл agents.md
+        var agents = await ruleService.GetAgentsMdAsync(cancellationToken);
 
         return string.Join(Environment.NewLine,
             Options.SystemPrompt,
             rules,
+            agents,
             toolManager.GetToolUseSystemInstructions(Session.Mode, skillsMetadata.Count != 0),
             skillsSection,
             contextSection);
@@ -234,7 +237,7 @@ public class ChatService(
         var effectiveApiKeyHeader = Options.ApiKeyHeader;
 
         // Get formatted messages including conversation history
-        var messages = Session?.GetFormattedMessages(await PrepareSystemPromptAsync()) ?? [];
+        var messages = Session?.GetFormattedMessages(await PrepareSystemPromptAsync(cancellationToken)) ?? [];
 
         var payload = new
         {

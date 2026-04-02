@@ -1,4 +1,4 @@
-﻿using Moq;
+using Moq;
 using Shared.Contracts;
 using UIBlazor.Agents;
 using UIBlazor.Models;
@@ -33,7 +33,7 @@ public class InternalExecutorTests
         var args = new Dictionary<string, object> { { "param1", "Agent" } };
 
         // Act
-        var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args);
+        var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args, CancellationToken.None);
 
         // Assert
         Assert.True(result.Success);
@@ -50,7 +50,7 @@ public class InternalExecutorTests
         var args = new Dictionary<string, object> { { "param1", "Chat" } };
 
         // Act
-        var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args);
+        var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args, CancellationToken.None);
 
         // Assert
         Assert.True(result.Success);
@@ -65,7 +65,7 @@ public class InternalExecutorTests
         var args = new Dictionary<string, object> { { "param1", "Plan" } };
 
         // Act
-        var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args);
+        var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args, CancellationToken.None    );
 
         // Assert
         Assert.True(result.Success);
@@ -80,7 +80,7 @@ public class InternalExecutorTests
         var args = new Dictionary<string, object> { { "param1", "AGENT" } };
 
         // Act
-        var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args);
+        var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args, CancellationToken.None);
 
         // Assert
         Assert.True(result.Success);
@@ -94,7 +94,7 @@ public class InternalExecutorTests
         var args = new Dictionary<string, object> { { "param1", "InvalidMode" } };
 
         // Act
-        var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args);
+        var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args, CancellationToken.None);
 
         // Assert
         Assert.False(result.Success);
@@ -105,7 +105,7 @@ public class InternalExecutorTests
     public async Task ExecuteToolAsync_SwitchMode_WithNullArgs_ReturnsFailure()
     {
         // Act
-        var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, null);
+        var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, null, CancellationToken.None);
 
         // Assert
         Assert.False(result.Success);
@@ -119,7 +119,7 @@ public class InternalExecutorTests
         var args = new Dictionary<string, object>();
 
         // Act
-        var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args);
+        var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args, CancellationToken.None);
 
         // Assert
         Assert.False(result.Success);
@@ -133,7 +133,7 @@ public class InternalExecutorTests
         var args = new Dictionary<string, object> { { "wrongParam", "Agent" } };
 
         // Act
-        var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args);
+        var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args, CancellationToken.None);
 
         // Assert
         Assert.False(result.Success);
@@ -147,7 +147,7 @@ public class InternalExecutorTests
         var args = new Dictionary<string, object>();
 
         // Act
-        var result = await _executor.ExecuteToolAsync("unsupported_tool", args);
+        var result = await _executor.ExecuteToolAsync("unsupported_tool", args, CancellationToken.None);
 
         // Assert
         Assert.False(result.Success);
@@ -162,7 +162,7 @@ public class InternalExecutorTests
         var args = new Dictionary<string, object>();
 
         // Act
-        var result = await _executor.ExecuteToolAsync(null, args);
+        var result = await _executor.ExecuteToolAsync(null, args, CancellationToken.None);
 
         // Assert
         Assert.False(result.Success);
@@ -185,7 +185,7 @@ public class InternalExecutorTests
         var args = new Dictionary<string, object> { { "param1", modeValue } };
 
         // Act
-        var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args);
+        var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args, CancellationToken.None);
 
         // Assert
         Assert.True(result.Success);

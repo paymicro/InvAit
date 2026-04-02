@@ -26,7 +26,7 @@ public class SkillServiceTests
             .ReturnsAsync(new VsToolResult { Success = false });
 
         // Act
-        var result = await _skillService.GetSkillsMetadataAsync();
+        var result = await _skillService.GetSkillsMetadataAsync(CancellationToken.None);
 
         // Assert
         Assert.NotNull(result);
@@ -47,7 +47,7 @@ public class SkillServiceTests
             .ReturnsAsync(new VsToolResult { Success = true, Result = jsonResponse });
 
         // Act 1 - Initial fetch
-        var result1 = await _skillService.GetSkillsMetadataAsync();
+        var result1 = await _skillService.GetSkillsMetadataAsync(CancellationToken.None);
 
         // Assert 1
         Assert.NotNull(result1);
@@ -56,7 +56,7 @@ public class SkillServiceTests
         Assert.Equal("A test skill", result1[0].Description);
 
         // Act 2 - Should use cache
-        var result2 = await _skillService.GetSkillsMetadataAsync();
+        var result2 = await _skillService.GetSkillsMetadataAsync(CancellationToken.None);
 
         // Assert 2
         Assert.Same(result1, result2); // Must be the exact same list instance due to caching
@@ -72,7 +72,7 @@ public class SkillServiceTests
             .ReturnsAsync(new VsToolResult { Success = true, Result = "invalid json" });
 
         // Act
-        var result = await _skillService.GetSkillsMetadataAsync();
+        var result = await _skillService.GetSkillsMetadataAsync(CancellationToken.None);
 
         // Assert
         Assert.NotNull(result);
@@ -88,7 +88,7 @@ public class SkillServiceTests
             .ReturnsAsync(new VsToolResult { Success = false });
 
         // Act
-        var result = await _skillService.LoadSkillContentAsync("coolSkill");
+        var result = await _skillService.LoadSkillContentAsync("coolSkill", CancellationToken.None);
 
         // Assert
         Assert.Null(result);
@@ -102,8 +102,7 @@ public class SkillServiceTests
         var jsonResponse = @"{
             ""name"": ""CoolSkill"",
             ""description"": ""Desc"",
-            ""content"": ""# Content"",
-            ""resources"": [""res1.txt"", ""res2.png""]
+            ""content"": ""# Content""
         }";
 
         _vsBridgeMock
@@ -111,17 +110,16 @@ public class SkillServiceTests
             .ReturnsAsync(new VsToolResult { Success = true, Result = jsonResponse });
 
         // Act 1
-        var result1 = await _skillService.LoadSkillContentAsync(filePath);
+        var result1 = await _skillService.LoadSkillContentAsync(filePath, CancellationToken.None);
 
         // Assert 1
         Assert.NotNull(result1);
         Assert.Equal("CoolSkill", result1.Name);
         Assert.Equal("Desc", result1.Description);
         Assert.Equal("# Content", result1.Content);
-        Assert.Equal(2, result1.Resources.Count);
 
         // Act 2 - Should load from cache
-        var result2 = await _skillService.LoadSkillContentAsync(filePath);
+        var result2 = await _skillService.LoadSkillContentAsync(filePath, CancellationToken.None);
 
         // Assert 2
         Assert.Same(result1, result2);
@@ -143,11 +141,11 @@ public class SkillServiceTests
         // Act - Load 11 items
         for (var i = 0; i < 11; i++)
         {
-            await _skillService.LoadSkillContentAsync($"Skill{i}");
+            await _skillService.LoadSkillContentAsync($"Skill{i}", CancellationToken.None);
         }
 
-        var resultReloaded = await _skillService.LoadSkillContentAsync("Skill0");
-        var result1 = await _skillService.LoadSkillContentAsync("Skill1");
+        var resultReloaded = await _skillService.LoadSkillContentAsync("Skill0", CancellationToken.None);
+        var result1 = await _skillService.LoadSkillContentAsync("Skill1", CancellationToken.None);
 
         // Assert
         Assert.NotNull(resultReloaded);
@@ -200,20 +198,20 @@ public class SkillServiceTests
             .ReturnsAsync(new VsToolResult { Success = true, Result = @"{ ""name"": ""ContentSkill"" }" });
 
         // Populate both caches
-        await _skillService.GetSkillsMetadataAsync(); // Cache populated 1
-        await _skillService.LoadSkillContentAsync("path1"); // Cache populated 2
+        await _skillService.GetSkillsMetadataAsync(CancellationToken.None); // Cache populated 1
+        await _skillService.LoadSkillContentAsync("path1", CancellationToken.None); // Cache populated 2
 
         // Reset mock counts
         _vsBridgeMock.Invocations.Clear();
 
         // Act
-        await _skillService.RefreshCacheAsync();
+        await _skillService.RefreshCacheAsync(CancellationToken.None);
 
         // Refresh calls GetSkillsMetadataAsync internally once
         _vsBridgeMock.Verify(x => x.ExecuteToolAsync(BasicEnum.GetSkillsMetadata, null), Times.Once);
 
         // Request content again to verify cache was cleared
-        await _skillService.LoadSkillContentAsync("path1");
+        await _skillService.LoadSkillContentAsync("path1", CancellationToken.None);
         _vsBridgeMock.Verify(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.IsAny<IReadOnlyDictionary<string, object>>()), Times.Once);
     }
 }

@@ -12,9 +12,4 @@ public class SkillContent
     /// Полное содержимое SKILL.md (без YAML frontmatter)
     /// </summary>
     public string Content { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Список ресурсов из секции Resources (для прогрессивной загрузки)
-    /// </summary>
-    public List<string> Resources { get; set; } = [];
 }

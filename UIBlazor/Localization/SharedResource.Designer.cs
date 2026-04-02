@@ -745,6 +745,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Request timeout.
+        /// </summary>
+        public static string ToolRequestTimeoutSec {
+            get {
+                return ResourceManager.GetString("ToolRequestTimeoutSec", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Run tests.
         /// </summary>
         public static string ToolRunTests {

@@ -31,7 +31,7 @@ public class ToolManagerTests
         {
             Name = "test_tool",
             Description = "Test tool",
-            ExecuteAsync = _ => Task.FromResult(new VsToolResult { Success = true, Result = "test result" })
+            ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true, Result = "test result" })
         };
         _builtInAgent = new BuiltInAgent(vsBridgeMock.Object, Mock.Of<ISkillService>(), Mock.Of<IInternalExecutor>()) { Tools = [tool] };
 
@@ -42,8 +42,8 @@ public class ToolManagerTests
     public void RegisterAllTools_RegistersToolsFromAgent()
     {
         // Arrange
-        var tool1 = new Tool { Name = "tool1", ExecuteAsync = _ => Task.FromResult(new VsToolResult { Success = true, Result = "result1" }) };
-        var tool2 = new Tool { Name = "tool2", ExecuteAsync = _ => Task.FromResult(new VsToolResult { Success = true, Result = "result2" }) };
+        var tool1 = new Tool { Name = "tool1", ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true, Result = "result1" }) };
+        var tool2 = new Tool { Name = "tool2", ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true, Result = "result2" }) };
         _builtInAgent.Tools = [tool1, tool2];
 
         // Act

@@ -366,4 +366,7 @@
   <data name="ErrorFinishByLength" xml:space="preserve">
     <value>Limit Stop. Increase the maximum output tokens.</value>
   </data>
+  <data name="ToolRequestTimeoutSec" xml:space="preserve">
+    <value>Request timeout</value>
+  </data>
 </root>
