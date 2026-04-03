@@ -225,7 +225,7 @@ public class MessageParserTests
     public void Parse_ReadFiles_WithStartLine()
     {
         // Arrange
-        var lines = new List<string> { "C:\\Users\\user.txt", "start_line", "5" };
+        var lines = new List<string> { "C:\\Users\\user.txt [L5]" };
 
         // Act
         var args = _parser.Parse(BuiltInToolEnum.ReadFiles, lines);
@@ -238,10 +238,40 @@ public class MessageParserTests
     }
 
     [Fact]
+    public void UpdateSegments_FunctuionReadThreeFiles_WithParams_IncrementalUpdate()
+    {
+        // Arrange
+        var lines = new List<string> {
+            "C:\\user\\project\\file.cs",
+            "C:\\user\\project\\file2.cs [L550]",
+            "C:\\user\\project\\file3.cs [L100:C50]"
+        };
+
+        // Act
+        var args = _parser.Parse(BuiltInToolEnum.ReadFiles, lines);
+
+        // Assert
+        var file1 = (ReadFileParams)args["file1"];
+        Assert.Equal("C:\\user\\project\\file.cs", file1.Name);
+        Assert.Equal(-1, file1.StartLine);
+        Assert.Equal(-1, file1.LineCount);
+
+        var file2 = (ReadFileParams)args["file2"];
+        Assert.Equal("C:\\user\\project\\file2.cs", file2.Name);
+        Assert.Equal(550, file2.StartLine);
+        Assert.Equal(-1, file2.LineCount);
+
+        var file3 = (ReadFileParams)args["file3"];
+        Assert.Equal("C:\\user\\project\\file3.cs", file3.Name);
+        Assert.Equal(100, file3.StartLine);
+        Assert.Equal(50, file3.LineCount);
+    }
+
+    [Fact]
     public void Parse_ReadFiles_WithStartLineAndLineCount()
     {
         // Arrange
-        var lines = new List<string> { "C:\\Users\\user.txt", "start_line", "5", "line_count", "10" };
+        var lines = new List<string> { "C:\\Users\\user.txt [L5:C10]" };
 
         // Act
         var args = _parser.Parse(BuiltInToolEnum.ReadFiles, lines);

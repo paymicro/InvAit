@@ -13,21 +13,28 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.ReadFiles,
             DisplayName = SharedResource.ToolReadFiles,
             Category = ToolCategory.ReadFiles,
-            Description = "Request to read the contents of one or more files. Use start_line and line_count to read specific parts of large files.",
+            Description = "Request to read the contents of one or more files.",
             ExampleToSystemMessage = $"""
-                                     For example, to read a specific range:
+                                     SYNTAX EXAMPLES:
+                                     C:\user\project\file.cs [L100:C50] — Starts at line 100, includes 50 lines.
+                                     C:\user\project\file.cs [L100] — Starts at line 100, goes to the end.
+                                     C:\user\project\file.cs — Includes the entire file.
+                                     
+                                     OPTIONAL PARAMETERS:
+                                     Use the following format at the end of the file path: [Lstart_line:Cline_count]
+                                     L[start_line]: A 1-based start line. (e.g., L100). Default: first line.
+                                     C[line_count]: The number of lines to include. (e.g., C50). Default: until the end of the file.
+
+                                     For example, to read a specific range, from 100 to 150 line:
                                      <function name="{BuiltInToolEnum.ReadFiles}">
-                                     path/to/large_file.cs
-                                     start_line
-                                     100
-                                     line_count
-                                     50
+                                     C:\user\project\large_file.cs [L100:C50]
                                      </function>
 
-                                     Or to read the entire files:
+                                     Example to read the entire files (up to 7 at once):
                                      <function name="{BuiltInToolEnum.ReadFiles}">
-                                     path/to/file.cs
-                                     path/to/file2.cs
+                                     C:\user\project\file.cs
+                                     C:\user\project\fil2.cs [L550]
+                                     C:\user\project\fil3.cs [L100:C50]
                                      </function>
                                      """,
             NativeTool = BuiltInToolDefs.MapMethodToTool(typeof(BuiltInToolDefs).GetMethod(nameof(BuiltInToolDefs.ReadFiles))),
@@ -54,11 +61,15 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.CreateFile,
             DisplayName = SharedResource.ToolCreateFile,
             Category = ToolCategory.WriteFiles,
-            Description = "To create a NEW file with the relative or absolute filepath and new contents. Note: The old file will be overwritten if it exists. Use this when you need to make large changes to a single file and it's easier to recreate it.",
+            Description = """
+                          To create a NEW file with the relative or absolute filepath and new contents.
+                          Note: The old file will be overwritten if it exists.
+                          Use this when you need to make large changes to a single file and it's easier to recreate it.
+                          """,
             ExampleToSystemMessage = $"""
-                                     For example, to create a file located at 'path\to\file.cs', you would respond with:
+                                     For example, to create a file located at 'C:\user\project\file.cs', you would respond with:
                                      <function name="{BuiltInToolEnum.CreateFile}">
-                                     \path\to\file.cs
+                                     C:\user\project\file.cs
                                      Contents of the file.
                                      And second line of this file.
                                      </function>

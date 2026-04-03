@@ -201,46 +201,23 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
 
         if (toolName == BuiltInToolEnum.ReadFiles)
         {
-            ReadFileParams? fileParams = null;
-
             for (var i = 0; i < toolLines.Count; i++)
             {
-                var line = toolLines[i];
-                var trimmedLine = line.Trim();
-                if (string.IsNullOrEmpty(trimmedLine))
+                var line = toolLines[i].Trim();
+
+                if (string.IsNullOrEmpty(line))
                     continue;
 
-                switch (trimmedLine)
+                var match = Regex.Match(line, @"^(?<path>.*?)(?:\s*\[L(?<line>\d+)(?::C(?<count>\d+))?\])?$", RegexOptions.NonBacktracking);
+                if (match.Success)
                 {
-                    case "start_line":
+                    var fileParams = new ReadFileParams
                     {
-                        var valLine = toolLines[++i]?.Trim();
-                        if (fileParams != null && int.TryParse(valLine, out var startLine))
-                        {
-                            fileParams.StartLine = startLine;
-                        }
-
-                        break;
-                    }
-                    case "line_count":
-                    {
-                        var valLine = toolLines[++i]?.Trim();
-                        if (fileParams != null && int.TryParse(valLine, out var lineCount))
-                        {
-                            fileParams.LineCount = lineCount;
-                        }
-
-                        break;
-                    }
-                    default:
-                        fileParams = new ReadFileParams
-                        {
-                            Name = trimmedLine,
-                            StartLine = -1,
-                            LineCount = -1
-                        };
-                        result[$"file{++paramIndex}"] = fileParams;
-                        break;
+                        Name = match.Groups["path"].Value,
+                        StartLine = match.Groups["line"].Success && int.TryParse(match.Groups["line"].Value, out var startLine) ? startLine : -1,
+                        LineCount = match.Groups["count"].Success && int.TryParse(match.Groups["count"].Value, out var lineCount) ? lineCount : -1
+                    };
+                    result[$"file{++paramIndex}"] = fileParams;
                 }
             }
         }
