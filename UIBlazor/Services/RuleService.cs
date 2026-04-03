@@ -46,27 +46,8 @@ public class RuleService(IVsBridge vsBridge) : IRuleService
             return _agentsCache ?? string.Empty;
         }
 
-        _agentsCache = result.Result;
+        _agentsCache = string.Join("## Agents.md\n", result.Result);
         _lastAgentsCacheUpdate = DateTime.UtcNow;
         return _agentsCache;
-    }
-
-    public async Task<string> GetFileContent(string cache, DateTime lastUpdate)
-    {
-        // Проверяем кеш (обновляем раз в 2 минуты)
-        if (cache != null && (DateTime.UtcNow - lastUpdate).TotalMinutes < 2)
-        {
-            return cache;
-        }
-
-        var result = await vsBridge.ExecuteToolAsync(BasicEnum.GetAgents);
-        if (!result.Success)
-        {
-            return cache ?? string.Empty;
-        }
-
-        cache = result.Result;
-        lastUpdate = DateTime.UtcNow;
-        return cache;
     }
 }

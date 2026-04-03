@@ -17,8 +17,6 @@
             }
             <RadzenButton Icon="add_comment" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
                             Click="@NewSessionAsync" Title="New session" class="rz-chat-header-new" />
-            <RadzenButton Icon="history" Disabled="@(_recentSessions.Count == 0)" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
-                            Click="@OpenSessionsDialogAsync" Title="Session history" class="rz-chat-header-history" />
             <RadzenButton Icon="settings" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
                             Click="@OnShowSettingsAsync" Title="Settings" class="rz-chat-header-settings" />
         </RadzenStack>

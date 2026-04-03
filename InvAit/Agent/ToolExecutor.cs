@@ -57,7 +57,7 @@ public class ToolExecutor : IDisposable
                 BasicEnum.GetSkillsMetadata => await GetSkillsMetadataAsync(),
                 BasicEnum.ReadSkillContent => await ReadSkillContentAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BasicEnum.GetRules => await GetRulesAsync(),
-                BasicEnum.GetAgents => await ReadFileBaseAsync(new List<ReadFileParams> { { new ReadFileParams { Name = "agents.md" } } }),
+                BasicEnum.GetAgents => await ReadFileBaseAsync(new List<ReadFileParams> { { new ReadFileParams { Name = "agents.md" } } }, onlyContent: true),
                 // MCP
                 BasicEnum.McpGetTools => await McpGetToolsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BasicEnum.McpCallTool => await McpCallToolAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
@@ -865,9 +865,12 @@ public class ToolExecutor : IDisposable
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var globalRulesPath = Path.Combine(appData, ".agents", "rules.md");
 
-        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-        if (!File.Exists(localRulesPath) && !File.Exists(globalRulesPath))
+        var hasGlobal = File.Exists(globalRulesPath);
+        var hasLocal = File.Exists(localRulesPath);
+
+        if (!hasGlobal && !hasLocal)
         {
             return new VsResponse { Success = true, Payload = string.Empty };
         }
@@ -876,18 +879,25 @@ public class ToolExecutor : IDisposable
         {
             var content = new StringBuilder();
 
-            if (File.Exists(globalRulesPath))
+            if (hasGlobal)
             {
+                content.AppendLine("## Global rules");
                 content.AppendLine(File.ReadAllText(globalRulesPath));
-                content.AppendLine();
             }
 
-            if (File.Exists(localRulesPath))
+            if (hasLocal)
             {
+                var priorityNote = string.Empty;
+                if (hasGlobal)
+                {
+                    content.AppendLine();
+                    priorityNote = "(higher priority) ";
+                }
+                content.AppendLine($"## Local rules {priorityNote}of this project");
                 content.AppendLine(File.ReadAllText(localRulesPath));
             }
 
-            return new VsResponse { Success = true, Payload = content.ToString().Trim() };
+            return new VsResponse { Success = true, Payload = content.ToString() };
         }
         catch (Exception ex)
         {

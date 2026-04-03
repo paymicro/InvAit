@@ -131,6 +131,7 @@ details {
 
 .tool-description {
     display: -webkit-box;
+    white-space: pre-line;
     -webkit-line-clamp: 4;
     line-clamp: 4;
     -webkit-box-orient: vertical;

@@ -51,22 +51,6 @@ public partial class AiChat : RadzenComponent
     }
 
     /// <summary>
-    /// Opens the sessions dialog to view or load history.
-    /// </summary>
-    public async Task OpenSessionsDialogAsync()
-    {
-        await DialogService.OpenAsync<RecentSessionsPicker>(SharedResource.SessionsTitle,
-            options: new DialogOptions {
-                Width = "500px",
-                Height = "400px",
-                AutoFocusFirstElement = true,
-                CloseDialogOnOverlayClick = true
-            });
-
-        await InvokeAsync(StateHasChanged);
-    }
-
-    /// <summary>
     /// Sends a message programmatically.
     /// </summary>
     /// <param name="content">The message content to send.</param>
