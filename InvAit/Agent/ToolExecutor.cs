@@ -653,16 +653,10 @@ public class ToolExecutor : IDisposable
     private async Task<VsResponse> GetErrorListAsync()
     {
         var errorList = await GetBuildErrorListAsync();
-        return string.IsNullOrEmpty(errorList)
-            ? new VsResponse
-            {
-                Success = false,
-                Error = "Error list is null"
-            }
-            : new VsResponse
-            {
-                Payload = errorList
-            };
+        return new VsResponse
+        {
+            Payload = string.IsNullOrEmpty(errorList) ? "No errors" : errorList
+        };
     }
 
     private async Task<string> GetBuildErrorListAsync()

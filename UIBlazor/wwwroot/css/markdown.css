@@ -15,13 +15,18 @@
     line-height: 1.3;
 }
 
-.markdown-content h1 { font-size: 2em; border-bottom: 1px solid #ddd; padding-bottom: 0.3em; }
-.markdown-content h2 { font-size: 1.5em; border-bottom: 1px solid #eee; padding-bottom: 0.3em; }
+.markdown-content h1 { font-size: 2em; padding-bottom: 0.3em; }
+.markdown-content h2 { font-size: 1.5em; padding-bottom: 0.3em; }
 .markdown-content h3 { font-size: 1.25em; }
 .markdown-content h4 { font-size: 1.1em; }
 
 .markdown-content p {
     margin: 0.2em;
+}
+
+.markdown-content hr {
+    border: 2px solid var(--rz-base);
+    margin-block: 1em;
 }
 
 .markdown-content ul,

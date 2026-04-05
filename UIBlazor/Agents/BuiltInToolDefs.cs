@@ -13,6 +13,15 @@ public class BuiltInToolDefs
         return Task.FromResult("");
     }
 
+    [Description("Applies a series of Search & Replace edits to the specified file.")]
+    public Task<string> ApplyDiff(
+        [Description("File path")] string filePath,
+        [Description("List of pairs 'search/replace'. Executed sequentially.")] DiffEdit[] edits)
+    {
+        // тут применение изменений
+        return Task.FromResult("1234");
+    }
+
     public static NativeToolDefinition MapMethodToTool(MethodInfo? method)
     {
         ArgumentNullException.ThrowIfNull(method);
@@ -49,7 +58,7 @@ public class BuiltInToolDefs
         return tool;
     }
 
-    private static NativePropertyDefinition MapTypeToProperty(Type type, string description = "", bool isOptional = false)
+    private static NativePropertyDefinition MapTypeToProperty(Type type, string? description = null, bool isOptional = false)
     {
         var prop = new NativePropertyDefinition { Description = description };
 
@@ -68,8 +77,17 @@ public class BuiltInToolDefs
             var elementType = type.IsArray
                 ? type.GetElementType()
                 : type.GetGenericArguments().FirstOrDefault();
-            prop.Items = MapTypeToProperty(elementType ?? typeof(object));
-            
+
+            var arrayObjects = MapTypeToProperty(elementType ?? typeof(object));
+            prop.Items = string.Equals(arrayObjects.Type.ToString(), NativeToolType.Object, StringComparison.Ordinal)
+                ? new NativeParameters
+                {
+                    Type = NativeToolType.Object,
+                    Properties = arrayObjects.Properties!,
+                    Required = [.. arrayObjects.Properties!.Select(p => p.Key)]
+                }
+                : arrayObjects;
+
             if (isOptional)
             {
                 prop.SetUnionTypes(NativeToolType.Array, NativeToolType.Null);
@@ -85,7 +103,7 @@ public class BuiltInToolDefs
 
             foreach (var p in type.GetProperties())
             {
-                var pDesc = p.GetCustomAttribute<DescriptionAttribute>()?.Description ?? "";
+                var pDesc = p.GetCustomAttribute<DescriptionAttribute>()?.Description;
                 var propName = ToCamelCase(p.Name);
                 
                 // Проверяем, имеет ли свойство дефолтное значение или nullable
@@ -162,5 +180,56 @@ public class BuiltInToolDefs
         if (string.IsNullOrEmpty(name))
             return name;
         return char.ToLowerInvariant(name[0]) + name.Substring(1);
+    }
+
+    public async Task<string> InvokeToolAsync(string methodName, string argumentsJson)
+    {
+        // Находим метод по имени (кейс-сенситив или нет - на ваше усмотрение)
+        var method = typeof(BuiltInToolDefs).GetMethod(methodName);
+        if (method == null)
+            return $"Error: Method {methodName} not found.";
+
+        // Настраиваем десериализатор
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            // Converters = { new JsonStringEnumConverter() }
+        };
+
+        var parameters = method.GetParameters();
+        var args = new object?[parameters.Length];
+
+        // Парсим JSON один раз в документ, чтобы разобрать по параметрам
+        using var doc = JsonDocument.Parse(argumentsJson);
+        var root = doc.RootElement;
+
+        for (var i = 0; i < parameters.Length; i++)
+        {
+            var p = parameters[i];
+            var jsonName = ToCamelCase(p.Name!);
+
+            if (root.TryGetProperty(jsonName, out var propertyElement))
+            {
+                // Десериализуем конкретный параметр в нужный тип
+                args[i] = JsonSerializer.Deserialize(propertyElement.GetRawText(), p.ParameterType, options);
+            }
+            else if (p.HasDefaultValue)
+            {
+                args[i] = p.DefaultValue;
+            }
+            else
+            {
+                // В Strict Mode это не должно случиться, но для безопасности:
+                args[i] = null;
+            }
+        }
+
+        // Вызываем метод (предполагаем, что они все Task<string>)
+        var result = method.Invoke(this, args);
+
+        if (result is Task<string> task)
+            return await task;
+
+        return result?.ToString() ?? string.Empty;
     }
 }

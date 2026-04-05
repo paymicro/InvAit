@@ -1,5 +1,7 @@
 using System.ComponentModel;
+using Shared.Contracts;
 using UIBlazor.Agents;
+using UIBlazor.Utils;
 
 namespace UIBlazor.Tests.Agents;
 
@@ -146,6 +148,22 @@ public class BuiltInToolDefsTests
     }
 
     [Fact]
+    public void MapMethodToTool_ApplyDiff_ReturnsCorrectPropertyDescription()
+    {
+        // Arrange
+        var method = typeof(BuiltInToolDefs).GetMethod(nameof(BuiltInToolDefs.ApplyDiff));
+
+        // Act
+        var result = BuiltInToolDefs.MapMethodToTool(method);
+        var json = JsonUtils.SerializeCompact(result);
+
+        // Assert
+        Assert.True(result.Function.Parameters.Properties.ContainsKey("filePath"));
+        Assert.Equal("File path", result.Function.Parameters.Properties["filePath"].Description);
+        Assert.Equivalent(json, "{\"type\":\"function\",\"function\":{\"name\":\"ApplyDiff\",\"description\":\"Applies a series of Search & Replace edits to the specified file.\",\"strict\":true,\"parameters\":{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"string\",\"description\":\"File path\"},\"edits\":{\"type\":\"array\",\"description\":\"List of pairs 'search/replace'. Executed sequentially.\",\"items\":{\"type\":\"object\",\"properties\":{\"approximateLine\":{\"type\":[\"integer\",\"null\"],\"description\":\"Approximate start line or null\"},\"oldStr\":{\"type\":\"string\",\"description\":\"Unique fragment of code\"},\"newStr\":{\"type\":\"string\",\"description\":\"New fragment of code\"}},\"required\":[\"approximateLine\",\"oldStr\",\"newStr\"],\"additionalProperties\":false}}},\"required\":[\"filePath\",\"edits\"],\"additionalProperties\":false}}}");
+    }
+
+    [Fact]
     public void MapMethodToTool_AllParametersInRequired_InStrictMode()
     {
         // Arrange
@@ -225,7 +243,7 @@ public class BuiltInToolDefsTests
         var prop = result.Function.Parameters.Properties["arrayParam"];
         Assert.Equal("array", prop.Type);
         Assert.NotNull(prop.Items);
-        Assert.Equal("string", prop.Items.Type);
+        Assert.Equal("{\"type\":\"string\"}", JsonUtils.SerializeCompact(prop.Items));
     }
 
     [Fact]
@@ -241,7 +259,7 @@ public class BuiltInToolDefsTests
         var prop = result.Function.Parameters.Properties["listParam"];
         Assert.Equal("array", prop.Type);
         Assert.NotNull(prop.Items);
-        Assert.Equal("integer", prop.Items.Type);
+        Assert.Equal("{\"type\":\"integer\"}", JsonUtils.SerializeCompact(prop.Items));
     }
 
     [Fact]
@@ -263,7 +281,7 @@ public class BuiltInToolDefsTests
 
         Assert.Equal("Name property", prop.Properties["name"].Description);
         Assert.Equal("Count property", prop.Properties["count"].Description);
-        Assert.Equal("", prop.Properties["noDescriptionProp"].Description);
+        Assert.Null(prop.Properties["noDescriptionProp"].Description);
 
         Assert.Equal("string", prop.Properties["name"].Type);
         Assert.Equal("integer", prop.Properties["count"].Type);
@@ -370,4 +388,25 @@ public class BuiltInToolDefsTests
     }
 
     #endregion
+
+    [Fact]
+    public async Task InvokeToolAsync_ApplyDiff()
+    {
+        // Arrange
+        var defs = new BuiltInToolDefs();
+        var payload = new
+        {
+            filePath = "C:\\file.cs",
+            edits = new List<DiffEdit>()
+            {
+                { new DiffEdit { ApproximateLine = 1, OldStr = "old", NewStr = "new" } }
+            }
+        };
+
+        // Act
+        var result = await defs.InvokeToolAsync(nameof(BuiltInToolDefs.ApplyDiff), JsonUtils.SerializeCompact(payload));
+
+        // Assert
+        Assert.Contains("1234", result);
+    }
 }

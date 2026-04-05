@@ -135,14 +135,15 @@ public class NativePropertyDefinition
     /// Текст для LLM
     /// </summary>
     [JsonPropertyName("description")]
-    public string Description { get; set; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Description { get; set; }
 
     /// <summary>
     /// Если Type = "array"
     /// </summary>
     [JsonPropertyName("items")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public NativePropertyDefinition? Items { get; set; }
+    public object? Items { get; set; }
 
     /// <summary>
     /// Если Type = "object"

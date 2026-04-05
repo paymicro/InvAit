@@ -12,7 +12,17 @@ public static class JsonUtils
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
+    private static readonly JsonSerializerOptions _compactOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = false,
+        PropertyNameCaseInsensitive = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
     public static string Serialize(object value) => JsonSerializer.Serialize(value, _jsonOptions);
+
+    public static string SerializeCompact(object value) => JsonSerializer.Serialize(value, _compactOptions);
 
     public static T? Deserialize<T>(string json) => JsonSerializer.Deserialize<T>(json, _jsonOptions);
 

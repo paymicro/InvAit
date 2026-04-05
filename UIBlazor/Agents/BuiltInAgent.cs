@@ -1,5 +1,4 @@
 using UIBlazor.Services;
-using UIBlazor.Services.Settings;
 
 namespace UIBlazor.Agents;
 
@@ -132,6 +131,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      >>>>>>> REPLACE
                                      </function>
                                      """,
+            NativeTool = BuiltInToolDefs.MapMethodToTool(typeof(BuiltInToolDefs).GetMethod(nameof(BuiltInToolDefs.ApplyDiff))),
             ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ApplyDiff, args, c)
         },
         
