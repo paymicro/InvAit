@@ -122,6 +122,7 @@ details {
         border: 1px solid transparent;
     }
 
+/* Settings */
 .settings li {
     flex-grow: 1;
     text-align: center;
@@ -147,6 +148,20 @@ details {
     overflow: hidden;
     margin-left: 2.2em;
     color: var(--rz-text-secondary-color);
+}
+
+.settings .server-error-text {
+    padding: 0.5rem;
+    background: var(--rz-danger);
+    border-radius: var(--rz-border-radius);
+    font-size: 0.8rem;
+    color: var(--rz-on-danger);
+}
+
+.settings .server-commands {
+    font-size: 0.8rem;
+    color: var(--rz-text-secondary-color);
+    padding-left: 2rem;
 }
 
 .rz-dropdown {

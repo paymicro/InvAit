@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Data;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Radzen;
@@ -199,7 +198,6 @@ public partial class AiChat : RadzenComponent
                 ChatService.Session.RemoveMessage(assistantMessage.Id);
                 IsLoading = false;
                 await GetAiResponseInternalAsync(retryCount);
-                return;
             }
         }
         finally
@@ -361,11 +359,6 @@ public partial class AiChat : RadzenComponent
 
     private void LoadMessagesFromSession()
     {
-        if (ChatService.Session == null)
-        {
-            return;
-        }
-
         foreach (var chatMessage in Messages)
         {
             if (chatMessage.Role == ChatMessageRole.Assistant)
@@ -389,7 +382,7 @@ public partial class AiChat : RadzenComponent
     private static bool IsShortMessage(string content)
         => string.IsNullOrEmpty(content) || (content.Length < 1000 && content.Count(c => c == '\n') < 15);
 
-    private async Task CancelResponceAsync() => await _cts.CancelAsync();
+    private async Task CancelResponseAsync() => await _cts.CancelAsync();
 
     protected override async Task OnInitializedAsync()
     {

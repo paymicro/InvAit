@@ -268,7 +268,7 @@ public class ChatService(
             }
         }
 
-        foreach (var header in Options.ExtraHeaders)
+        foreach (var header in Options.ExtraHeaders.Where(h => !string.IsNullOrEmpty(h.Name)))
         {
             request.Headers.TryAddWithoutValidation(header.Name, header.Value);
         }

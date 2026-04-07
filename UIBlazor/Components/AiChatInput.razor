@@ -2,28 +2,28 @@
 
 <div class="chat-input-wrapper">
     @* Контейнер для чипов (над полем ввода) *@
-    @if (tokens.OfType<FileToken>().Any())
+    @if (_tokens.OfType<FileToken>().Any())
     {
         <div class="chips-list">
-            @foreach (var token in tokens.OfType<FileToken>())
+            @foreach (var token in _tokens.OfType<FileToken>())
             {
                 <FileChip Token="token"
                           Icon="@GetFileIcon(token.FileName)"
-                          OnRemoveClick="RemoveToken" />
+                          OnRemoveClick="RemoveTokenAsync" />
             }
         </div>
     }
 
     <div class="input-container">
         @* Поле ввода *@
-        <textarea @ref="textareaRef"
+        <textarea @ref="_textareaRef"
                   rows="1"
                   class="text-input"
                   placeholder="@ModePlaceholder"
-                  @bind="currentInput"
-                  @oninput="HandleInput"
+                  @bind="_currentInput"
+                  @oninput="HandleInputAsync"
                   @onkeydown="OnKeyDown"
-                  @onkeydown:preventDefault="shouldPreventDefault"
+                  @onkeydown:preventDefault="_shouldPreventDefault"
                   disabled="@IsLoading"></textarea>
 
         @* Нижняя панель с кнопками *@
@@ -35,8 +35,8 @@
                 </RadzenStack>
 
                 <RadzenStack Orientation="Orientation.Horizontal" Gap="4px" JustifyContent="JustifyContent.End" AlignItems="AlignItems.Center">
-                    <RadzenButton Icon="gavel" ButtonStyle="ButtonStyle.Base" Variant="Variant.Text" Size="ButtonSize.Small" Click="@OpenRules" Title="@SharedResource.OpenRules" />
-                    <RadzenButton Icon="extension" ButtonStyle="ButtonStyle.Base" Variant="Variant.Text" Size="ButtonSize.Small" Click="@OpenSkills" Title="@SharedResource.OpenSkills" />
+                    <RadzenButton Icon="gavel" ButtonStyle="ButtonStyle.Base" Variant="Variant.Text" Size="ButtonSize.Small" Click="@OpenRulesAsync" Title="@SharedResource.OpenRules" />
+                    <RadzenButton Icon="extension" ButtonStyle="ButtonStyle.Base" Variant="Variant.Text" Size="ButtonSize.Small" Click="@OpenSkillsAsync" Title="@SharedResource.OpenSkills" />
 
                     <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" JustifyContent="JustifyContent.End" AlignItems="AlignItems.Center">
                         <RadzenButton Icon="send"
@@ -61,20 +61,20 @@
     </div>
 
     @* Всплывающее меню с файлами *@
-    @if (filteredFiles.Any())
+    @if (_filteredFiles.Any())
     {
         <div class="hints-menu">
             <ul class="hints-list">
-                @for (int i = 0; i < filteredFiles.Count; i++)
+                @for (var i = 0; i < _filteredFiles.Count; i++)
                 {
                     var index = i;
-                    var file = filteredFiles[i];
-                    var isSelected = index == selectedIndex;
+                    var file = _filteredFiles[i];
+                    var isSelected = index == _selectedIndex;
                     var fileName = Path.GetFileName(file.Replace('\\', '/'));
                     var fileDir = Path.GetDirectoryName(file.Replace('\\', '/')) ?? "";
                     var icon = GetFileIcon(fileName);
                     <li class="hint-item @(isSelected ? "selected" : "")"
-                        @onclick="() => AddFileToken(file)">
+                        @onclick="() => AddFileTokenAsync(file)">
                         <span class="file-icon">@icon</span>
                         <span class="file-name">@fileName</span>
                         <span class="file-path">@fileDir</span>
@@ -92,15 +92,15 @@
 
     [Inject] private IChatService ChatService { get; set; } = null!;
     [Inject] private IVsCodeContextService VsCodeContextService { get; set; } = null!;
-    [Inject] private IJSRuntime JS { get; set; } = null!;
+    [Inject] private IJSRuntime JsRuntime { get; set; } = null!;
     [Inject] private IVsBridge VsBridge { get; set; } = null!;
 
-    private ElementReference textareaRef;
-    private List<InputToken> tokens = new();
-    private string currentInput = string.Empty;
-    private List<string> filteredFiles = new();
-    private int selectedIndex = 0;
-    private bool shouldPreventDefault;
+    private ElementReference _textareaRef;
+    private readonly List<InputToken> _tokens = [];
+    private string _currentInput = string.Empty;
+    private List<string> _filteredFiles = [];
+    private int _selectedIndex;
+    private bool _shouldPreventDefault;
 
     private List<AppMode> AppModeValues { get; } = [.. Enum.GetValues<AppMode>()];
 
@@ -113,128 +113,129 @@
 
     private bool CanSend()
     {
-        return !IsLoading && (!string.IsNullOrWhiteSpace(currentInput) || tokens.Any());
+        return !IsLoading && (!string.IsNullOrWhiteSpace(_currentInput) || _tokens.Any());
     }
 
-    private async Task HandleInput(ChangeEventArgs e)
+    private async Task HandleInputAsync(ChangeEventArgs e)
     {
-        currentInput = e.Value?.ToString() ?? string.Empty;
+        _currentInput = e.Value?.ToString() ?? string.Empty;
 
         // Автоматически изменяем высоту textarea
-        await JS.InvokeVoidAsync("autoResizeTextarea", textareaRef);
+        await JsRuntime.InvokeVoidAsync("autoResizeTextarea", _textareaRef);
 
         // Проверяем, есть ли @ в конце
-        if (currentInput.EndsWith(" @"))
+        if (_currentInput.EndsWith(" @"))
         {
             // Показываем все файлы
             var source = VsCodeContextService.CurrentContext?.SolutionFiles ??
                          ["test1.cs", "C:\\asdtes\\t2aksjhdgj\\ahsghd hjagshjdg\\ajhsgdahjkg.cs"];
-            filteredFiles = source.Take(10).ToList();
-            selectedIndex = 0;
+            _filteredFiles = source.Take(10).ToList();
+            _selectedIndex = 0;
         }
-        else if (currentInput.Contains('@'))
+        else if (_currentInput.Contains('@'))
         {
             // Ищем текст после последнего @
-            var lastAtIndex = currentInput.LastIndexOf('@');
-            var query = currentInput.Substring(lastAtIndex + 1);
+            var lastAtIndex = _currentInput.LastIndexOf('@');
+            var query = _currentInput.Substring(lastAtIndex + 1);
 
             var source = VsCodeContextService.CurrentContext?.SolutionFiles ??
                          ["test1.cs", "C:\\asdtes\\t2aksjhdgj\\ahsghd hjagshjdg\\ajhsgdahjkg.cs"];
 
-            filteredFiles = source
+            _filteredFiles = source
                 .Where(f => f.Contains(query, StringComparison.OrdinalIgnoreCase))
                 .Take(10)
                 .ToList();
-            selectedIndex = 0;
+            _selectedIndex = 0;
         }
         else
         {
-            filteredFiles.Clear();
+            _filteredFiles.Clear();
         }
     }
 
-    private async Task AddFileToken(string filePath)
+    private async Task AddFileTokenAsync(string filePath)
     {
         var fileName = Path.GetFileName(filePath.Replace('\\', '/'));
 
         // Удаляем @ и текст после него из currentInput
-        var lastAtIndex = currentInput.LastIndexOf('@');
+        var lastAtIndex = _currentInput.LastIndexOf('@');
         if (lastAtIndex >= 0)
         {
-            currentInput = currentInput.Substring(0, lastAtIndex);
+            _currentInput = _currentInput.Substring(0, lastAtIndex);
         }
 
         // Добавляем токен файла
-        tokens.Add(new FileToken
+        _tokens.Add(new FileToken
         {
             FilePath = filePath,
             FileName = fileName
         });
 
-        filteredFiles.Clear();
-        selectedIndex = 0;
+        _filteredFiles.Clear();
+        _selectedIndex = 0;
 
         // Фокус обратно на input
-        await FocusInput();
+        await FocusInputAsync();
     }
 
-    private async Task RemoveToken(FileToken token)
+    private async Task RemoveTokenAsync(FileToken token)
     {
-        tokens.Remove(token);
-        await FocusInput();
+        _tokens.Remove(token);
+        await FocusInputAsync();
     }
 
-    private async Task FocusInput()
+    private async Task FocusInputAsync()
     {
         try
         {
-            await textareaRef.FocusAsync();
+            await _textareaRef.FocusAsync();
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
     }
 
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
-        if (filteredFiles.Any())
+        if (_filteredFiles.Any())
         {
-            if (e.Key == "ArrowDown")
+            switch (e.Key)
             {
-                selectedIndex = (selectedIndex + 1) % filteredFiles.Count;
-                shouldPreventDefault = true;
-                return;
-            }
-            if (e.Key == "ArrowUp")
-            {
-                selectedIndex = (selectedIndex - 1 + filteredFiles.Count) % filteredFiles.Count;
-                shouldPreventDefault = true;
-                return;
-            }
-            if (e.Key == "Tab" || e.Key == "Enter")
-            {
-                shouldPreventDefault = true;
-                if (selectedIndex >= 0 && selectedIndex < filteredFiles.Count)
+                case "ArrowDown":
+                    _selectedIndex = (_selectedIndex + 1) % _filteredFiles.Count;
+                    _shouldPreventDefault = true;
+                    return;
+                case "ArrowUp":
+                    _selectedIndex = (_selectedIndex - 1 + _filteredFiles.Count) % _filteredFiles.Count;
+                    _shouldPreventDefault = true;
+                    return;
+                case "Tab":
+                case "Enter":
                 {
-                    await AddFileToken(filteredFiles[selectedIndex]);
+                    _shouldPreventDefault = true;
+                    if (_selectedIndex >= 0 && _selectedIndex < _filteredFiles.Count)
+                    {
+                        await AddFileTokenAsync(_filteredFiles[_selectedIndex]);
+                    }
+                    return;
                 }
-                return;
-            }
-            if (e.Key == "Escape")
-            {
-                shouldPreventDefault = true;
-                filteredFiles.Clear();
-                return;
+                case "Escape":
+                    _shouldPreventDefault = true;
+                    _filteredFiles.Clear();
+                    return;
             }
         }
 
         // Enter без Shift/Ctrl — отправка
-        if (e is { Key: "Enter", CtrlKey: false, ShiftKey: false } && !filteredFiles.Any())
+        if (e is { Key: "Enter", CtrlKey: false, ShiftKey: false } && !_filteredFiles.Any())
         {
-            shouldPreventDefault = true;
+            _shouldPreventDefault = true;
             await OnSendClick();
         }
         else
         {
-            shouldPreventDefault = false;
+            _shouldPreventDefault = false;
         }
     }
 
@@ -244,7 +245,7 @@
 
         // Загружаем содержимое файлов перед отправкой
         var fileIndex = 0;
-        foreach (var fileToken in tokens.OfType<FileToken>())
+        foreach (var fileToken in _tokens.OfType<FileToken>())
         {
             if (string.IsNullOrEmpty(fileToken.FileContent))
             {
@@ -257,16 +258,16 @@
         }
 
         // Формируем сообщение для отправки
-        var messageBuilder = new System.Text.StringBuilder();
+        var messageBuilder = new StringBuilder();
 
         // Добавляем текущий ввод
-        if (!string.IsNullOrWhiteSpace(currentInput))
+        if (!string.IsNullOrWhiteSpace(_currentInput))
         {
-            messageBuilder.AppendLine(currentInput.Trim());
+            messageBuilder.AppendLine(_currentInput.Trim());
         }
 
         // Добавляем файлы с их содержимым
-        foreach (var fileToken in tokens.OfType<FileToken>())
+        foreach (var fileToken in _tokens.OfType<FileToken>())
         {
             messageBuilder.Append(fileToken.FileContent);
         }
@@ -274,12 +275,12 @@
         var message = messageBuilder.ToString();
 
         // Очищаем состояние
-        currentInput = string.Empty;
-        tokens.Clear();
-        filteredFiles.Clear();
+        _currentInput = string.Empty;
+        _tokens.Clear();
+        _filteredFiles.Clear();
 
         // Сбрасываем высоту textarea
-        await JS.InvokeVoidAsync("autoResizeTextarea", textareaRef, true);
+        await JsRuntime.InvokeVoidAsync("autoResizeTextarea", _textareaRef, true);
 
         await SendMessage.InvokeAsync(message);
     }
@@ -306,18 +307,6 @@
         };
     }
 
-    public async Task Clear()
-    {
-        currentInput = string.Empty;
-        tokens.Clear();
-        filteredFiles.Clear();
-
-        // Сбрасываем высоту textarea
-        await JS.InvokeVoidAsync("eval", "arguments[0].style.height = 'auto'", textareaRef);
-
-        StateHasChanged();
-    }
-
     protected override void OnInitialized()
     {
         base.OnInitialized();
@@ -329,17 +318,12 @@
         InvokeAsync(StateHasChanged);
     }
 
-    private void HandleProfileChanged()
-    {
-        InvokeAsync(StateHasChanged);
-    }
-
-    private async Task OpenRules()
+    private async Task OpenRulesAsync()
     {
         await VsBridge.ExecuteToolAsync(BasicEnum.OpenFile, new Dictionary<string, object> { { "param1", ".agents/rules.md" } });
     }
 
-    private async Task OpenSkills()
+    private async Task OpenSkillsAsync()
     {
         await VsBridge.ExecuteToolAsync(BasicEnum.OpenFolder, new Dictionary<string, object> { { "param1", ".agents/skills/" } });
     }

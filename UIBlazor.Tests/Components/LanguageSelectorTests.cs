@@ -4,7 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Radzen;
 using Radzen.Blazor;
-using UIBlazor.Components;
+using UIBlazor.Components.Settings;
 using UIBlazor.Options;
 using UIBlazor.Services.Settings;
 

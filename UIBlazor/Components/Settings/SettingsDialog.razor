@@ -1,4 +1,3 @@
-@using Shared.Contracts.Mcp
 @inherits RadzenComponent
 
 <RadzenTabs RenderMode="TabRenderMode.Client" class="settings">
@@ -10,8 +9,8 @@
                     <RadzenDropDown Data="@ProfileManager.Current.Profiles" TextProperty="Name" ValueProperty="Id"
                                     @bind-Value="@ProfileManager.Current.ActiveProfileId"
                                     Style="flex: 1;" />
-                    <RadzenButton Icon="add" ButtonStyle="ButtonStyle.Success" Variant="Variant.Flat" Click="@OnAddProfile" />
-                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Flat" Click="@OnDeleteProfile"
+                    <RadzenButton Icon="add" ButtonStyle="ButtonStyle.Success" Size="ButtonSize.Small" Variant="Variant.Flat" Click="@OnAddProfile" />
+                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Variant="Variant.Flat" Click="@OnDeleteProfile"
                                   Disabled="@(ProfileManager.Current.Profiles.Count <= 1)" />
                 </RadzenStack>
 
@@ -20,7 +19,7 @@
                 </RadzenFormField>
 
                 <RadzenFormField Text="@SharedResource.Provider" Variant="Variant.Outlined" AllowFloatingLabel="false">
-                    <RadzenDropDown @bind-Value="@ProfileManager.ActiveProfile.Provider" Data="@_providers" Style="width: 100%" />
+                    <RadzenDropDown Disabled @bind-Value="@ProfileManager.ActiveProfile.Provider" Data="@_providers" Style="width: 100%" />
                 </RadzenFormField>
 
                 <RadzenFormField Text="@SharedResource.Endpoint" Variant="Variant.Outlined" AllowFloatingLabel="false">
@@ -38,8 +37,8 @@
                     <End>
                         <RadzenButton
                             Icon="autorenew" Click="UpdateModelsAsync"
-                            class="@(isModelUpdating ? "icon-spin" : "")"
-                            Disabled="@isModelUpdating"
+                            class="@(_isModelUpdating ? "icon-spin" : "")"
+                            Disabled="@_isModelUpdating"
                             ButtonStyle="ButtonStyle.Secondary" />
                     </End>
                 </RadzenFormField>
@@ -143,110 +142,11 @@
         </RadzenTabsItem>
 
         <RadzenTabsItem Text="MCP">
-            <RadzenStack Gap="0.5rem">
-                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
-                    <CheckBox Text="Enable MCP" @bind-Value="@McpSettingsProvider.Current.Enabled" @bind-Value:after="OnMcpEnabledChanged" />
-                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.3rem" JustifyContent="JustifyContent.End">
-                        <RadzenButton Icon="edit_note" ButtonStyle="ButtonStyle.Info" Size="ButtonSize.Small" Click="@OnOpenMcpSettings" />
-                        <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@OnReloadMcpSettings" />
-                    </RadzenStack>
-                </RadzenStack>
-
-                @if (McpSettingsProvider.Current.Enabled)
-                {
-                    @if (!McpSettingsProvider.Current.Servers.Any())
-                    {
-                        <RadzenText TextStyle="TextStyle.Caption" Style="color: var(--rz-text-secondary-color); font-style: italic;">
-                            @SharedResource.NoMCP
-                        </RadzenText>
-                    }
-
-                    @foreach (var server in McpSettingsProvider.Current.Servers)
-                    {
-                        var hasError = McpSettingsProvider.Current.ServerErrors.TryGetValue(server.Name, out var errorMsg);
-                        var borderColor = hasError ? "var(--rz-error-color)" : "var(--rz-border-color)";
-                        var serverStyle = $"border: 1px solid {borderColor}; border-radius: var(--rz-border-radius);";
-
-                        <RadzenStack Gap="0.5rem" Style="@serverStyle">
-                            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
-                                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
-                                    <CheckBox Text="@server.Name" @bind-Value="@server.Enabled" @bind-Value:after="OnMcpToolSettingChanged" />
-                                </RadzenStack>
-                                <ApprovalModeSelector Value="@GetMcpServerApprovalMode(server)" Disabled="@(!server.Enabled)"
-                                                      ValueChanged="@(mode => OnMcpServerApprovalChanged(server, mode))" />
-                            </RadzenStack>
-
-                            @if (hasError && !string.IsNullOrEmpty(errorMsg))
-                            {
-                                <RadzenStack Style="padding: 0.5rem; background: var(--rz-error-background); border-radius: var(--rz-border-radius); font-size: 0.8rem; color: var(--rz-error-color);">
-                                    <strong>Error:</strong> @errorMsg
-                                </RadzenStack>
-                            }
-
-                            @if (server.Enabled)
-                            {
-                                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" Style="padding-left: 2rem;">
-                                    <RadzenBadge Text="@server.Transport" Style="font-size: 0.7rem;" />
-                                    @if (hasError)
-                                    {
-                                        <RadzenBadge Text="@SharedResource.Error" Style="font-size: 0.7rem; background: var(--rz-error-color);" />
-                                    }
-                                    else if (server.Enabled && server.Tools.Any())
-                                    {
-                                        <RadzenBadge Text="@SharedResource.Ready" Style="font-size: 0.7rem; background: var(--rz-success-color);" />
-                                    }
-                                </RadzenStack>
-                                <RadzenStack Gap="0.2rem" Style="font-size: 0.8rem; color: var(--rz-text-secondary-color); padding-left: 2rem;">
-                                    @if (server.Transport == "stdio")
-                                    {
-                                        <div>Command: @server.Command @(string.Join(" ", server.Args))</div>
-                                    }
-                                    else
-                                    {
-                                        <div>URL: @server.Url</div>
-                                    }
-                                    @if (server.Env.Any())
-                                    {
-                                        <div>Env: @server.Env.Count variable(s)</div>
-                                    }
-                                </RadzenStack>
-
-                                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.3rem" Style="padding-left: 2rem;">
-                                    <RadzenButton Text="@SharedResource.RefreshTools" Icon="sync" Size="ButtonSize.ExtraSmall" ButtonStyle="ButtonStyle.Light"
-                                    Click="@(() => OnRefreshMcpTools(server))" IsBusy="@(_refreshingServerId == server.Name)" />
-                                </RadzenStack>
-
-                                @if (server.Tools.Any())
-                                {
-                                    <RadzenAccordion Style="margin-top: 0.3rem; border: none;">
-                                        <Items>
-                                            <RadzenAccordionItem Text="@SharedResource.Tools" Icon="build">
-                                                <RadzenStack Gap="0.5rem">
-                                                    @foreach (var tool in server.Tools)
-                                                    {
-                                                        <RadzenStack Orientation="Orientation.Vertical" JustifyContent="JustifyContent.SpaceBetween">
-                                                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                                                                <RadzenCheckBox @bind-Value="@tool.Enabled" @bind-Value:after="OnMcpToolSettingChanged" Name="@($"mcp__{server.Name}__{tool.Name}")" />
-                                                                <RadzenLabel Text="@tool.Name" Component="@($"mcp__{server.Name}__{tool.Name}")" />
-                                                            </RadzenStack>
-                                                            <RadzenText TextStyle="TextStyle.Caption" class="tool-description">@tool.Description</RadzenText>
-                                                        </RadzenStack>
-                                                    }
-                                                </RadzenStack>
-                                            </RadzenAccordionItem>
-                                        </Items>
-                                    </RadzenAccordion>
-                                }
-                            }
-                        </RadzenStack>
-                    }
-                }
-            </RadzenStack>
+            <MCPSettingsTab />
         </RadzenTabsItem>
         <RadzenTabsItem Icon="more_horiz">
             <RadzenStack Gap="1rem">
                 <LanguageSelector />
-            
                 <ExtraHeaderPicker />
             </RadzenStack>
         </RadzenTabsItem>
@@ -261,7 +161,6 @@
     [Inject] IProfileManager ProfileManager { get; set; } = null!;
     [Inject] ICommonSettingsProvider CommonSettingsProvider { get; set; } = null!;
     [Inject] DialogService DialogService { get; set; } = null!;
-    [Inject] IMcpSettingsProvider McpSettingsProvider { get; set; } = null!;
 
     private readonly ToolCategory[] _toolCategories = [
         ToolCategory.ReadFiles,
@@ -271,71 +170,7 @@
         ToolCategory.Execution
     ];
     private readonly string[] _providers = ["OpenAI Compatible"];
-
-    private string? _refreshingServerId;
-
-    private async Task OnMcpEnabledChanged()
-    {
-        if (!McpSettingsProvider.Current.Enabled)
-        {
-            await McpSettingsProvider.StopAllAsync();
-        }
-        await McpSettingsProvider.SaveAsync();
-    }
-
-    private async Task OnOpenMcpSettings()
-    {
-        await McpSettingsProvider.OpenSettingsFileAsync();
-    }
-
-    private async Task OnReloadMcpSettings()
-    {
-        await McpSettingsProvider.LoadMcpFileAsync();
-        StateHasChanged();
-    }
-
-    private async Task OnRefreshMcpTools(McpServerConfig server)
-    {
-        _refreshingServerId = server.Name;
-        StateHasChanged();
-
-        var result = await McpSettingsProvider.RefreshToolsAsync(server);
-
-        _refreshingServerId = null;
-
-        // Update error state
-        if (result.StartsWith("Success"))
-        {
-            McpSettingsProvider.Current.ServerErrors.Remove(server.Name);
-        }
-        else
-        {
-            McpSettingsProvider.Current.ServerErrors[server.Name] = result;
-        }
-
-        NotificationService.Notify(new NotificationMessage
-        {
-            Severity = result.StartsWith("Success") ? NotificationSeverity.Success : NotificationSeverity.Error,
-            Summary = result,
-            Duration = 4000
-        });
-
-        await McpSettingsProvider.SaveAsync();
-        StateHasChanged();
-    }
-
-    private ToolApprovalMode GetMcpServerApprovalMode(McpServerConfig server)
-    {
-        return McpSettingsProvider.Current.ServerApprovalModes.TryGetValue(server.Name, out var mode)
-            ? mode
-            : ToolApprovalMode.Allow;
-    }
-
-    private async Task OnMcpServerApprovalChanged(McpServerConfig server, ToolApprovalMode mode)
-    {
-        McpSettingsProvider.Current.ServerApprovalModes[server.Name] = mode;
-        await McpSettingsProvider.SaveAsync();
-    }
+    bool _isModelUpdating;
 
     private async Task OnAddProfile()
     {
@@ -352,7 +187,7 @@
         }
 
         var confirm = await DialogService.Confirm($"{SharedResource.DeleteProfileQuestion} '{ProfileManager.ActiveProfile.Name}'?", SharedResource.DeleteProfile,
-           new ConfirmOptions() { OkButtonText = SharedResource.Yes, CancelButtonText = SharedResource.No });
+           new ConfirmOptions { OkButtonText = SharedResource.Yes, CancelButtonText = SharedResource.No });
 
         if (confirm == true)
         {
@@ -360,11 +195,9 @@
         }
     }
 
-    bool isModelUpdating;
-
     private async Task UpdateModelsAsync()
     {
-        isModelUpdating = true;
+        _isModelUpdating = true;
         try
         {
             var models = await ChatService.GetModelsAsync(CancellationToken.None);
@@ -384,7 +217,7 @@
         }
         finally
         {
-            isModelUpdating = false;
+            _isModelUpdating = false;
         }
         StateHasChanged();
     }
@@ -412,27 +245,5 @@
     {
         ToolManager.ToggleTool(tool.Name, tool.Enabled);
         await Task.CompletedTask;
-    }
-
-    private async Task OnMcpToolSettingChanged()
-    {
-        // Update server enabled states
-        foreach (var server in McpSettingsProvider.Current.Servers)
-        {
-            McpSettingsProvider.Current.ServerEnabledStates[server.Name] = server.Enabled;
-        }
-
-        McpSettingsProvider.Current.ToolDisabledStates.Clear();
-        foreach (var server in McpSettingsProvider.Current.Servers)
-        {
-            foreach (var tool in server.Tools)
-            {
-                var toolKey = $"{server.Name}:{tool.Name}";
-                if (!tool.Enabled)
-                {
-                    McpSettingsProvider.Current.ToolDisabledStates.Add(toolKey);
-                }
-            }
-        }
     }
 }

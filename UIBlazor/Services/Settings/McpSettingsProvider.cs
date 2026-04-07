@@ -255,7 +255,7 @@ public class McpSettingsProvider(
         if (listResult == null)
         {
             logger.LogError($"No tools found in response for {server.Name}");
-            return $"Error: Not found tools";
+            return "Error: Not found tools";
         }
 
         var newTools = listResult.Tools.Select(t => new McpToolConfig

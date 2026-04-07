@@ -25,11 +25,11 @@
 
     [Parameter] public List<VisualChatMessage> Messages { get; set; } = [];
 
-    private int MessageProgress => ChatService.Session != null && ProfileManager.ActiveProfile.MaxMessages > 0
+    private int MessageProgress => ProfileManager.ActiveProfile.MaxMessages > 0
         ? Math.Min(100, Messages.Count * 100 / ProfileManager.ActiveProfile.MaxMessages)
         : 0;
 
-    private int TokenProgress => ChatService.Session != null && ProfileManager.ActiveProfile.ContextWindow > 0
+    private int TokenProgress => ProfileManager.ActiveProfile.ContextWindow > 0
         ? Math.Min(100, ChatService.Session.TotalTokens * 100 / ProfileManager.ActiveProfile.ContextWindow)
         : 0;
 }

@@ -47,18 +47,6 @@
     [Parameter] public EventCallback<(string MessageId, string SegmentId, bool Approved)> OnToolApproval { get; set; }
     [Inject] private IToolManager ToolManager { get; set; } = null!;
 
-    private string _lastContent = string.Empty;
-    private bool isAssistant = false;
-
-    protected override void OnParametersSet()
-    {
-        if (Message.Content != _lastContent)
-        {
-            isAssistant = Message.Role == ChatMessageRole.Assistant;
-            _lastContent = Message.Content;
-        }
-    }
-
     private async Task OnToolApprovalHandler((string SegmentId, bool Approved) args)
     {
         await OnToolApproval.InvokeAsync((Message.Id, args.SegmentId, args.Approved));

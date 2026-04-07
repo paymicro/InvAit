@@ -1,7 +1,6 @@
 @inject IJSRuntime Js
 
 <div id="@_blockId" class="markdown-content">
-    @((MarkupString)_processedContent)
 </div>
 
 @code {
@@ -9,7 +8,6 @@
 
     private readonly string _blockId = $"md-{Guid.NewGuid()}";
     private string _lastRenderedContent = string.Empty;
-    private string _processedContent = string.Empty;
 
     protected override bool ShouldRender() => Content != _lastRenderedContent;
 

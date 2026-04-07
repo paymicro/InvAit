@@ -16,9 +16,4 @@ public interface ISkillService
     /// Форматировать метаданные скиллов для системного промпта
     /// </summary>
     string FormatSkillsForSystemPrompt(List<SkillMetadata> skills);
-
-    /// <summary>
-    /// Обновить кеш скиллов
-    /// </summary>
-    Task RefreshCacheAsync(CancellationToken cancellationToken);
 }

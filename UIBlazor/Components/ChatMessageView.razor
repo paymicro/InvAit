@@ -120,18 +120,13 @@
 
     protected override bool ShouldRender()
     {
-        if (Message.IsStreaming || _oldIsStreaming ||
-            Message.IsRetrying || _oldRetryCountdown != Message.RetryCountdown ||
-            Message.IsEditing || _oldIsEditing ||
-            IsLast || _oldIsLast != IsLast ||
-            IsLoading || _oldIsLoading != IsLoading ||
-            Message.IsExpanded != _oldIsExpanded ||
-            Message.Content != _oldContent)
-        {
-            return true;
-        }
-
-        return false;
+        return Message.IsStreaming || _oldIsStreaming ||
+               Message.IsRetrying || _oldRetryCountdown != Message.RetryCountdown ||
+               Message.IsEditing || _oldIsEditing ||
+               IsLast || _oldIsLast != IsLast ||
+               IsLoading || _oldIsLoading != IsLoading ||
+               Message.IsExpanded != _oldIsExpanded ||
+               Message.Content != _oldContent;
     }
 
     protected override void OnParametersSet()

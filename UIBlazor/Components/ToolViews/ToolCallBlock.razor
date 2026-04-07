@@ -1,10 +1,7 @@
-@using UIBlazor.Services.Settings
-@using UIBlazor.Models
-@using Shared.Contracts
 @inject IToolManager ToolManager
 
 <div class="tool-call-block" data-tool="@Segment.ToolName">
-    <div class="tool-call-header @statusClass">
+    <div class="tool-call-header @StatusClass">
         @SharedResource.CallingTool: <strong>@DisplayName</strong>@(Segment.IsClosed ? "" : " ...")
     </div>
 
@@ -32,7 +29,7 @@
 
     @if (Segment.IsClosed)
     {
-        <div class="tool-approval-footer @statusClass">
+        <div class="tool-approval-footer @StatusClass">
             @if (Segment.ApprovalStatus == ToolApprovalStatus.Pending)
             {
                 <div class="tool-approval-label"><i class="rz-icon-notification rz-ml-2"></i>@SharedResource.ApproveRequired</div>
@@ -51,7 +48,7 @@
 
     private string DisplayName => ToolManager.GetTool(Segment.ToolName)?.DisplayName ?? Segment.ToolName;
 
-    string statusClass => Segment.ApprovalStatus switch
+    private string StatusClass => Segment.ApprovalStatus switch
     {
         ToolApprovalStatus.Approved => "approved",
         ToolApprovalStatus.Rejected => "rejected",

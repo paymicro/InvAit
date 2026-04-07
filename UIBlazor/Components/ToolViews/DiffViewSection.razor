@@ -10,7 +10,7 @@
                 var diffLine = Model.OldText.Lines[i];
                 var diffLineNew = Model.NewText.Lines[i];
                 <tr>
-                    @if (!isOldHidden)
+                    @if (!_isOldHidden)
                     {
                         <td class="line-number @diffLine.Type.ToString().ToLower()" @onclick="Toggle">
                             @(diffLine.Position?.ToString() ?? " ")
@@ -24,7 +24,7 @@
                     <td class="line-number @diffLineNew.Type.ToString().ToLower()" @onclick="Toggle">
                         @(diffLineNew.Position?.ToString() ?? " ")
                     </td>
-                    <td class="line @diffLineNew.Type.ToString().ToLower()-line" style="width: @(isOldHidden ? "100%" : "50%")">
+                    <td class="line @diffLineNew.Type.ToString().ToLower()-line" style="width: @(_isOldHidden ? "100%" : "50%")">
                         <span class="line-text">
                             <DiffViewLine Model="diffLineNew" />
                         </span>
@@ -38,10 +38,10 @@
 @code {
     [Parameter] public SideBySideDiffModel Model { get; set; } = null!;
 
-    private bool isOldHidden = false;
+    private bool _isOldHidden;
     private void Toggle()
     {
-        isOldHidden = !isOldHidden;
+        _isOldHidden = !_isOldHidden;
         _changed = true;
         InvokeAsync(StateHasChanged);
     }
@@ -49,7 +49,7 @@
     private DiffPaneModel _oldText = null!;
     private DiffPaneModel _newText = null!;
     private bool _changed;
-    private Throttler _throttler = new(500); // Интервал рендеренга от 500мс
+    private Throttler _throttler = new(500); // Интервал рендеринга от 500мс
 
     protected override bool ShouldRender()
     {

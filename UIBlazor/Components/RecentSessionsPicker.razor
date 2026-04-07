@@ -36,7 +36,7 @@ else
 
     [Inject] IChatService ChatService { get; set; } = null!;
 
-    [Parameter] public bool ShowTitle { get; set; } = false;
+    [Parameter] public bool ShowTitle { get; set; }
 
     protected override async Task OnInitializedAsync()
     {

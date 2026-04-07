@@ -28,7 +28,7 @@ builder.Services
     .AddScoped(sp =>
     {
         var client = new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) };
-        client.DefaultRequestHeaders.Add("X-Client-Name", "InvAit Visual Studio Plugin");
+        client.DefaultRequestHeaders.Add("X-Client-Name", "InvAit Visual Studio Plugin"); // Можно заменить в Extra Headers
         return client;
     })
     .AddLocalization();

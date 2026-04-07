@@ -2,14 +2,15 @@
 
 <RadzenStack Gap="0.2rem">
     <RadzenText TextStyle="TextStyle.Subtitle1">@SharedResource.ExtraHeaders</RadzenText>
-    <RadzenDataGrid @ref="extraHeadersGrid" TItem="HeaderModel" Data="@headers" AllowColumnResize="true" AllowSorting="true">
+    <RadzenDataGrid @ref="_extraHeadersGrid" TItem="HeaderModel" Data="@Headers" AllowColumnResize="true" AllowSorting="true">
         <EmptyTemplate>
-            <RadzenLabel Text="@(!string.IsNullOrEmpty(ProfileManager.ActiveProfile.ApiKey)
-                                ? SharedResource.ExtraHeadersIsEmpty
-                                : SharedResource.Empty)" />
+            @if (!string.IsNullOrEmpty(ProfileManager.ActiveProfile.ApiKey))
+            {
+                <RadzenLabel Text="@SharedResource.ExtraHeadersIsEmpty"/>
+            }
         </EmptyTemplate>
         <Columns>
-            <RadzenDataGridColumn Property="Name" MinWidth="80px" Title="@SharedResource.Header" TextAlign="TextAlign.Center">
+            <RadzenDataGridColumn Property="Name" MinWidth="80px" Width="110px" Title="@SharedResource.Header" TextAlign="TextAlign.Center">
                 <Template Context="header">
                     <RadzenTextBox @bind-Value="header.Name"
                                    Change="@(() => ProfileManager.CallSaveTrigger())"
@@ -40,9 +41,8 @@
 @code {
     [Inject] IProfileManager ProfileManager { get; set; } = null!;
 
-    private RadzenDataGrid<HeaderModel> extraHeadersGrid = null!;
-    private string columnEditing = null!;
-    private List<HeaderModel> headers => ProfileManager.ActiveProfile.ExtraHeaders;
+    private RadzenDataGrid<HeaderModel> _extraHeadersGrid = null!;
+    private List<HeaderModel> Headers => ProfileManager.ActiveProfile.ExtraHeaders;
 
     protected override void OnInitialized()
     {
@@ -52,21 +52,21 @@
 
     private void AddHeader()
     {
-        headers.Add(new HeaderModel());
-        extraHeadersGrid.Reload();
+        Headers.Add(new HeaderModel());
+        _extraHeadersGrid.Reload();
         ProfileManager.CallSaveTrigger();
     }
 
     private void RemoveHeader(HeaderModel item)
     {
-        headers.Remove(item);
-        extraHeadersGrid.Reload();
+        Headers.Remove(item);
+        _extraHeadersGrid.Reload();
         ProfileManager.CallSaveTrigger();
     }
 
     private void HandleProfileChanged()
     {
-        extraHeadersGrid.Reload();
+        _extraHeadersGrid.Reload();
         InvokeAsync(StateHasChanged);
     }
 

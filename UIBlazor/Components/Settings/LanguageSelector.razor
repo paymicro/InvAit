@@ -14,11 +14,11 @@
 
     [Inject] NavigationManager NavManager { get; set; } = null!;
 
-    private List<CultureData> Cultures = new()
-    {
-        new CultureData { Name = "Русский", Value = "ru-RU" },
-        new CultureData { Name = "English", Value = "en-US" }
-    };
+    private readonly List<CultureData> Cultures =
+    [
+        new() { Name = "Русский", Value = "ru-RU" },
+        new() { Name = "English", Value = "en-US" }
+    ];
 
     private async Task OnCultureChange(object value)
     {
