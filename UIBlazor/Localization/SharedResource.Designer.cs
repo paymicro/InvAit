@@ -205,6 +205,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to empty.
+        /// </summary>
+        public static string Empty {
+            get {
+                return ResourceManager.GetString("Empty", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to No messages yet. Start a conversation!.
         /// </summary>
         public static string EmptyMessage {
@@ -255,6 +264,33 @@ namespace UIBlazor.Localization {
         public static string ExecutePlan {
             get {
                 return ResourceManager.GetString("ExecutePlan", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Extra headers.
+        /// </summary>
+        public static string ExtraHeaders {
+            get {
+                return ResourceManager.GetString("ExtraHeaders", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Authorization header with ApiKey..
+        /// </summary>
+        public static string ExtraHeadersIsEmpty {
+            get {
+                return ResourceManager.GetString("ExtraHeadersIsEmpty", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Header.
+        /// </summary>
+        public static string Header {
+            get {
+                return ResourceManager.GetString("Header", resourceCulture);
             }
         }
         
@@ -795,6 +831,15 @@ namespace UIBlazor.Localization {
         public static string UseStream {
             get {
                 return ResourceManager.GetString("UseStream", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Value.
+        /// </summary>
+        public static string Value {
+            get {
+                return ResourceManager.GetString("Value", resourceCulture);
             }
         }
         

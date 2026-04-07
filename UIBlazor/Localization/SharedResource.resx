@@ -369,4 +369,19 @@
   <data name="ToolRequestTimeoutSec" xml:space="preserve">
     <value>Request timeout</value>
   </data>
+  <data name="ExtraHeaders" xml:space="preserve">
+    <value>Extra headers</value>
+  </data>
+  <data name="ExtraHeadersIsEmpty" xml:space="preserve">
+    <value>Authorization header with ApiKey.</value>
+  </data>
+  <data name="Value" xml:space="preserve">
+    <value>Value</value>
+  </data>
+  <data name="Header" xml:space="preserve">
+    <value>Header</value>
+  </data>
+  <data name="Empty" xml:space="preserve">
+    <value>empty</value>
+  </data>
 </root>

@@ -351,6 +351,12 @@
   <data name="ToolRunTests" xml:space="preserve">
     <value>Запуск тестов</value>
   </data>
+  <data name="ToolAskUser" xml:space="preserve">
+    <value>Задать вопрос</value>
+  </data>
+  <data name="YourOption" xml:space="preserve">
+    <value>Ваш выбор...</value>
+  </data>
   <data name="Selected" xml:space="preserve">
     <value>Выбрано</value>
   </data>
@@ -362,5 +368,20 @@
   </data>
   <data name="ToolRequestTimeoutSec" xml:space="preserve">
     <value>Тайм-аут запроса</value>
+  </data>
+  <data name="ExtraHeaders" xml:space="preserve">
+    <value>Дополнительные заголовки</value>
+  </data>
+  <data name="ExtraHeadersIsEmpty" xml:space="preserve">
+    <value>Только авторизация с api ключем.</value>
+  </data>
+  <data name="Value" xml:space="preserve">
+    <value>Значение</value>
+  </data>
+  <data name="Header" xml:space="preserve">
+    <value>Заголовок</value>
+  </data>
+  <data name="Empty" xml:space="preserve">
+    <value>пусто</value>
   </data>
 </root>

@@ -1,9 +1,13 @@
+@implements IDisposable
+
 <RadzenDropDown TValue="string"
+                @ref="dropDown"
                 @attributes="AdditionalAttributes"
                 Data="@viewModels"
                 @bind-Value="@ProfileManager.ActiveProfile.Model"
                 Placeholder="Model"
                 AllowFiltering="true"
+                ClearSearchAfterSelection="true"
                 LoadData="@OnLoadData"
                 Change="@OnValueChange" />
 
@@ -12,6 +16,8 @@
     public Dictionary<string, object> AdditionalAttributes { get; set; }
 
     [Inject] private IProfileManager ProfileManager { get; set; } = null!;
+
+    private RadzenDropDown<string> dropDown = null!;
 
     // Список для отображения (включает оригинальные данные или опцию добавления)
     IEnumerable<string> viewModels;

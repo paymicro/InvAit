@@ -909,7 +909,7 @@ public class ToolExecutor : IDisposable
 
         var solutionPath = await GetSolutionPathAsync();
 
-        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
         try
         {
@@ -917,8 +917,8 @@ public class ToolExecutor : IDisposable
             if (normalizedPath.Equals(".agents/rules.md", StringComparison.OrdinalIgnoreCase))
             {
                 var localPath = GetAbsolutePath(relativePath, solutionPath);
-                var appData = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-                var globalPath = Path.Combine(appData, ".agents", "rules.md");
+                var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                var globalPath = Path.Combine(userProfile, ".agents", "rules.md");
 
                 if (!File.Exists(localPath) && File.Exists(globalPath))
                 {

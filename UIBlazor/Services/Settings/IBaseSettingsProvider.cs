@@ -7,4 +7,6 @@ public interface IBaseSettingsProvider : IDisposable
     Task ResetAsync();
 
     event Action? OnSaved;
+
+    void CallSaveTrigger();
 }

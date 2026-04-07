@@ -113,6 +113,15 @@ details {
     border: 0;
 }
 
+.rz-data-row .rz-cell-data input {
+    background: transparent;
+    width: 100%;
+}
+
+    .rz-data-row .rz-cell-data input:not(:focus) {
+        border: 1px solid transparent;
+    }
+
 .settings li {
     flex-grow: 1;
     text-align: center;

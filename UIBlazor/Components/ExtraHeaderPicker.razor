@@ -1,0 +1,77 @@
+@implements IDisposable
+
+<RadzenStack Gap="0.2rem">
+    <RadzenText TextStyle="TextStyle.Subtitle1">@SharedResource.ExtraHeaders</RadzenText>
+    <RadzenDataGrid @ref="extraHeadersGrid" TItem="HeaderModel" Data="@headers" AllowColumnResize="true" AllowSorting="true">
+        <EmptyTemplate>
+            <RadzenLabel Text="@(!string.IsNullOrEmpty(ProfileManager.ActiveProfile.ApiKey)
+                                ? SharedResource.ExtraHeadersIsEmpty
+                                : SharedResource.Empty)" />
+        </EmptyTemplate>
+        <Columns>
+            <RadzenDataGridColumn Property="Name" MinWidth="80px" Title="@SharedResource.Header" TextAlign="TextAlign.Center">
+                <Template Context="header">
+                    <RadzenTextBox @bind-Value="header.Name"
+                                   Change="@(() => ProfileManager.CallSaveTrigger())"
+                                   Placeholder="@SharedResource.Empty" />
+                </Template>
+            </RadzenDataGridColumn>
+        
+            <RadzenDataGridColumn Property="Value" MinWidth="100px" Title="@SharedResource.Value" TextAlign="TextAlign.Center" Resizable="false">
+                <Template Context="header">
+                    <RadzenTextBox @bind-Value="header.Value"
+                                   Change="@(() => ProfileManager.CallSaveTrigger())"
+                                   Placeholder="@SharedResource.Empty" />
+                </Template>
+            </RadzenDataGridColumn>
+
+            <RadzenDataGridColumn Width="60px" Sortable="false" TextAlign="TextAlign.Center" Resizable="false">
+                <HeaderTemplate>
+                    <RadzenButton Icon="add" ButtonStyle="ButtonStyle.Success" Size="ButtonSize.Small" Click="AddHeader" />
+                </HeaderTemplate>
+                <Template Context="header">
+                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => RemoveHeader(header))" />
+                </Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
+</RadzenStack>
+
+@code {
+    [Inject] IProfileManager ProfileManager { get; set; } = null!;
+
+    private RadzenDataGrid<HeaderModel> extraHeadersGrid = null!;
+    private string columnEditing = null!;
+    private List<HeaderModel> headers => ProfileManager.ActiveProfile.ExtraHeaders;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        ProfileManager.OnSaved += HandleProfileChanged;
+    }
+
+    private void AddHeader()
+    {
+        headers.Add(new HeaderModel());
+        extraHeadersGrid.Reload();
+        ProfileManager.CallSaveTrigger();
+    }
+
+    private void RemoveHeader(HeaderModel item)
+    {
+        headers.Remove(item);
+        extraHeadersGrid.Reload();
+        ProfileManager.CallSaveTrigger();
+    }
+
+    private void HandleProfileChanged()
+    {
+        extraHeadersGrid.Reload();
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        ProfileManager.OnSaved -= HandleProfileChanged;
+    }
+}

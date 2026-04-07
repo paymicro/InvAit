@@ -233,7 +233,6 @@ public class ChatService(
 
         // Use runtime parameters or fall back to configured options
         var url = $"{Options.Endpoint}{_complitions}";
-        var effectiveApiKey = Options.ApiKey;
         var effectiveApiKeyHeader = Options.ApiKeyHeader;
 
         // Get formatted messages including conversation history
@@ -257,16 +256,21 @@ public class ChatService(
                 MediaTypeNames.Application.Json)
         };
 
-        if (!string.IsNullOrEmpty(effectiveApiKey))
+        if (!string.IsNullOrEmpty(Options.ApiKey))
         {
             if (string.Equals(effectiveApiKeyHeader, "Authorization", StringComparison.OrdinalIgnoreCase))
             {
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", effectiveApiKey);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Options.ApiKey);
             }
             else
             {
-                request.Headers.Add(effectiveApiKeyHeader, effectiveApiKey);
+                request.Headers.Add(effectiveApiKeyHeader, Options.ApiKey);
             }
+        }
+
+        foreach (var header in Options.ExtraHeaders)
+        {
+            request.Headers.TryAddWithoutValidation(header.Name, header.Value);
         }
 
         var response = await httpClient.SendAsync(request, Options.Stream ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead, cancellationToken);

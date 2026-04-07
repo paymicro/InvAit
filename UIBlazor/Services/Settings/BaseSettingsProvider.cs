@@ -33,6 +33,13 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider whe
         Debouncer.Trigger();
     }
 
+    public void CallSaveTrigger()
+    {
+        if (_isInitializing)
+            return;
+        Debouncer.Trigger();
+    }
+
     /// <summary>
     /// Свойство изменилось и будет сохранено
     /// </summary>

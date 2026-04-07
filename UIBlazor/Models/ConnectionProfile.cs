@@ -20,6 +20,8 @@ public class ConnectionProfile : BaseOptions
 
     public double Temperature { get; set => SetIfChanged(ref field, value); } = 0.7;
 
+    public List<HeaderModel> ExtraHeaders { get; set => SetIfChanged(ref field, value); } = [];
+
     /// <summary>
     /// Максимальное количество токенов для следующего ответа модели
     /// </summary>
