@@ -6,7 +6,6 @@
                 @bind-Value="@ProfileManager.ActiveProfile.Model"
                 Placeholder="Model"
                 AllowFiltering="true"
-                ClearSearchAfterSelection="true"
                 LoadData="@OnLoadData"
                 Change="@OnValueChange" />
 
@@ -64,6 +63,7 @@
 
     private void HandleProfileChanged()
     {
+        viewModels = ProfileManager.ActiveProfile.AvailableModels;
         InvokeAsync(StateHasChanged);
     }
 
