@@ -484,7 +484,7 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Select model.
+        ///   Looks up a localized string similar to Model.
         /// </summary>
         public static string SelectModel {
             get {

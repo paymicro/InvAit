@@ -199,13 +199,14 @@ public class ChatService(
         // файл agents.md
         var agents = await ruleService.GetAgentsMdAsync(cancellationToken);
 
-        return string.Join(Environment.NewLine,
-            Options.SystemPrompt,
-            rules,
-            agents,
+        List<string?> systemPromptBlocks = [Options.SystemPrompt,
             toolManager.GetToolUseSystemInstructions(Session.Mode, skillsMetadata.Count != 0),
             skillsSection,
-            contextSection);
+            contextSection.ToString(),
+            rules,
+            !string.IsNullOrEmpty(agents) ? string.Join("# Agents instructions\n", agents) : null];
+
+        return string.Join(Environment.NewLine, systemPromptBlocks.Where(b => !string.IsNullOrEmpty(b)));
     }
 
 

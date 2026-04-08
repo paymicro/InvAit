@@ -46,7 +46,7 @@ public class RuleService(IVsBridge vsBridge) : IRuleService
             return _agentsCache ?? string.Empty;
         }
 
-        _agentsCache = string.Join("## Agents.md\n", result.Result);
+        _agentsCache = result.Result;
         _lastAgentsCacheUpdate = DateTime.UtcNow;
         return _agentsCache;
     }

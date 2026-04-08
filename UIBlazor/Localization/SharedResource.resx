@@ -193,7 +193,7 @@
     <value>Provider</value>
   </data>
   <data name="SelectModel" xml:space="preserve">
-    <value>Select model</value>
+    <value>Model</value>
   </data>
   <data name="SendCurrentFile" xml:space="preserve">
     <value>Send current file</value>

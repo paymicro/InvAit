@@ -193,7 +193,7 @@
     <value>Провайдер</value>
   </data>
   <data name="SelectModel" xml:space="preserve">
-    <value>Выбор модели</value>
+    <value>Модель</value>
   </data>
   <data name="SendCurrentFile" xml:space="preserve">
     <value>Отправить открытый файл</value>

@@ -7,7 +7,7 @@ public class CommonSettingsProvider(
     ILogger<CommonSettingsProvider> logger)
     : BaseSettingsProvider<CommonOptions>(storage, logger, "CommonSettings"), ICommonSettingsProvider
 {
-    protected override Task AfterInitAsync()
+    protected override async Task AfterInitAsync()
     {
         if (Current.Culture.Length != 5)
         {
@@ -15,7 +15,11 @@ public class CommonSettingsProvider(
             Current.Culture = CultureInfo.CreateSpecificCulture(Current.Culture).Name;
         }
 
-        return Task.CompletedTask;
+        // Переходный период с 0.0.12 версии. Там было 3 сек и ничего не успевало.
+        if (Current.ToolTimeoutMs < 20_000)
+        {
+            await ResetAsync();
+        }
     }
 
     public override async Task ResetAsync()

@@ -8,7 +8,7 @@ public class ConnectionProfile : BaseOptions
 
     public string Provider { get; set => SetIfChanged(ref field, value); } = "OpenAI Compatible";
 
-    public string Endpoint { get; set => SetIfChanged(ref field, value.TrimEnd('/', '\\')); } = string.Empty;
+    public string Endpoint { get; set => SetIfChanged(ref field, PrepareEndpoint(value)); } = string.Empty;
 
     public string ApiKey { get; set => SetIfChanged(ref field, value); } = string.Empty;
 
@@ -40,6 +40,14 @@ public class ConnectionProfile : BaseOptions
 
     public int MaxMessages { get; set => SetIfChanged(ref field, value); } = 50;
 
-    // TODO: нужно реализовать
-    public int SessionMaxAgeHours { get; set => SetIfChanged(ref field, value); } = 24;
+    private static string PrepareEndpoint(string endpoint)
+    {
+        endpoint = endpoint.TrimEnd('/', '\\');
+        var suffix = "/v1";
+        if (endpoint.EndsWith(suffix))
+        {
+            return endpoint[..^suffix.Length];
+        }
+        return endpoint;
+    }
 }

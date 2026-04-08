@@ -1003,7 +1003,7 @@ public class ToolExecutor : IDisposable
 
             foreach (var path in localSkills)
             {
-                var fileName = Path.GetFileName(path);
+                var fileName = Path.GetFileName(Path.GetDirectoryName(path)); // имя последней папки
                 if (yieldedNames.Add(fileName))
                 {
                     yield return path;
@@ -1019,7 +1019,7 @@ public class ToolExecutor : IDisposable
             var globalSkills = Directory.EnumerateFileSystemEntries(globalSkillsDir, "*SKILL.md", SearchOption.AllDirectories);
             foreach (var path in globalSkills)
             {
-                var fileName = Path.GetFileName(path);
+                var fileName = Path.GetFileName(Path.GetDirectoryName(path)); // имя последней папки
                 if (yieldedNames.Add(fileName))
                 {
                     yield return path;
