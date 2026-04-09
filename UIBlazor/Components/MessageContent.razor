@@ -7,10 +7,13 @@
     {
         @if (!string.IsNullOrEmpty(Message.ReasoningContent))
         {
-            <details class="reasoning-details">
-                <summary>@SharedResource.Thinking</summary>
-                <MarkdownBlock Content="@Message.ReasoningContent" />
-            </details>
+            <RadzenAccordion>
+                <Items>
+                    <RadzenAccordionItem Text="@SharedResource.Thinking" Icon="emoji_objects" class="reasoning-details">
+                        <MarkdownBlock Content="@Message.ReasoningContent" />
+                    </RadzenAccordionItem>
+                </Items>
+            </RadzenAccordion>
         }
 
         @foreach (var segment in Message.Segments)
@@ -32,10 +35,13 @@
             <div class="message-tool-results rz-mt-2">
                 @foreach (var toolResult in Message.ToolResults)
                 {
-                    <details class="tool-details" @key="toolResult.Id">
-                        <summary>@toolResult.DisplayName</summary>
-                        <pre class="rz-p-2 rz-background-color-base-900 rz-color-white" style="font-size: 0.8rem; border-radius: 4px;">@toolResult.GetDisplayContent</pre>
-                    </details>
+                    <RadzenAccordion @key="toolResult.Id">
+                        <Items>
+                            <RadzenAccordionItem Text="@toolResult.DisplayName">
+                                <pre class="rz-p-2 rz-background-color-base-900 rz-color-white">@toolResult.GetDisplayContent</pre>
+                            </RadzenAccordionItem>
+                        </Items>
+                    </RadzenAccordion>
                 }
             </div>
         }

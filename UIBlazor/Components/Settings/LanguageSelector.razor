@@ -1,12 +1,15 @@
-<RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
-    <RadzenIcon Icon="language" />
-    <RadzenDropDown TValue="string"
-                    Data="@Cultures"
-                    TextProperty="Name"
-                    ValueProperty="Value"
-                    Value="@CommonSettingsProvider.Current.Culture"
-                    Change="@OnCultureChange"
-                    Style="flex-grow: 1;" />
+<RadzenStack Gap="0.2em">
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+        <RadzenIcon Icon="language" />
+        <RadzenDropDown TValue="string"
+                        Data="@Cultures"
+                        TextProperty="Name"
+                        ValueProperty="Value"
+                        Value="@CommonSettingsProvider.Current.Culture"
+                        Change="@OnCultureChange"
+                        Style="flex-grow: 1;" />
+    </RadzenStack>
+    <RadzenText TextStyle="TextStyle.Caption" TextAlign="TextAlign.End" Style="color: var(--rz-warning);" Text="@SharedResource.ReloadAfterChange" />
 </RadzenStack>
 
 @code {

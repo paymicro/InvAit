@@ -56,31 +56,29 @@ pre {
     opacity: 1 !important;
 }
 
-.tool-details {
-    padding: 0;
-    margin: 0;
+.message-tool-results {
+    border-top: 1px dashed var(--rz-base-600);
+    padding: 0.5rem;
     white-space: normal;
 }
 
-details {
-    padding: 0.3rem;
-    margin: 0.3rem;
-    overflow: hidden;
-    transition: height .3s ease;
-    font-size: 1rem;
-    font-weight: bold;
-    color: var(--rz-base-400);
-}
-
-    details[open] summary {
-        margin-bottom: 10px;
+    .message-tool-results pre {
+        max-height: 15em;
+        overflow-y: auto;
     }
 
-    details summary {
-        cursor: pointer;
-        user-select: none;
-        transition: margin 150ms ease-out;
-        color: var(--rz-base-400);
+    .message-tool-results .rz-accordion-content {
+        padding: 0;
+    }
+
+    .message-tool-results .rz-accordion-header {
+        background: none;
+    }
+
+    .message-tool-results pre {
+        font-size: 0.8rem;
+        border-radius: 4px;
+        margin: 0;
     }
 
 .reasoning-details {
@@ -133,11 +131,23 @@ details {
         display: block !important;
     }
 
+.rz-slider {
+    transition: var(--rz-transition-all);
+}
+
+.rz-slider:hover {
+    border: var(--rz-border-primary-light);
+}
+
 .checkbox {
-    padding: 0.5em;
+    padding: 0 0.5em;
     border-radius: var(--rz-input-border-radius);
     border: var(--rz-border-width) solid transparent;
 }
+
+    .checkbox:hover .rz-chkbox-box {
+        border: var(--rz-border-primary-light);
+    }
 
 .tool-description {
     display: -webkit-box;
@@ -245,17 +255,6 @@ details {
     background-color: var(--rz-base-800) !important;
     box-shadow: 0 -10px 15px rgba(0, 0, 0, 0.2);
 }
-
-
-.message-tool-results {
-    border-top: 1px dashed var(--rz-base-600);
-    padding: 0.5rem;
-}
-
-    .message-tool-results pre {
-        max-height: 15em;
-        overflow-y: auto;
-    }
 
 .plan-box {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);

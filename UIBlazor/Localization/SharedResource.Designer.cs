@@ -466,6 +466,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to * When selected, the plugin will be reloaded.
+        /// </summary>
+        public static string ReloadAfterChange {
+            get {
+                return ResourceManager.GetString("ReloadAfterChange", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Retry in.
         /// </summary>
         public static string RetryIn {

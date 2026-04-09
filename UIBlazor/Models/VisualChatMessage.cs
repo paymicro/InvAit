@@ -67,7 +67,7 @@ public class VisualChatMessage
     /// <summary>
     /// Nested tool messages for assistant messages.
     /// </summary>
-    public List<ToolResult> ToolResults { get; } = [];
+    public List<ToolResult> ToolResults { get; set; } = [];
 
     /// <summary>
     /// Whether the message block is expanded or collapsed.

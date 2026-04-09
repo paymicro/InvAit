@@ -5,7 +5,6 @@ namespace UIBlazor.Models;
 /// </summary>
 public class ToolResult
 {
-    [JsonIgnore]
     public string Id { get; } = $"tool{Guid.NewGuid()}";
 
     /// <summary>
@@ -24,7 +23,8 @@ public class ToolResult
     /// </summary>
     public string Content { get; init; } = string.Empty;
 
-    public string GetDisplayContent => string.Join("\n", Content.Split('\n').Skip(1).SkipLast(1));
+    [JsonIgnore]
+    public string GetDisplayContent => string.Join("\n", Content.Split('\n').Skip(1).SkipLast(1)).Trim();
 
     /// <summary>
     /// Статус

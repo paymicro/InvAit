@@ -384,4 +384,7 @@
   <data name="Empty" xml:space="preserve">
     <value>пусто</value>
   </data>
+  <data name="ReloadAfterChange" xml:space="preserve">
+    <value>* При выборе плагин будет перезагружен</value>
+  </data>
 </root>

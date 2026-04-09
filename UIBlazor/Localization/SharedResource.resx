@@ -384,4 +384,7 @@
   <data name="Empty" xml:space="preserve">
     <value>empty</value>
   </data>
+  <data name="ReloadAfterChange" xml:space="preserve">
+    <value>* When selected, the plugin will be reloaded</value>
+  </data>
 </root>

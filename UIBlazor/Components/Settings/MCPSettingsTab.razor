@@ -83,10 +83,7 @@
                                         @foreach (var tool in server.Tools)
                                         {
                                             <RadzenStack Orientation="Orientation.Vertical" JustifyContent="JustifyContent.SpaceBetween">
-                                                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                                                    <RadzenCheckBox @bind-Value="@tool.Enabled" @bind-Value:after="OnMcpToolSettingChanged" Name="@($"mcp__{server.Name}__{tool.Name}")" />
-                                                    <RadzenLabel Text="@tool.Name" Component="@($"mcp__{server.Name}__{tool.Name}")" />
-                                                </RadzenStack>
+                                                <CheckBox Text="@tool.Name" @bind-Value="@tool.Enabled" @bind-Value:after="OnMcpToolSettingChanged" />
                                                 <RadzenText TextStyle="TextStyle.Caption" class="tool-description">@tool.Description</RadzenText>
                                             </RadzenStack>
                                         }
