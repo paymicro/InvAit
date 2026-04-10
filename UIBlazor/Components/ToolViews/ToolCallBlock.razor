@@ -39,12 +39,19 @@
                 </div>
             }
         </div>
+        @if (ToolResult is not null)
+        {
+            <Details Text="@ToolResult.DisplayName">
+                <pre class="rz-p-2 rz-background-color-base-900 rz-color-white">@ToolResult.GetDisplayContent</pre>
+            </Details>
+        }
     }
 </div>
 
 @code {
     [Parameter] public ContentSegment Segment { get; set; } = null!;
     [Parameter] public EventCallback<(string SegmentId, bool Approved)> OnApproval { get; set; }
+    [Parameter] public ToolResult? ToolResult { get; set; }
 
     private string DisplayName => ToolManager.GetTool(Segment.ToolName)?.DisplayName ?? Segment.ToolName;
 

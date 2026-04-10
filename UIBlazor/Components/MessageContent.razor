@@ -5,15 +5,12 @@
     }
     else
     {
+        toolCount = 0;
         @if (!string.IsNullOrEmpty(Message.ReasoningContent))
         {
-            <RadzenAccordion>
-                <Items>
-                    <RadzenAccordionItem Text="@SharedResource.Thinking" Icon="emoji_objects" class="reasoning-details">
-                        <MarkdownBlock Content="@Message.ReasoningContent" />
-                    </RadzenAccordionItem>
-                </Items>
-            </RadzenAccordion>
+            <Details Text="@SharedResource.Thinking" Icon="fa-solid fa-lightbulb" class="reasoning-details">
+                <MarkdownBlock Content="@Message.ReasoningContent" />
+            </Details>
         }
 
         @foreach (var segment in Message.Segments)
@@ -22,28 +19,14 @@
             {
                 <ToolCallBlock @key="segment.Id"
                     Segment="@segment"
-                    OnApproval="@OnToolApprovalHandler" />
+                    OnApproval="@OnToolApprovalHandler"
+                    ToolResult="@(toolCount < Message.ToolResults.Count ? Message.ToolResults[toolCount] : null)" />
+                toolCount++;
             }
             else if (segment.Type is SegmentType.Markdown)
             {
                 <MarkdownBlock @key="segment.Id" Content="@segment.CurrentLine.ToString()" />
             }
-        }
-
-        @if (Message.ToolResults.Count != 0)
-        {
-            <div class="message-tool-results rz-mt-2">
-                @foreach (var toolResult in Message.ToolResults)
-                {
-                    <RadzenAccordion @key="toolResult.Id">
-                        <Items>
-                            <RadzenAccordionItem Text="@toolResult.DisplayName">
-                                <pre class="rz-p-2 rz-background-color-base-900 rz-color-white">@toolResult.GetDisplayContent</pre>
-                            </RadzenAccordionItem>
-                        </Items>
-                    </RadzenAccordion>
-                }
-            </div>
         }
     }
 </div>
@@ -52,6 +35,8 @@
     [Parameter] public VisualChatMessage Message { get; set; } = new();
     [Parameter] public EventCallback<(string MessageId, string SegmentId, bool Approved)> OnToolApproval { get; set; }
     [Inject] private IToolManager ToolManager { get; set; } = null!;
+
+    private int toolCount;
 
     private async Task OnToolApprovalHandler((string SegmentId, bool Approved) args)
     {

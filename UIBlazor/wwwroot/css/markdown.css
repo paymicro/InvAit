@@ -50,8 +50,8 @@
         }
 
         .markdown-content table thead tr {
-            background: var(--rz-primary-darker);
-            color: var(--rz-on-primary-darker);
+            background: var(--rz-base-500);
+            color: var(--rz-on-base);
         }
 
         .markdown-content table td {

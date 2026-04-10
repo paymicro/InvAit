@@ -1,0 +1,54 @@
+.custom-details {
+    overflow: hidden;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    white-space: normal;
+    margin-block: 0;
+}
+
+.header {
+    padding: 0.6rem 0.8rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    user-select: none;
+    background-color: var(--rz-base-700);
+    border-left: 4px solid var(--rz-info);
+}
+
+.icon-spacing {
+    width: 20px;
+    text-align: left;
+    transition: color 0.3s;
+}
+
+.content-wrapper {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.3s ease-out;
+}
+
+.is-expanded .content-wrapper {
+    grid-template-rows: 1fr;
+}
+
+.content-inner {
+    overflow: hidden;
+    min-height: 0;
+}
+
+::deep.content-inner pre {
+    font-size: 0.8rem;
+    border-radius: 4px;
+    margin: 0;
+}
+
+.is-expanded .arrow {
+    transform: rotate(180deg);
+}
+
+.arrow {
+    transition: transform 0.3s;
+}

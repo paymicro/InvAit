@@ -1,0 +1,35 @@
+<div class="custom-details @(IsExpanded ? "is-expanded" : "") @CustomClass">
+    <div class="header" @onclick="Toggle">
+        <div class="header-left">
+            @if (!string.IsNullOrEmpty(Icon))
+            {
+                <i class="@Icon icon-spacing"></i>
+            }
+            @Text
+        </div>
+        <span class="arrow">▼</span>
+    </div>
+    <div class="content-wrapper">
+        <div class="content-inner">
+            @ChildContent
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Text { get; set; } = string.Empty;
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public RenderFragment ChildContent { get; set; } = null!;
+    [Parameter] public bool IsExpanded { get; set; }
+
+    // Позволяет передавать любые другие атрибуты RadzenSwitch (напр. Title, TabIndex)
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Извлекаем строку класса, если она есть
+    private string CustomClass => AdditionalAttributes?.ContainsKey("class") == true
+                                      ? AdditionalAttributes["class"].ToString() ?? ""
+                                      : "";
+
+    private void Toggle() => IsExpanded = !IsExpanded;
+}

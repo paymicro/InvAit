@@ -56,35 +56,22 @@ pre {
     opacity: 1 !important;
 }
 
-.message-tool-results {
-    border-top: 1px dashed var(--rz-base-600);
-    padding: 0.5rem;
-    white-space: normal;
-}
-
-    .message-tool-results pre {
-        max-height: 15em;
-        overflow-y: auto;
-    }
-
-    .message-tool-results .rz-accordion-content {
-        padding: 0;
-    }
-
-    .message-tool-results .rz-accordion-header {
-        background: none;
-    }
-
-    .message-tool-results pre {
-        font-size: 0.8rem;
-        border-radius: 4px;
-        margin: 0;
-    }
-
 .reasoning-details {
     white-space: normal;
     font-size: small;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    background: var(--rz-base);
 }
+
+    .reasoning-details.is-expanded {
+        
+        border: 2px solid var(--rz-base);
+    }
+
+    .reasoning-details .markdown-content {
+        padding: 0.5em 0.8em;
+    }
 
 .rz-chat-message-assistant {
     min-width: 100%;
