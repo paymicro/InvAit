@@ -393,4 +393,7 @@
   <data name="SettingsMisc" xml:space="preserve">
     <value>Разное</value>
   </data>
+  <data name="ShowMessageTimings" xml:space="preserve">
+    <value>Показывать значки времени сообщений</value>
+  </data>
 </root>

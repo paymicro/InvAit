@@ -143,6 +143,8 @@
                         <RadzenLabel Text="@CommonSettingsProvider.Current.MaxRetries.ToString()" Style="text-align: right; width: 50px;" />
                     </RadzenStack>
                 </RadzenStack>
+                
+                <CheckBox Text="@SharedResource.ShowMessageTimings" @bind-Value="@CommonSettingsProvider.Current.ShowMessageTimings" />
 
                 <LanguageSelector />
             </RadzenStack>

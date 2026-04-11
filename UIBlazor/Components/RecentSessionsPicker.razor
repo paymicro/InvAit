@@ -45,6 +45,7 @@ else
 
     private async Task LoadSession(string id)
     {
+        // TODO: сделать загрузочную анимацию
         await ChatService.LoadSessionAsync(id);
         DialogService.Close();
     }

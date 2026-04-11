@@ -130,7 +130,10 @@ public partial class AiChat : RadzenComponent
             }
 
             endTokens = sw.ElapsedMilliseconds;
-            var secForTokens = (endTokens - firstToken) / 1000f;
+            var correctedFirstToken = ProfileManager.ActiveProfile.Stream
+                ? firstToken
+                : Math.Min(500, endTokens - 500);
+            var secForTokens = (endTokens - correctedFirstToken) / 1000f;
             sw.Stop();
 
             assistantMessage.Content = response.ToString();

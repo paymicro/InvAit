@@ -93,7 +93,7 @@
                                   Click="@OnRegenerate" Title="@SharedResource.MessageRegenerate" />
                 }
                 <div class="message-badges">
-                    @if (Message.Timings is { FirstToken.Milliseconds: > 100 })
+                    @if (CommonSettingsProvider.Current.ShowMessageTimings && Message.Timings is { FirstToken.TotalMilliseconds: > 100 })
                     {
                         <RadzenBadge BadgeStyle="BadgeStyle.Light" title="@SharedResource.FirstToken">
                             <i class="fa-solid fa-arrow-right-arrow-left"></i> @Message.Timings.FirstToken.TotalSeconds.ToString("F1")
@@ -112,6 +112,7 @@
 </div>
 
 @code {
+    [Inject] private ICommonSettingsProvider CommonSettingsProvider { get; set; } = null!;
     [Parameter] public VisualChatMessage Message { get; set; } = null!;
     [Parameter] public string UserAvatarText { get; set; } = "U"; // TODO сделать что-то поинтереснее
     [Parameter] public bool IsLoading { get; set; }

@@ -393,4 +393,7 @@
   <data name="SettingsMisc" xml:space="preserve">
     <value>Misc</value>
   </data>
+  <data name="ShowMessageTimings" xml:space="preserve">
+    <value>Show message time badges</value>
+  </data>
 </root>

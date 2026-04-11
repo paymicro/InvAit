@@ -583,6 +583,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Show message time badges.
+        /// </summary>
+        public static string ShowMessageTimings {
+            get {
+                return ResourceManager.GetString("ShowMessageTimings", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Show more.
         /// </summary>
         public static string ShowMore {
