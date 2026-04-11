@@ -387,4 +387,10 @@
   <data name="ReloadAfterChange" xml:space="preserve">
     <value>* При выборе плагин будет перезагружен</value>
   </data>
+  <data name="FirstToken" xml:space="preserve">
+    <value>Первый токен</value>
+  </data>
+  <data name="SettingsMisc" xml:space="preserve">
+    <value>Разное</value>
+  </data>
 </root>

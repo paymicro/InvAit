@@ -82,7 +82,7 @@
         <!-- Message Actions -->
         @if (!Message.IsStreaming && !Message.IsEditing)
         {
-            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.25rem" class="rz-chat-message-actions" Style="opacity: 0.4; transition: opacity 0.2s;">
+            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.25rem" class="rz-chat-message-actions">
                 <RadzenButton Icon="edit" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
                               Click="@(() => OnEdit.InvokeAsync(Message))" Title="@SharedResource.MessageEdit" />
                 <RadzenButton Icon="delete" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
@@ -92,6 +92,20 @@
                     <RadzenButton Icon="refresh" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
                                   Click="@OnRegenerate" Title="@SharedResource.MessageRegenerate" />
                 }
+                <div class="message-badges">
+                    @if (Message.Timings is { FirstToken.Milliseconds: > 100 })
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Light" title="@SharedResource.FirstToken">
+                            <i class="fa-solid fa-arrow-right-arrow-left"></i> @Message.Timings.FirstToken.TotalSeconds.ToString("F1")
+                        </RadzenBadge>
+                        <RadzenBadge BadgeStyle="BadgeStyle.Light" >
+                            <i class="fa-solid fa-gauge-high"></i> @Message.Timings.TokensInSec.ToString("F1") t/s
+                        </RadzenBadge>
+                        <RadzenBadge BadgeStyle="BadgeStyle.Light" >
+                            <i class="fa-solid fa-flag-checkered"></i> @Message.Timings.Total.TotalSeconds.ToString("F1")
+                        </RadzenBadge>
+                    }
+                </div>
             </RadzenStack>
         }
     </RadzenStack>

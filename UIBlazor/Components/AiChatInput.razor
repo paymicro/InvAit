@@ -8,14 +8,14 @@
             @foreach (var token in _tokens.OfType<FileToken>())
             {
                 <FileChip Token="token"
-                          Icon="@GetFileIcon(token.FileName)"
-                          OnRemoveClick="RemoveTokenAsync" />
+                            Icon="@GetFileIcon(token.FileName)"
+                            OnRemoveClick="RemoveTokenAsync" />
             }
         </div>
     }
-
     <div class="input-container">
         @* Поле ввода *@
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Start">
         <textarea @ref="_textareaRef"
                   rows="1"
                   class="text-input"
@@ -24,7 +24,25 @@
                   @oninput="HandleInputAsync"
                   @onkeydown="OnKeyDown"
                   @onkeydown:preventDefault="_shouldPreventDefault"
-                  disabled="@IsLoading"></textarea>
+                  disabled="@IsLoading"/>
+                  
+            <div class="misc">
+                <RadzenToggleButton @bind-Value="CommonSettingsProvider.Current.SendCurrentFile"
+                                    ButtonStyle="ButtonStyle.Base"
+                                    Size="ButtonSize.Small"
+                                    Variant="Variant.Flat"
+                                    title="@SharedResource.SendCurrentFile">
+                    <i class="fa-solid fa-file"></i>
+                </RadzenToggleButton>
+                <RadzenToggleButton @bind-Value="CommonSettingsProvider.Current.SendSolutionsStricture"
+                                    ButtonStyle="ButtonStyle.Base"
+                                    Size="ButtonSize.Small"
+                                    Variant="Variant.Flat"
+                                    title="@SharedResource.SendSolutionsStricture">
+                    <i class="fa-solid fa-folder-tree"></i>
+                </RadzenToggleButton>
+            </div>
+        </RadzenStack>
 
         @* Нижняя панель с кнопками *@
         <div class="input-footer">
@@ -40,14 +58,14 @@
 
                     <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" JustifyContent="JustifyContent.End" AlignItems="AlignItems.Center">
                         <RadzenButton Icon="send"
-                                      ButtonStyle="ButtonStyle.Primary"
+                                      ButtonStyle="ButtonStyle.Base"
                                       Variant="Variant.Text"
                                       Visible="@(!IsLoading)"
                                       Disabled="@(!CanSend())"
                                       Click="@OnSendClick"
                                       title="@SharedResource.SendMessage"
                                       class="rz-chat-send-btn" />
-                        <RadzenButton Icon="dangerous"
+                        <RadzenButton Icon="cancel"
                                       ButtonStyle="ButtonStyle.Danger"
                                       Variant="Variant.Text"
                                       Visible="@IsLoading"
@@ -94,6 +112,7 @@
     [Inject] private IVsCodeContextService VsCodeContextService { get; set; } = null!;
     [Inject] private IJSRuntime JsRuntime { get; set; } = null!;
     [Inject] private IVsBridge VsBridge { get; set; } = null!;
+    [Inject] private ICommonSettingsProvider CommonSettingsProvider { get; set; } = null!;
 
     private ElementReference _textareaRef;
     private readonly List<InputToken> _tokens = [];
@@ -212,14 +231,14 @@
                     return;
                 case "Tab":
                 case "Enter":
-                {
-                    _shouldPreventDefault = true;
-                    if (_selectedIndex >= 0 && _selectedIndex < _filteredFiles.Count)
                     {
-                        await AddFileTokenAsync(_filteredFiles[_selectedIndex]);
+                        _shouldPreventDefault = true;
+                        if (_selectedIndex >= 0 && _selectedIndex < _filteredFiles.Count)
+                        {
+                            await AddFileTokenAsync(_filteredFiles[_selectedIndex]);
+                        }
+                        return;
                     }
-                    return;
-                }
                 case "Escape":
                     _shouldPreventDefault = true;
                     _filteredFiles.Clear();
@@ -311,9 +330,15 @@
     {
         base.OnInitialized();
         ChatService.OnSessionChanged += HandleSessionChanged;
+        CommonSettingsProvider.OnSaved += HangleCommonSettingsSaved;
     }
 
     private void HandleSessionChanged(string propName)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HangleCommonSettingsSaved()
     {
         InvokeAsync(StateHasChanged);
     }
@@ -332,6 +357,7 @@
     {
         base.Dispose();
         ChatService.OnSessionChanged -= HandleSessionChanged;
+        CommonSettingsProvider.OnSaved -= HangleCommonSettingsSaved;
     }
     private void OnModeChanged()
     {

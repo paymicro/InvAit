@@ -387,4 +387,10 @@
   <data name="ReloadAfterChange" xml:space="preserve">
     <value>* When selected, the plugin will be reloaded</value>
   </data>
+  <data name="FirstToken" xml:space="preserve">
+    <value>First token</value>
+  </data>
+  <data name="SettingsMisc" xml:space="preserve">
+    <value>Misc</value>
+  </data>
 </root>

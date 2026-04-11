@@ -14,7 +14,8 @@
     align-items: center;
     justify-content: space-between;
     user-select: none;
-    background-color: var(--rz-base-700);
+    background-color: var(--rz-chat-message-assistant-background-color);
+    color: var(--rz-chat-message-assistant-color);
     border-left: 4px solid var(--rz-info);
 }
 

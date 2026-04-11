@@ -286,6 +286,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to First token.
+        /// </summary>
+        public static string FirstToken {
+            get {
+                return ResourceManager.GetString("FirstToken", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Header.
         /// </summary>
         public static string Header {
@@ -552,6 +561,15 @@ namespace UIBlazor.Localization {
         public static string SettingsGeneral {
             get {
                 return ResourceManager.GetString("SettingsGeneral", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Misc.
+        /// </summary>
+        public static string SettingsMisc {
+            get {
+                return ResourceManager.GetString("SettingsMisc", resourceCulture);
             }
         }
         

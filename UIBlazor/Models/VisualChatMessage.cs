@@ -33,6 +33,9 @@ public class VisualChatMessage
     [JsonIgnore]
     public string ReasoningContent { get; set; } = string.Empty;
 
+    [JsonIgnore]
+    public MessageTimings? Timings { get; set; }
+
     /// <summary>
     /// Gets or sets the timestamp when the message was created.
     /// </summary>

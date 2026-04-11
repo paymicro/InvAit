@@ -24,6 +24,8 @@ public interface IChatService
 
     public string? LastError { get; }
 
+    public UsageInfo? LastUsage { get; }
+
     IAsyncEnumerable<ChatDelta> GetCompletionsAsync(CancellationToken cancellationToken);
 
     /// <summary>

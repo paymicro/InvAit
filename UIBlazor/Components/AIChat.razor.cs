@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Radzen;
@@ -12,8 +13,6 @@ namespace UIBlazor.Components;
 public partial class AiChat : RadzenComponent
 {
     private List<VisualChatMessage> Messages => ChatService.Session.Messages;
-
-    private List<SessionSummary> _recentSessions = [];
 
     private bool IsLoading { get; set; }
 
@@ -45,7 +44,6 @@ public partial class AiChat : RadzenComponent
     public async Task NewSessionAsync()
     {
         await ChatService.NewSessionAsync();
-        _recentSessions = await ChatService.GetRecentSessionsAsync(3);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -97,11 +95,19 @@ public partial class AiChat : RadzenComponent
 
         try
         {
+            var sw = Stopwatch.StartNew();
             var reasoning = new StringBuilder();
             var response = new StringBuilder();
+            var firstToken = 0L;
+            var firstContentToken = 0L;
+            var endTokens = 0L;
 
             await foreach (var delta in ChatService.GetCompletionsAsync(_cts.Token))
             {
+                if (firstToken == 0)
+                {
+                    firstToken = sw.ElapsedMilliseconds;
+                }
                 if (delta.ReasoningContent != null)
                 {
                     reasoning.Append(delta.ReasoningContent);
@@ -109,6 +115,10 @@ public partial class AiChat : RadzenComponent
                 }
                 if (delta.Content != null)
                 {
+                    if (firstContentToken == 0)
+                    {
+                        firstContentToken = sw.ElapsedMilliseconds;
+                    }
                     response.Append(delta.Content);
                     // обновляем сегменты в сообщении
                     MessageParser.UpdateSegments(delta.Content, assistantMessage);
@@ -119,8 +129,24 @@ public partial class AiChat : RadzenComponent
                 await InvokeAsync(StateHasChanged);
             }
 
+            endTokens = sw.ElapsedMilliseconds;
+            var secForTokens = (endTokens - firstToken) / 1000f;
+            sw.Stop();
+
             assistantMessage.Content = response.ToString();
             assistantMessage.IsStreaming = false;
+            assistantMessage.Timings = new MessageTimings
+            {
+                FirstToken = TimeSpan.FromMilliseconds(firstToken),
+                Reasoning = !string.IsNullOrEmpty(assistantMessage.ReasoningContent)
+                    ? TimeSpan.FromMilliseconds(firstContentToken - firstToken)
+                    : TimeSpan.Zero,
+                Content = TimeSpan.FromMilliseconds(endTokens - firstContentToken),
+                Total = TimeSpan.FromMilliseconds(endTokens),
+                TokensInSec = ChatService.LastUsage != null && secForTokens > 0
+                    ? ChatService.LastUsage.CompletionTokens / secForTokens
+                    : 0f
+            };
 
             if (ChatService.FinishReason?.Equals("length", StringComparison.OrdinalIgnoreCase) == true)
             {
@@ -393,8 +419,6 @@ public partial class AiChat : RadzenComponent
 
         ToolManager.RegisterAllTools();
 
-        _recentSessions = await ChatService.GetRecentSessionsAsync(3);
-
         await VsBridge.InitializeAsync();
         await InvokeAsync(StateHasChanged);
     }
@@ -405,7 +429,6 @@ public partial class AiChat : RadzenComponent
             return;
 
         LoadMessagesFromSession();
-        _recentSessions = await ChatService.GetRecentSessionsAsync(3);
         await InvokeAsync(StateHasChanged);
     }
 

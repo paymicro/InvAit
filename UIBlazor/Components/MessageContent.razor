@@ -8,7 +8,12 @@
         toolCount = 0;
         @if (!string.IsNullOrEmpty(Message.ReasoningContent))
         {
-            <Details Text="@SharedResource.Thinking" Icon="fa-solid fa-lightbulb" class="reasoning-details">
+            string header = SharedResource.Thinking;
+            if (Message.Timings is { Reasoning.TotalMilliseconds: > 100 })
+            {
+                header = $"{header}   {Message.Timings.Reasoning.TotalSeconds.ToString("F1")} sec";
+            }
+            <Details Text="@header" Icon="fa-solid fa-lightbulb" class="reasoning-details">
                 <MarkdownBlock Content="@Message.ReasoningContent" />
             </Details>
         }
