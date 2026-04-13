@@ -36,31 +36,28 @@ public class HeadlessMocker
             },
             BasicEnum.McpGetTools => new VsToolResult
             {
-                Result = JsonUtils.Serialize(new McpResponse
-                {
-                    Result = new McpListToolsResult
+                Result = JsonUtils.Serialize(new McpListToolsResult
                     {
-                        Tools = [
-                            new McpTool
-                            {
-                                Name = "test.sum",
-                                Description = "Сумма двух чисел",
-                                InputSchema = new {
-                                    type = "object",
-                                    properties = new {
-                                        a = new {
-                                            type = "number",
-                                            description = "Первое число"
-                                        },
-                                        b = new {
-                                            type = "number",
-                                            description = "Второе число"
-                                        }
+                    Tools = [
+                        new McpTool
+                        {
+                            Name = "test.sum",
+                            Description = "Сумма двух чисел",
+                            InputSchema = new {
+                                type = "object",
+                                properties = new {
+                                    a = new {
+                                        type = "number",
+                                        description = "Первое число"
+                                    },
+                                    b = new {
+                                        type = "number",
+                                        description = "Второе число"
                                     }
                                 }
                             }
-                        ]
-                    }
+                        }
+                    ]
                 })
             },
             BasicEnum.McpCallTool => new VsToolResult

@@ -10,6 +10,8 @@ public interface IToolManager : IBaseSettingsProvider
 
     IEnumerable<Tool> GetAllTools();
 
+    IEnumerable<Tool> GetMcpTools();
+
     Tool? GetTool(string name);
 
     ToolApprovalMode GetApprovalModeByToolName(string name);
@@ -19,4 +21,6 @@ public interface IToolManager : IBaseSettingsProvider
     void UpdateCategorySettings(ToolCategory category, bool isEnabled, ToolApprovalMode approvalMode);
 
     void ToggleTool(string toolName, bool isEnabled);
+
+    Dictionary<string, (string Name, string Desc)> GetParameterNamesFromSchema(JsonElement? schemaElement);
 }

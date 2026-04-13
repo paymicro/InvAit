@@ -75,7 +75,7 @@ public class VsBridge : IVsBridge, IDisposable
         try
         {
             // Отправляем запрос
-            var result = await _jsRuntime.InvokeAsync<string>("postVsMessage", request, cancellationToken);
+            var result = await _jsRuntime.InvokeAsync<string>("postVsMessage", cancellationToken: cancellationToken, request);
 
             if (result != "OK")
             {

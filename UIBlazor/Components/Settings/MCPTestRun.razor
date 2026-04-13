@@ -1,0 +1,71 @@
+@using Shared.Contracts.Mcp
+
+<RadzenText Text=@Tool.Description" TextStyle="TextStyle.H3" />
+
+<RadzenStack Gap="1">
+    @foreach (var parameter in parameters)
+    {
+        var key = parameter.Key;
+        if (!_values.ContainsKey(key))
+        {
+            _values[key] = string.Empty;
+        }
+        <RadzenFormField Text="@parameter.Value.Desc" Variant="Variant.Outlined" AllowFloatingLabel="false">
+            <Start>
+                <RadzenLabel Text="@key" />
+            </Start>
+            <ChildContent>
+                <RadzenTextBox Placeholder="@parameter.Value.Name" @bind-Value="@_values[key]" />
+            </ChildContent>
+        </RadzenFormField>
+    }
+
+    <RadzenButton Click="RunMcpToolAsync" />
+
+    <RadzenText>
+        @Result
+    </RadzenText>
+</RadzenStack>
+
+@code {
+    [Inject] IToolManager ToolManager { get; set; } = null!;    
+    [Parameter] public string ServerName { get; set; } = null!;
+    [Parameter] public McpToolConfig Tool { get; set; } = null!;
+
+    public Dictionary<string, (string Name, string Desc)> parameters { get; set; } = [];
+    private Dictionary<string, string> _values = [];
+    private string Result = string.Empty;
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        parameters = ToolManager.GetParameterNamesFromSchema(Tool.InputSchema);
+    }
+
+    private async Task RunMcpToolAsync()
+    {
+        var tool = ToolManager.GetMcpTools().FirstOrDefault(t => t.Name == $"mcp__{ServerName}__{Tool.Name}");
+
+        if (tool is not null)
+        {
+            var vsToolResult = await tool.ExecuteAsync(_values.ToDictionary(k => k.Key, v => (object)v.Value), CancellationToken.None);
+#if DEBUG
+            vsToolResult = HeadlessMocker.GetVsToolResult(vsToolResult);
+#endif
+            if (vsToolResult.Success)
+            {
+                Result = vsToolResult.Result;
+            }
+            else
+            {
+                Result = $"Error: {vsToolResult.ErrorMessage}";
+            }
+        }
+        else
+        {
+            Result = "Error: Tool is not find";
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+}

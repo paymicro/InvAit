@@ -128,7 +128,7 @@ public class ToolManager(
         return GetMcpTools().FirstOrDefault(t => t.Name == name);
     }
 
-    private IEnumerable<Tool> GetMcpTools()
+    public IEnumerable<Tool> GetMcpTools()
     {
         if (!mcpSettingsProvider.Current.Enabled)
         {
@@ -406,6 +406,7 @@ public class ToolManager(
         };
     }
 
+    // TODO поддержка только плоской схемы без вложенных объектов
     private static Dictionary<string, object> GetArgumentNamesFromSchema(JsonElement? schemaElement, IReadOnlyDictionary<string, object> args)
     {
         if (!schemaElement.HasValue || schemaElement.Value.ValueKind != JsonValueKind.Object)
@@ -424,6 +425,29 @@ public class ToolManager(
                     var propType = prop.Value.GetProperty("type").GetString() ?? string.Empty; // TODO этого не может быть - ошибку надо выкидывать.
                     result[prop.Name] = GetArgumentByType(propType, arg);
                 }
+            }
+        }
+
+        return result;
+    }
+
+    // TODO поддержка только плоской схемы без вложенных объектов
+    public Dictionary<string, (string Name, string Desc)> GetParameterNamesFromSchema(JsonElement? schemaElement)
+    {
+        if (!schemaElement.HasValue || schemaElement.Value.ValueKind != JsonValueKind.Object)
+        {
+            return [];
+        }
+
+        var result = new Dictionary<string, (string Name, string Desc)>();
+        var schema = schemaElement.Value;
+        if (schema.TryGetProperty("properties", out var props) && props.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var prop in props.EnumerateObject())
+            {
+                var propType = prop.Value.GetProperty("type").GetString() ?? string.Empty;
+                var desc = prop.Value.GetProperty("description").GetString();
+                result[prop.Name] = (propType, desc);
             }
         }
 

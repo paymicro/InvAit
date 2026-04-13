@@ -83,7 +83,10 @@
                                         @foreach (var tool in server.Tools)
                                         {
                                             <RadzenStack Orientation="Orientation.Vertical" JustifyContent="JustifyContent.SpaceBetween">
-                                                <CheckBox Text="@tool.Name" @bind-Value="@tool.Enabled" @bind-Value:after="OnMcpToolSettingChanged" />
+                                                <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween">
+                                                    <CheckBox Text="@tool.Name" @bind-Value="@tool.Enabled" @bind-Value:after="OnMcpToolSettingChanged" />
+                                                    <RadzenButton Icon="science" Size="ButtonSize.ExtraSmall" ButtonStyle="ButtonStyle.Base" Click="@(() => TestRun(server.Name, tool))" />
+                                                </RadzenStack>
                                                 <RadzenText TextStyle="TextStyle.Caption" class="tool-description">@tool.Description</RadzenText>
                                             </RadzenStack>
                                         }
@@ -98,9 +101,10 @@
     }
 </RadzenStack>
 
-@code {    
+@code {
     [Inject] IMcpSettingsProvider McpSettingsProvider { get; set; } = null!;
     [Inject] NotificationService NotificationService { get; set; } = null!;
+    [Inject] DialogService DialogService { get; set; } = null!;
 
     private string? _refreshingServerId;
 
@@ -187,5 +191,16 @@
                 }
             }
         }
+    }
+
+    private async Task TestRun(string serverName, McpToolConfig mcpTool) {
+        await DialogService.OpenAsync<MCPTestRun>(
+            $"{mcpTool.Name} - manual run",
+            new Dictionary<string, object?> { { "Tool", mcpTool }, { "ServerName", serverName } },
+            new DialogOptions {
+                Resizable = true, 
+                Icon = "science" 
+            }
+        );
     }
 }

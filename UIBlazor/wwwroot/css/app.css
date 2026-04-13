@@ -118,6 +118,10 @@ pre {
     z-index: 2000;
 }
 
+.rz-form-field-helper {
+    margin-left: auto;
+}
+
 .rz-tabview-panels {
     border: 0;
 }
