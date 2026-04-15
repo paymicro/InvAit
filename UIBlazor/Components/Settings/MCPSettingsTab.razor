@@ -195,11 +195,13 @@
 
     private async Task TestRun(string serverName, McpToolConfig mcpTool) {
         await DialogService.OpenAsync<MCPTestRun>(
-            $"{mcpTool.Name} - manual run",
+            $"{serverName} - {mcpTool.Name}",
             new Dictionary<string, object?> { { "Tool", mcpTool }, { "ServerName", serverName } },
             new DialogOptions {
-                Resizable = true, 
-                Icon = "science" 
+                Resizable = true,
+                Icon = "science",
+                Top = "1em",
+                Width = "50em"
             }
         );
     }

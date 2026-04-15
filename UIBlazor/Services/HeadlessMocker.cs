@@ -62,7 +62,15 @@ public class HeadlessMocker
             },
             BasicEnum.McpCallTool => new VsToolResult
             {
-                Result = "42", // - универсальный ответ на все вопросы
+                Result = JsonUtils.Serialize(new MCPToolResult
+                {
+                    Content = [
+                        new () {
+                            Type = "text",
+                            Text = "42" // - универсальный ответ на все вопросы
+                        }
+                    ]
+                }),
             },
             BuiltInToolEnum.ReadOpenFile => new VsToolResult
             {

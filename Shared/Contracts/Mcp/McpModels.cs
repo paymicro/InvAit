@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Shared.Contracts.Mcp;
 
@@ -78,7 +79,7 @@ public class McpServerConfig
     public string[] Args { get; set; } = [];
     public string Url { get; set; } = string.Empty;
     public string Endpoint { get; set; } = string.Empty;
-    public Dictionary<string, string> Env { get; set; } = new();
+    public Dictionary<string, string> Env { get; set; } = [];
     public bool Enabled { get; set; } = true;
     public List<McpToolConfig> Tools { get; set; } = [];
 }
@@ -88,7 +89,7 @@ public class McpServerConfig
 /// </summary>
 public class McpSettingsFile
 {
-    public Dictionary<string, McpServerJsonEntry> McpServers { get; set; } = new();
+    public Dictionary<string, McpServerJsonEntry> McpServers { get; set; } = [];
 }
 
 /// <summary>
@@ -103,4 +104,44 @@ public class McpServerJsonEntry
     public string? Url { get; set; }
 
     public Dictionary<string, string>? Env { get; set; }
+}
+
+/// <summary>
+/// Ответ тулзы от MCP сервера
+/// </summary>
+public class MCPToolResult
+{
+    public List<MCPToolResultContent> Content { get; set; } = [];
+
+    public bool IsError { get; set; }
+}
+
+public class MCPToolResultContent
+{
+    /// <summary>
+    /// text, image или resource
+    /// </summary>
+    public string Type { get; set; } = string.Empty;
+
+    public string? Text { get; set; }
+
+    /// <summary>
+    /// Image base64
+    /// </summary>
+    public string? Data { get; set; }
+
+    public McpResourceContent? Resource { get; set; }
+
+    public string? MimeType { get; set; }
+}
+
+public class McpResourceContent
+{
+    public string Uri { get; set; } = string.Empty;
+
+    public string? MimeType { get; set; }
+
+    public string? Text { get; set; }
+
+    public string? Blob { get; set; }
 }

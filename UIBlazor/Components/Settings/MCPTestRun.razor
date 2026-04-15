@@ -1,8 +1,8 @@
 @using Shared.Contracts.Mcp
 
-<RadzenText Text=@Tool.Description" TextStyle="TextStyle.H3" />
+<RadzenText Text=@Tool.Description" TextStyle="TextStyle.Body1" />
 
-<RadzenStack Gap="1">
+<RadzenStack Gap="1em">
     @foreach (var parameter in parameters)
     {
         var key = parameter.Key;
@@ -11,20 +11,19 @@
             _values[key] = string.Empty;
         }
         <RadzenFormField Text="@parameter.Value.Desc" Variant="Variant.Outlined" AllowFloatingLabel="false">
-            <Start>
-                <RadzenLabel Text="@key" />
-            </Start>
+            <End>
+                <RadzenLabel Text="@key" Style="padding-inline: 0.5em" />
+            </End>
             <ChildContent>
                 <RadzenTextBox Placeholder="@parameter.Value.Name" @bind-Value="@_values[key]" />
             </ChildContent>
         </RadzenFormField>
     }
 
-    <RadzenButton Click="RunMcpToolAsync" />
-
-    <RadzenText>
-        @Result
-    </RadzenText>
+    <RadzenButton Text="@Tool.Name" Click="RunMcpToolAsync" IsBusy="@IsBusy" />
+    
+    <RadzenText Text="Result" TextStyle="TextStyle.Overline" />
+    <MarkdownBlock Content="@Result" />
 </RadzenStack>
 
 @code {
@@ -35,6 +34,7 @@
     public Dictionary<string, (string Name, string Desc)> parameters { get; set; } = [];
     private Dictionary<string, string> _values = [];
     private string Result = string.Empty;
+    private bool IsBusy = false;
 
     protected override void OnParametersSet()
     {
@@ -44,6 +44,7 @@
 
     private async Task RunMcpToolAsync()
     {
+        IsBusy = true;
         var tool = ToolManager.GetMcpTools().FirstOrDefault(t => t.Name == $"mcp__{ServerName}__{Tool.Name}");
 
         if (tool is not null)
@@ -54,18 +55,47 @@
 #endif
             if (vsToolResult.Success)
             {
-                Result = vsToolResult.Result;
+                try
+                {
+                    var mcpToolResult = JsonUtils.Deserialize<MCPToolResult>(vsToolResult.Result);
+                    if (mcpToolResult is null)
+                    {
+                        Result = "## Error";
+                    }
+                    else
+                    {
+                        var sb = new StringBuilder();
+                        foreach (var content in mcpToolResult.Content)
+                        {
+                            sb.AppendLine(
+                                content.Type switch
+                                {
+                                    "text" => content.Text,
+                                    "image" => $"## Image\n{content.Data}\n##MimeType\n{content.MimeType}",
+                                    "resource" => $"## Resource\n{(content.Resource != null ? JsonUtils.Serialize(content.Resource) : null)}",
+                                    _ => "## Error - undefined content type"
+                                }
+                            );
+                        }
+                        Result = sb.ToString();
+                    }
+                }
+                catch
+                {
+                    Result = vsToolResult.Result;
+                }
             }
             else
             {
-                Result = $"Error: {vsToolResult.ErrorMessage}";
+                Result = $"## Error: {vsToolResult.ErrorMessage}";
             }
         }
         else
         {
-            Result = "Error: Tool is not find";
+            Result = "## Error: Tool is not find";
         }
 
+        IsBusy = false;
         await InvokeAsync(StateHasChanged);
     }
 }
