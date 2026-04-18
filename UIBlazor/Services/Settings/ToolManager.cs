@@ -1,5 +1,6 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Text.Json.Nodes;
 using Shared.Contracts.Mcp;
 
 namespace UIBlazor.Services.Settings;
@@ -329,61 +330,110 @@ public class ToolManager(
     private static string BuildSchemaDescription(string toolName, McpToolConfig toolConfig)
     {
         var schemaElement = toolConfig.InputSchema;
-        var requiredArgs = toolConfig.RequiredArguments;
-        if (!schemaElement.HasValue || schemaElement.Value.ValueKind != JsonValueKind.Object)
+        // Use SchemaProcessor for complex schemas
+        var schemaProperty = SchemaProcessor.DeserializeSchema(schemaElement);
+        if (schemaProperty == null)
         {
             return string.Empty;
         }
 
         var sb = new StringBuilder();
-        var schema = schemaElement.Value;
+        var exampleObj = SchemaProcessor.GenerateExample(schemaProperty);
 
         sb.AppendLine("For example:");
         sb.AppendLine($"<function name=\"{toolName}\">");
-
-        var propDesc = new List<string>();
-        // Get properties
-        if (schema.TryGetProperty("properties", out var props) && props.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var prop in props.EnumerateObject())
-            {
-                var isRequired = requiredArgs.Contains(prop.Name);
-                var type = "string";
-                var description = string.Empty;
-
-                if (prop.Value.ValueKind == JsonValueKind.Object)
-                {
-                    if (prop.Value.TryGetProperty("type", out var typeProp))
-                    {
-                        type = typeProp.GetString() ?? "string";
-                    }
-                    if (prop.Value.TryGetProperty("description", out var descProp))
-                    {
-                        description = descProp.GetString() ?? string.Empty;
-                    }
-                }
-
-                // TODO еще enum (допустимые значения), minimum, maximum (для чисел), minLength, maxLength, pattern (для сторок)
-                var requiredMark = isRequired ? " (required)" : "";
-                propDesc.Add($"{prop.Name} : [{type}]{requiredMark} {description}");
-
-                sb.AppendLine($"{prop.Name} : {GetSampleByType(type)}");
-            }
-        }
-
+        AppendExample(sb, exampleObj, indentLevel: 1); // Start indentation at 1 for the function body
         sb.AppendLine("</function>");
 
-        if (propDesc.Count > 0)
-        {
-            sb.AppendLine("*Properties schema:*");
-            sb.AppendLine(string.Join(Environment.NewLine, propDesc));
-        }
+        sb.AppendLine("*Properties schema:*");
+        AppendSchemaDescription(sb, schemaProperty, parentPath: "");
 
         return sb.ToString();
     }
 
+    private static void AppendExample(StringBuilder sb, object obj, int indentLevel)
+    {
+        var indent = new string(' ', indentLevel * 2);
+        switch (obj)
+        {
+            case JsonObject jo:
+                sb.AppendLine("{");
+                foreach (var kvp in jo)
+                {
+                    sb.Append(indent).Append("  ").Append(kvp.Key).Append(" : ");
+                    AppendExample(sb, kvp.Value, indentLevel + 1);
+                }
+                sb.AppendLine(indent).Append("}");
+                break;
+            case JsonArray ja:
+                sb.AppendLine("[");
+                foreach (var item in ja)
+                {
+                    sb.Append(indent).Append("  ");
+                    AppendExample(sb, item, indentLevel + 1);
+                }
+                sb.AppendLine(indent).Append("]");
+                break;
+            default:
+                sb.AppendLine(obj?.ToString() ?? "null");
+                break;
+        }
+    }
+
+    private static void AppendSchemaDescription(StringBuilder sb, JsonSchemaProperty prop, string parentPath, int depth = 0)
+    {
+        if (prop.Properties != null)
+        {
+            foreach (var nestedPropKvp in prop.Properties)
+            {
+                var currentPath = string.IsNullOrEmpty(parentPath) ? nestedPropKvp.Key : $"{parentPath}.{nestedPropKvp.Key}";
+                var nestedProp = nestedPropKvp.Value;
+
+                var typeInfo = nestedProp.Type ?? "unknown";
+                if (nestedProp.EnumValues != null && nestedProp.EnumValues.Count > 0)
+                {
+                    typeInfo += $" (enum: {string.Join(", ", nestedProp.EnumValues.Select(v => v.ToString()))})";
+                }
+                if (nestedProp.Minimum.HasValue) typeInfo += $" (min: {nestedProp.Minimum.Value})";
+                if (nestedProp.Maximum.HasValue) typeInfo += $" (max: {nestedProp.Maximum.Value})";
+                if (nestedProp.MinLength.HasValue) typeInfo += $" (minLen: {nestedProp.MinLength.Value})";
+                if (nestedProp.MaxLength.HasValue) typeInfo += $" (maxLen: {nestedProp.MaxLength.Value})";
+                if (!string.IsNullOrEmpty(nestedProp.Pattern)) typeInfo += $" (pattern: {nestedProp.Pattern})";
+
+                sb.AppendLine($"{currentPath} : [{typeInfo}] {nestedProp.Description ?? ""}");
+
+                // Recurse for nested objects
+                if (nestedProp.Type?.ToLowerInvariant() == "object")
+                {
+                    AppendSchemaDescription(sb, nestedProp, currentPath, depth + 1);
+                }
+            }
+        }
+        else if (prop.Type?.ToLowerInvariant() == "array" && prop.Items != null)
+        {
+            // Describe the array item type
+            var itemTypeInfo = prop.Items.Type ?? "unknown";
+            if (prop.Items.EnumValues != null && prop.Items.EnumValues.Count > 0)
+            {
+                itemTypeInfo += $" (enum: {string.Join(", ", prop.Items.EnumValues.Select(v => v.ToString()))})";
+            }
+            // ... potentially add minItems, maxItems if schema defines them ...
+            sb.AppendLine($"{parentPath}[] : [array of {itemTypeInfo}] {prop.Description ?? ""}");
+
+            // If the item itself is an object, recurse
+            if (prop.Items.Type?.ToLowerInvariant() == "object")
+            {
+                var itemPath = $"{parentPath}[]_item"; // Represent the item placeholder
+                AppendSchemaDescription(sb, prop.Items, itemPath, depth + 1);
+            }
+        }
+    }
+
     private static string GetSampleByType(string propType)
     {
+        // This method is deprecated in favor of SchemaProcessor.GenerateExample
+        // It's kept for potential legacy compatibility or simple flat schemas.
+        // For MCP schemas, BuildSchemaDescription now uses SchemaProcessor.
         return propType switch
         {
             "number" or "integer" => "123456",
@@ -396,7 +446,9 @@ public class ToolManager(
 
     private static object GetArgumentByType(string propType, object arg)
     {
-        // TODO array и object и enum
+        // This method is deprecated in favor of SchemaProcessor.ValidateAndConvertArguments
+        // It's kept for potential legacy compatibility or simple flat schemas.
+        // For MCP schemas, GetArgumentNamesFromSchema now uses SchemaProcessor.
         return propType switch
         {
             "integer" => int.TryParse(arg.ToString(), out var valueInt) ? valueInt : arg,
@@ -406,34 +458,28 @@ public class ToolManager(
         };
     }
 
-    // TODO поддержка только плоской схемы без вложенных объектов
+    // Uses SchemaProcessor for recursive handling
     private static Dictionary<string, object> GetArgumentNamesFromSchema(JsonElement? schemaElement, IReadOnlyDictionary<string, object> args)
     {
-        if (!schemaElement.HasValue || schemaElement.Value.ValueKind != JsonValueKind.Object)
+        var schemaProperty = SchemaProcessor.DeserializeSchema(schemaElement);
+        if (schemaProperty == null)
         {
             return [];
         }
 
-        var result = new Dictionary<string, object>();
-        var schema = schemaElement.Value;
-        if (schema.TryGetProperty("properties", out var props) && props.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var prop in props.EnumerateObject())
-            {
-                if (args.TryGetValue(prop.Name, out var arg))
-                {
-                    var propType = prop.Value.GetProperty("type").GetString() ?? string.Empty; // TODO этого не может быть - ошибку надо выкидывать.
-                    result[prop.Name] = GetArgumentByType(propType, arg);
-                }
-            }
-        }
-
-        return result;
+        // Use the new processor to validate and convert
+        return SchemaProcessor.ValidateAndConvertArguments(schemaProperty, args);
     }
 
-    // TODO поддержка только плоской схемы без вложенных объектов
+    // TODO поддержка только плоской схемы без вложенных объектов - this method also needs update potentially, or a new equivalent using SchemaProcessor
     public Dictionary<string, (string Name, string Desc)> GetParameterNamesFromSchema(JsonElement? schemaElement)
     {
+        // This method primarily serves the UI for simple flat parameter listing.
+        // For complex nested schemas, the primary logic now resides in SchemaProcessor and is used by GetArgumentNamesFromSchema.
+        // We could adapt this to return a hierarchical structure, but for now, keeping it simple might be sufficient for its current UI usage.
+        // Let's keep the old logic for backward compatibility if needed, but mark it as legacy.
+
+        // Legacy flat parsing
         if (!schemaElement.HasValue || schemaElement.Value.ValueKind != JsonValueKind.Object)
         {
             return [];

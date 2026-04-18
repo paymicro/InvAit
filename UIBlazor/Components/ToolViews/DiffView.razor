@@ -26,24 +26,21 @@
 </div>
 
 @code {
-    [Parameter] public List<string> Lines { get; set; } = [];
+    [Parameter] public int LinesCount { get; set; } = 0;
+    [Parameter] public Dictionary<string, object> ToolParams { get; set; } = [];
     [Parameter] public bool IsClosed { get; set; } = true;
 
     private string? FilePath { get; set; }
-    private int blockIndex = 0;
     private List<SideBySideDiffModel?> diffs = [null];
+    private int processedLines = 0;
     private bool showDiffSeparator = false;
 
-    private StringBuilder oldText { get; set; } = new();
-    private StringBuilder newText { get; set; } = new();
     private bool inSearch = false;
     private bool inReplace = false;
     private bool _changed = false;
     private DateTime _lastRenderTime = DateTime.MinValue;
-    private DateTime _lastDiffedTime = DateTime.MinValue;
     private readonly int _interval = 500; // рендерить не чаще
     private double elapsed => (DateTime.Now - _lastRenderTime).TotalMilliseconds;
-    private double elapsedDiffed => (DateTime.Now - _lastDiffedTime).TotalMilliseconds;
 
     protected override bool ShouldRender()
     {
@@ -74,99 +71,51 @@
 
     private void ParseDiff()
     {
-        if (Lines.Count < 2)
+        if (LinesCount < 2)
         {
             return;
         }
 
-        // Читаем первую строку для FilePath
-        FilePath = Lines[0];
-        var currentDiffIndex = diffs.Count - 1;
-        foreach (var line in Lines.Skip(blockIndex + 1))
+        _changed = LinesCount > processedLines;
+
+        if (!_changed)
         {
-            var typeLine = DetermineType(line);
-            switch (typeLine)
+            return;
+        }
+
+        FilePath ??= ToolParams["param1"].ToString();
+
+        // не перерисовывать DiffModel если он уже не дополнялся строками
+        // дополняться новыми строками может только последний DiffModel
+        // то есть при каждом парсинге нужно пропускать модели, 
+        // которые уже были сделаны кроме последней (она может дополняться строками)
+        for (var i = diffs.Count - 1; i < ToolParams.Count - 1; i++)
+        {
+            var diffRepl = ToolParams[$"diff{i + 1}"] as DiffReplacement;
+            if (diffRepl is not null)
             {
-                case DiffBlockType.SearchBlock:
-                    oldText.AppendLine(line);
-                    _changed = true;
-                    
-                    break;
-                case DiffBlockType.ReplaceBlock:
-                    newText.AppendLine(line);
-                    _changed = true;
-                    break;
-                case DiffBlockType.ReplaceHeader: 
-                    diffs[currentDiffIndex++] = BuildDiff();
-                    _lastDiffedTime = DateTime.Now;
-                    diffs.Add(null);
-                    oldText.Clear();
-                    newText.Clear();
-                    break;
+                var diffBuiler = SideBySideDiffBuilder.Diff(
+                    Differ.Instance,
+                    string.Join('\n', diffRepl.Search),
+                    string.Join('\n', diffRepl.Replace),
+                    false,
+                    false,
+                    lineChunker: LineChunker.Instance,
+                    wordChunker: CharacterChunker.Instance
+                );
+
+                if (i >= diffs.Count)
+                {
+                    diffs.Add(diffBuiler);
+                }
+                else
+                {
+                    diffs[i] = diffBuiler;
+                }
             }
-            blockIndex++;
         }
 
-        if (_changed && elapsedDiffed >= _interval)
-        {
-            _lastDiffedTime = DateTime.Now;
-            diffs[currentDiffIndex] = BuildDiff();
-        }
-
+        processedLines = LinesCount;
         showDiffSeparator = diffs.Count > 1;
-    }
-
-    private SideBySideDiffModel BuildDiff()
-    {
-        return SideBySideDiffBuilder.Diff(
-            Differ.Instance,
-            oldText.ToString(),
-            newText.ToString(),
-            false,
-            false,
-            lineChunker: LineChunker.Instance,
-            wordChunker: CharacterChunker.Instance
-        );
-    }
-
-    private DiffBlockType DetermineType(string line)
-    {
-        var trimmed = line.Trim();
-
-        if (!inReplace && trimmed.StartsWith("<<<<<<< SEARCH"))
-        {
-            inSearch = true;
-            inReplace = false;
-            return DiffBlockType.SearchHeader;
-        }
-        if (inSearch && trimmed.StartsWith("======="))
-        {
-            inSearch = false;
-            inReplace = true;
-            return DiffBlockType.Separator;
-        }
-        if (!inSearch && trimmed.StartsWith(">>>>>>> REPLACE"))
-        {
-            inSearch = false;
-            inReplace = false;
-            return DiffBlockType.ReplaceHeader;
-        }
-
-        if (inSearch)
-            return DiffBlockType.SearchBlock;
-        if (inReplace)
-            return DiffBlockType.ReplaceBlock;
-
-        return DiffBlockType.Context;
-    }
-
-    public enum DiffBlockType
-    {
-        SearchHeader,
-        ReplaceHeader,
-        Separator,
-        SearchBlock,
-        ReplaceBlock,
-        Context
     }
 }

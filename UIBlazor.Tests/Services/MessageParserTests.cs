@@ -214,7 +214,7 @@ public class MessageParserTests
         var lines = new List<string> { "C:\\Users\\user.txt", "path/to/file2.txt" };
 
         // Act
-        var args = _parser.Parse(BuiltInToolEnum.ReadFiles, lines);
+        var args = MessageParser.Parse(BuiltInToolEnum.ReadFiles, lines);
 
         // Assert
         Assert.Equal("C:\\Users\\user.txt", ((ReadFileParams)args["file1"]).Name);
@@ -228,7 +228,7 @@ public class MessageParserTests
         var lines = new List<string> { "C:\\Users\\user.txt [L5]" };
 
         // Act
-        var args = _parser.Parse(BuiltInToolEnum.ReadFiles, lines);
+        var args = MessageParser.Parse(BuiltInToolEnum.ReadFiles, lines);
 
         // Assert
         var file1 = (ReadFileParams)args["file1"];
@@ -248,7 +248,7 @@ public class MessageParserTests
         };
 
         // Act
-        var args = _parser.Parse(BuiltInToolEnum.ReadFiles, lines);
+        var args = MessageParser.Parse(BuiltInToolEnum.ReadFiles, lines);
 
         // Assert
         var file1 = (ReadFileParams)args["file1"];
@@ -274,7 +274,7 @@ public class MessageParserTests
         var lines = new List<string> { "C:\\Users\\user.txt [L5:C10]" };
 
         // Act
-        var args = _parser.Parse(BuiltInToolEnum.ReadFiles, lines);
+        var args = MessageParser.Parse(BuiltInToolEnum.ReadFiles, lines);
 
         // Assert
         var file1 = (ReadFileParams)args["file1"];
@@ -307,7 +307,7 @@ public class MessageParserTests
         };
 
         // Act
-        var args = _parser.Parse(BuiltInToolEnum.ApplyDiff, lines);
+        var args = MessageParser.Parse(BuiltInToolEnum.ApplyDiff, lines);
 
         // Assert
         Assert.Equal("path/to/file.txt", args["param1"]);
@@ -345,7 +345,7 @@ public class MessageParserTests
         };
 
         // Act
-        var args = _parser.Parse(BuiltInToolEnum.ApplyDiff, lines);
+        var args = MessageParser.Parse(BuiltInToolEnum.ApplyDiff, lines);
 
         var expectedDiff1 = new DiffReplacement
         {

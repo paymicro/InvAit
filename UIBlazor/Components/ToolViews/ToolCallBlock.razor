@@ -10,7 +10,7 @@
         <div class="tool-call-args">
             @if (Segment.ToolName == BuiltInToolEnum.ApplyDiff)
             {
-                <DiffView Lines="@Segment.Lines" IsClosed="@Segment.IsClosed" />
+                <DiffView LinesCount="@Segment.Lines.Count" ToolParams="@Segment.ToolParams" IsClosed="@Segment.IsClosed" />
             }
             else if (Segment.ToolName == BuiltInToolEnum.CreateFile)
             {

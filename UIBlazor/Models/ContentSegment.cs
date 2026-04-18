@@ -10,6 +10,11 @@ public class ContentSegment
 
     public string ToolName { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Распарсеные тулзы с параметрыми
+    /// </summary>
+    public Dictionary<string, object> ToolParams { get; set; } = [];
+
     public ToolApprovalStatus? ApprovalStatus { get; set; } = ToolApprovalStatus.Approved;
 
     public bool IsClosed { get; internal set; }

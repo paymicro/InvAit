@@ -172,6 +172,8 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
                 segment.Lines.Add(parts[i]);
             }
 
+            segment.ToolParams = Parse(segment.ToolName, segment.Lines);
+
             segment.CurrentLine.Clear();
             segment.CurrentLine.Append(parts.Last());
         }
@@ -188,12 +190,18 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
             if (!lastLine.Trim().Equals($"</{segment.TagName}>", StringComparison.OrdinalIgnoreCase))
             {
                 segment.Lines.Add(lastLine.Replace($"</{segment.TagName}>", ""));
+                segment.ToolParams = Parse(segment.ToolName, segment.Lines);
             }
             segment.CurrentLine.Clear();
         }
     }
 
-    public Dictionary<string, object> Parse(string toolName, List<string> toolLines)
+    /// <summary>
+    /// Парсим рагументы тулзы перед вызовом
+    /// </summary>
+    /// <param name="toolName">Имя тулзы</param>
+    /// <param name="toolLines">Параметры по линиям</param>
+    public static Dictionary<string, object> Parse(string toolName, List<string> toolLines)
     {
         var result = new Dictionary<string, object>();
         var paramIndex = 0;
@@ -251,6 +259,10 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
                             if (line.StartsWith("======="))
                             {
                                 i++;
+                                break;
+                            }
+                            else if (line.StartsWith(">>>>>>> REPLACE")) // если нужно просто удалить, то могут упустить =======
+                            {
                                 break;
                             }
                             search.Add(line);

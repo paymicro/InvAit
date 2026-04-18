@@ -356,7 +356,7 @@ public partial class AiChat : RadzenComponent
                 // Уже должен быть известен статус тулза - или разрешен, или запрещен.
                 vsToolResult = segment.ApprovalStatus switch
                 {
-                    ToolApprovalStatus.Approved => await tool.ExecuteAsync(MessageParser.Parse(segment.ToolName, segment.Lines), _cts.Token),
+                    ToolApprovalStatus.Approved => await tool.ExecuteAsync(segment.ToolParams, _cts.Token),
                     _ => new VsToolResult
                     {
                         Name = segment.ToolName,
