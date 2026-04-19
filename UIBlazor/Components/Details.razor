@@ -1,4 +1,4 @@
-<div class="custom-details @(IsExpanded ? "is-expanded" : "") @CustomClass">
+<div class="custom-details @(IsExpanded ? "is-expanded" : "") @(IsRounded ? "is-rounded" : "") @CustomClass">
     <div class="header" @onclick="Toggle">
         <div class="header-left">
             @if (!string.IsNullOrEmpty(Icon))
@@ -21,6 +21,7 @@
     [Parameter] public string? Icon { get; set; }
     [Parameter] public RenderFragment ChildContent { get; set; } = null!;
     [Parameter] public bool IsExpanded { get; set; }
+    [Parameter] public bool IsRounded { get; set; }
 
     // Позволяет передавать любые другие атрибуты RadzenSwitch (напр. Title, TabIndex)
     [Parameter(CaptureUnmatchedValues = true)]

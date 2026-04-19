@@ -31,6 +31,11 @@
     transition: grid-template-rows 0.3s ease-out;
 }
 
+.is-rounded {
+    margin-bottom: 0.5em;
+    border-radius: 0.5em;
+}
+
 .is-expanded .content-wrapper {
     grid-template-rows: 1fr;
 }

@@ -1,6 +1,8 @@
 @using Shared.Contracts.Mcp
 
-<RadzenText Text=@Tool.Description" TextStyle="TextStyle.Body1" />
+<Details Text=@SharedResource.Description" IsRounded>
+    <MarkdownBlock Content="@Tool.Description" />
+</Details>
 
 <RadzenStack Gap="1em">
     @foreach (var parameter in parameters)
@@ -22,8 +24,11 @@
 
     <RadzenButton Text="@Tool.Name" Click="RunMcpToolAsync" IsBusy="@IsBusy" />
     
-    <RadzenText Text="Result" TextStyle="TextStyle.Overline" />
-    <MarkdownBlock Content="@Result" />
+    @if (!string.IsNullOrEmpty(Result))
+    {
+        <RadzenText Text="Result" TextStyle="TextStyle.Overline" />
+        <MarkdownBlock Content="@Result" />
+    }
 </RadzenStack>
 
 @code {
@@ -31,7 +36,7 @@
     [Parameter] public string ServerName { get; set; } = null!;
     [Parameter] public McpToolConfig Tool { get; set; } = null!;
 
-    public Dictionary<string, (string Name, string Desc)> parameters { get; set; } = [];
+    public Dictionary<string, (string Name, string Desc, bool Required)> parameters { get; set; } = [];
     private Dictionary<string, string> _values = [];
     private string Result = string.Empty;
     private bool IsBusy = false;

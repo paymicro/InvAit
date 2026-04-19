@@ -396,4 +396,7 @@
   <data name="ShowMessageTimings" xml:space="preserve">
     <value>Показывать значки времени сообщений</value>
   </data>
+  <data name="Description" xml:space="preserve">
+    <value>Описание</value>
+  </data>
 </root>

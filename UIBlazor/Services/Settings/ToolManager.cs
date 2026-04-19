@@ -1,5 +1,4 @@
-﻿using System.Collections.Concurrent;
-using System.Diagnostics;
+using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
 using Shared.Contracts.Mcp;
 
@@ -14,6 +13,8 @@ public class ToolManager(
     : BaseSettingsProvider<ToolSettings>(localStorage, logger, "ToolSettings"), IToolManager
 {
     private readonly ConcurrentDictionary<string, Tool> _registeredTools = new();
+
+    private List<Tool>? _mcpToolsCache;
 
     public override async Task SaveAsync()
     {
@@ -38,7 +39,7 @@ public class ToolManager(
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Failed to save tool settings: {ex.Message}");
+            logger.LogError(ex, "Failed to save tool settings");
         }
     }
 
@@ -74,12 +75,19 @@ public class ToolManager(
         _ = InitializeAsync();
     }
 
+    private void McpSettingsProviderOnSaved()
+    {
+        _mcpToolsCache = null; // чистка кеша MCP тулзов при каждой загрузке из файла
+    }
+
     protected override Task AfterInitAsync()
     {
         foreach (var tool in _registeredTools.Values)
         {
             tool.Enabled = !Current.DisabledTools.Contains(tool.Name);
         }
+
+        mcpSettingsProvider.OnSaved += McpSettingsProviderOnSaved;
         return Task.CompletedTask;
     }
 
@@ -131,6 +139,15 @@ public class ToolManager(
 
     public IEnumerable<Tool> GetMcpTools()
     {
+        if (_mcpToolsCache != null)
+            return _mcpToolsCache;
+
+        _mcpToolsCache = [.. BuildMcpTools()];
+        return _mcpToolsCache;
+    }
+
+    public IEnumerable<Tool> BuildMcpTools()
+    {
         if (!mcpSettingsProvider.Current.Enabled)
         {
             yield break;
@@ -148,27 +165,28 @@ public class ToolManager(
                 var toolName = $"mcp__{server.Name}__{toolConfig.Name}";
 
                 var isEnabled = !mcpSettingsProvider.Current.ToolDisabledStates.Contains(toolName);
-
+                var currentToolConfig = toolConfig;
+                var currentServer = server;
                 yield return new Tool
                 {
                     Name = toolName,
-                    DisplayName = toolConfig.Name,
-                    Description = toolConfig.Description ?? string.Empty,
+                    DisplayName = currentToolConfig.Name,
+                    Description = currentToolConfig.Description ?? string.Empty,
                     Category = ToolCategory.Mcp,
                     Enabled = isEnabled,
-                    ExampleToSystemMessage = BuildSchemaDescription(toolName, toolConfig),
+                    ExampleToSystemMessage = BuildSchemaDescription(toolName, currentToolConfig),
                     ExecuteAsync = (args, cancellationToken) =>
                     {
-                        var arguments = GetArgumentNamesFromSchema(toolConfig.InputSchema, args);
+                        var arguments = GetArgumentNamesFromSchema(currentToolConfig.InputSchema, args);
                         var mcpArgs = new Dictionary<string, object>
                         {
-                            { "serverId", server.Name },
-                            { "toolName", toolConfig.Name },
+                            { "serverId", currentServer.Name },
+                            { "toolName", currentToolConfig.Name },
                             { "arguments", arguments },
                             // Command/Arguments for auto-start if needed
-                            { "command", server.Command },
-                            { "args", string.Join(" ", server.Args) },
-                            { "env", server.Env }
+                            { "command", currentServer.Command },
+                            { "args", string.Join(" ", currentServer.Args) },
+                            { "env", currentServer.Env }
                         };
 
                         return vsBridge.ExecuteToolAsync(BasicEnum.McpCallTool, mcpArgs, cancellationToken);
@@ -182,7 +200,7 @@ public class ToolManager(
     {
         if (name.StartsWith("mcp__"))
         {
-            var parts = name.Split("__"); // TODO есть риск что сервер в названии содержит __ и тогда он всегда будет AutoApprove
+            var parts = name.Split("__", 3, StringSplitOptions.None);
             if (parts.Length >= 2)
             {
                 var serverName = parts[1];
@@ -429,35 +447,6 @@ public class ToolManager(
         }
     }
 
-    private static string GetSampleByType(string propType)
-    {
-        // This method is deprecated in favor of SchemaProcessor.GenerateExample
-        // It's kept for potential legacy compatibility or simple flat schemas.
-        // For MCP schemas, BuildSchemaDescription now uses SchemaProcessor.
-        return propType switch
-        {
-            "number" or "integer" => "123456",
-            "boolean" => "true",
-            "array" => "[]", // TODO нужно сделать поддержку массивов
-            "object" => "object", // TODO вложенный объект...
-            _ => "\"string\"",
-        };
-    }
-
-    private static object GetArgumentByType(string propType, object arg)
-    {
-        // This method is deprecated in favor of SchemaProcessor.ValidateAndConvertArguments
-        // It's kept for potential legacy compatibility or simple flat schemas.
-        // For MCP schemas, GetArgumentNamesFromSchema now uses SchemaProcessor.
-        return propType switch
-        {
-            "integer" => int.TryParse(arg.ToString(), out var valueInt) ? valueInt : arg,
-            "number" => double.TryParse(arg.ToString(), out var valueDouble) ? valueDouble : arg,
-            "boolean" => bool.TryParse(arg.ToString(), out var valueBool) ? valueBool : arg,
-            _ => arg
-        };
-    }
-
     // Uses SchemaProcessor for recursive handling
     private static Dictionary<string, object> GetArgumentNamesFromSchema(JsonElement? schemaElement, IReadOnlyDictionary<string, object> args)
     {
@@ -491,8 +480,10 @@ public class ToolManager(
         {
             foreach (var prop in props.EnumerateObject())
             {
-                var propType = prop.Value.GetProperty("type").GetString() ?? string.Empty;
-                var desc = prop.Value.GetProperty("description").GetString();
+                var propType = prop.Value.TryGetProperty("type", out var typeElement)
+                    ? typeElement.GetString() ?? string.Empty
+                    : string.Empty;
+                var desc = prop.Value.GetProperty("description").GetString() ?? string.Empty;
                 result[prop.Name] = (propType, desc);
             }
         }

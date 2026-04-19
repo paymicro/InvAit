@@ -46,8 +46,6 @@
         InvokeAsync(StateHasChanged);
     }
 
-    private DiffPaneModel _oldText = null!;
-    private DiffPaneModel _newText = null!;
     private bool _changed;
     private Throttler _throttler = new(500); // Интервал рендеринга от 500мс
 
