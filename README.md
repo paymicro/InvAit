@@ -39,8 +39,9 @@
 ### Configuration
 
 #### Local (Recommended)
-| Server | Run description | Endpoint |
-|----------|-------|
+
+| Server | Run description | Endpoint | 
+|----------|-------|-------|
 | [FoundryLocal](https://foundrylocal.ai) | <pre>winget install Microsoft.FoundryLocal<br/>foundry service set --port 22334<br/>foundry model run qwen2.5-coder-7b</pre> | http://localhost:22334 |
 | [LM Studio](https://lmstudio.ai) | install / download model / start local server | http://localhost:1234 |
 | [Olama](https://ollama.com) | install / download model | http://localhost:11434 |
@@ -50,7 +51,7 @@
 - **Key:** Your API Key (stored securely).
 
 | Server | Run description | Endpoint |
-|----------|-------|
+|----------|-------|-------|
 | [OmniRoute](https://github.com/diegosouzapw/OmniRoute) | in terminal install<br>`npm install -g omniroute`<br/>run<br/>`omniroute` | http://localhost:20128 |
 | [OpenRouter](https://openrouter.ai) | sing in / pay / use | https://openrouter.ai/api |
 
