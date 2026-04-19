@@ -38,15 +38,21 @@
 
 ### Configuration
 
-**Option 1: Local (Recommended)**
-Use [LM Studio](https://lmstudio.ai) or [Ollama](https://ollama.ai).
-- **Endpoint:** `http://localhost:11434/api` (Ollama default)
-- **Model:** `llama3`, `mistral`, `codellama`, `zai-org/glm-4.7-flash`
-- **Key:** (Leave empty)
+#### Local (Recommended)
+| Server | Run description | Endpoint |
+|----------|-------|
+| [FoundryLocal](https://foundrylocal.ai) | <pre>winget install Microsoft.FoundryLocal<br/>foundry service set --port 22334<br/>foundry model run qwen2.5-coder-7b</pre> | http://localhost:22334 |
+| [LM Studio](https://lmstudio.ai) | install / download model / start local server | http://localhost:1234 |
+| [Olama](https://ollama.com) | install / download model | http://localhost:11434 |
 
-**Option 2: Remote / Self-Hosted**
+#### Remote / Self-Hosted
 - **Endpoint:** URL of your OpenAI-compatible provider.
 - **Key:** Your API Key (stored securely).
+
+| Server | Run description | Endpoint |
+|----------|-------|
+| [OmniRoute](https://github.com/diegosouzapw/OmniRoute) | in terminal install<br>`npm install -g omniroute`<br/>run<br/>`omniroute` | http://localhost:20128 |
+| [OpenRouter](https://openrouter.ai) | sing in / pay / use | https://openrouter.ai/api |
 
 ## 🛠 Capabilities
 
@@ -55,7 +61,11 @@ Use [LM Studio](https://lmstudio.ai) or [Ollama](https://ollama.ai).
 | **Files** | Read, Create, Search, Apply Diff |
 | **Project** | Build, Get Errors, Run tests, Inspect Structure |
 | **Git** | Status, Log, Diff, Branch Info |
-| **System** | Execute Shell Commands, Fetch URLs |
+| **System** | Execute Shell Commands |
+| **MCP** | `%USERPROFILE%\.agents\mcp.json` |
+| **Skills** | global `%USERPROFILE%\.agents\skills`<br/>local `\.agents\skills`   |
+| **Rules** | global `%USERPROFILE%\.agents\rules.md`<br/>local `\.agents\rules.md`  |
+| **AGENTS.md** | load file content in system prompt |
 
 ## 🏗 Architecture
 | Part | Description |
