@@ -56,6 +56,10 @@ pre {
 
 }
 
+.rz-chat-messages {
+    contain: strict;
+}
+
 .rz-chat-message-actions {
     width: 100%;
 }
@@ -116,6 +120,10 @@ pre {
 
 .rz-dialog-wrapper {
     z-index: 2000;
+}
+
+.required .rz-form-field-content {
+    border-color: var(--rz-warning);
 }
 
 .rz-form-field-helper {

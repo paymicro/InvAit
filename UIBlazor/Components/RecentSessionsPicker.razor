@@ -2,26 +2,39 @@
 
 @if (_sessions != null && _sessions.Any())
 {
-    <RadzenStack AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="1rem" Style="max-width: 600px; margin: 0 auto; padding-top: 2rem;">
-        @if (ShowTitle)
-        {
-            <RadzenText TextStyle="TextStyle.H6" class="rz-text-secondary-color">@SharedResource.SessionsTitle</RadzenText>
-        }
-        <RadzenDataList Data="@_sessions" TItem="SessionSummary" Count="@_sessions.Count" WrapItems="true">
-            <Template Context="session">
-                <RadzenCard class="rz-p-2 rz-w-100" Style="cursor: pointer;" @onclick="() => LoadSession(session.Id)">
-                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
-                        <RadzenIcon Icon="chat_bubble_outline" class="rz-text-tertiary-color" />
-                        <RadzenStack Orientation="Orientation.Vertical" Gap="0.2rem" Style="flex: 1; overflow: hidden;">
-                            <RadzenText TextStyle="TextStyle.Caption" class="rz-color-info-light" Style="text-align: end;">@session.CreatedAt.ToString("g")</RadzenText>
-                            <RadzenText TextStyle="TextStyle.Body2" Style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@session.FirstUserMessage</RadzenText>
+    @if (_isLoading)
+    {
+        <RadzenStack class="rz-chat-empty" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="1rem">
+            <RadzenProgressBarCircular
+                Mode="ProgressBarMode.Indeterminate"
+                Size="ProgressBarCircularSize.Large"
+                ShowValue="false" />
+            <RadzenLabel Text="@SharedResource.Loading" />
+        </RadzenStack>
+    }
+    else
+    {
+        <RadzenStack AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="1rem" Style="max-width: 600px; margin: 0 auto; padding-top: 2rem;">
+            @if (ShowTitle)
+            {
+                <RadzenText TextStyle="TextStyle.H6" class="rz-text-secondary-color">@SharedResource.SessionsTitle</RadzenText>
+            }
+            <RadzenDataList Data="@_sessions" TItem="SessionSummary" Count="@_sessions.Count" WrapItems="true">
+                <Template Context="session">
+                    <RadzenCard class="rz-p-2 rz-w-100" Style="cursor: pointer;" @onclick="() => LoadSession(session.Id)">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+                            <RadzenIcon Icon="chat_bubble_outline" class="rz-text-tertiary-color" />
+                            <RadzenStack Orientation="Orientation.Vertical" Gap="0.2rem" Style="flex: 1; overflow: hidden;">
+                                <RadzenText TextStyle="TextStyle.Caption" class="rz-color-info-light" Style="text-align: end;">@session.CreatedAt.ToString("g")</RadzenText>
+                                <RadzenText TextStyle="TextStyle.Body2" Style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@session.FirstUserMessage</RadzenText>
+                            </RadzenStack>
+                            <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text" Size="ButtonSize.Small" Click="args => DeleteSessionAsync(session.Id, args)" @onclick:stopPropagation="true" />
                         </RadzenStack>
-                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text" Size="ButtonSize.Small" Click="args => DeleteSessionAsync(session.Id, args)" @onclick:stopPropagation="true" />
-                    </RadzenStack>
-                </RadzenCard>
-            </Template>
-        </RadzenDataList>
-    </RadzenStack>
+                    </RadzenCard>
+                </Template>
+            </RadzenDataList>
+        </RadzenStack>
+    }
 }
 else
 {
@@ -32,7 +45,8 @@ else
 }
 
 @code {
-    private List<SessionSummary>? _sessions;
+    private List<SessionSummary>? _sessions;    
+    private bool _isLoading;
 
     [Inject] IChatService ChatService { get; set; } = null!;
 
@@ -45,8 +59,14 @@ else
 
     private async Task LoadSession(string id)
     {
-        // TODO: сделать загрузочную анимацию
+        _isLoading = true;
+        StateHasChanged();
+        
+        await Task.Yield(); // Даем время на отрисовку спиннера
+
         await ChatService.LoadSessionAsync(id);
+
+        _isLoading = false;
         DialogService.Close();
     }
 

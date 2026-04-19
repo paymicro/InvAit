@@ -22,6 +22,8 @@ public partial class AiChat : RadzenComponent
 
     private CancellationTokenSource _cts = new();
 
+    private bool _callSettings;
+
     [Inject] private NotificationService NotificationService { get; set; } = null!;
 
     [Inject] private IToolManager ToolManager { get; set; } = null!;
@@ -504,6 +506,12 @@ public partial class AiChat : RadzenComponent
 
     private async Task OnShowSettingsAsync()
     {
+        _callSettings = true;
+
+        StateHasChanged();
+
+        await Task.Yield();
+
         await DialogService.OpenSideAsync<SettingsDialog>(@SharedResource.Settings,
             options: new SideDialogOptions
             {
@@ -513,6 +521,7 @@ public partial class AiChat : RadzenComponent
                 MinHeight = 250.0,
                 MinWidth = 400.0
             });
+        _callSettings = false;
     }
 
     /// <inheritdoc />

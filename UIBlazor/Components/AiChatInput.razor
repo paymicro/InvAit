@@ -1,4 +1,4 @@
-@inherits RadzenComponent
+@implements IDisposable
 
 <div class="chat-input-wrapper">
     @* Контейнер для чипов (над полем ввода) *@
@@ -16,15 +16,15 @@
     <div class="input-container">
         @* Поле ввода *@
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Start">
-        <textarea @ref="_textareaRef"
-                  rows="1"
-                  class="text-input"
-                  placeholder="@ModePlaceholder"
-                  @bind="_currentInput"
-                  @oninput="HandleInputAsync"
-                  @onkeydown="OnKeyDown"
-                  @onkeydown:preventDefault="_shouldPreventDefault"
-                  disabled="@IsLoading"/>
+            <textarea @ref="_textareaRef"
+                      rows="1"
+                      class="text-input"
+                      placeholder="@ModePlaceholder"
+                      @bind="_currentInput"
+                      @oninput="HandleInputAsync"
+                      @onkeydown="OnKeyDown"
+                      @onkeydown:preventDefault="_shouldPreventDefault"
+                      disabled="@IsLoading"/>
                   
             <div class="misc">
                 <RadzenToggleButton @bind-Value="CommonSettingsProvider.Current.SendCurrentFile"
@@ -138,9 +138,6 @@
     private async Task HandleInputAsync(ChangeEventArgs e)
     {
         _currentInput = e.Value?.ToString() ?? string.Empty;
-
-        // Автоматически изменяем высоту textarea
-        await JsRuntime.InvokeVoidAsync("autoResizeTextarea", _textareaRef);
 
         // Проверяем, есть ли @ в конце
         if (_currentInput.EndsWith(" @"))
@@ -298,9 +295,6 @@
         _tokens.Clear();
         _filteredFiles.Clear();
 
-        // Сбрасываем высоту textarea
-        await JsRuntime.InvokeVoidAsync("autoResizeTextarea", _textareaRef, true);
-
         await SendMessage.InvokeAsync(message);
     }
 
@@ -353,12 +347,12 @@
         await VsBridge.ExecuteToolAsync(BasicEnum.OpenFolder, new Dictionary<string, object> { { "param1", ".agents/skills/" } });
     }
 
-    public override void Dispose()
+    public void Dispose()
     {
-        base.Dispose();
         ChatService.OnSessionChanged -= HandleSessionChanged;
         CommonSettingsProvider.OnSaved -= HangleCommonSettingsSaved;
     }
+
     private void OnModeChanged()
     {
         _ = ChatService.SaveSessionAsync();

@@ -1,4 +1,4 @@
-namespace UIBlazor.Services.Settings;
+﻿namespace UIBlazor.Services.Settings;
 
 public interface IToolManager : IBaseSettingsProvider
 {
@@ -22,5 +22,5 @@ public interface IToolManager : IBaseSettingsProvider
 
     void ToggleTool(string toolName, bool isEnabled);
 
-    Dictionary<string, (string Name, string Desc)> GetParameterNamesFromSchema(JsonElement? schemaElement);
+    Dictionary<string, (string Name, string Desc, bool Required)> GetParameterNamesFromSchema(JsonElement? schemaElement);
 }

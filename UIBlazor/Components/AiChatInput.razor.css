@@ -70,7 +70,11 @@
     line-height: 1.5;
     resize: none;
     overflow-y: auto;
-    max-height: 200px;
+    field-sizing: content;
+    min-height: 3em;
+    max-height: 15vh;
+    box-sizing: border-box;
+    display: block;
 }
 
     .text-input::placeholder {

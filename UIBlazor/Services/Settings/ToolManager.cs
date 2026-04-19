@@ -461,7 +461,7 @@ public class ToolManager(
     }
 
     // TODO поддержка только плоской схемы без вложенных объектов - this method also needs update potentially, or a new equivalent using SchemaProcessor
-    public Dictionary<string, (string Name, string Desc)> GetParameterNamesFromSchema(JsonElement? schemaElement)
+    public Dictionary<string, (string Name, string Desc, bool Required)> GetParameterNamesFromSchema(JsonElement? schemaElement)
     {
         // This method primarily serves the UI for simple flat parameter listing.
         // For complex nested schemas, the primary logic now resides in SchemaProcessor and is used by GetArgumentNamesFromSchema.
@@ -474,8 +474,18 @@ public class ToolManager(
             return [];
         }
 
-        var result = new Dictionary<string, (string Name, string Desc)>();
+        var result = new Dictionary<string, (string Name, string Desc, bool Required)>();
         var schema = schemaElement.Value;
+        // Get required properties list
+        var requiredProps = new HashSet<string>();
+        if (schema.TryGetProperty("required", out var requiredArray) && requiredArray.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var req in requiredArray.EnumerateArray())
+            {
+                requiredProps.Add(req.GetString() ?? string.Empty);
+            }
+        }
+
         if (schema.TryGetProperty("properties", out var props) && props.ValueKind == JsonValueKind.Object)
         {
             foreach (var prop in props.EnumerateObject())
@@ -483,8 +493,11 @@ public class ToolManager(
                 var propType = prop.Value.TryGetProperty("type", out var typeElement)
                     ? typeElement.GetString() ?? string.Empty
                     : string.Empty;
-                var desc = prop.Value.GetProperty("description").GetString() ?? string.Empty;
-                result[prop.Name] = (propType, desc);
+                var desc = prop.Value.TryGetProperty("description", out var descElement)
+                    ? descElement.GetString() ?? string.Empty
+                    : string.Empty;
+                var isRequired = requiredProps.Contains(prop.Name);
+                result[prop.Name] = (propType, desc, isRequired);
             }
         }
 

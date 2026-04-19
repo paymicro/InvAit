@@ -15,15 +15,26 @@
                                 Placeholder="Select Profile"
                                 Style="width: 180px;" />
             }
-            <RadzenButton Icon="add_comment" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
-                            Click="@NewSessionAsync" Title="New session" class="rz-chat-header-new" />
-            <RadzenButton Icon="settings" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
-                            Click="@OnShowSettingsAsync" Title="Settings" class="rz-chat-header-settings" />
+            <RadzenButton
+                Icon="add_comment"
+                Variant="Variant.Text"
+                ButtonStyle="ButtonStyle.Base"
+                Click="@NewSessionAsync"
+                title="New session"
+                class="rz-chat-header-new" />
+            <RadzenButton
+                Icon="settings"
+                Variant="Variant.Text"
+                ButtonStyle="ButtonStyle.Base"
+                Click="@OnShowSettingsAsync"
+                IsBusy="@_callSettings"
+                title="Settings"
+                class="rz-chat-header-settings" />
         </RadzenStack>
     </RadzenStack>
 
     <!-- Chat Messages -->
-    <div class="rz-chat-messages" id="chat-messages">
+    <div class="rz-chat-messages" >
         @if (Messages.Count == 0)
         {
             <RecentSessionsPicker ShowTitle=true />

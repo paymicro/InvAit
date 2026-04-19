@@ -54,7 +54,8 @@ public class HeadlessMocker
                                         type = "number",
                                         description = "Второе число"
                                     }
-                                }
+                                },
+                                required = new List<string> { "a" }
                             }
                         }
                     ]

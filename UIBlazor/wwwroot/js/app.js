@@ -90,19 +90,6 @@ window.initChatAutoScroll = function (selector, threshold = 70) {
     });
 };
 
-// Автоматическое изменение высоты textarea
-window.autoResizeTextarea = function (element, auto = false) {
-    if (!element) return;
-
-    // Сбрасываем высоту до минимума
-    element.style.height = 'auto';
-
-    if (auto) return;
-    // Устанавливаем новую высоту на основе scrollHeight
-    const newHeight = Math.min(element.scrollHeight, 200); // Максимум ~10 строк
-    element.style.height = newHeight + 'px';
-};
-
 let chatHandler;
 window.setChatHandler = function (dotNetRef) {
     chatHandler = dotNetRef;
@@ -122,14 +109,30 @@ window.handleNavigationKey = function (key, isShift) {
 
     // Если фокус в текстовом поле или контенте
     if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) {
-        const targetPos = isHome ? 0 : (el.value?.length || el.innerText?.length || 0);
+        const text = el.value || el.innerText || '';
+        const cursorPos = el.selectionStart;
+
+        // Находим границы текущей строки
+        let lineStart, lineEnd;
+
+        if (isHome) {
+            // Ищем начало текущей строки (после ближайшего \n слева)
+            const lastNewLine = text.lastIndexOf('\n', cursorPos - 1);
+            lineStart = lastNewLine === -1 ? 0 : lastNewLine + 1;
+        } else {
+            // Ищем конец текущей строки (до ближайшего \n справа)
+            const nextNewLine = text.indexOf('\n', cursorPos);
+            lineEnd = nextNewLine === -1 ? text.length : nextNewLine;
+        }
+
+        const targetPos = isHome ? lineStart : lineEnd;
 
         if (isShift) {
             // Логика выделения (Selection)
             if (isHome) {
-                el.setSelectionRange(0, el.selectionEnd, 'backward');
+                el.setSelectionRange(targetPos, cursorPos, 'backward');
             } else {
-                el.setSelectionRange(el.selectionStart, targetPos, 'forward');
+                el.setSelectionRange(cursorPos, targetPos, 'forward');
             }
         } else {
             // Просто перенос курсора

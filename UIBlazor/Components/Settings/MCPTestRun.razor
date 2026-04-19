@@ -8,16 +8,20 @@
     @foreach (var parameter in parameters)
     {
         var key = parameter.Key;
+        var value = parameter.Value;
         if (!_values.ContainsKey(key))
         {
             _values[key] = string.Empty;
         }
-        <RadzenFormField Text="@parameter.Value.Desc" Variant="Variant.Outlined" AllowFloatingLabel="false">
+        var desc = value.Required ? $"* {value.Desc}" : value.Desc;
+        <RadzenFormField Text="@desc" Variant="Variant.Outlined" AllowFloatingLabel="false" class="@(value.Required ? "required" : "")">
             <End>
                 <RadzenLabel Text="@key" Style="padding-inline: 0.5em" />
             </End>
             <ChildContent>
-                <RadzenTextBox Placeholder="@parameter.Value.Name" @bind-Value="@_values[key]" />
+                <RadzenTextBox
+                    Placeholder="@value.Name"
+                    @bind-Value="@_values[key]" />
             </ChildContent>
         </RadzenFormField>
     }
