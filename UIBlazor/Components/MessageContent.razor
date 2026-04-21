@@ -8,11 +8,9 @@
         toolCount = 0;
         @if (!string.IsNullOrEmpty(Message.ReasoningContent))
         {
-            string header = SharedResource.Thinking;
-            if (Message.Timings is { Reasoning.TotalMilliseconds: > 100 })
-            {
-                header = $"{header}   {Message.Timings.Reasoning.TotalSeconds.ToString("F1")} sec";
-            }
+            var header = Message.Timings is { Reasoning.TotalMilliseconds: > 100 } 
+                ? $"{SharedResource.Thinking} {Message.Timings.Reasoning.TotalSeconds.ToString("F1")} sec"
+                : SharedResource.Thinking;
             <Details Text="@header" Icon="fa-solid fa-lightbulb" class="reasoning-details">
                 <MarkdownBlock Content="@Message.ReasoningContent" />
             </Details>

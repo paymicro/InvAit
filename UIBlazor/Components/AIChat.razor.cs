@@ -110,12 +110,12 @@ public partial class AiChat : RadzenComponent
                 {
                     firstToken = sw.ElapsedMilliseconds;
                 }
-                if (delta.ReasoningContent != null)
+                if (!string.IsNullOrEmpty(delta.ReasoningContent))
                 {
                     reasoning.Append(delta.ReasoningContent);
                     assistantMessage.ReasoningContent = reasoning.ToString();
                 }
-                if (delta.Content != null)
+                if (!string.IsNullOrEmpty(delta.Content))
                 {
                     if (firstContentToken == 0)
                     {
