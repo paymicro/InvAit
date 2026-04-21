@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Services.Settings;
+namespace UIBlazor.Services.Settings;
 
 public interface IToolManager : IBaseSettingsProvider
 {
@@ -9,6 +9,8 @@ public interface IToolManager : IBaseSettingsProvider
     IEnumerable<Tool> GetEnabledTools();
 
     IEnumerable<Tool> GetAllTools();
+
+    IEnumerable<Tool> GetBuiltInTools();
 
     IEnumerable<Tool> GetMcpTools();
 
@@ -21,6 +23,4 @@ public interface IToolManager : IBaseSettingsProvider
     void UpdateCategorySettings(ToolCategory category, bool isEnabled, ToolApprovalMode approvalMode);
 
     void ToggleTool(string toolName, bool isEnabled);
-
-    Dictionary<string, (string Name, string Desc, bool Required)> GetParameterNamesFromSchema(JsonElement? schemaElement);
 }

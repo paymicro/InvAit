@@ -1,0 +1,60 @@
+@if (SchemaProperty?.Properties != null)
+{
+    foreach (var property in SchemaProperty.Properties)
+    {
+        var key = property.Key;
+        var value = property.Value;
+
+        if (!Values.ContainsKey(key))
+        {
+            Values[key] = null;
+        }
+
+        var isReq = SchemaProperty.Required.Contains(key);
+        var desc = value.Description;
+        var placeholder = value.Type switch
+        {
+            "array" => $"array of {value.Items?.Type}",
+            _ => value.Type
+        };
+
+        <RadzenFormField Text="@desc" Variant="Variant.Outlined" AllowFloatingLabel="false" class="@(isReq ? "required" : "")">
+            <End>
+                <RadzenLabel Text="@key" Style="padding-inline: 0.5em" />
+            </End>
+            <ChildContent>
+                @if (value.Type == "number")
+                {
+                    <RadzenNumeric TValue="double?" Placeholder="@placeholder" ValueChanged="(v) => Values[key] = v" />
+                }
+                else if (value.Type == "integer")
+                {
+                    <RadzenNumeric TValue="int?" Placeholder="@placeholder" ValueChanged="(v) => Values[key] = v" />
+                }
+                else if (value.Type == "boolean")
+                {
+                    <RadzenStack Orientation="Orientation.Horizontal" Style="margin:0.5em;">
+                        <RadzenSwitch ValueChanged="(v) => Values[key] = v" />
+                    </RadzenStack>
+                }
+                else if (value.Type == "object" && value.Properties != null)
+                {
+                    var dict = new Dictionary<string, object?>();
+                    Values[key] = dict;
+                    <RadzenStack Gap="0.5em" Style="margin:0.5em;">
+                        <MCPShemaProperties SchemaProperty="@value" Values="@dict" />
+                    </RadzenStack>
+                }
+                else
+                {
+                    <RadzenTextBox Placeholder="@placeholder" ValueChanged="(v) => Values[key] = v" />
+                }
+            </ChildContent>
+        </RadzenFormField>
+    }
+}
+
+@code {
+    [Parameter] public JsonSchemaProperty? SchemaProperty { get; set; }
+    [Parameter] public Dictionary<string, object?> Values { get; set; } = [];
+}

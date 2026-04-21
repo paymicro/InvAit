@@ -94,7 +94,7 @@
                         <div class="@(state.IsEnabled ? "category-tools-visible" : "category-tools-hidden")">
                             @if (state.IsEnabled)
                             {
-                                var categoryTools = ToolManager.GetAllTools().Where(t => t.Category == category).ToList();
+                                var categoryTools = ToolManager.GetBuiltInTools().Where(t => t.Category == category).ToList();
                                 if (categoryTools.Count > 1)
                                 {
                                     <RadzenAccordion>

@@ -1,54 +1,37 @@
 @using Shared.Contracts.Mcp
+@using System.Dynamic
 
 <Details Text=@SharedResource.Description" IsRounded>
     <MarkdownBlock Content="@Tool.Description" />
 </Details>
 
-<RadzenStack Gap="1em">
-    @foreach (var parameter in parameters)
-    {
-        var key = parameter.Key;
-        var value = parameter.Value;
-        if (!_values.ContainsKey(key))
-        {
-            _values[key] = string.Empty;
-        }
-        var desc = value.Required ? $"* {value.Desc}" : value.Desc;
-        <RadzenFormField Text="@desc" Variant="Variant.Outlined" AllowFloatingLabel="false" class="@(value.Required ? "required" : "")">
-            <End>
-                <RadzenLabel Text="@key" Style="padding-inline: 0.5em" />
-            </End>
-            <ChildContent>
-                <RadzenTextBox
-                    Placeholder="@value.Name"
-                    @bind-Value="@_values[key]" />
-            </ChildContent>
-        </RadzenFormField>
-    }
-
-    <RadzenButton Text="@Tool.Name" Click="RunMcpToolAsync" IsBusy="@IsBusy" />
+<RadzenTemplateForm TItem="JsonSchemaProperty" Data="@_jsonSchemaProperty" Submit="RunMcpToolAsync">
+    <RadzenStack Gap="1em">
+        <MCPShemaProperties SchemaProperty="_jsonSchemaProperty" Values="@_formData" />
+        <RadzenButton ButtonType="ButtonType.Submit" Text="@Tool.Name" IsBusy="@IsBusy" />
+    </RadzenStack>
+</RadzenTemplateForm>
     
-    @if (!string.IsNullOrEmpty(Result))
-    {
-        <RadzenText Text="Result" TextStyle="TextStyle.Overline" />
-        <MarkdownBlock Content="@Result" />
-    }
-</RadzenStack>
+@if (!string.IsNullOrEmpty(Result))
+{
+    <RadzenText Text="Result" TextStyle="TextStyle.Overline" />
+    <MarkdownBlock Content="@Result" />
+}
 
 @code {
     [Inject] IToolManager ToolManager { get; set; } = null!;    
     [Parameter] public string ServerName { get; set; } = null!;
     [Parameter] public McpToolConfig Tool { get; set; } = null!;
 
-    public Dictionary<string, (string Name, string Desc, bool Required)> parameters { get; set; } = [];
-    private Dictionary<string, string> _values = [];
+    private JsonSchemaProperty? _jsonSchemaProperty;
+    private Dictionary<string, object?> _formData = [];
     private string Result = string.Empty;
     private bool IsBusy = false;
 
     protected override void OnParametersSet()
     {
         base.OnParametersSet();
-        parameters = ToolManager.GetParameterNamesFromSchema(Tool.InputSchema);
+        _jsonSchemaProperty = SchemaProcessor.DeserializeSchema(Tool.InputSchema);
     }
 
     private async Task RunMcpToolAsync()
@@ -58,7 +41,11 @@
 
         if (tool is not null)
         {
-            var vsToolResult = await tool.ExecuteAsync(_values.ToDictionary(k => k.Key, v => (object)v.Value), CancellationToken.None);
+            var filterdArgs = _formData
+                .Where(f => f.Value is not null)
+                .ToDictionary(f => f.Key, f => f.Value!);
+
+            var vsToolResult = await tool.ExecuteAsync(filterdArgs, CancellationToken.None);
 #if DEBUG
             vsToolResult = HeadlessMocker.GetVsToolResult(vsToolResult);
 #endif
