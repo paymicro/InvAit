@@ -16,7 +16,7 @@ public class Tool
     /// Description for LLM
     /// </summary>
     public string Description { get; init; } = string.Empty;
-    
+
     /// <summary>
     /// Used for native tools_calling
     /// </summary>

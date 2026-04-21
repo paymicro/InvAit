@@ -1,11 +1,11 @@
-using System.Text.Json.Nodes;
-using Radzen.Blazor.Markdown;
+using System.Collections;
+using Shared.Contracts.Mcp;
 
 namespace UIBlazor.Processors;
 
 public static class SchemaProcessor
 {
-    private const int _defaultMaxDepth = 5;
+    private const int _maxDepth = 5;
 
     /// <summary>
     /// Deserializes a JsonElement representing a JSON Schema into a JsonSchemaProperty object graph.
@@ -14,7 +14,7 @@ public static class SchemaProcessor
     /// <param name="currentDepth">The current recursion depth (used internally).</param>
     /// <param name="maxDepth">The maximum allowed nesting depth.</param>
     /// <returns>A JsonSchemaProperty object representing the schema, or null if the input is invalid.</returns>
-    public static JsonSchemaProperty? DeserializeSchema(JsonElement? schemaElement, int currentDepth = 0, int maxDepth = _defaultMaxDepth)
+    public static JsonSchemaProperty? DeserializeSchema(JsonElement? schemaElement, int currentDepth = 0, int maxDepth = _maxDepth)
     {
         if (!schemaElement.HasValue || schemaElement.Value.ValueKind != JsonValueKind.Object)
         {
@@ -23,8 +23,6 @@ public static class SchemaProcessor
 
         if (currentDepth > maxDepth)
         {
-            // Log a warning or throw an exception if depth is exceeded
-            Console.WriteLine($"Warning: Maximum schema depth ({maxDepth}) exceeded during deserialization.");
             return null;
         }
 
@@ -72,7 +70,6 @@ public static class SchemaProcessor
         {
             property.Pattern = patternElement.GetString();
         }
-
         if (schema.TryGetProperty("required", out var requiredElement) && requiredElement.ValueKind == JsonValueKind.Array)
         {
             property.Required = [.. requiredElement.EnumerateArray().Select(r => r.ToString())];
@@ -100,10 +97,38 @@ public static class SchemaProcessor
         return property;
     }
 
-    //public static Dictionary<string,  GenerateToolParameter(JsonSchemaProperty prop)
-    //{
+    /// <summary>
+    /// Build a readable schema description for LLM prompt
+    /// </summary>
+    public static string BuildSchemaDescription(string toolName, McpToolConfig toolConfig)
+    {
+        try
+        {
+            var schemaElement = toolConfig.InputSchema;
+            var schemaProperty = DeserializeSchema(schemaElement);
+            if (schemaProperty == null)
+            {
+                return string.Empty;
+            }
 
-    //}
+            var sb = new StringBuilder();
+            var exampleObj = GenerateObjectExample(schemaProperty);
+
+            sb.AppendLine("For example:");
+            sb.AppendLine($"<function name=\"{toolName}\">");
+            sb.AppendLine(JsonUtils.Serialize(exampleObj));
+            sb.AppendLine("</function>");
+
+            sb.AppendLine("*Properties schema:*");
+            AppendSchemaDescription(sb, schemaProperty, parentPath: "");
+
+            return sb.ToString();
+        }
+        catch (Exception)
+        {
+            return string.Empty;
+        }
+    }
 
     public static void AppendSchemaDescription(StringBuilder sb, JsonSchemaProperty prop, string parentPath, int depth = 0)
     {
@@ -111,6 +136,9 @@ public static class SchemaProcessor
         {
             foreach (var nestedPropKvp in prop.Properties)
             {
+                var required = prop.Required is not null
+                    ? prop.Required.Contains(nestedPropKvp.Key)
+                    : false;
                 var currentPath = string.IsNullOrEmpty(parentPath) ? nestedPropKvp.Key : $"{parentPath}.{nestedPropKvp.Key}";
                 var nestedProp = nestedPropKvp.Value;
 
@@ -125,7 +153,8 @@ public static class SchemaProcessor
                 if (nestedProp.MaxLength.HasValue) typeInfo += $" (maxLen: {nestedProp.MaxLength.Value})";
                 if (!string.IsNullOrEmpty(nestedProp.Pattern)) typeInfo += $" (pattern: {nestedProp.Pattern})";
 
-                sb.AppendLine($"{currentPath} : [{typeInfo}] {nestedProp.Description ?? ""}");
+                var requiredStr = required ? "REQUIRED" : "(optional)";
+                sb.AppendLine($"{currentPath} : [{typeInfo}] {nestedProp.Description ?? ""} {requiredStr}");
 
                 // Recurse for nested objects
                 if (nestedProp.Type?.ToLowerInvariant() == "object")
@@ -155,49 +184,42 @@ public static class SchemaProcessor
     }
 
     /// <summary>
-    /// Generates an example value based on the schema definition.
+    /// Генерирует объект для передачи в MCP с заполненными данными для простого примера
     /// </summary>
-    /// <param name="schemaProperty">The schema property definition.</param>
-    /// <param name="currentDepth">The current recursion depth (used internally).</param>
-    /// <param name="maxDepth">The maximum allowed nesting depth.</param>
-    /// <returns>An example value matching the schema.</returns>
-    public static object GenerateExample(JsonSchemaProperty? schemaProperty, int currentDepth = 0, int maxDepth = _defaultMaxDepth)
+    public static object? GenerateExample(JsonSchemaProperty? schemaProperty, int depth = 0)
     {
-        if (schemaProperty == null || currentDepth > maxDepth)
+        if (schemaProperty == null || depth > _maxDepth)
         {
-            return new JsonObject(); // Fallback for null or max depth
+            return new Dictionary<string, object?>();
         }
 
         return schemaProperty.Type?.ToLowerInvariant() switch
         {
-            "string" => schemaProperty.EnumValues?.Count > 0 ? schemaProperty.EnumValues[0].ToString() ?? "enum_value" : "\"string\"",
-            "number" => schemaProperty.EnumValues?.Count > 0 ? (double)schemaProperty.EnumValues[0] : 123.45,
-            "integer" => schemaProperty.EnumValues?.Count > 0 ? Convert.ToInt32(schemaProperty.EnumValues[0]) : 123,
-            "boolean" => schemaProperty.EnumValues?.Count > 0 ? Convert.ToBoolean(schemaProperty.EnumValues[0]) : true,
-            "array" => GenerateExample(schemaProperty.Items, currentDepth + 1, maxDepth),
-            "object" => GenerateObjectExample(schemaProperty, currentDepth, maxDepth),
-            _ => "\"unknown_type_or_null\""
+            "string" => GetEnumOrDefault(schemaProperty, "sample_string"),
+            "number" => GetEnumOrDefault(schemaProperty, 42.1),
+            "integer" => GetEnumOrDefault(schemaProperty, 42),
+            "boolean" => GetEnumOrDefault(schemaProperty, true),
+            "array" => new List<object?> { GenerateExample(schemaProperty.Items, depth + 1) },
+            "object" => GenerateObjectExample(schemaProperty, depth),
+            _ => "unknown_type"
         };
     }
 
-    private static JsonObject GenerateObjectExample(JsonSchemaProperty schemaProperty, int currentDepth, int maxDepth)
+    private static object? GetEnumOrDefault(JsonSchemaProperty schemaProperty, object defaultValue)
     {
-        var obj = new JsonObject();
+        return schemaProperty.EnumValues is { Count: > 0 }
+            ? $"One of strings: {string.Join(',', schemaProperty.EnumValues)}"
+            : defaultValue;
+    }
+
+    private static Dictionary<string, object?> GenerateObjectExample(JsonSchemaProperty schemaProperty, int depth = 0)
+    {
+        var obj = new Dictionary<string, object?>();
         if (schemaProperty.Properties != null)
         {
-            foreach (var kvp in schemaProperty.Properties)
+            foreach (var (key, value) in schemaProperty.Properties)
             {
-                var exampleValue = GenerateExample(kvp.Value, currentDepth + 1, maxDepth);
-                // Convert the returned object to JsonNode before adding to JsonObject
-                if (exampleValue is JsonNode jsonNode)
-                {
-                    obj[kvp.Key] = jsonNode;
-                }
-                else
-                {
-                    // If it's a primitive, wrap it or serialize it
-                    obj[kvp.Key] = JsonSerializer.SerializeToNode(exampleValue?.ToString());
-                }
+                obj[key] = GenerateExample(value, depth + 1);
             }
         }
         return obj;
@@ -211,7 +233,7 @@ public static class SchemaProcessor
     /// <param name="currentDepth">The current recursion depth (used internally).</param>
     /// <param name="maxDepth">The maximum allowed nesting depth.</param>
     /// <returns>A dictionary with validated and correctly typed arguments.</returns>
-    public static Dictionary<string, object> ValidateAndConvertArguments(JsonSchemaProperty? schemaProperty, IReadOnlyDictionary<string, object> inputArgs, int currentDepth = 0, int maxDepth = _defaultMaxDepth)
+    public static Dictionary<string, object> ValidateAndConvertArguments(JsonSchemaProperty? schemaProperty, IReadOnlyDictionary<string, object> inputArgs, int currentDepth = 0, int maxDepth = _maxDepth)
     {
         var result = new Dictionary<string, object>();
 
@@ -240,10 +262,8 @@ public static class SchemaProcessor
 
     private static object ConvertValueBySchema(object inputValue, JsonSchemaProperty propDef, int currentDepth, int maxDepth)
     {
-
         if (currentDepth > maxDepth)
         {
-            Console.WriteLine($"Warning: Maximum argument conversion depth ({maxDepth}) exceeded.");
             return inputValue; // Return as is if max depth hit
         }
 
@@ -300,7 +320,6 @@ public static class SchemaProcessor
 
     private static object ConvertArrayValue(object inputValue, JsonSchemaProperty? itemSchema, int currentDepth, int maxDepth)
     {
-        // Assuming inputValue is an array/object that can be enumerated or cast
         if (inputValue is JsonElement jsonEl && jsonEl.ValueKind == JsonValueKind.Array)
         {
             var list = new List<object>();
@@ -311,32 +330,36 @@ public static class SchemaProcessor
             }
             return list;
         }
-        else if (inputValue is IEnumerable<object> enumerable)
+        else if (inputValue is IEnumerable enumerable && !(inputValue is string))
         {
             var list = new List<object>();
             foreach (var item in enumerable)
             {
-                var convertedItem = itemSchema != null ? ConvertValueBySchema(item, itemSchema, currentDepth + 1, maxDepth) : item;
+                var convertedItem = itemSchema != null ? ConvertValueBySchema(item!, itemSchema, currentDepth + 1, maxDepth) : item!;
                 list.Add(convertedItem);
             }
             return list;
         }
-        else if (inputValue is string inputValueStr && inputValueStr.StartsWith('[') && inputValueStr.EndsWith(']') )
+        else if (inputValue is string inputValueStr)
         {
-            try
+            var trimmed = inputValueStr.Trim();
+            if (trimmed.StartsWith('[') && trimmed.EndsWith(']'))
             {
-                var deInputValueStr = JsonSerializer.Deserialize<IEnumerable<object>>(inputValueStr) ?? [];
-                var list = new List<object>();
-                foreach (var item in deInputValueStr)
+                try
                 {
-                    var convertedItem = itemSchema != null ? ConvertValueBySchema(item, itemSchema, currentDepth + 1, maxDepth) : item;
-                    list.Add(convertedItem);
+                    var deInputValueStr = JsonSerializer.Deserialize<IEnumerable<object>>(trimmed) ?? [];
+                    var list = new List<object>();
+                    foreach (var item in deInputValueStr)
+                    {
+                        var convertedItem = itemSchema != null ? ConvertValueBySchema(item!, itemSchema, currentDepth + 1, maxDepth) : item!;
+                        list.Add(convertedItem);
+                    }
+                    return list;
                 }
-                return list;
-            }
-            catch
-            {
-                return inputValue;
+                catch
+                {
+                    return inputValue;
+                }
             }
         }
         // Fallback: return as is if conversion fails

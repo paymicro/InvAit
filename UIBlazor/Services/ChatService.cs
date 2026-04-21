@@ -107,7 +107,7 @@ public class ChatService(
     private void UpdateSessionCache(ConversationSession session)
     {
         if (_recentSessionsCache == null) return;
-        
+
         var existing = _recentSessionsCache.FirstOrDefault(s => s.Id == session.Id);
         var firstMessage = session.Messages.FirstOrDefault(m => m.Role == ChatMessageRole.User)?.Content ?? string.Empty;
         var preview = firstMessage is { Length: > 40 } ? firstMessage[..40] + "..." : firstMessage;
@@ -168,29 +168,34 @@ public class ChatService(
         var currentContext = vsCodeContextService.CurrentContext;
         if (currentContext != null)
         {
-            contextSection.AppendLine("# CURRENT CODE CONTEXT");
-
+            var codeContext = new List<string>();
             if (commonSettingsProvider.Current.SendCurrentFile && !string.IsNullOrEmpty(currentContext.ActiveFilePath))
             {
-                contextSection.AppendLine($"""
-                                          ## Current (active) file
-                                          - Path: {currentContext.ActiveFilePath}
-                                          - Selected lines: {currentContext.SelectionStartLine} - {currentContext.SelectionEndLine}
-                                          - Content:
-                                          ```
-                                          {currentContext.ActiveFileContent}
-                                          ```
-                                          """);
+                codeContext.Add($"""
+                                ## Current (active) file
+                                - Path: {currentContext.ActiveFilePath}
+                                - Selected lines: {currentContext.SelectionStartLine} - {currentContext.SelectionEndLine}
+                                ```
+                                {currentContext.ActiveFileContent}
+                                ```
+                                """);
             }
-
             if (commonSettingsProvider.Current.SendSolutionsStricture && currentContext.SolutionFiles.Count != 0)
             {
-                contextSection.AppendLine($"""
-                                          Solution files:
-                                          ```
-                                          {string.Join(Environment.NewLine, currentContext.SolutionFiles)}
-                                          ```
-                                          """);
+                codeContext.Add($"""
+                                Solution files:
+                                ```
+                                {string.Join(Environment.NewLine, currentContext.SolutionFiles)}
+                                ```
+                                """);
+            }
+            if (codeContext.Count > 0)
+            {
+                contextSection.AppendLine("# CURRENT CODE CONTEXT");
+                foreach (var item in codeContext)
+                {
+                    contextSection.AppendLine(item);
+                }
             }
         }
 
@@ -333,7 +338,7 @@ public class ChatService(
                 FinishReason = lastChoise?.FinishReason;
                 break;
             }
-            
+
             if (json.StartsWith("{\"error\""))
             {
                 LastError = json;
@@ -454,7 +459,7 @@ public class ChatService(
     {
         if (_recentSessionsCache != null)
             return [.. _recentSessionsCache.Take(count)];
-        
+
         var sessionIds = await GetAllSessionIdsAsync();
         var summaries = new List<SessionSummary>();
 
@@ -498,7 +503,7 @@ public class ChatService(
 
         await CleanupOldSessionsAsync();
     }
-    
+
     private async Task CleanupOldSessionsAsync()
     {
         var recent = await GetRecentSessionsAsync(int.MaxValue);
@@ -531,7 +536,7 @@ public class ChatService(
             Session.MaxMessages = Options.MaxMessages;
         }
         await localStorage.RemoveItemAsync(id);
-        
+
         _recentSessionsCache?.RemoveAll(s => s.Id == id);
     }
 
@@ -542,7 +547,7 @@ public class ChatService(
 
     private static string GenerateSessionId() => $"session_{DateTime.Now:s}";
 
-    private static ConversationSession CreateNewSession() => new () { Id = GenerateSessionId() };
+    private static ConversationSession CreateNewSession() => new() { Id = GenerateSessionId() };
 
 
     public async Task LoadLastSessionOrGenerateNewAsync()

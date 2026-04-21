@@ -24,7 +24,8 @@ public class BuiltInToolDefsTests
 
     // Метод с параметром имеющим описание
     public void MethodWithParameterDescription(
-        [Description("Parameter description")] string param1) { }
+        [Description("Parameter description")] string param1)
+    { }
 
     // Метод с параметром по умолчанию
     public void MethodWithOptionalParameter(string required, int optional = 10) { }
@@ -39,7 +40,8 @@ public class BuiltInToolDefsTests
         float floatParam,
         decimal decimalParam,
         DateTime dateTimeParam,
-        Guid guidParam) { }
+        Guid guidParam)
+    { }
 
     // Метод с массивом
     public void MethodWithArray(string[] arrayParam) { }
@@ -55,7 +57,8 @@ public class BuiltInToolDefsTests
     public void MethodWithMultipleParameters(
         [Description("First parameter")] string param1,
         [Description("Second parameter")] int param2,
-        [Description("Third parameter")] bool param3 = false) { }
+        [Description("Third parameter")] bool param3 = false)
+    { }
 
     // Метод с nullable типом
     public void MethodWithNullableType(int? nullableInt, string? nullableString) { }
@@ -314,7 +317,7 @@ public class BuiltInToolDefsTests
         Assert.Contains("param1", result.Function.Parameters.Required);
         Assert.Contains("param2", result.Function.Parameters.Required);
         Assert.Contains("param3", result.Function.Parameters.Required);
-        
+
         // param3 имеет дефолтное значение, поэтому union type
         Assert.True(result.Function.Parameters.Properties["param3"].IsUnionType);
     }

@@ -36,30 +36,85 @@ public class HeadlessMocker
             },
             BasicEnum.McpGetTools => new VsToolResult
             {
-                Result = JsonUtils.Serialize(new McpListToolsResult
+                // https://modelcontextprotocol.io/seps/1330-elicitation-enum-schema-improvements-and-standards
+                Result = """
+                {
+                  "tools": [
                     {
-                    Tools = [
-                        new McpTool
-                        {
-                            Name = "test.sum",
-                            Description = "Сумма двух чисел",
-                            InputSchema = new {
-                                type = "object",
-                                properties = new {
-                                    a = new {
-                                        type = "number",
-                                        description = "Первое число"
-                                    },
-                                    b = new {
-                                        type = "number",
-                                        description = "Второе число"
-                                    }
+                      "name": "get_pull_request",
+                      "description": "Get full details of a pull request including active comments, file changes, reviewer status, and merge commit information",
+                      "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                          "workspace": {
+                            "type": "string",
+                            "description": "Project key (e.g., PROJ)"
+                          },
+                          "repository": {
+                            "type": "string",
+                            "description": "Repository slug (e.g., my-repo)"
+                          },
+                          "pull_request_id": {
+                            "type": "number",
+                            "description": "Pull request ID"
+                          },
+                          "boolean": {
+                            "type": "boolean",
+                            "description": "Просто что-то включает"
+                          },
+                          "color": {
+                            "type": "string",
+                            "title": "Color Selection",
+                            "enum": ["Red", "Green", "Blue"],
+                            "default": "Green"
+                          },
+                          "color_selection": {
+                            "type": "array",
+                            "title": "Color Selection",
+                            "description": "Choose your favorite colors",
+                            "minItems": 1,
+                            "maxItems": 3,
+                            "items": {
+                              "type": "string",
+                              "enum": ["Red", "Green", "Blue"]
+                            },
+                            "default": ["Green"]
+                          },
+                          "search_context": {
+                            "type": "object",
+                            "properties": {
+                              "before": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
                                 },
-                                required = new List<string> { "a" }
-                            }
-                        }
-                    ]
-                })
+                                "description": "Lines before the target to disambiguate"
+                              },
+                              "after": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                },
+                                "description": "Lines after the target to disambiguate"
+                              },
+                              "IsEnabled": {
+                                "type": "boolean",
+                                "description": "Просто что-то включает"
+                              }
+                            },
+                            "description": "Context lines to disambiguate when code_snippet appears multiple times (optional)"
+                          }
+                        },
+                        "required": [
+                          "workspace",
+                          "repository",
+                          "pull_request_id"
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """
             },
             BasicEnum.McpCallTool => new VsToolResult
             {

@@ -48,7 +48,7 @@ public class BuiltInToolDefs
         {
             var paramDesc = param.GetCustomAttribute<DescriptionAttribute>()?.Description ?? string.Empty;
             var paramName = ToCamelCase(param.Name!);
-            
+
             // В Strict Mode все параметры в required, но для optional - тип с null
             var prop = MapTypeToProperty(param.ParameterType, paramDesc, param.HasDefaultValue);
             parameters.Properties.Add(paramName, prop);
@@ -105,7 +105,7 @@ public class BuiltInToolDefs
             {
                 var pDesc = p.GetCustomAttribute<DescriptionAttribute>()?.Description;
                 var propName = ToCamelCase(p.Name);
-                
+
                 // Проверяем, имеет ли свойство дефолтное значение или nullable
                 var hasDefaultValue = p.GetCustomAttribute<DefaultValueAttribute>() != null;
                 var isNullableProperty = IsNullableProperty(p);
@@ -127,10 +127,10 @@ public class BuiltInToolDefs
             if (!string.IsNullOrEmpty(enumDescription))
                 enumDescription += " ";
             enumDescription += $"Possible values: {string.Join(", ", Enum.GetNames(type))}";
-            
+
             prop.Description = enumDescription;
             prop.SetSingleType(NativeToolType.String);
-            
+
             if (isOptional)
             {
                 prop.SetUnionTypes(NativeToolType.String, NativeToolType.Null);

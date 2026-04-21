@@ -1,6 +1,4 @@
 using System.Collections.Concurrent;
-using System.Text.Json.Nodes;
-using Shared.Contracts.Mcp;
 
 namespace UIBlazor.Services.Settings;
 
@@ -176,7 +174,7 @@ public class ToolManager(
                     Description = currentToolConfig.Description ?? string.Empty,
                     Category = ToolCategory.Mcp,
                     Enabled = isEnabled,
-                    ExampleToSystemMessage = BuildSchemaDescription(toolName, currentToolConfig),
+                    ExampleToSystemMessage = SchemaProcessor.BuildSchemaDescription(toolName, currentToolConfig),
                     ExecuteAsync = (args, cancellationToken) =>
                     {
                         var arguments = GetArgumentNamesFromSchema(currentToolConfig.InputSchema, args);
@@ -342,69 +340,6 @@ public class ToolManager(
         }
 
         return sb.ToString();
-    }
-
-    /// <summary>
-    /// Build a readable schema description for LLM prompt
-    /// </summary>
-    private static string BuildSchemaDescription(string toolName, McpToolConfig toolConfig)
-    {
-        try
-        {
-            var schemaElement = toolConfig.InputSchema;
-            // Use SchemaProcessor for complex schemas
-            var schemaProperty = SchemaProcessor.DeserializeSchema(schemaElement);
-            if (schemaProperty == null)
-            {
-                return string.Empty;
-            }
-
-            var sb = new StringBuilder();
-            var exampleObj = SchemaProcessor.GenerateExample(schemaProperty);
-
-            sb.AppendLine("For example:");
-            sb.AppendLine($"<function name=\"{toolName}\">");
-            AppendExample(sb, exampleObj, indentLevel: 1); // Start indentation at 1 for the function body
-            sb.AppendLine("</function>");
-
-            sb.AppendLine("*Properties schema:*");
-            SchemaProcessor.AppendSchemaDescription(sb, schemaProperty, parentPath: "");
-
-            return sb.ToString();
-        }
-        catch (Exception)
-        {
-            return string.Empty;
-        }
-    }
-
-    private static void AppendExample(StringBuilder sb, object obj, int indentLevel)
-    {
-        var indent = new string(' ', indentLevel * 2);
-        switch (obj)
-        {
-            case JsonObject jo:
-                sb.AppendLine("{");
-                foreach (var kvp in jo)
-                {
-                    sb.Append(indent).Append("  ").Append(kvp.Key).Append(" : ");
-                    AppendExample(sb, kvp.Value, indentLevel + 1);
-                }
-                sb.AppendLine(indent).Append("}");
-                break;
-            case JsonArray ja:
-                sb.AppendLine("[");
-                foreach (var item in ja)
-                {
-                    sb.Append(indent).Append("  ");
-                    AppendExample(sb, item, indentLevel + 1);
-                }
-                sb.AppendLine(indent).Append("]");
-                break;
-            default:
-                sb.AppendLine(obj?.ToString() ?? "null");
-                break;
-        }
     }
 
     // Uses SchemaProcessor for recursive handling

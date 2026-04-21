@@ -7,6 +7,7 @@ namespace UIBlazor.Processors.Models;
 public class JsonSchemaProperty
 {
     public string? Type { get; set; } = "object";
+    public string? Title { get; set; }
     public string? Description { get; set; }
 
     // Constraints

@@ -6,7 +6,7 @@ public interface ISkillService
     /// Получить метаданные всех скиллов (только название + описание для системного промпта)
     /// </summary>
     Task<List<SkillMetadata>> GetSkillsMetadataAsync(CancellationToken cancellationToken);
-    
+
     /// <summary>
     /// Загрузить полное содержимое скилла (только при активации)
     /// </summary>

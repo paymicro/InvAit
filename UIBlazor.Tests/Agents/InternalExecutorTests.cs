@@ -18,7 +18,7 @@ public class InternalExecutorTests
         _session = new ConversationSession();
         _chatServiceMock = new Mock<IChatService>();
         _chatServiceMock.SetupGet(x => x.Session).Returns(_session);
-        
+
         _serviceProviderMock = new Mock<IServiceProvider>();
         _serviceProviderMock
             .Setup(x => x.GetService(typeof(IChatService)))
@@ -65,7 +65,7 @@ public class InternalExecutorTests
         var args = new Dictionary<string, object> { { "param1", "Plan" } };
 
         // Act
-        var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args, CancellationToken.None    );
+        var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args, CancellationToken.None);
 
         // Assert
         Assert.True(result.Success);

@@ -67,7 +67,7 @@ public partial class AiChat : RadzenComponent
         };
 
         ChatService.Session.AddMessage(userMessage);
-        
+
         // Get AI response
         await GetAiResponseAsync();
     }
@@ -297,6 +297,29 @@ public partial class AiChat : RadzenComponent
         }
     }
 
+    private async Task<VsToolResult> CallToolAsync(Tool tool, ContentSegment segment)
+    {
+        if (segment.ApprovalStatus != ToolApprovalStatus.Approved)
+        {
+            return new VsToolResult
+            {
+                Name = segment.ToolName,
+                Success = false,
+                ErrorMessage = "Execution was denied by user."
+            };
+        }
+
+        if (segment.ToolName.StartsWith("mcp__"))
+        {
+            // для MCP десериализуем параметры
+            var args = JsonUtils.DeserializeParameters(string.Join('\n', segment.ToolParams.Values))
+                .Where(x => x.Value is not null).ToDictionary(); // удаляем null-ы
+            return await tool.ExecuteAsync(args, _cts.Token);
+        }
+
+        return await tool.ExecuteAsync(segment.ToolParams, _cts.Token);
+    }
+
     private async Task HandleToolCallAsync(VisualChatMessage assistantMessage, List<ContentSegment> toolsSegments)
     {
         if (toolsSegments.Count == 0)
@@ -356,16 +379,7 @@ public partial class AiChat : RadzenComponent
                 }
 
                 // Уже должен быть известен статус тулза - или разрешен, или запрещен.
-                vsToolResult = segment.ApprovalStatus switch
-                {
-                    ToolApprovalStatus.Approved => await tool.ExecuteAsync(segment.ToolParams, _cts.Token),
-                    _ => new VsToolResult
-                    {
-                        Name = segment.ToolName,
-                        Success = false,
-                        ErrorMessage = "Execution was denied by user."
-                    }
-                };
+                vsToolResult = await CallToolAsync(tool, segment);
             }
 #if DEBUG
             // Безголовые (без Visual Studio) тесты

@@ -38,6 +38,9 @@
 
 ### Configuration
 
+> [!IMPORTANT]
+> `/v1` at the end of the endpoint does **not need** to be specified. It will be automatically deleted and **that's normal**.
+
 #### Local (Recommended)
 
 | Server | Run description | Endpoint | 
@@ -54,6 +57,7 @@
 |----------|-------|-------|
 | [OmniRoute](https://github.com/diegosouzapw/OmniRoute) | in terminal install<br>`npm install -g omniroute`<br/>run<br/>`omniroute` | http://localhost:20128 |
 | [OpenRouter](https://openrouter.ai) | sing in / pay / use | https://openrouter.ai/api |
+| [Siliconflow](https://www.siliconflow.com) | sing in / pay / use | https://api.siliconflow.com |
 
 ## 🛠 Capabilities
 

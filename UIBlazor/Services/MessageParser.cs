@@ -201,7 +201,7 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
     /// </summary>
     /// <param name="toolName">Имя тулзы</param>
     /// <param name="toolLines">Параметры по линиям</param>
-    public static Dictionary<string, object> Parse(string toolName, List<string> toolLines)
+    public static Dictionary<string, object> Parse(string toolName, List<string> toolLines, bool isClosed = false)
     {
         var result = new Dictionary<string, object>();
         var paramIndex = 0;
@@ -210,120 +210,97 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
         switch (toolName)
         {
             case BuiltInToolEnum.ReadFiles:
-            {
-                for (var i = 0; i < toolLines.Count; i++)
                 {
-                    var line = toolLines[i].Trim();
-
-                    if (string.IsNullOrEmpty(line))
-                        continue;
-
-                    var match = Regex.Match(line, @"^(?<path>.*?)(?:\s*\[L(?<line>\d+)(?::C(?<count>\d+))?\])?$", RegexOptions.NonBacktracking);
-                    if (match.Success)
+                    for (var i = 0; i < toolLines.Count; i++)
                     {
-                        var fileParams = new ReadFileParams
-                        {
-                            Name = match.Groups["path"].Value,
-                            StartLine = match.Groups["line"].Success && int.TryParse(match.Groups["line"].Value, out var startLine) ? startLine : -1,
-                            LineCount = match.Groups["count"].Success && int.TryParse(match.Groups["count"].Value, out var lineCount) ? lineCount : -1
-                        };
-                        result[$"file{++paramIndex}"] = fileParams;
-                    }
-                }
+                        var line = toolLines[i].Trim();
 
-                break;
-            }
+                        if (string.IsNullOrEmpty(line))
+                            continue;
+
+                        var match = Regex.Match(line, @"^(?<path>.*?)(?:\s*\[L(?<line>\d+)(?::C(?<count>\d+))?\])?$", RegexOptions.NonBacktracking);
+                        if (match.Success)
+                        {
+                            var fileParams = new ReadFileParams
+                            {
+                                Name = match.Groups["path"].Value,
+                                StartLine = match.Groups["line"].Success && int.TryParse(match.Groups["line"].Value, out var startLine) ? startLine : -1,
+                                LineCount = match.Groups["count"].Success && int.TryParse(match.Groups["count"].Value, out var lineCount) ? lineCount : -1
+                            };
+                            result[$"file{++paramIndex}"] = fileParams;
+                        }
+                    }
+
+                    break;
+                }
             case BuiltInToolEnum.ApplyDiff:
-            {
-                for (var i = 0; i < toolLines.Count; i++)
                 {
-                    var line = toolLines[i].Trim();
-
-                    if (string.IsNullOrEmpty(line))
-                        continue;
-
-                    // Начало блока (<<<<<<< SEARCH)
-                    if (line.StartsWith("<<<<<<< SEARCH"))
+                    for (var i = 0; i < toolLines.Count; i++)
                     {
-                        i++;
-                        var diff = new DiffReplacement();
-                        var options = line[14..].TrimStart();
-                        if (options.StartsWith(':'))
-                        {
-                            diff.StartLine = int.Parse(options.Split(':')[1]);
-                        }
-                        var search = new List<string>();
-                        for (; i < toolLines.Count; i++)
-                        {
-                            line = toolLines[i].TrimEnd();
-                            if (line.StartsWith("======="))
-                            {
-                                i++;
-                                break;
-                            }
-                            else if (line.StartsWith(">>>>>>> REPLACE")) // если нужно просто удалить, то могут упустить =======
-                            {
-                                break;
-                            }
-                            search.Add(line);
-                        }
-                        diff.Search = search;
+                        var line = toolLines[i].Trim();
 
-                        var replace = new List<string>();
-                        for (; i < toolLines.Count; i++)
-                        {
-                            line = toolLines[i].TrimEnd();
-                            if (line.StartsWith(">>>>>>> REPLACE"))
-                            {
-                                i++;
-                                break;
-                            }
-                            replace.Add(line);
-                        }
-                        diff.Replace = replace;
+                        if (string.IsNullOrEmpty(line))
+                            continue;
 
-                        result[$"diff{++namedIndex}"] = diff;
+                        // Начало блока (<<<<<<< SEARCH)
+                        if (line.StartsWith("<<<<<<< SEARCH"))
+                        {
+                            i++;
+                            var diff = new DiffReplacement();
+                            var options = line[14..].TrimStart();
+                            if (options.StartsWith(':'))
+                            {
+                                diff.StartLine = int.Parse(options.Split(':')[1]);
+                            }
+                            var search = new List<string>();
+                            for (; i < toolLines.Count; i++)
+                            {
+                                line = toolLines[i].TrimEnd();
+                                if (line.StartsWith("======="))
+                                {
+                                    i++;
+                                    break;
+                                }
+                                else if (line.StartsWith(">>>>>>> REPLACE")) // если нужно просто удалить, то могут упустить =======
+                                {
+                                    break;
+                                }
+                                search.Add(line);
+                            }
+                            diff.Search = search;
+
+                            var replace = new List<string>();
+                            for (; i < toolLines.Count; i++)
+                            {
+                                line = toolLines[i].TrimEnd();
+                                if (line.StartsWith(">>>>>>> REPLACE"))
+                                {
+                                    i++;
+                                    break;
+                                }
+                                replace.Add(line);
+                            }
+                            diff.Replace = replace;
+
+                            result[$"diff{++namedIndex}"] = diff;
+                        }
+                        // Обычная строка параметров
+                        else
+                        {
+                            result[$"param{++paramIndex}"] = line;
+                        }
                     }
-                    // Обычная строка параметров
-                    else
-                    {
-                        result[$"param{++paramIndex}"] = line;
-                    }
+
+                    break;
                 }
-
-                break;
-            }
             default:
-            {
-                if (toolName.StartsWith("mcp__")) // MCP
-                {
-                    foreach (var line in toolLines)
-                    {
-                        var devider = line.IndexOf(':');
-                        if (devider <= 1)
-                            continue;
-                        var argName = line[..devider].Trim();
-                        var argValue = line[(devider + 1)..].Trim();
-
-                        if (string.IsNullOrEmpty(argName))
-                            continue;
-                        if (argValue.Length > 2 && argValue.StartsWith('\"') && argValue.EndsWith('\"'))
-                        {
-                            argValue = argValue[1..^1];
-                        }
-                        result[argName] = argValue;
-                    }
-                }
-                else // обычные тулзы
                 {
                     foreach (var line in toolLines)
                     {
                         result[$"param{++paramIndex}"] = line;
                     }
+                    break;
                 }
-
-                break;
-            }
         }
 
         return result;

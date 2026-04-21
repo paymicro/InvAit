@@ -136,7 +136,7 @@ public class McpSettingsProviderTests
                 await writer.WriteLineAsync("data: /messages");
                 await writer.WriteLineAsync("event: endpoint");
                 await writer.WriteLineAsync("");
-                
+
                 // Keep the stream open until we provide the tools data
                 _ = Task.Run(async () =>
                 {
@@ -175,7 +175,7 @@ public class McpSettingsProviderTests
         // The MemoryStream approach might be tricky if it reaches EOF.
         // Let's use a simpler approach: Just provide a large enough buffer in the initial GET response
         // if we can predict the ID? No, we can't.
-        
+
         // Let's try a different trick: Use a custom Stream that blocks until data is available.
     }
 }

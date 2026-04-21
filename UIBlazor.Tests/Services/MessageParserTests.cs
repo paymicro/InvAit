@@ -1,9 +1,11 @@
+using AngleSharp.Common;
 using Moq;
 using Shared.Contracts;
 using UIBlazor.Constants;
 using UIBlazor.Models;
 using UIBlazor.Services;
 using UIBlazor.Services.Settings;
+using UIBlazor.Utils;
 
 namespace UIBlazor.Tests.Services;
 
@@ -371,5 +373,56 @@ public class MessageParserTests
         Assert.Equivalent(expectedDiff1, args["diff1"]);
         Assert.Equivalent(expectedDiff2, args["diff2"]);
         Assert.Equivalent(expectedDiff3, args["diff3"]);
+    }
+
+    [Fact]
+    public void Parse_MCP_Blocks()
+    {
+        // Arrange
+        var lines = """
+            {
+              "thought": "Проверка работы инструмента sequential-thinking со всеми возможными параметрами",
+              "nextThoughtNeeded": true,
+              "thoughtNumber": 1,
+              "totalThoughts": 5,
+              "isRevision": false,
+              "revisesThought": null,
+              "branchFromThought": null,
+              "obj": {
+                "before": ["one"],
+                "after": ["2"]
+              },
+              "branchId": "test-branch",
+              "needsMoreThoughts": true
+            }
+            """
+            .Split('\n').ToList();
+
+        var expectedObj = new
+        {
+            thought = "Проверка работы инструмента sequential-thinking со всеми возможными параметрами",
+            nextThoughtNeeded = true,
+            thoughtNumber = 1,
+            totalThoughts = 5,
+            isRevision = false,
+            obj = new
+            {
+                before = new List<string> { "one" },
+                after = new List<string> { "2" }
+            },
+            branchId = "test-branch",
+            needsMoreThoughts = true
+        };
+
+        // Act
+        var toolParams = MessageParser.Parse("mcp__sequential-thinking__sequential-thinking", lines);
+
+        var args = JsonUtils.DeserializeParameters(string.Join('\n', toolParams.Values))
+            .Where(x => x.Value is not null)
+            .ToDictionary();
+
+        // Assert
+        Assert.Equal(8, args.Count);
+        Assert.Equivalent(JsonUtils.Serialize(expectedObj), JsonUtils.Serialize(args));
     }
 }

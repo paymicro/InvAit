@@ -41,7 +41,7 @@ public class SkillServiceTests
             { ""name"": ""TestSkill"", ""description"": ""A test skill"" },
             { ""name"": ""Skill2"", ""description"": ""Second skill"" }
         ]";
-        
+
         _vsBridgeMock
             .Setup(x => x.ExecuteToolAsync(BasicEnum.GetSkillsMetadata, null))
             .ReturnsAsync(new VsToolResult { Success = true, Result = jsonResponse });

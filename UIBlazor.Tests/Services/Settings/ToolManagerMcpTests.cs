@@ -1,10 +1,9 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Shared.Contracts;
 using Shared.Contracts.Mcp;
 using UIBlazor.Agents;
-using UIBlazor.Models;
 using UIBlazor.Options;
 using UIBlazor.Services;
 using UIBlazor.Services.Settings;
@@ -95,8 +94,8 @@ public class ToolManagerMcpTests
         var server = new McpServerConfig
         {
             Name = "my-server",
-            Tools = [new McpToolConfig 
-            { 
+            Tools = [new McpToolConfig
+            {
                 Name = "my-tool",
                 InputSchema = JsonDocument.Parse("{\"properties\": {\"arg1\": {\"type\": \"string\"}}}").RootElement
             }]
@@ -114,7 +113,7 @@ public class ToolManagerMcpTests
         await mcpTool.ExecuteAsync(args, CancellationToken.None);
 
         // Assert
-        _vsBridgeMock.Verify(v => v.ExecuteToolAsync(BasicEnum.McpCallTool, It.Is<Dictionary<string, object>>(dict => 
+        _vsBridgeMock.Verify(v => v.ExecuteToolAsync(BasicEnum.McpCallTool, It.Is<Dictionary<string, object>>(dict =>
             dict["serverId"].ToString() == "my-server" &&
             dict["toolName"].ToString() == "my-tool" &&
             ((Dictionary<string, object>)dict["arguments"])["arg1"].ToString() == "val1" &&
