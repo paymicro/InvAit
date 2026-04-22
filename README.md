@@ -38,9 +38,6 @@
 
 ### Configuration
 
-> [!IMPORTANT]
-> `/v1` at the end of the endpoint does **not need** to be specified. It will be automatically deleted and **that's normal**.
-
 #### Local (Recommended)
 
 | Server | Run description | Endpoint | 
@@ -51,13 +48,16 @@
 
 #### Remote / Self-Hosted
 - **Endpoint:** URL of your OpenAI-compatible provider.
-- **Key:** Your API Key (stored securely).
+- **Key:** Your API Key
 
 | Server | Run description | Endpoint |
 |----------|-------|-------|
 | [OmniRoute](https://github.com/diegosouzapw/OmniRoute) | in terminal install<br>`npm install -g omniroute`<br/>run<br/>`omniroute` | http://localhost:20128 |
 | [OpenRouter](https://openrouter.ai) | sing in / pay / use | https://openrouter.ai/api |
 | [Siliconflow](https://www.siliconflow.com) | sing in / pay / use | https://api.siliconflow.com |
+
+> [!IMPORTANT]
+> `/v1` at the end of the endpoint does **not need** to be specified. It will be automatically deleted and **that's normal**.
 
 ## 🛠 Capabilities
 
@@ -72,6 +72,21 @@
 | **Rules** | global `%USERPROFILE%\.agents\rules.md`<br/>local `\.agents\rules.md`  |
 | **AGENTS.md** | load file content in system prompt |
 
+
+## 🖼 Screenshots
+
+#### Edit files
+![](/docs/apply_diff_0014.png)
+
+![](/docs/delete_file_0014.png)
+
+#### Settings
+| General | Tools |
+|------|-------------|
+| ![](/docs/settings_general_0014.png) | ![](/docs/settings_tools_0014.png) |
+
+---
+
 ## 🏗 Architecture
 | Part | Description |
 |------|-------------|
@@ -83,5 +98,5 @@
 - **Visual Studio:** 2022 (17.14+) or 2026 (18.0+)
 - **Runtimes:** .NET Framework 4.8, .NET 10 SDK
 
-## 📄 License
+## 📄 License MIT
 See [LICENSE](./LICENSE).
