@@ -1,3 +1,4 @@
+@using System.ComponentModel
 @implements IDisposable
 
 <div class="chat-input-wrapper">
@@ -323,18 +324,19 @@
     protected override void OnInitialized()
     {
         base.OnInitialized();
-        ChatService.OnSessionChanged += HandleSessionChanged;
-        CommonSettingsProvider.OnSaved += HangleCommonSettingsSaved;
+        ChatService.SessionChanged += HandlePropertyChanged;
+        CommonSettingsProvider.Current.PropertyChanged += HandlePropertyChanged;
     }
 
-    private void HandleSessionChanged(string propName)
+    private void HandlePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        InvokeAsync(StateHasChanged);
-    }
-
-    private void HangleCommonSettingsSaved()
-    {
-        InvokeAsync(StateHasChanged);
+        if (e.PropertyName is nameof(UIBlazor.Models.ConversationSession.Mode)
+            or nameof(UIBlazor.Models.ConversationSession)
+            or nameof(CommonOptions.SendCurrentFile)
+            or nameof(CommonOptions.SendSolutionsStricture))
+        {
+            InvokeAsync(StateHasChanged);
+        }
     }
 
     private async Task OpenRulesAsync()
@@ -349,8 +351,8 @@
 
     public void Dispose()
     {
-        ChatService.OnSessionChanged -= HandleSessionChanged;
-        CommonSettingsProvider.OnSaved -= HangleCommonSettingsSaved;
+        ChatService.SessionChanged -= HandlePropertyChanged;
+        CommonSettingsProvider.Current.PropertyChanged -= HandlePropertyChanged;
     }
 
     private void OnModeChanged()

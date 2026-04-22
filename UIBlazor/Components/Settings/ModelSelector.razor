@@ -1,3 +1,4 @@
+@using System.ComponentModel
 @implements IDisposable
 
 <RadzenDropDown TValue="string"
@@ -21,7 +22,7 @@
     protected override void OnInitialized()
     {
         viewModels = ProfileManager.ActiveProfile.AvailableModels;
-        ProfileManager.OnSaved += HandleProfileChanged;
+        ProfileManager.PropertyChanged += ProfilePropertyChanged;
     }
 
     void OnLoadData(LoadDataArgs args)
@@ -61,14 +62,21 @@
         }
     }
 
-    private void HandleProfileChanged()
+    private void ProfilePropertyChanged(object? sender, PropertyChangedEventArgs args)
     {
-        viewModels = ProfileManager.ActiveProfile.AvailableModels;
-        InvokeAsync(StateHasChanged);
+        if (args.PropertyName is nameof(ConnectionProfile.AvailableModels))
+        {
+            viewModels = ProfileManager.ActiveProfile.AvailableModels;
+            InvokeAsync(StateHasChanged);
+        }
+        else if (args.PropertyName is nameof(ConnectionProfile.Model))
+        {
+            InvokeAsync(StateHasChanged);
+        }
     }
 
     public void Dispose()
     {
-        ProfileManager.OnSaved -= HandleProfileChanged;
+        ProfileManager.PropertyChanged -= ProfilePropertyChanged;
     }
 }

@@ -29,7 +29,7 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider whe
     {
         if (_isInitializing)
             return;
-        OnAnyPropertyChanged(e.PropertyName);
+
         Debouncer.Trigger();
     }
 
@@ -40,17 +40,6 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider whe
         Debouncer.Trigger();
     }
 
-    /// <summary>
-    /// Свойство изменилось и будет сохранено
-    /// </summary>
-    /// <param name="propertyName">Имя измененного свойства</param>
-    protected virtual void OnAnyPropertyChanged(string? propertyName)
-    {
-    }
-
-    /// <summary>
-    /// Событие после сохранения настроек
-    /// </summary>
     public event Action? OnSaved;
 
     /// <summary>

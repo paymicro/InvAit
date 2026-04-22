@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Diagnostics;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
@@ -434,7 +435,7 @@ public partial class AiChat : RadzenComponent
         await base.OnInitializedAsync();
         _dotNetRef = DotNetObjectReference.Create(this);
 
-        ChatService.OnSessionChanged += HandleSessionChanged;
+        ChatService.SessionChanged += HandleSessionChanged;
 
         ToolManager.RegisterAllTools();
 
@@ -442,13 +443,13 @@ public partial class AiChat : RadzenComponent
         await InvokeAsync(StateHasChanged);
     }
 
-    private async void HandleSessionChanged(string propName)
+    private void HandleSessionChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (propName != nameof(ConversationSession))
+        if (e.PropertyName != nameof(ConversationSession))
             return;
 
         LoadMessagesFromSession();
-        await InvokeAsync(StateHasChanged);
+        InvokeAsync(StateHasChanged);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -547,7 +548,7 @@ public partial class AiChat : RadzenComponent
         base.Dispose();
 
         _dotNetRef?.Dispose();
-        ChatService.OnSessionChanged -= HandleSessionChanged;
+        ChatService.SessionChanged -= HandleSessionChanged;
 
         _cts?.Cancel();
         _cts?.Dispose();

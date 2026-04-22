@@ -30,6 +30,7 @@ else
     [Inject] private IMcpSettingsProvider McpSettingsProvider { get; set; } = null!;
     [Inject] private IProfileManager ProfileService { get; set; } = null!;
     [Inject] private ICommonSettingsProvider CommonSettingsProvider { get; set; } = null!;
+    [Inject] private IChatService ChatService { get; set; } = null!;
 
     private bool isInitialized;
 
@@ -39,6 +40,8 @@ else
         await ProfileService.InitializeAsync();
         await CommonSettingsProvider.InitializeAsync();
         await McpSettingsProvider.InitializeAsync();
+        
+        ChatService.Initialize();
 
         await base.OnInitializedAsync();
         isInitialized = true;

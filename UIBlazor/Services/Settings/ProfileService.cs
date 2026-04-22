@@ -10,44 +10,43 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
 
     protected override async Task AfterInitAsync()
     {
+        Current.PropertyChanged += OnPropertyChanged;
+
         if (Current.Profiles.Count == 0)
         {
             await ResetAsync();
         }
 
-        ActiveProfile = Current.Profiles.FirstOrDefault(p => p.Id == Current.ActiveProfileId) ?? Current.Profiles.First();
-
         foreach (var profile in Current.Profiles)
         {
-            profile.PropertyChanged += OnProfilePropertyChanged;
+            profile.PropertyChanged += OnPropertyChanged;
         }
 
-        if (ActiveProfile.SkipSSL)
+        UpdateActiveProfile();
+    }
+
+    private void UpdateActiveProfile()
+    {
+        ActiveProfile = Current.Profiles.FirstOrDefault(p => p.Id == Current.ActiveProfileId) ?? Current.Profiles.First();
+        NotifySkipSsl(ActiveProfile.SkipSSL);
+    }
+
+    private void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ProfileOptions.ActiveProfileId))
+        {
+            UpdateActiveProfile();
+        }
+        else if (e.PropertyName == nameof(ConnectionProfile.SkipSSL) && (sender as ConnectionProfile)?.Id == Current.ActiveProfileId)
         {
             NotifySkipSsl(ActiveProfile.SkipSSL);
         }
-    }
 
-    protected override void OnAnyPropertyChanged(string? propertyName)
-    {
-        if (propertyName == nameof(ProfileOptions.ActiveProfileId))
-        {
-            ActiveProfile = Current.Profiles.FirstOrDefault(p => p.Id == Current.ActiveProfileId) ?? Current.Profiles.First();
-        }
-    }
-
-    private void OnProfilePropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (sender is ConnectionProfile profile && profile.Id == Current.ActiveProfileId)
-        {
-            if (e.PropertyName == nameof(ConnectionProfile.SkipSSL))
-            {
-                NotifySkipSsl(profile.SkipSSL);
-            }
-        }
-
+        PropertyChanged?.Invoke(sender, e);
         Debouncer.Trigger();
     }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
 
     private void NotifySkipSsl(bool skipSsl)
     {
@@ -65,7 +64,7 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
         if (profile == null)
             return;
 
-        profile.PropertyChanged -= OnProfilePropertyChanged;
+        profile.PropertyChanged -= OnPropertyChanged;
         Current.Profiles.Remove(profile);
 
         // актуализация активного профиля
@@ -103,7 +102,7 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
     {
         foreach (var p in Current.Profiles)
         {
-            p.PropertyChanged -= OnProfilePropertyChanged;
+            p.PropertyChanged -= OnPropertyChanged;
         }
 
         var defaultProfile = new ConnectionProfile
@@ -112,7 +111,7 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
             Endpoint = "https://api.openai.com"
         };
 
-        defaultProfile.PropertyChanged += OnProfilePropertyChanged;
+        defaultProfile.PropertyChanged += OnPropertyChanged;
         Current.Profiles = [defaultProfile];
         Current.ActiveProfileId = defaultProfile.Id;
         ActiveProfile = defaultProfile;
@@ -123,9 +122,10 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
     public override void Dispose()
     {
         base.Dispose();
+        Current.PropertyChanged -= OnPropertyChanged;
         foreach (var p in Current.Profiles)
         {
-            p.PropertyChanged -= OnProfilePropertyChanged;
+            p.PropertyChanged -= OnPropertyChanged;
         }
     }
 }

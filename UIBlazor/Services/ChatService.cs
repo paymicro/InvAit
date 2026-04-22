@@ -32,6 +32,15 @@ public class ChatService(
 
     public ConnectionProfile Options => profileManager.ActiveProfile;
 
+    /// <summary>
+    /// Подписка на события после создания экземпляра
+    /// </summary>
+    public void Initialize()
+    {
+        Session.PropertyChanged -= SessionPropertyChanged;
+        Session.PropertyChanged += SessionPropertyChanged;
+    }
+
     public ConversationSession Session
     {
         get;
@@ -42,14 +51,14 @@ public class ChatService(
             field?.PropertyChanged -= SessionPropertyChanged;
             field = value;
             field?.PropertyChanged += SessionPropertyChanged;
-            OnSessionChanged?.Invoke(nameof(ConversationSession));
+            SessionChanged?.Invoke(field, new PropertyChangedEventArgs(nameof(ConversationSession)));
         }
     } = CreateNewSession();
 
-    public event Action<string>? OnSessionChanged;
+    public event PropertyChangedEventHandler? SessionChanged;
 
     private void SessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
-        => OnSessionChanged?.Invoke(e.PropertyName ?? string.Empty);
+        => SessionChanged?.Invoke(sender, e);
 
     public async Task<AiModelList> GetModelsAsync(CancellationToken cancellationToken)
     {
@@ -549,7 +558,6 @@ public class ChatService(
 
     private static ConversationSession CreateNewSession() => new() { Id = GenerateSessionId() };
 
-
     public async Task LoadLastSessionOrGenerateNewAsync()
     {
         var sessionList = await GetAllSessionIdsAsync();
@@ -573,5 +581,10 @@ public class ChatService(
             Session = CreateNewSession();
         }
         Session.MaxMessages = Options.MaxMessages;
+    }
+
+    public void Dispose()
+    {
+        Session.PropertyChanged -= SessionPropertyChanged;
     }
 }

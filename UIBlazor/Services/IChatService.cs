@@ -1,12 +1,22 @@
+using System.ComponentModel;
 using UIBlazor.Services.Models;
 
 namespace UIBlazor.Services;
 
-public interface IChatService
+public interface IChatService : IDisposable
 {
     ConversationSession Session { get; }
 
-    event Action<string>? OnSessionChanged;
+    /// <summary>
+    /// Первоначальная подписка на для <seealso cref="SessionChanged"/> 
+    /// </summary>
+    void Initialize();
+
+    /// <summary>
+    /// Событие создания новой сессии
+    /// или изменения параметров <seealso cref="ConversationSession"/> с SetIfChanged (только режим)
+    /// </summary>
+    event PropertyChangedEventHandler? SessionChanged;
 
     Task<List<SessionSummary>> GetRecentSessionsAsync(int count);
 
