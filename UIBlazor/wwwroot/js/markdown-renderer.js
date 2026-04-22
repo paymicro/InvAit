@@ -1,4 +1,4 @@
-﻿let markdownRenderer = null;
+let markdownRenderer = null;
 const mermaidCache = new Map();
 
 const highlightExt = markedHighlight.markedHighlight({

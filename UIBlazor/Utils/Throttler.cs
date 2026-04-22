@@ -5,7 +5,7 @@ public class Throttler(int intervalMs) : IDisposable
     private DateTime _lastExecution = DateTime.MinValue;
     private bool _hasPendingWork;
     private bool _isWaiting;
-    private CancellationTokenSource _cts = new();
+    private readonly CancellationTokenSource _cts = new();
 
     public bool ShouldRender(Action onTailUpdate)
     {
