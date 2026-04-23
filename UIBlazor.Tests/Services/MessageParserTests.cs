@@ -425,4 +425,4 @@ public class MessageParserTests
         Assert.Equal(8, args.Count);
         Assert.Equivalent(JsonUtils.Serialize(expectedObj), JsonUtils.Serialize(args));
     }
-}
+} 

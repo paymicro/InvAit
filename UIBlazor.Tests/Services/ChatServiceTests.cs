@@ -346,4 +346,4 @@ public class ChatServiceTests
             _ => c.ToString()
         };
     }
-}
+} 
