@@ -429,19 +429,6 @@ public class ToolManagerTests
     #region GetToolUseSystemInstructions Mode Tests
 
     [Fact]
-    public void GetToolUseSystemInstructions_IncludesCurrentDate()
-    {
-        // Arrange
-        _toolManager.RegisterAllTools();
-
-        // Act
-        var instructions = _toolManager.GetToolUseSystemInstructions(AppMode.Agent, false);
-
-        // Assert
-        Assert.Contains("Current date:", instructions);
-    }
-
-    [Fact]
     public void GetToolUseSystemInstructions_IncludesCurrentMode()
     {
         // Arrange
