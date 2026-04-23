@@ -3,6 +3,7 @@ namespace Shared.Contracts;
 public class VsCodeContext
 {
     public const string FilePrefix = "📄";
+    public const string DirPrefix = "📁";
 
     public string SolutionPath { get; set; } = string.Empty;
 

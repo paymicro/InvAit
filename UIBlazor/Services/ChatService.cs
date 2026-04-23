@@ -181,7 +181,7 @@ public class ChatService(
             if (commonSettingsProvider.Current.SendSolutionsStricture && currentContext.SolutionFiles.Count > 0)
             {
                 codeContext.Add($"""
-                                Solution files:
+                                Solution structure:
                                 ```
                                 {BuildSolutionFiles(currentContext)}
                                 ```
@@ -218,7 +218,8 @@ public class ChatService(
             skillsSection,
             contextSection.ToString(),
             rules,
-            !string.IsNullOrEmpty(agents) ? string.Join("# Agents instructions\n", agents) : null];
+            !string.IsNullOrEmpty(agents) ? string.Join("# Agents instructions\n", agents) : null,
+            $"Current date: {DateTime.Now:f}"];
 
         return string.Join(Environment.NewLine, systemPromptBlocks.Where(b => !string.IsNullOrEmpty(b)));
     }
@@ -226,9 +227,21 @@ public class ChatService(
     private string BuildSolutionFiles(VsCodeContext currentContext)
     {
         var sb = new StringBuilder();
+        var lastDir = string.Empty;
+        var solutionPath = $"{currentContext.SolutionPath}\\"; // мы в винде так вить? Можем себе позволить \
         foreach (var item in currentContext.SolutionFiles)
         {
-            sb.AppendLine(MakeRelativeToSolution(item, currentContext.SolutionPath));
+            var pathIndex = item.IndexOf(VsCodeContext.DirPrefix);
+            if (pathIndex != -1)
+            {
+                lastDir = Path.GetDirectoryName(item[(pathIndex + 2)..]) ?? string.Empty;
+            }
+
+            var line = pathIndex != -1
+                    ? item
+                    : MakeRelativeToSolution(item, $"{solutionPath}{lastDir}"); // для папок не обрезаем путь
+
+            sb.AppendLine(line);
         }
 
         return sb.ToString();

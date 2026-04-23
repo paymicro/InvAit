@@ -145,8 +145,8 @@
         {
             // Показываем все файлы
             var source = VsCodeContextService.CurrentContext?.SolutionFiles ??
-                         ["test1.cs", "C:\\asdtes\\t2aksjhdgj\\ahsghd hjagshjdg\\ajhsgdahjkg.cs"];
-            _filteredFiles = source.Where(f => f.StartsWith(VsCodeContext.FilePrefix)).Take(10).ToList();
+                         ["  📄 test1.cs", "    📄 C:\\asdtes\\t2aksjhdgj\\ahsghd hjagshjdg\\ajhsgdahjkg.cs"];
+            _filteredFiles = source.Where(f => f.Contains(VsCodeContext.FilePrefix)).Take(10).ToList();
             _selectedIndex = 0;
         }
         else if (_currentInput.Contains('@'))
@@ -156,10 +156,10 @@
             var query = _currentInput.Substring(lastAtIndex + 1);
 
             var source = VsCodeContextService.CurrentContext?.SolutionFiles ??
-                         ["test1.cs", "C:\\asdtes\\t2aksjhdgj\\ahsghd hjagshjdg\\ajhsgdahjkg.cs"];
+                         ["  📄 test1.cs", "     📄 C:\\asdtes\\t2aksjhdgj\\ahsghd hjagshjdg\\ajhsgdahjkg.cs"];
 
             _filteredFiles = source
-                .Where(f => f.StartsWith(VsCodeContext.FilePrefix) && f.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .Where(f => f.Contains(VsCodeContext.FilePrefix) && f.Contains(query, StringComparison.OrdinalIgnoreCase))
                 .Take(10)
                 .ToList();
             _selectedIndex = 0;
@@ -172,7 +172,7 @@
 
     private async Task AddFileTokenAsync(string filePath)
     {
-        filePath = filePath.TrimStart(VsCodeContext.FilePrefix.ToCharArray());
+        filePath = filePath.TrimStart($" {VsCodeContext.FilePrefix}".ToCharArray());
         var fileName = Path.GetFileName(filePath.Replace('\\', '/'));
 
         // Удаляем @ и текст после него из currentInput

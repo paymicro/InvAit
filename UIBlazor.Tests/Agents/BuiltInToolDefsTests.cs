@@ -8,7 +8,6 @@ namespace UIBlazor.Tests.Agents;
 public class BuiltInToolDefsTests
 {
     #region Test Helper Methods
-
     // Метод без параметров
     public void MethodWithoutParameters() { }
 

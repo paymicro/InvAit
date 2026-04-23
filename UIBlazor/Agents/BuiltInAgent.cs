@@ -12,12 +12,12 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.ReadFiles,
             DisplayName = SharedResource.ToolReadFiles,
             Category = ToolCategory.ReadFiles,
-            Description = "Request to read the contents of one or more files.",
+            Description = "Request to read the contents of one or more files. File path can be relative or absolute.",
             ExampleToSystemMessage = $"""
                                      SYNTAX EXAMPLES:
-                                     C:\user\project\file.cs [L100:C50] — Starts at line 100, includes 50 lines.
-                                     C:\user\project\file.cs [L100] — Starts at line 100, goes to the end.
-                                     C:\user\project\file.cs — Includes the entire file.
+                                     C:\user\project\src\file.cs [L100:C50] — Starts at line 100, includes 50 lines.
+                                     C:\user\project\src\file.cs [L100] — Starts at line 100, goes to the end.
+                                     src\file.cs — Includes the entire file. Relative path.
                                      
                                      OPTIONAL PARAMETERS:
                                      Use the following format at the end of the file path: [Lstart_line:Cline_count]
@@ -32,8 +32,8 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
                                      Example to read the entire files (up to 7 at once):
                                      <function name="{BuiltInToolEnum.ReadFiles}">
                                      C:\user\project\file.cs
-                                     C:\user\project\fil2.cs [L550]
-                                     C:\user\project\fil3.cs [L100:C50]
+                                     \fil2.cs [L550]
+                                     \fil3.cs [L100:C50]
                                      </function>
                                      """,
             NativeTool = BuiltInToolDefs.MapMethodToTool(typeof(BuiltInToolDefs).GetMethod(nameof(BuiltInToolDefs.ReadFiles))),

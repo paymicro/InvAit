@@ -247,7 +247,6 @@ public class ToolManager(
         var otherModes = string.Join(", ", Enum.GetValues<AppMode>().Where(m => m != mode).Select(m => GetModeDesc(m)));
 
         var sb = new StringBuilder();
-        sb.AppendLine($"Current date: {DateTime.Now:f}");
         sb.AppendLine($"Your current mode: {GetModeDesc(mode)}");
         if (enabledTools.FirstOrDefault(t => t.Category == ToolCategory.ModeSwitch)?.Enabled == true)
         {

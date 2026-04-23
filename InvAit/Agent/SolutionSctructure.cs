@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.VisualStudio.Shell;
+using Shared.Contracts;
 using Toolkit = Community.VisualStudio.Toolkit;
 using VS = Community.VisualStudio.Toolkit.VS;
 
@@ -42,7 +43,7 @@ public class SolutionSctructure
 
                 if (fileIndex++ < _maxFilesInFolder)
                 {
-                    result.Add($"{indentString}📄 {MakeRelativeToSolution(makeRelative, item.Name, solutionPath)}");
+                    result.Add($"{indentString}{VsCodeContext.FilePrefix} {MakeRelativeToSolution(makeRelative, item.Name, solutionPath)}");
                 }
                 else
                 {
@@ -55,7 +56,7 @@ public class SolutionSctructure
                 if (pathSegments.Contains("bin") || pathSegments.Contains("obj"))
                     continue;
 
-                result.Add($"{indentString}📁 {MakeRelativeToSolution(makeRelative, item.Name, solutionPath)}");
+                result.Add($"{indentString}{VsCodeContext.DirPrefix} {item.Name}");
                 await WalkSolutionItemsAsync(item.Children, result, indent + 1, solutionPath, makeRelative);
             }
         }
@@ -73,6 +74,7 @@ public class SolutionSctructure
         var projects = await VS.Solutions.GetAllProjectsAsync();
         var solutionPath = await GetSolutionPathAsync();
 
+        result.Add($"Solution path: {VsCodeContext.DirPrefix} {solutionPath}");
         foreach (var project in projects)
         {
             result.Add($"Project: {project.Name} | {project.FullPath}");
