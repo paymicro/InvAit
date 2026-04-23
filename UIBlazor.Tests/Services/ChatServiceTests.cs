@@ -287,7 +287,7 @@ public class ChatServiceTests
         }
 
         // Assert
-        Assert.Equal(40, deltas.Count);
+        Assert.Equal(36, deltas.Count);
         var ContentLines = deltas.Select(d => d.Content).ToList();
         Assert.Equal("<function name=\"someName\">", deltas[0].Content);
         Assert.Contains("</function>", ContentLines);

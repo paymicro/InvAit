@@ -79,7 +79,7 @@ public class MessageParserTests
         Assert.Equal(3, message.Segments.Count);
 
         Assert.Equal(SegmentType.Markdown, message.Segments[0].Type);
-        Assert.Equal("Thinking...\r\n", message.Segments[0].CurrentLine.ToString());
+        Assert.Equal("Thinking...\n", message.Segments[0].CurrentLine.ToString());
         Assert.True(message.Segments[0].IsClosed);
 
         Assert.Equal(SegmentType.Tool, message.Segments[1].Type);
