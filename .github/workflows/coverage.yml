@@ -30,7 +30,7 @@ jobs:
           dotnet restore UIBlazor.Tests/UIBlazor.Tests.csproj
 
       - name: Test & Collect Coverage
-        run: dotnet test UIBlazor.Tests/UIBlazor.Tests.csproj --configuration Release --collect:"XPlat Code Coverage;Format=cobertura;Threshold=70;ThresholdType=line;ThresholdStat=total" --results-directory ./TestResults
+        run: dotnet test UIBlazor.Tests/UIBlazor.Tests.csproj -c Release --settings coverlet.runsettings
 
       - name: Generate Report
         uses: danielpalme/ReportGenerator-GitHub-Action@5.5.2

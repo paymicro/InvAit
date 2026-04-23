@@ -13,6 +13,9 @@ using WireMock.Server;
 
 namespace UIBlazor.Tests.Services;
 
+/// <summary>
+/// <seealso cref="ChatService"/>
+/// </summary>
 public class ChatServiceTests
 {
     private readonly Mock<IProfileManager> _profileManagerMock;

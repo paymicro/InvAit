@@ -178,6 +178,15 @@ public class ChatService(
         if (currentContext != null)
         {
             var codeContext = new List<string>();
+            if (commonSettingsProvider.Current.SendSolutionsStricture && currentContext.SolutionFiles.Count > 0)
+            {
+                codeContext.Add($"""
+                                Solution files:
+                                ```
+                                {BuildSolutionFiles(currentContext)}
+                                ```
+                                """);
+            }
             if (commonSettingsProvider.Current.SendCurrentFile && !string.IsNullOrEmpty(currentContext.ActiveFilePath))
             {
                 codeContext.Add($"""
@@ -186,15 +195,6 @@ public class ChatService(
                                 - Selected lines: {currentContext.SelectionStartLine} - {currentContext.SelectionEndLine}
                                 ```
                                 {currentContext.ActiveFileContent}
-                                ```
-                                """);
-            }
-            if (commonSettingsProvider.Current.SendSolutionsStricture && currentContext.SolutionFiles.Count != 0)
-            {
-                codeContext.Add($"""
-                                Solution files:
-                                ```
-                                {string.Join(Environment.NewLine, currentContext.SolutionFiles)}
                                 ```
                                 """);
             }
@@ -223,6 +223,19 @@ public class ChatService(
         return string.Join(Environment.NewLine, systemPromptBlocks.Where(b => !string.IsNullOrEmpty(b)));
     }
 
+    private string BuildSolutionFiles(VsCodeContext currentContext)
+    {
+        var sb = new StringBuilder();
+        foreach (var item in currentContext.SolutionFiles)
+        {
+            sb.AppendLine(MakeRelativeToSolution(item, currentContext.SolutionPath));
+        }
+
+        return sb.ToString();
+    }
+
+    private static string MakeRelativeToSolution(string fullPath, string solutionPath)
+        => fullPath.Replace(solutionPath, string.Empty, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Asynchronously generates a sequence of chat completion deltas for the current conversation session.

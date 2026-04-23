@@ -328,7 +328,7 @@ public class ToolExecutor : IDisposable
             var outputTask = process.StandardOutput.ReadToEndAsync();
             var errorTask = process.StandardError.ReadToEndAsync();
             await Task.WhenAll(outputTask, errorTask);
-            await Task.Run(() => process.WaitForExit());
+            await Task.Run(process.WaitForExit);
 
             var error = await errorTask;
             var output = await outputTask;
@@ -393,6 +393,7 @@ public class ToolExecutor : IDisposable
             {
                 ".csproj" => "📦",
                 ".sln" => "📦",
+                ".slnx" => "📦",
                 _ => "📄"
             };
             sb.AppendLine($"{icon} {f.Path} [{f.SizeKB:F1} KB]");
@@ -772,41 +773,10 @@ public class ToolExecutor : IDisposable
 
     private async Task<VsResponse> GetSolutionStructureAsync()
     {
-        var sb = new StringBuilder();
-        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-        var projects = await VS.Solutions.GetAllProjectsAsync();
-
-        foreach (var project in projects)
-        {
-            sb.AppendLine($"Project: {project.Name}");
-            await WalkSolutionItemsAsync(project.Children, sb, 1);
-        }
-
         return new VsResponse
         {
-            Payload = sb.ToString()
+            Payload = string.Join("\n", await SolutionSctructure.BuildStructureAsync(makeRelative: true))
         };
-    }
-
-    private async Task WalkSolutionItemsAsync(IEnumerable<Toolkit.SolutionItem> items, StringBuilder sb, int indent)
-    {
-        var indentString = new string(' ', indent * 2);
-        foreach (var item in items)
-        {
-            if (item.Type == Toolkit.SolutionItemType.PhysicalFile)
-            {
-                var ext = Path.GetExtension(item.FullPath).ToLower();
-                if (ext is ".zip" or ".bin" or ".dll" or ".exe" or ".png" or ".jpg" or ".obj" or ".pdb")
-                    continue;
-
-                sb.AppendLine($"{indentString}📄 {item.Name}");
-            }
-            else if (item.Type == Toolkit.SolutionItemType.PhysicalFolder || item.Type == Toolkit.SolutionItemType.Project)
-            {
-                sb.AppendLine($"{indentString}📁 {item.Name}");
-                await WalkSolutionItemsAsync(item.Children, sb, indent + 1);
-            }
-        }
     }
 
     private async Task<VsResponse> GetProjectInfoAsync()
