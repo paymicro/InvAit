@@ -25,6 +25,7 @@ builder.Services
     .AddScoped<IInternalExecutor, InternalExecutor>()
     .AddScoped<BuiltInAgent>()
     .AddScoped<IToolManager, ToolManager>()
+    .AddScoped<ISystemPromptBuilder, SystemPromptBuilder>()
     .AddScoped(sp =>
     {
         var client = new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) };

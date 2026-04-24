@@ -101,10 +101,11 @@
     }
 </RadzenStack>
 
-@code {
+    @code {
     [Inject] IMcpSettingsProvider McpSettingsProvider { get; set; } = null!;
     [Inject] NotificationService NotificationService { get; set; } = null!;
     [Inject] DialogService DialogService { get; set; } = null!;
+    [Inject] IToolManager ToolManager { get; set; } = null!;
 
     private string? _refreshingServerId;
 
@@ -180,6 +181,7 @@
         }
 
         McpSettingsProvider.Current.ToolDisabledStates.Clear();
+
         foreach (var server in McpSettingsProvider.Current.Servers)
         {
             foreach (var tool in server.Tools)
@@ -191,6 +193,8 @@
                 }
             }
         }
+
+        McpSettingsProvider.CallSaveTrigger();
     }
 
     private async Task TestRun(string serverName, McpToolConfig mcpTool) {

@@ -775,7 +775,7 @@ public class ToolExecutor : IDisposable
     {
         return new VsResponse
         {
-            Payload = string.Join("\n", await SolutionSctructure.BuildStructureAsync(makeRelative: true))
+            Payload = string.Join("\n", await SolutionSctructure.BuildStructureAsync(fullPath: false))
         };
     }
 

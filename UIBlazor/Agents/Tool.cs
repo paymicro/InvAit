@@ -33,6 +33,11 @@ public class Tool
     public bool Enabled { get; set; } = true;
 
     /// <summary>
+    /// Имя MCP сервера
+    /// </summary>
+    public string Server { get; set; } = string.Empty;
+
+    /// <summary>
     /// Category for grouping tools in UI
     /// </summary>
     public ToolCategory Category { get; init; } = ToolCategory.ReadFiles;

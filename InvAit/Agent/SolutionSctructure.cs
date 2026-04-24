@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -13,7 +12,7 @@ namespace InvAit.Agent;
 public class SolutionSctructure
 {
     // TODO: сделать настраиваемым?
-    private const int _maxFilesInFolder = 25;
+    private const int _maxFilesInFolder = 20;
 
     public static async Task<string> GetSolutionPathAsync()
     {
@@ -21,53 +20,60 @@ public class SolutionSctructure
         return solution != null ? Path.GetDirectoryName(solution.FullPath) : Directory.GetCurrentDirectory();
     }
 
-    private static string MakeRelativeToSolution(bool makeRelative, string fullPath, string solutionPath)
-    {
-        return !makeRelative || !fullPath.StartsWith(solutionPath, StringComparison.OrdinalIgnoreCase)
-            ? fullPath
-            : fullPath.Substring(solutionPath.Length + 1);
-    }
-
-    private static async Task WalkSolutionItemsAsync(IEnumerable<Toolkit.SolutionItem> items, List<string> result, int indent, string solutionPath, bool makeRelative)
+    private static async Task WalkSolutionItemsAsync(IEnumerable<Toolkit.SolutionItem> items, List<string> result, int indent, string solutionPath, bool fullPath)
     {
         var indentString = new string(' ', indent * 2);
-        var fileIndex = 0;
-        var filesSkipped = 0;
-        foreach (var item in items)
+
+        var groupItems = items.GroupBy(i => i.Type); // группируем по типу
+
+        // Сначала файлы
+        var files = groupItems.FirstOrDefault(g => g.Key is Toolkit.SolutionItemType.PhysicalFile);
+        if (files != null)
         {
-            if (item.Type == Toolkit.SolutionItemType.PhysicalFile && !item.IsNonVisibleItem)
+            var fileIndex = 0;
+            var filesSkipped = 0;
+
+            foreach (var item in files)
             {
+                if (item.IsNonVisibleItem)
+                    continue;
+
                 var ext = Path.GetExtension(item.FullPath).ToLower();
                 if (ext is ".zip" or ".bin" or ".dll" or ".exe" or ".png" or ".jpg" or ".obj" or ".pdb")
                     continue;
 
                 if (fileIndex++ < _maxFilesInFolder)
                 {
-                    result.Add($"{indentString}{VsCodeContext.FilePrefix} {MakeRelativeToSolution(makeRelative, item.Name, solutionPath)}");
+                    result.Add($"{indentString}{VsCodeContext.FilePrefix} {(fullPath ? item.FullPath : item.Text)}");
                 }
                 else
                 {
                     filesSkipped++;
                 }
             }
-            else if (item.Type == Toolkit.SolutionItemType.PhysicalFolder || item.Type == Toolkit.SolutionItemType.Project)
-            {
-                var pathSegments = item.FullPath.Split(Path.DirectorySeparatorChar);
-                if (pathSegments.Contains("bin") || pathSegments.Contains("obj"))
-                    continue;
 
-                result.Add($"{indentString}{VsCodeContext.DirPrefix} {item.Name}");
-                await WalkSolutionItemsAsync(item.Children, result, indent + 1, solutionPath, makeRelative);
+            if (filesSkipped > 0)
+            {
+                result.Add($"{indentString}... and {filesSkipped} more files ...");
             }
         }
 
-        if (filesSkipped > 0)
+        // Папки
+        var projects = groupItems.FirstOrDefault(g => g.Key is Toolkit.SolutionItemType.PhysicalFolder or Toolkit.SolutionItemType.Project);
+        if (projects != null)
         {
-            result.Add($"{indentString}... and {filesSkipped} more files ...");
+            foreach (var item in projects)
+            {
+                if (item.Text is "bin" or "obj")
+                    continue;
+
+                result.Add($"{indentString}{VsCodeContext.DirPrefix} {item.FullPath}");
+                await WalkSolutionItemsAsync(item.Children, result, indent + 1, solutionPath, fullPath);
+            }
         }
     }
 
-    public static async Task<List<string>> BuildStructureAsync(bool makeRelative = false)
+    public static async Task<List<string>> BuildStructureAsync(bool fullPath = true)
     {
         var result = new List<string>();
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -78,7 +84,10 @@ public class SolutionSctructure
         foreach (var project in projects)
         {
             result.Add($"Project: {project.Name} | {project.FullPath}");
-            await WalkSolutionItemsAsync(project.Children, result, 1, solutionPath, makeRelative);
+            if (project.IsLoaded)
+            {
+                await WalkSolutionItemsAsync(project.Children, result, 1, solutionPath, fullPath);
+            }
         }
 
         return result;

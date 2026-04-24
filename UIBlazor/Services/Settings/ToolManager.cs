@@ -12,7 +12,7 @@ public class ToolManager(
 {
     private readonly ConcurrentDictionary<string, Tool> _registeredTools = new();
 
-    private List<Tool>? _mcpToolsCache;
+    private IEnumerable<Tool>? _mcpToolsCache;
 
     public override async Task SaveAsync()
     {
@@ -73,11 +73,6 @@ public class ToolManager(
         _ = InitializeAsync();
     }
 
-    private void McpSettingsProviderOnSaved()
-    {
-        _mcpToolsCache = null; // чистка кеша MCP тулзов при каждой загрузке из файла
-    }
-
     protected override Task AfterInitAsync()
     {
         foreach (var tool in _registeredTools.Values)
@@ -85,7 +80,7 @@ public class ToolManager(
             tool.Enabled = !Current.DisabledTools.Contains(tool.Name);
         }
 
-        mcpSettingsProvider.OnSaved += McpSettingsProviderOnSaved;
+        mcpSettingsProvider.OnSaved += RefreshMcpTools;
         return Task.CompletedTask;
     }
 
@@ -117,7 +112,9 @@ public class ToolManager(
             return t.Enabled;
         });
 
-        var mcp = GetMcpTools().Where(t => t.Enabled);
+        var mcp = mcpSettingsProvider.Current.Enabled
+            ? GetMcpTools().Where(t => !mcpSettingsProvider.Current.ToolDisabledStates.Contains(t.Name))
+            : [];
 
         return builtIn.Concat(mcp);
     }
@@ -142,9 +139,11 @@ public class ToolManager(
         if (_mcpToolsCache != null)
             return _mcpToolsCache;
 
-        _mcpToolsCache = [.. BuildMcpTools()];
+        _mcpToolsCache = BuildMcpTools();
         return _mcpToolsCache;
     }
+
+    public void RefreshMcpTools() => _mcpToolsCache = null;
 
     public IEnumerable<Tool> BuildMcpTools()
     {
@@ -173,6 +172,7 @@ public class ToolManager(
                     DisplayName = currentToolConfig.Name,
                     Description = currentToolConfig.Description ?? string.Empty,
                     Category = ToolCategory.Mcp,
+                    Server = currentServer.Name,
                     Enabled = isEnabled,
                     ExampleToSystemMessage = SchemaProcessor.BuildSchemaDescription(toolName, currentToolConfig),
                     ExecuteAsync = (args, cancellationToken) =>

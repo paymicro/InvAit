@@ -64,7 +64,7 @@
 
     private void ProfilePropertyChanged(object? sender, PropertyChangedEventArgs args)
     {
-        if (args.PropertyName is nameof(ConnectionProfile.AvailableModels))
+        if (args.PropertyName is nameof(ConnectionProfile.AvailableModels) or nameof(ProfileOptions.ActiveProfileId))
         {
             viewModels = ProfileManager.ActiveProfile.AvailableModels;
             InvokeAsync(StateHasChanged);

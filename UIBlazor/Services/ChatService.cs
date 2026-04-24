@@ -12,12 +12,8 @@ namespace UIBlazor.Services;
 public class ChatService(
     HttpClient httpClient,
     IProfileManager profileManager,
-    ICommonSettingsProvider commonSettingsProvider,
-    IToolManager toolManager,
+    ISystemPromptBuilder systemPromptBuilder,
     ILocalStorageService localStorage,
-    ISkillService skillService,
-    IRuleService ruleService,
-    IVsCodeContextService vsCodeContextService,
     ILogger<IChatService> logger
     ) : IChatService
 {
@@ -155,102 +151,6 @@ public class ChatService(
     public string? FinishReason { get; private set; }
 
     /// <summary>
-    /// Asynchronously prepares the system prompt by combining configured instructions, tool usage guidance, skill
-    /// metadata, and the current code context.
-    /// </summary>
-    /// <remarks>
-    /// The returned prompt includes information relevant to the current session and code context,
-    /// which may affect downstream processing. If no code context is available, the prompt will omit that section. This
-    /// method is intended for internal use when constructing prompts for AI interactions.
-    /// </remarks>
-    /// <returns>
-    /// A string containing the complete system prompt, including instructions, tool information, skill details, and
-    /// code context if available.
-    /// </returns>
-    private async Task<string> PrepareSystemPromptAsync(CancellationToken cancellationToken)
-    {
-        // Загружаем метаданные скиллов и добавляем в системный промпт
-        var skillsMetadata = await skillService.GetSkillsMetadataAsync(cancellationToken);
-        var skillsSection = skillService.FormatSkillsForSystemPrompt(skillsMetadata);
-
-        var contextSection = new StringBuilder();
-        var currentContext = vsCodeContextService.CurrentContext;
-        if (currentContext != null)
-        {
-            var codeContext = new List<string>();
-            if (commonSettingsProvider.Current.SendSolutionsStricture && currentContext.SolutionFiles.Count > 0)
-            {
-                codeContext.Add($"""
-                                Solution structure:
-                                ```
-                                {BuildSolutionFiles(currentContext)}
-                                ```
-                                """);
-            }
-            if (commonSettingsProvider.Current.SendCurrentFile && !string.IsNullOrEmpty(currentContext.ActiveFilePath))
-            {
-                codeContext.Add($"""
-                                ## Current (active) file
-                                - Path: {currentContext.ActiveFilePath}
-                                - Selected lines: {currentContext.SelectionStartLine} - {currentContext.SelectionEndLine}
-                                ```
-                                {currentContext.ActiveFileContent}
-                                ```
-                                """);
-            }
-            if (codeContext.Count > 0)
-            {
-                contextSection.AppendLine("# CURRENT CODE CONTEXT");
-                foreach (var item in codeContext)
-                {
-                    contextSection.AppendLine(item);
-                }
-            }
-        }
-
-        // Загружаем правила
-        var rules = await ruleService.GetRulesAsync(cancellationToken);
-        // файл agents.md
-        var agents = await ruleService.GetAgentsMdAsync(cancellationToken);
-
-        List<string?> systemPromptBlocks = [Options.SystemPrompt,
-            toolManager.GetToolUseSystemInstructions(Session.Mode, skillsMetadata.Count != 0),
-            skillsSection,
-            contextSection.ToString(),
-            rules,
-            !string.IsNullOrEmpty(agents) ? string.Join("# Agents instructions\n", agents) : null,
-            $"Current date: {DateTime.Now:f}"];
-
-        return string.Join(Environment.NewLine, systemPromptBlocks.Where(b => !string.IsNullOrEmpty(b)));
-    }
-
-    private string BuildSolutionFiles(VsCodeContext currentContext)
-    {
-        var sb = new StringBuilder();
-        var lastDir = string.Empty;
-        var solutionPath = $"{currentContext.SolutionPath}\\"; // мы в винде так вить? Можем себе позволить \
-        foreach (var item in currentContext.SolutionFiles)
-        {
-            var pathIndex = item.IndexOf(VsCodeContext.DirPrefix);
-            if (pathIndex != -1)
-            {
-                lastDir = Path.GetDirectoryName(item[(pathIndex + 2)..]) ?? string.Empty;
-            }
-
-            var line = pathIndex != -1
-                    ? item
-                    : MakeRelativeToSolution(item, $"{solutionPath}{lastDir}"); // для папок не обрезаем путь
-
-            sb.AppendLine(line);
-        }
-
-        return sb.ToString();
-    }
-
-    private static string MakeRelativeToSolution(string fullPath, string solutionPath)
-        => fullPath.Replace(solutionPath, string.Empty, StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
     /// Asynchronously generates a sequence of chat completion deltas for the current conversation session.
     /// </summary>
     /// <remarks>
@@ -277,7 +177,7 @@ public class ChatService(
         var effectiveApiKeyHeader = Options.ApiKeyHeader;
 
         // Get formatted messages including conversation history
-        var messages = Session?.GetFormattedMessages(await PrepareSystemPromptAsync(cancellationToken)) ?? [];
+        var messages = Session.GetFormattedMessages(await systemPromptBuilder.PrepareSystemPromptAsync(Session.Mode, cancellationToken)) ?? [];
 
         var payload = new
         {

@@ -1,5 +1,4 @@
 using Moq;
-using Shared.Contracts;
 using UIBlazor.Constants;
 using UIBlazor.Models;
 using UIBlazor.Options;
@@ -22,17 +21,11 @@ public class ChatServiceTests
     private readonly Mock<IToolManager> _toolManagerMock;
     private readonly Mock<ILocalStorageService> _localStorageMock;
     private readonly Mock<ISkillService> _skillServiceMock;
-    private readonly Mock<IRuleService> _ruleServiceMock;
-    private readonly Mock<IVsCodeContextService> _vsCodeContextServiceMock;
 
     public ChatServiceTests()
     {
         _profileManagerMock = new Mock<IProfileManager>();
-        _toolManagerMock = new Mock<IToolManager>();
         _localStorageMock = new Mock<ILocalStorageService>();
-        _skillServiceMock = new Mock<ISkillService>();
-        _ruleServiceMock = new Mock<IRuleService>();
-        _vsCodeContextServiceMock = new Mock<IVsCodeContextService>();
 
         // Setup default options
         var options = new ProfileOptions
@@ -53,13 +46,9 @@ public class ChatServiceTests
             SystemPrompt = "Test system prompt",
             MaxMessages = 50
         });
-        _toolManagerMock.Setup(tm => tm.GetToolUseSystemInstructions(It.IsAny<AppMode>(), false))
-            .Returns("Tool instructions");
 
         // Default setup for session listing
         _localStorageMock.Setup(ls => ls.GetAllKeysAsync()).ReturnsAsync([]);
-
-        _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
     }
 
     private ChatService CreateChatService(HttpClient? httpClient = null)
@@ -67,12 +56,8 @@ public class ChatServiceTests
         return new ChatService(
             httpClient ?? new HttpClient(),
             _profileManagerMock.Object,
-            Mock.Of<ICommonSettingsProvider>(),
-            _toolManagerMock.Object,
+            Mock.Of<ISystemPromptBuilder>(),
             _localStorageMock.Object,
-            _skillServiceMock.Object,
-            _ruleServiceMock.Object,
-            _vsCodeContextServiceMock.Object,
             new LoggerMock<IChatService>());
     }
 
