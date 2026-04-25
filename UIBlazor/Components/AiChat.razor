@@ -1,9 +1,6 @@
 @inherits RadzenComponent
 
-@inject IChatService ChatService
-@inject DialogService DialogService
-
-<div @ref="@Element" @attributes="Attributes" class="@GetCssClass()" style="@Style" id="@GetId()" >
+<div @ref="@Element" @attributes="Attributes" class="rz-chat rz-h-100" id="@GetId()">
     <!-- Chat Header -->
     <RadzenStack class="rz-chat-header" Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem">
         <UsageIndicators Messages="@Messages" />

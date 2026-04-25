@@ -1,6 +1,3 @@
-using Bunit;
-using Radzen;
-using Radzen.Blazor;
 using UIBlazor.Components.Settings;
 
 namespace UIBlazor.Tests.Components;

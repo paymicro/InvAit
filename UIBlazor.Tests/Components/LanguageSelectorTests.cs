@@ -1,12 +1,4 @@
-using Bunit;
-using Microsoft.AspNetCore.Components;
-using Microsoft.Extensions.DependencyInjection;
-using Moq;
-using Radzen;
-using Radzen.Blazor;
 using UIBlazor.Components.Settings;
-using UIBlazor.Options;
-using UIBlazor.Services.Settings;
 
 namespace UIBlazor.Tests.Components;
 

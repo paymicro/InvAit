@@ -83,6 +83,13 @@
 
         FilePath ??= ToolParams["param1"].ToString();
 
+        if (ToolParams.ContainsKey("param2"))
+        {
+            // обычный параметр должен быть только один. Если это не так, то нечего рендерить.
+            FilePath = "Error: Corrupted tool input.";
+            return;
+        }
+
         // не перерисовывать DiffModel если он уже не дополнялся строками
         // дополняться новыми строками может только последний DiffModel
         // то есть при каждом парсинге нужно пропускать модели, 

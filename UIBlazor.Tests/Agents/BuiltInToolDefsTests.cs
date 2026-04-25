@@ -1,8 +1,3 @@
-using System.ComponentModel;
-using Shared.Contracts;
-using UIBlazor.Agents;
-using UIBlazor.Utils;
-
 namespace UIBlazor.Tests.Agents;
 
 public class BuiltInToolDefsTests

@@ -98,7 +98,7 @@ namespace InvAit.Agent
                 // 1. Get Solution Files
                 if (_dte.Solution != null && _dte.Solution.IsOpen)
                 {
-                    context.SolutionFiles = await SolutionSctructure.BuildStructureAsync(fullPath: false);
+                    context.SolutionFiles = await SolutionSctructure.BuildStructureAsync(fullPath: true);
                     context.SolutionPath = await SolutionSctructure.GetSolutionPathAsync();
                 }
 

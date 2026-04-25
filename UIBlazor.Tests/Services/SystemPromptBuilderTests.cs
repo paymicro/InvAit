@@ -1,10 +1,3 @@
-using Moq;
-using Shared.Contracts;
-using UIBlazor.Models;
-using UIBlazor.Options;
-using UIBlazor.Services;
-using UIBlazor.Services.Settings;
-
 namespace UIBlazor.Tests.Services;
 
 /// <summary>
@@ -328,23 +321,31 @@ public class SystemPromptBuilderTests
             SolutionFiles = [.. $"""
                 Solution path: {VsCodeContext.DirPrefix} B:\TestSolution
                 Project: ConsoleApp | B:\TestSolution\ConsoleApp\ConsoleApp.csproj
-                {VsCodeContext.DirPrefix} B:\TestSolution\ConsoleApp
-                    {VsCodeContext.FilePrefix} B:\TestSolution\ConsoleApp\Program.cs
-                    {VsCodeContext.FilePrefix} B:\TestSolution\ConsoleApp\Utils.cs
-                {VsCodeContext.DirPrefix} B:\TestSolution\ConsoleApp\Ui
-                    {VsCodeContext.FilePrefix} B:\TestSolution\ConsoleApp\Ui\Test1.cs
-                    {VsCodeContext.FilePrefix} B:\Other\ConsoleApp\Ui\Test2.cs
+                {VsCodeContext.FilePrefix} B:\TestSolution\Readme.md
+                {VsCodeContext.DirPrefix} B:\TestSolution\ConsoleApp\
+                  {VsCodeContext.FilePrefix} B:\TestSolution\ConsoleApp\Program.cs
+                  {VsCodeContext.FilePrefix} B:\TestSolution\ConsoleApp\Utils.cs
+                {VsCodeContext.DirPrefix} B:\TestSolution\ConsoleApp\Ui\
+                  {VsCodeContext.FilePrefix} B:\TestSolution\ConsoleApp\Ui\Test1.cs
+                  {VsCodeContext.FilePrefix} B:\Other\ConsoleApp\Ui\Test2.cs
+                Project: ConsoleApp.Tests | B:\TestSolution\ConsoleApp.Tests\ConsoleApp.Tests.csproj
+                {VsCodeContext.DirPrefix} B:\TestSolution\ConsoleApp.Tests\
+                  {VsCodeContext.FilePrefix} B:\TestSolution\ConsoleApp.Tests\UnitTest.cs
                 """.Split('\n')]
         };
         var expected = $"""
             Solution path: {VsCodeContext.DirPrefix} B:\TestSolution
             Project: ConsoleApp | ConsoleApp\ConsoleApp.csproj
-            {VsCodeContext.DirPrefix} B:\TestSolution\ConsoleApp
-                {VsCodeContext.FilePrefix} Program.cs
-                {VsCodeContext.FilePrefix} Utils.cs
-            {VsCodeContext.DirPrefix} B:\TestSolution\ConsoleApp\Ui
-                {VsCodeContext.FilePrefix} Test1.cs
-                {VsCodeContext.FilePrefix} B:\Other\ConsoleApp\Ui\Test2.cs
+            {VsCodeContext.FilePrefix} Readme.md
+            {VsCodeContext.DirPrefix} B:\TestSolution\ConsoleApp\
+              {VsCodeContext.FilePrefix} Program.cs
+              {VsCodeContext.FilePrefix} Utils.cs
+            {VsCodeContext.DirPrefix} B:\TestSolution\ConsoleApp\Ui\
+              {VsCodeContext.FilePrefix} Test1.cs
+              {VsCodeContext.FilePrefix} B:\Other\ConsoleApp\Ui\Test2.cs
+            Project: ConsoleApp.Tests | ConsoleApp.Tests\ConsoleApp.Tests.csproj
+            {VsCodeContext.DirPrefix} B:\TestSolution\ConsoleApp.Tests\
+              {VsCodeContext.FilePrefix} UnitTest.cs
 
             """;
         var builder = CreateBuilder();

@@ -1,15 +1,3 @@
-using Microsoft.Extensions.Logging;
-using Moq;
-using Shared.Contracts;
-using Shared.Contracts.Mcp;
-using UIBlazor.Agents;
-using UIBlazor.Models;
-using UIBlazor.Options;
-using UIBlazor.Services;
-using UIBlazor.Services.Settings;
-using UIBlazor.Tests.Utils;
-using UIBlazor.VS;
-
 namespace UIBlazor.Tests.Services.Settings;
 
 public class ToolManagerTests

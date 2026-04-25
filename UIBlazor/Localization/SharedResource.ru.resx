@@ -151,7 +151,7 @@
     <value>Вы действительно хотите удалить</value>
   </data>
   <data name="Endpoint" xml:space="preserve">
-    <value>Эндпоинт</value>
+    <value>Базовый URL</value>
   </data>
   <data name="ErrorModelsNotFound" xml:space="preserve">
     <value>Не найдены модели</value>

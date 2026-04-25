@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Shared.Contracts.Mcp;
 
 namespace UIBlazor.Services;
@@ -5,6 +6,7 @@ namespace UIBlazor.Services;
 /// <summary>
 /// Для тестов на голом UI без VS
 /// </summary>
+[ExcludeFromCodeCoverage]
 public class HeadlessMocker
 {
     public static VsToolResult GetVsToolResult(VsToolResult original)

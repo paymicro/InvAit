@@ -1,9 +1,3 @@
-using Moq;
-using Shared.Contracts;
-using UIBlazor.Agents;
-using UIBlazor.Models;
-using UIBlazor.Services;
-
 namespace UIBlazor.Tests.Agents;
 
 public class InternalExecutorTests

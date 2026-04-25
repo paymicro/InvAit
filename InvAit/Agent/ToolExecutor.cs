@@ -286,7 +286,7 @@ public class ToolExecutor : IDisposable
             return new VsResponse
             {
                 Success = false,
-                Payload = $"{exe} is unsupported."
+                Error = $"{exe} is unsupported."
             };
         }
 
@@ -295,7 +295,7 @@ public class ToolExecutor : IDisposable
             return new VsResponse
             {
                 Success = false,
-                Payload = "Command should be not empty."
+                Error = "Command should be not empty."
             };
         }
 
@@ -320,7 +320,7 @@ public class ToolExecutor : IDisposable
             return new VsResponse
             {
                 Success = false,
-                Payload = "Failed to start process"
+                Error = "Failed to start process"
             };
 
         if (waitForCompletion)
@@ -758,17 +758,33 @@ public class ToolExecutor : IDisposable
             return new VsResponse
             {
                 Success = false,
-                Payload = "Failed to start process"
+                Error = "Failed to start process"
             };
 
-        var result = await process.StandardOutput.ReadToEndAsync();
+        var outputTask = process.StandardOutput.ReadToEndAsync();
+        var errorTask = process.StandardError.ReadToEndAsync();
+
         await process.WaitForExitAsync();
 
+        var stdout = await outputTask;
+        var stderr = await errorTask;
+
         // Теперь можно один раз считать ошибки
-        return new VsResponse
+        if (process.ExitCode != 0)
         {
-            Payload = result
-        };
+            return new VsResponse
+            {
+                Success = false,
+                Error = $"{stdout}\n\n{stderr}"
+            };
+        }
+        else
+        {
+            return new VsResponse
+            {
+                Payload = stdout
+            };
+        }
     }
 
     private async Task<VsResponse> GetSolutionStructureAsync()

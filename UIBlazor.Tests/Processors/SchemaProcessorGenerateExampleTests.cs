@@ -1,4 +1,3 @@
-using System.Text.Json;
 using UIBlazor.Processors;
 using UIBlazor.Processors.Models;
 
@@ -81,7 +80,7 @@ public partial class SchemaProcessorTests
     {
         var schema = new JsonSchemaProperty { Type = type };
         var result = SchemaProcessor.GenerateExample(schema);
-        Assert.Equal(42.1, result);
+        Assert.Equal(0.1, result);
     }
 
     [Theory]
@@ -110,7 +109,7 @@ public partial class SchemaProcessorTests
     {
         var schema = new JsonSchemaProperty { Type = type };
         var result = SchemaProcessor.GenerateExample(schema);
-        Assert.Equal(42, result);
+        Assert.Equal(0, result);
     }
 
     [Theory]
@@ -122,7 +121,7 @@ public partial class SchemaProcessorTests
         var schema = new JsonSchemaProperty
         {
             Type = "integer",
-            EnumValues = new List<object> { JsonDocument.Parse(enumValue.ToString()).RootElement }
+            EnumValues = [JsonDocument.Parse(enumValue.ToString()).RootElement]
         };
         var result = SchemaProcessor.GenerateExample(schema);
         Assert.Equal($"One of strings: {enumValue}", result);

@@ -1,11 +1,4 @@
 using AngleSharp.Common;
-using Moq;
-using Shared.Contracts;
-using UIBlazor.Constants;
-using UIBlazor.Models;
-using UIBlazor.Services;
-using UIBlazor.Services.Settings;
-using UIBlazor.Utils;
 
 namespace UIBlazor.Tests.Services;
 
@@ -180,6 +173,8 @@ public class MessageParserTests
         var segment = message.Segments[0];
         Assert.Equal(SegmentType.Tool, segment.Type);
         Assert.Equal("apply_diff", segment.ToolName);
+        Assert.Equal("old code", string.Join('\n', ((DiffReplacement)segment.ToolParams["diff1"]).Search));
+        Assert.Equal("new code", string.Join('\n', ((DiffReplacement)segment.ToolParams["diff1"]).Replace));
         Assert.True(segment.IsClosed);
 
         // Проверяем что строки НЕ дублируются
@@ -207,6 +202,34 @@ public class MessageParserTests
         var segment = message.Segments[0];
         var lines = segment.Lines.Select(l => l.TrimEnd()).ToList();
         Assert.Equal(3, lines.Count);
+    }
+
+    [Fact]
+    public void UpdateSegments_ApplyDiff_CorruptedContent_HasParam2()
+    {
+        // Arrange
+        var message = new VisualChatMessage { Role = ChatMessageRole.Assistant };
+        _toolManagerMock.Setup(x => x.GetApprovalModeByToolName("apply_diff"))
+            .Returns(ToolApprovalMode.Allow);
+
+        // Act
+        _parser.UpdateSegments("""
+            <function name="apply_diff">
+            UIBlazor.Tests\Components\AiChatInputTests.cs
+            public class AiChatInputTests : BunitContext
+            {
+            =======
+            public class AiChatInputTests : BunitContext
+            {
+            >>>>>>> REPLACE
+            </function>
+            """, message);
+
+
+        // Assert
+        var segment = message.Segments[0];
+        Assert.True(segment.ToolParams.ContainsKey("param2"));
+        Assert.False(segment.ToolParams.ContainsKey("diff1"));
     }
 
     [Fact]
@@ -425,4 +448,4 @@ public class MessageParserTests
         Assert.Equal(8, args.Count);
         Assert.Equivalent(JsonUtils.Serialize(expectedObj), JsonUtils.Serialize(args));
     }
-} 
+}

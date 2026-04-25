@@ -1,9 +1,3 @@
-using Moq;
-using Shared.Contracts;
-using UIBlazor.Agents;
-using UIBlazor.Services;
-using UIBlazor.VS;
-
 namespace UIBlazor.Tests.Agents;
 
 public class BuiltInAgentTests

@@ -196,8 +196,8 @@ public static class SchemaProcessor
         return schemaProperty.Type?.ToLowerInvariant() switch
         {
             "string" => GetEnumOrDefault(schemaProperty, "sample_string"),
-            "number" => GetEnumOrDefault(schemaProperty, 42.1),
-            "integer" => GetEnumOrDefault(schemaProperty, 42),
+            "number" => GetEnumOrDefault(schemaProperty, 0.1),
+            "integer" => GetEnumOrDefault(schemaProperty, 0),
             "boolean" => GetEnumOrDefault(schemaProperty, true),
             "array" => new List<object?> { GenerateExample(schemaProperty.Items, depth + 1) },
             "object" => GenerateObjectExample(schemaProperty, depth),

@@ -12,7 +12,7 @@ namespace InvAit.Agent;
 public class SolutionSctructure
 {
     // TODO: сделать настраиваемым?
-    private const int _maxFilesInFolder = 20;
+    private const int _maxFilesInFolder = 25;
 
     public static async Task<string> GetSolutionPathAsync()
     {
@@ -23,7 +23,6 @@ public class SolutionSctructure
     private static async Task WalkSolutionItemsAsync(IEnumerable<Toolkit.SolutionItem> items, List<string> result, int indent, string solutionPath, bool fullPath)
     {
         var indentString = new string(' ', indent * 2);
-
         var groupItems = items.GroupBy(i => i.Type); // группируем по типу
 
         // Сначала файлы
@@ -38,13 +37,18 @@ public class SolutionSctructure
                 if (item.IsNonVisibleItem)
                     continue;
 
-                var ext = Path.GetExtension(item.FullPath).ToLower();
+                var ext = Path.GetExtension(item.Text).ToLower();
                 if (ext is ".zip" or ".bin" or ".dll" or ".exe" or ".png" or ".jpg" or ".obj" or ".pdb")
                     continue;
 
                 if (fileIndex++ < _maxFilesInFolder)
                 {
                     result.Add($"{indentString}{VsCodeContext.FilePrefix} {(fullPath ? item.FullPath : item.Text)}");
+                    
+                    // в файлах могут быть вложенные файлы
+                    // xaml => xaml.cs
+                    // razor => razor.cs + razor.css
+                    await WalkSolutionItemsAsync(item.Children, result, indent + 1, solutionPath, fullPath);
                 }
                 else
                 {
@@ -77,17 +81,15 @@ public class SolutionSctructure
     {
         var result = new List<string>();
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-        var projects = await VS.Solutions.GetAllProjectsAsync();
+        var projects = await VS.Solutions.GetAllProjectsAsync(Toolkit.ProjectStateFilter.Loaded);
+
         var solutionPath = await GetSolutionPathAsync();
 
         result.Add($"Solution path: {VsCodeContext.DirPrefix} {solutionPath}");
         foreach (var project in projects)
         {
             result.Add($"Project: {project.Name} | {project.FullPath}");
-            if (project.IsLoaded)
-            {
-                await WalkSolutionItemsAsync(project.Children, result, 1, solutionPath, fullPath);
-            }
+            await WalkSolutionItemsAsync(project.Children, result, 1, solutionPath, fullPath);
         }
 
         return result;

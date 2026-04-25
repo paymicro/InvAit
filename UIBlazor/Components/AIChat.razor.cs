@@ -4,7 +4,6 @@ using System.Diagnostics;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Radzen;
-using Radzen.Blazor.Rendering;
 using UIBlazor.Services;
 using UIBlazor.Services.Settings;
 using ConversationSession = UIBlazor.Models.ConversationSession;
@@ -26,6 +25,10 @@ public partial class AiChat : RadzenComponent
     private bool _callSettings;
 
     [Inject] private NotificationService NotificationService { get; set; } = null!;
+
+    [Inject] private DialogService DialogService { get; set; } = null!;
+
+    [Inject] IChatService ChatService { get; set; } = null!;
 
     [Inject] private IToolManager ToolManager { get; set; } = null!;
 
@@ -538,9 +541,6 @@ public partial class AiChat : RadzenComponent
             });
         _callSettings = false;
     }
-
-    /// <inheritdoc />
-    protected override string GetComponentCssClass() => ClassList.Create("rz-chat").ToString();
 
     /// <inheritdoc />
     public override void Dispose()

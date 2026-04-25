@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Logging;
-
 namespace UIBlazor.Tests.Utils;
 
 public class LoggerMock<T> : ILogger<T>

@@ -151,7 +151,7 @@
     <value>Are you sure you want to delete</value>
   </data>
   <data name="Endpoint" xml:space="preserve">
-    <value>Endpoint</value>
+    <value>Base URL</value>
   </data>
   <data name="ErrorModelsNotFound" xml:space="preserve">
     <value>Models not found</value>

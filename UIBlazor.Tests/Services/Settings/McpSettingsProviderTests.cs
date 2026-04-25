@@ -1,18 +1,3 @@
-using System.Net;
-using System.Text;
-using System.Text.Json;
-using Microsoft.Extensions.Logging;
-using Moq;
-using Moq.Protected;
-using Shared.Contracts;
-using Shared.Contracts.Mcp;
-using UIBlazor.Agents;
-using UIBlazor.Options;
-using UIBlazor.Services.Settings;
-using UIBlazor.Tests.Utils;
-using UIBlazor.Utils;
-using UIBlazor.VS;
-
 namespace UIBlazor.Tests.Services.Settings;
 
 public class McpSettingsProviderTests

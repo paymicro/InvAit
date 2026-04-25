@@ -1,12 +1,3 @@
-using Microsoft.Extensions.Logging;
-using Microsoft.JSInterop;
-using Moq;
-using Shared.Contracts;
-using UIBlazor.Models;
-using UIBlazor.Options;
-using UIBlazor.Services.Settings;
-using UIBlazor.Tests.Utils;
-
 namespace UIBlazor.Tests.Services.Settings;
 
 public class ProfileServiceTests

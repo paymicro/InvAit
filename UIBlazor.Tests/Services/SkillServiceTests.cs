@@ -1,9 +1,3 @@
-using Moq;
-using Shared.Contracts;
-using UIBlazor.Agents;
-using UIBlazor.Services;
-using UIBlazor.VS;
-
 namespace UIBlazor.Tests.Services;
 
 public class SkillServiceTests

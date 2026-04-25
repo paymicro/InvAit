@@ -79,12 +79,20 @@ public class SystemPromptBuilder(
             if (compress)
             {
                 var itemSpan = item.AsSpan();
-                var pathIndex = item.IndexOf(VsCodeContext.DirPrefix);
+                var pathIndex = -1;
+                if (item.StartsWith("Project"))
+                {
+                    lastDir = currentContext.SolutionPath;
+                }
+                else
+                {
+                    pathIndex = item.IndexOf(VsCodeContext.DirPrefix);
+                }
 
                 if (pathIndex != -1)
                 {
                     // Берем часть после префикса и обрезаем пробелы без создания строк
-                    var pathPart = itemSpan.Slice(pathIndex + difPrefix.Length).TrimStart();
+                    var pathPart = itemSpan[(pathIndex + difPrefix.Length)..].TrimStart();
                     lastDir = pathPart.ToString();
                     // В строке с префиксом (папкой) выводим item целиком
                     sb.Append(item).Append('\n');
@@ -103,7 +111,7 @@ public class SystemPromptBuilder(
                         {
                             // Пишем всё ДО пути + сам файл ПОСЛЕ пути
                             sb.Append(itemSpan[..dirPos])
-                              .Append(itemSpan[(dirPos + lastDir.Length + 1)..])
+                              .Append(itemSpan[(dirPos + lastDir.Length + (lastDir[^1] == '\\' ? 0 : 1))..])
                               .Append('\n');
                             simplified = true;
                         }
