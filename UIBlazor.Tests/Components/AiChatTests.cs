@@ -79,7 +79,6 @@ public class AiChatTests : BunitContext
         // Setup JSInterop for Radzen and component JS calls
         JSInterop.SetupVoid("Radzen.preventArrows", _ => true);
         JSInterop.SetupVoid("setChatHandler", _ => true);
-        JSInterop.SetupVoid("initChatAutoScroll", _ => true);
 
         // Register component stubs
         RegisterComponentStubs();

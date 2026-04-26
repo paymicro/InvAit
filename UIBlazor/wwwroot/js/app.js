@@ -59,35 +59,13 @@ if (window.chrome && window.chrome.webview) {
 //определение темы
 const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
-window.initChatAutoScroll = function (selector, threshold = 70) {
-    const container = document.querySelector(selector);
-    if (!container) return;
-
-    let isAtBottom = true;
-
-    // 1. Следим за ручным скроллом пользователя
-    container.addEventListener('scroll', () => {
-        // Проверяем, находится ли пользователь внизу (с небольшим порогом)
-        const position = container.scrollHeight - container.scrollTop - container.clientHeight;
-        isAtBottom = position <= threshold;
-    });
-
-    // 2. Создаем наблюдатель за изменениями в DOM
-    const observer = new MutationObserver((mutations) => {
-        // Если до изменения мы были внизу - скроллим к новой нижней границе
-        if (isAtBottom) {
-            // Используем requestAnimationFrame для синхронизации с отрисовкой браузера
-            requestAnimationFrame(() => {
-                container.scrollTop = container.scrollHeight;
-            });
-        }
-    });
-
-    // Настраиваем наблюдение за добавлением новых элементов (childList)
-    observer.observe(container, {
-        childList: true,
-        subtree: true // важно, если сообщения вложены глубоко
-    });
+// скролл к самому низу сообщений
+window.scrollToAnchor = function() {
+    const anchor = document.querySelector(".anchor");
+    if (anchor) {
+        // scrollIntoView плавно или мгновенно доведет скролл до низа
+        anchor.scrollIntoView({ behavior: 'instant', block: 'end' });
+    }
 };
 
 let chatHandler;

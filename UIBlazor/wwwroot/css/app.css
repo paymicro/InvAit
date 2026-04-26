@@ -58,6 +58,22 @@ pre {
 
 .rz-chat-messages {
     contain: strict;
+    overflow-anchor: auto;
+}
+
+.rz-chat-message {
+    overflow-anchor: none;
+}
+
+.rz-chat-message-text {
+    overflow-anchor: none;
+}
+
+.anchor {
+    overflow-anchor: auto;
+    height: 1px;
+    width: 100%;
+    flex-shrink: 0;
 }
 
 .rz-chat-message-actions {

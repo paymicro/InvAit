@@ -72,6 +72,10 @@ public partial class AiChat : RadzenComponent
 
         ChatService.Session.AddMessage(userMessage);
 
+        // скролл вниз
+        await Task.Yield();
+        await JsRuntime.InvokeVoidAsync("scrollToAnchor");
+
         // Get AI response
         await GetAiResponseAsync();
     }
@@ -460,7 +464,6 @@ public partial class AiChat : RadzenComponent
         if (firstRender)
         {
             await JsRuntime.InvokeVoidAsync("setChatHandler", _dotNetRef);
-            await JsRuntime.InvokeVoidAsync("initChatAutoScroll", $"#chat-messages", 70);
         }
     }
 
