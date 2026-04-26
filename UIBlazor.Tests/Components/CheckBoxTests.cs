@@ -1,7 +1,8 @@
-using UIBlazor.Components.Settings;
-
 namespace UIBlazor.Tests.Components;
 
+/// <summary>
+/// Tests for <see cref="CheckBox"/>
+/// </summary>
 public class CheckBoxTests : BunitContext
 {
     public CheckBoxTests()

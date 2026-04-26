@@ -3,9 +3,9 @@ namespace UIBlazor.Tests.Components;
 using UIBlazor.Components.Settings;
 using UIBlazor.Localization;
 
-///<summary>
-///<seealso cref="AiChatInput"/>
-///</summary>
+/// <summary>
+/// Tests for <see cref="AiChatInput"/>
+/// </summary>
 public class AiChatInputTests : BunitContext
 {
     private readonly Mock<IChatService> _mockChatService;
@@ -431,7 +431,7 @@ public class AiChatInputTests : BunitContext
         var lastIndex = hintItems.Count - 1;
 
         // Move to last item
-        for (int i = 0; i< lastIndex; i++)
+        for (int i = 0; i < lastIndex; i++)
         {
             await cut.InvokeAsync(() => textarea.KeyDown("ArrowDown"));
         }
@@ -443,7 +443,7 @@ public class AiChatInputTests : BunitContext
         var selected = cut.Find(".hint-item.selected");
         var allItems = cut.FindAll(".hint-item");
         var selectedIndex = 0;
-        for (int i = 0; i< allItems.Count; i++)
+        for (int i = 0; i < allItems.Count; i++)
         {
             if (allItems[i] == selected)
             {

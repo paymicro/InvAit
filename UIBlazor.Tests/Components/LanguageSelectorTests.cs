@@ -1,7 +1,8 @@
-using UIBlazor.Components.Settings;
-
 namespace UIBlazor.Tests.Components;
 
+/// <summary>
+/// Tests for <see cref="LanguageSelector"/>
+/// </summary>
 public class LanguageSelectorTests : BunitContext
 {
     private readonly Mock<ICommonSettingsProvider> _mockSettingsProvider;

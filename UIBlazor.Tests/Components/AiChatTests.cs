@@ -1,7 +1,7 @@
 namespace UIBlazor.Tests.Components;
 
 /// <summary>
-/// <seealso cref="AiChat"/>
+/// Tests for <see cref="AiChat"/>
 /// </summary>
 public class AiChatTests : BunitContext
 {
