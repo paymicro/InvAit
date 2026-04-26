@@ -232,6 +232,7 @@ public class RecentSessionsPickerTests : BunitContext
 
         // Act
         await cut.InvokeAsync(() => card.Click());
+        await Task.Delay(200, TestContext.Current.CancellationToken);
 
         // Assert
         _mockChatService.Verify(x => x.LoadSessionAsync(It.IsAny<string>()), Times.Once);
@@ -246,6 +247,7 @@ public class RecentSessionsPickerTests : BunitContext
 
         // Act - click first card
         await cut.InvokeAsync(() => cards[0].Click());
+        await Task.Delay(200, TestContext.Current.CancellationToken);
 
         // Assert
         _mockChatService.Verify(x => x.LoadSessionAsync("session-1"), Times.Once);
