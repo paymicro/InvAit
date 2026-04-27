@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -87,77 +88,48 @@ public class McpProcessManager : IDisposable
 
     private async Task<string> GetFullPathCommandAsync(string commandName)
     {
-        var tcs = new TaskCompletionSource<string>();
+        // Получаем список расширений из PATHEXT (.COM;.EXE;.BAT;.CMD и т.д.)
+        var extensions = Environment.GetEnvironmentVariable("PATHEXT")?.Split(';')
+            ?? [".exe", ".com", ".bat", ".cmd"]; // fallback
 
-        var startInfo = new ProcessStartInfo
+        // Получаем все пути из PATH
+        var paths = Environment.GetEnvironmentVariable("PATH")?.Split(Path.PathSeparator) ?? [];
+
+        // Добавляем текущую директорию в начало поиска (стандартное поведение Windows)
+        var searchPaths = new[] { Directory.GetCurrentDirectory() }.Concat(paths);
+
+        var fileNameExt = Path.GetExtension(commandName).ToUpperInvariant();
+        var hasExecutableExtension = !string.IsNullOrEmpty(fileNameExt) && extensions.Contains(fileNameExt);
+
+        foreach (var directory in searchPaths)
         {
-            FileName = "where",
-            Arguments = commandName,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            StandardOutputEncoding = Encoding.UTF8
-        };
+            var fullPathWithOriginalName = Path.Combine(directory, commandName);
 
-        using var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-
-        // Read output before process exits to avoid deadlock
-        var outputBuilder = new StringBuilder();
-        process.OutputDataReceived += (sender, e) =>
-        {
-            if (e.Data != null)
+            // Если пользователь УЖЕ указал исполняемое расширение (напр. npx.cmd)
+            // или если файла npx.exe не существует, но есть какой-то специфичный файл,
+            // который мы считаем запускаемым "как есть" (редкий случай для Windows).
+            if (hasExecutableExtension && File.Exists(fullPathWithOriginalName))
             {
-                outputBuilder.AppendLine(e.Data);
+                return fullPathWithOriginalName;
             }
-        };
 
-        process.Exited += (sender, args) =>
-        {
-            try
+            // Если расширения нет (npx) или оно не входит в PATHEXT,
+            // перебираем все возможные варианты из PATHEXT
+            foreach (var ext in extensions)
             {
-                if (process.ExitCode == 0)
-                {
-                    var rawOutput = outputBuilder.ToString();
-                    var paths = rawOutput.Split([Environment.NewLine], StringSplitOptions.RemoveEmptyEntries);
+                // Если файл уже имеет расширение (напр. npx.sh), 
+                // Path.ChangeExtension заменит .sh на .exe, .cmd и т.д.
+                // Если расширения нет, он просто добавит его.
+                var candidatePath = Path.ChangeExtension(fullPathWithOriginalName, ext);
 
-                    // Filter for executable extensions (.cmd, .bat, .exe)
-                    var executablePath = paths.FirstOrDefault(p =>
-                        p.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) ||
-                        p.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
-                        p.EndsWith(".bat", StringComparison.OrdinalIgnoreCase));
-
-                    tcs.TrySetResult(executablePath?.Trim());
-                }
-                else
+                if (File.Exists(candidatePath))
                 {
-                    // Command not found or error
-                    tcs.TrySetResult(null);
+                    return candidatePath;
                 }
             }
-            catch
-            {
-                tcs.TrySetResult(null);
-            }
-        };
-
-        try
-        {
-            if (process.Start())
-            {
-                process.BeginOutputReadLine();
-            }
-            else
-            {
-                tcs.TrySetResult(null);
-            }
-        }
-        catch
-        {
-            tcs.TrySetResult(null);
         }
 
-        return await tcs.Task;
+        return null;
     }
 
     /// <summary>

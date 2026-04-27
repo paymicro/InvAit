@@ -18,10 +18,8 @@
 - **Control:** You define the endpoint and API keys. No telemetry.
 
 ## ✨ Key Features
+- **Integrated Chat:** Tool window running directly inside Visual Studio.
 - **Autonomous Agent:** Can read files, execute terminal commands, git operations, and apply code changes.
-- **Integrated Chat:** Blazor WebAssembly UI running directly inside Visual Studio.
-- **Task Management:** Built-in system to track and plan development tasks.
-- **Build Integration:** Can trigger builds and analyze compilation errors.
 
 ## 🚀 Setup
 
@@ -31,10 +29,12 @@
 
 - Download the VSIX from [Releases](https://github.com/paymicro/InvAit/releases).
 - Install the VSIX
+- Main menu `View` - `Other Windows` - `InvAit Chat`
 
 **Option 2: MarketPlace**
 
 - [Visual Studio MarketPlace](https://marketplace.visualstudio.com/items?itemName=paymicro.InvAit)
+- Main menu `View` - `Other Windows` - `InvAit Chat`
 
 ### Configuration
 
@@ -72,8 +72,7 @@
 | **Rules** | global `%USERPROFILE%\.agents\rules.md`<br/>local `\.agents\rules.md`  |
 | **AGENTS.md** | load file content in system prompt |
 
-
-## 🖼 Screenshots
+## Screenshots
 
 #### Edit files
 ![](/docs/apply_diff_0014.png)
@@ -87,7 +86,7 @@
 
 ---
 
-## 🏗 Architecture
+## Architecture
 | Part | Description |
 |------|-------------|
 | **Extension** | VS SDK (.NET Framework 4.8) handles system operations. |
@@ -99,4 +98,3 @@
 - **Runtimes:** .NET Framework 4.8, .NET 10 SDK
 
 ## 📄 License MIT
-See [LICENSE](./LICENSE).

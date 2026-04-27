@@ -299,7 +299,7 @@ public class ToolExecutor : IDisposable
             };
         }
 
-        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         var startInfo = new ProcessStartInfo
         {
             FileName = exe,
@@ -317,11 +317,13 @@ public class ToolExecutor : IDisposable
 
         using var process = Process.Start(startInfo);
         if (process == null)
+        {
             return new VsResponse
             {
                 Success = false,
                 Error = "Failed to start process"
             };
+        }
 
         if (waitForCompletion)
         {
