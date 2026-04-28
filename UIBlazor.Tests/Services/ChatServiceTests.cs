@@ -185,6 +185,47 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task GetCompletionsAsync_StreamsSseDeltas_ContentWithTags()
+    {
+        // Arrange - SSE format with delta array
+        var sseResponse = """
+            data: {"id":"00780020f8a446c6b84cbdca095bb919","object":"chat.completion.chunk","created":1777394041,"model":"Mini","choices":[{"index":0,"message":null,"delta":{"role":null,"content":" ///","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"00780020f8a446c6b84cbdca095bb919","object":"chat.completion.chunk","created":1777394041,"model":"Mini","choices":[{"index":0,"message":null,"delta":{"role":null,"content":" <","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"00780020f8a446c6b84cbdca095bb919","object":"chat.completion.chunk","created":1777394041,"model":"Mini","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"see","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"00780020f8a446c6b84cbdca095bb919","object":"chat.completion.chunk","created":1777394041,"model":"Mini","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"=\"asd\"","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"00780020f8a446c6b84cbdca095bb919","object":"chat.completion.chunk","created":1777394041,"model":"Mini","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"> ","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: [DONE]
+            """;
+
+
+        var server = WireMockServer.Start();
+        var httpClient = server.CreateClient();
+        server
+            .Given(Request.Create().WithPath("/v1/chat/completions").UsingPost())
+            .RespondWith(
+                Response.Create()
+                    .WithStatusCode(200)
+                    .WithHeader("Content-Type", "text/event-stream")
+                    .WithHeader("Cache-Control", "no-cache")
+                    .WithBody(sseResponse)
+            );
+
+        var chatService = CreateChatService(httpClient);
+
+        // Act
+        var deltas = new List<ChatDelta>();
+        await foreach (var delta in chatService.GetCompletionsAsync(TestContext.Current.CancellationToken))
+        {
+            deltas.Add(delta);
+        }
+
+        // Assert
+        Assert.Equal(2, deltas.Count);
+        Assert.Equal(" ///", deltas[0].Content);
+        Assert.Equal(" <see=\"asd\"> ", deltas[1].Content);
+    }
+
+    [Fact]
     public async Task GetCompletionsAsync_StreamsSseDeltas_ToolCallFragmented()
     {
         // Arrange

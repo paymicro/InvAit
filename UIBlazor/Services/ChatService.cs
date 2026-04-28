@@ -362,7 +362,7 @@ public class ChatService(
                     // Если тег не закрыт (нет '>') и нет переноса строки (\n), то буферизируем
                     if (potentialTag.IndexOfAny(['>', '\n']) == -1)
                     {
-                        _pendingText = incomingText[lastOpenIndex..];
+                        _pendingText = incomingText;
                         incomingText = incomingText[..lastOpenIndex];
 
                         // Если после отрезания тега ничего не осталось, пропускаем итерацию
