@@ -350,26 +350,29 @@ public class ChatService(
             // Если есть контент, то проверяем на разрезанные теги и склеиваем их
             if (delta.Content != null)
             {
-                // Склеиваем с остатком от прошлого раза
                 var incomingText = _pendingText + delta.Content;
                 _pendingText = string.Empty;
 
-                // Ищем последний открывающий тег
                 var lastOpenIndex = incomingText.LastIndexOf('<');
+
+                // Проверяем, есть ли незакрытый тег в конце строки
                 if (lastOpenIndex >= 0)
                 {
                     var potentialTag = incomingText[lastOpenIndex..];
-                    // Если тег не закрыт (нет '>') и нет переноса строки (\n), то буферизируем
+
+                    // Если в "потенциальном теге" нет символов закрытия
                     if (potentialTag.IndexOfAny(['>', '\n']) == -1)
                     {
-                        _pendingText = incomingText;
+                        // Сохраняем в буфер ТОЛЬКО незакрытую часть
+                        _pendingText = potentialTag;
+                        // А из текущей дельты вырезаем этот кусок
                         incomingText = incomingText[..lastOpenIndex];
-
-                        // Если после отрезания тега ничего не осталось, пропускаем итерацию
-                        if (string.IsNullOrWhiteSpace(incomingText))
-                            continue;
                     }
                 }
+
+                // Если после обрезки буфера текста не осталось — идем за следующей дельтой
+                if (string.IsNullOrEmpty(incomingText) && !string.IsNullOrEmpty(_pendingText))
+                    continue;
 
                 delta.Role ??= role;
                 delta.Content = incomingText;

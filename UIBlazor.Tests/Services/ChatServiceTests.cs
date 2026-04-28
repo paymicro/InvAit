@@ -185,15 +185,50 @@ public class ChatServiceTests
     }
 
     [Fact]
-    public async Task GetCompletionsAsync_StreamsSseDeltas_ContentWithTags()
+    public async Task GetCompletionsAsync_StreamsSseDeltas_WithParseSegments_ContentWithTags()
     {
         // Arrange - SSE format with delta array
         var sseResponse = """
-            data: {"id":"00780020f8a446c6b84cbdca095bb919","object":"chat.completion.chunk","created":1777394041,"model":"Mini","choices":[{"index":0,"message":null,"delta":{"role":null,"content":" ///","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: {"id":"00780020f8a446c6b84cbdca095bb919","object":"chat.completion.chunk","created":1777394041,"model":"Mini","choices":[{"index":0,"message":null,"delta":{"role":null,"content":" <","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: {"id":"00780020f8a446c6b84cbdca095bb919","object":"chat.completion.chunk","created":1777394041,"model":"Mini","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"see","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: {"id":"00780020f8a446c6b84cbdca095bb919","object":"chat.completion.chunk","created":1777394041,"model":"Mini","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"=\"asd\"","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: {"id":"00780020f8a446c6b84cbdca095bb919","object":"chat.completion.chunk","created":1777394041,"model":"Mini","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"> ","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"model":"Mini","choices":[{"index":0,"message":null,"delta":{"role":null,"content":" ///","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" <summary>\n","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" Hello! <","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"function","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" name","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"=\"asd\"","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"\">\n","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"</function","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"> \n","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"<function","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" name","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"=\"","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"apply","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"_diff","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"\">\n","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"Provider","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"Tests","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":".cs","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"\n","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"<<<<","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"<<<","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" SEARCH","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" :","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"222","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":":\n","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" ","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" private","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" sealed","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" class","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" Test","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"Git\n","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"====","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"===\n","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":">>>>","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":">>>","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" RE","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"PLACE","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"\n","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"</function","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":">","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
             data: [DONE]
             """;
 
@@ -211,18 +246,31 @@ public class ChatServiceTests
             );
 
         var chatService = CreateChatService(httpClient);
+        var parser = new MessageParser(Mock.Of<IToolManager>());
+        var message = new VisualChatMessage { Role = ChatMessageRole.Assistant };
 
         // Act
         var deltas = new List<ChatDelta>();
         await foreach (var delta in chatService.GetCompletionsAsync(TestContext.Current.CancellationToken))
         {
             deltas.Add(delta);
+            parser.UpdateSegments(delta.Content, message);
         }
 
         // Assert
-        Assert.Equal(2, deltas.Count);
+        Assert.Equal(27, deltas.Count);
         Assert.Equal(" ///", deltas[0].Content);
-        Assert.Equal(" <see=\"asd\"> ", deltas[1].Content);
+        Assert.Equal(" <summary>\n", deltas[1].Content);
+        Assert.Equal(" Hello! ", deltas[2].Content);
+        Assert.Equal("<function name=\"asd\"\">\n", deltas[3].Content);
+
+        Assert.Equal(3, message.Segments.Count);
+        Assert.Equal(SegmentType.Markdown, message.Segments[0].Type);
+        Assert.Equal(" /// <summary>\n Hello! ", message.Segments[0].CurrentLine.ToString());
+        Assert.Equal(SegmentType.Markdown, message.Segments[1].Type);
+        Assert.Equal("<function name=\"asd\"\">\n</function> \n", message.Segments[1].CurrentLine.ToString());
+        Assert.Equal(SegmentType.Tool, message.Segments[2].Type);
+        Assert.Equal(2, message.Segments[2].ToolParams.Count);
     }
 
     [Fact]
