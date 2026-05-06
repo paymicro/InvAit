@@ -139,7 +139,7 @@ pre {
 }
 
 .required .rz-form-field-content {
-    border-color: var(--rz-warning);
+    border-color: var(--rz-warning) !important;
 }
 
 .rz-form-field-helper {

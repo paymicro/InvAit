@@ -25,6 +25,8 @@
     </div>
 </div>
 
+@implements IDisposable
+
 @code {
     [Parameter] public int LinesCount { get; set; } = 0;
     [Parameter] public Dictionary<string, object> ToolParams { get; set; } = [];
@@ -39,6 +41,7 @@
     private DateTime _lastRenderTime = DateTime.MinValue;
     private readonly int _interval = 500; // рендерить не чаще
     private double elapsed => (DateTime.Now - _lastRenderTime).TotalMilliseconds;
+    private CancellationTokenSource? _pendingRenderCts;
 
     protected override bool ShouldRender()
     {
@@ -51,15 +54,32 @@
             return true;
         }
 
+        // Отменяем предыдущую отложенную задачу
+        _pendingRenderCts?.Cancel();
+        _pendingRenderCts = new CancellationTokenSource();
         // Запускаем отложенную проверку для "последнего вызова"
-        _ = DelayRender();
+        _ = DelayRender(_pendingRenderCts.Token);
         return false;
     }
 
-    private async Task DelayRender()
+    private async Task DelayRender(CancellationToken cancellationToken)
     {
-        await Task.Delay(_interval);
-        StateHasChanged(); // Перезапустит логику ShouldRender
+        try
+        {
+            await Task.Delay(_interval, cancellationToken);
+            _changed = true; // Гарантируем рендер
+            StateHasChanged();
+        }
+        catch (TaskCanceledException)
+        {
+            // Игнорируем отмену
+        }
+    }
+
+    public void Dispose()
+    {
+        _pendingRenderCts?.Cancel();
+        _pendingRenderCts?.Dispose();
     }
 
     protected override void OnParametersSet()

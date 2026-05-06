@@ -366,7 +366,7 @@ public class ToolExecutor : IDisposable
         var regex = new Regex(pattern, RegexOptions.Compiled);
         var matchedFiles = new List<SearchFileInfo>();
 
-        foreach (var file in await GetAllSolutionFilesAsync())
+        foreach (var file in Directory.EnumerateFiles(solutionPath, "*", SearchOption.AllDirectories))
         {
             var relativePath = MakeRelativeToSolution(file, solutionPath);
             if (!regex.IsMatch(relativePath)) continue;
