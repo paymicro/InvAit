@@ -52,13 +52,13 @@ public class BuiltInAgentTests
     public async Task Execute_Exec_CallsBridge()
     {
         // Arrange
-        var tool = _agent.Tools.First(t => t.Name == BuiltInToolEnum.Exec);
+        var tool = _agent.Tools.First(t => t.Name == BuiltInToolEnum.Bash);
         var args = new Dictionary<string, object> { { "command", "dir" } };
 
         // Act
         await tool.ExecuteAsync(args, CancellationToken.None);
 
         // Assert
-        _vsBridgeMock.Verify(b => b.ExecuteToolAsync(BuiltInToolEnum.Exec, args, CancellationToken.None), Times.Once);
+        _vsBridgeMock.Verify(b => b.ExecuteToolAsync(BuiltInToolEnum.Bash, args, CancellationToken.None), Times.Once);
     }
 }

@@ -52,53 +52,8 @@ Communication between the Blazor UI (Frontend) and the VS Extension (Backend) oc
 
 ## Capabilities & Tools
 
-The agent has access to a rich set of tools to manipulate the project:
-
-### File System Operations
-*   `read_files` — Read file contents with line range support (`file1`, `file2`, etc. parameters with `name`, `startLine`, `lineCount`)
-*   `read_open_file` — Read the currently active document in VS
-*   `create_file` — Create a new file with contents
-*   `delete_file` — Delete a file
-*   `apply_diff` — Apply surgical SEARCH/REPLACE edits to a file
-
-### Search & Navigation
-*   `search_files` — Find files by regex pattern in path
-*   `grep_search` — Search file contents with regex, shows context lines
-*   `dir` — List directory contents (recursive option)
-
-### Build & Test
-*   `build` — Build/Rebuild/Clean solution (uses VS Build API)
-*   `run_tests` — Run all tests via `dotnet test`
-*   `get_error_list` — Get current build errors from VS Error List
-
-### Project Information
-*   `get_project_info` — List all projects with paths
-*   `get_solution_structure` — Get tree-like solution structure
-
-### Git Operations
-*   `git_status` — Show working tree status
-*   `git_log` — Show commit history (supports `--pretty` format)
-*   `git_diff` — Show changes between revisions
-*   `git_branch` — Show current branch
-
-### Terminal Execution
-*   `execute` — Run shell commands (cmd, powershell, dotnet, git)
-
-### Skills System
-*   `get_skills_metadata` — List available skills (from `skills/*SKILL.md`)
-*   `read_skill_content` — Get full skill content by name
-*   Skills support both local (`<solution>/skills/`) and global (`~/.agents/skills/`)
-
-### Rules System
-*   `get_rules` — Load rules from `~/.agents/rules.md` or `.agents/rules.md`
-
-### MCP (Model Context Protocol)
-*   `mcp_get_tools` — List tools from an MCP server
-*   `mcp_call_tool` — Call a tool on an MCP server
-*   `mcp_stop_all` — Stop all MCP server processes
-*   `read_mcp_settings_file` — Read `~/.agents/mcp.json`
-*   `write_mcp_settings` — Write `~/.agents/mcp.json`
-*   `open_mcp_settings` — Open MCP settings in editor
+The agent has access to a rich set of tools to manipulate the project.
+Full description in file `UIBlazor/Agents/BuiltInAgent.cs`
 
 ## Development Instructions
 
@@ -115,4 +70,4 @@ The agent has access to a rich set of tools to manipulate the project:
 ### Adding New Tools
 1.  **Define:** Add the tool name to `Shared/Contracts/BuiltInToolEnum.cs`.
 2.  **Frontend:** Add the tool definition (description, parameters) to `UIBlazor/Agents/BuiltInAgent.cs` in the `Tools` list.
-3.  **Backend:** Implement the tool logic in `InvAit/Agent/BuiltInAgent.cs` inside the `ExecuteAsync` switch statement.
+3.  **Backend:** Implement the tool logic in `InvAit/Agent/ToolExecutor.cs` inside the `ExecuteAsync` switch statement.

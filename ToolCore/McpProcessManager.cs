@@ -1,19 +1,8 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-using InvAit.Utils;
-using Microsoft.VisualStudio.Shell;
-using Microsoft.VisualStudio.Threading;
-using Shared.Contracts;
-using Shared.Contracts.Mcp;
 
-namespace InvAit.Agent;
+namespace ToolCore;
 
 /// <summary>
 /// Управление MCP процессами (NPX серверы или dotnet tool например)
@@ -27,22 +16,32 @@ public class McpProcessManager : IDisposable
     private static readonly List<string> _copyEnvs = ["PATH", "APPDATA", "LOCALAPPDATA", "TEMP", "SystemRoot", "SystemDrive"];
     private readonly ConcurrentDictionary<string, Process> _processes = new();
     private readonly ConcurrentDictionary<string, ConcurrentQueue<McpNotification>> _notificationQueues = new();
-    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, TaskCompletionSource<VsResponse>>> _pendingRequests = new();
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, TaskCompletionSource<ToolResponse>>> _pendingRequests = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _processCancellationTokens = new();
     private readonly object _processLock = new();
     private readonly ConcurrentDictionary<string, DateTime> _lastAccessTime = new();
+    private readonly ILogger _logger;
     private CancellationTokenSource _cleanupCts;
     // время жизни MCP процесса без активности
     private readonly TimeSpan _idleTimeout = TimeSpan.FromMinutes(10);
+
+    public McpProcessManager(ILogger logger)
+    {
+        _logger = logger ?? new NullLogger();
+    }
 
     /// <summary>
     /// Запустить фоновую задачу очистки неактивных процессов
     /// </summary>
     private void StartCleanupTask()
     {
-        if (_cleanupCts != null) return;
+        // Use lock to prevent race condition when multiple threads call StartCleanupTask
+        lock (_processLock)
+        {
+            if (_cleanupCts != null) return;
+            _cleanupCts = new CancellationTokenSource();
+        }
 
-        _cleanupCts = new CancellationTokenSource();
         _ = Task.Run(async () =>
         {
             try
@@ -60,7 +59,7 @@ public class McpProcessManager : IDisposable
                         {
                             if (now - lastAccess > _idleTimeout)
                             {
-                                await Logger.LogAsync($"MCP [{serverId}] idle timeout reached, stopping process");
+                                _logger.Log($"MCP [{serverId}] idle timeout reached, stopping process");
                                 await StopProcessAsync(serverId);
                             }
                         }
@@ -73,7 +72,7 @@ public class McpProcessManager : IDisposable
             }
             catch (Exception ex)
             {
-                await Logger.LogAsync($"MCP cleanup task error: {ex.Message}", "ERROR");
+                _logger.Log($"MCP cleanup task error: {ex.Message}", "ERROR");
             }
         }, _cleanupCts.Token);
     }
@@ -135,7 +134,7 @@ public class McpProcessManager : IDisposable
     /// <summary>
     /// Запустить MCP процесс
     /// </summary>
-    public async Task<string> StartProcessAsync(string serverId, string command, string args, string workingDirectory, Dictionary<string, string> env)
+    public async Task<string> StartProcessAsync(string serverId, string command, string args, string workingDirectory, Dictionary<string, string>? env)
     {
         lock (_processLock)
         {
@@ -161,12 +160,12 @@ public class McpProcessManager : IDisposable
             var fullCommand = await GetFullPathCommandAsync(command);
             if (string.IsNullOrEmpty(fullCommand))
             {
-                var message = $"ERROR: Failed to get where {command} in system.";
-                await Logger.LogAsync(message, "ERROR");
+                var message = $"ERROR: Failed to find {command} in system.";
+                _logger.Log(message, "ERROR");
                 return message;
             }
 
-            await Logger.LogAsync($"MCP {command} > {fullCommand}");
+            _logger.Log($"MCP {command} > {fullCommand}");
             var startInfo = new ProcessStartInfo
             {
                 FileName = fullCommand,
@@ -215,15 +214,17 @@ public class McpProcessManager : IDisposable
                 _processes[serverId] = process;
             }
             _notificationQueues[serverId] = new ConcurrentQueue<McpNotification>();
-            _pendingRequests[serverId] = new ConcurrentDictionary<string, TaskCompletionSource<VsResponse>>();
+            _pendingRequests[serverId] = new ConcurrentDictionary<string, TaskCompletionSource<ToolResponse>>();
 
-            // Создаем CancellationTokenSource для процесса (связываем с cleanup токеном)
-            var processCts = CancellationTokenSource.CreateLinkedTokenSource(_cleanupCts?.Token ?? CancellationToken.None);
+            // Create CancellationTokenSource for process (linked with cleanup token)
+            // Ensure _cleanupCts is initialized before linking
+            StartCleanupTask();
+            var cleanupToken = _cleanupCts?.Token ?? CancellationToken.None;
+            var processCts = CancellationTokenSource.CreateLinkedTokenSource(cleanupToken);
             _processCancellationTokens[serverId] = processCts;
             var cancellationToken = processCts.Token;
 
             UpdateLastAccess(serverId);
-            StartCleanupTask();
 
             // Асинхронное чтение stdout с поддержкой отмены
             _ = Task.Run(async () =>
@@ -244,7 +245,7 @@ public class McpProcessManager : IDisposable
                             var line = await readTask;
                             if (string.IsNullOrWhiteSpace(line)) continue;
 
-                            await Logger.LogAsync($"MCP [{serverId}] received: {line}");
+                            _logger.Log($"MCP [{serverId}] received: {line}");
 
                             try
                             {
@@ -257,14 +258,14 @@ public class McpProcessManager : IDisposable
                                     {
                                         if (response.Error == null)
                                         {
-                                            tcs.SetResult(new VsResponse
+                                            tcs.SetResult(new ToolResponse
                                             {
                                                 Payload = JsonUtils.Serialize(response.Result),
                                             });
                                         }
                                         else
                                         {
-                                            tcs.SetResult(new VsResponse
+                                            tcs.SetResult(new ToolResponse
                                             {
                                                 Success = false,
                                                 Payload = JsonUtils.Serialize(response.Error),
@@ -283,7 +284,7 @@ public class McpProcessManager : IDisposable
                             }
                             catch (Exception ex)
                             {
-                                await Logger.LogAsync($"MCP [{serverId}] parse error: {ex.Message}. Line: {line}", "WARN");
+                                _logger.Log($"MCP [{serverId}] parse error: {ex.Message}. Line: {line}", "WARN");
                             }
                         }
                     }
@@ -296,7 +297,7 @@ public class McpProcessManager : IDisposable
                 {
                     if (!cancellationToken.IsCancellationRequested)
                     {
-                        await Logger.LogAsync($"MCP [{serverId}] stdout error: {ex.Message}", "ERROR");
+                        _logger.Log($"MCP [{serverId}] stdout error: {ex.Message}", "ERROR");
                     }
                 }
             }, cancellationToken);
@@ -320,7 +321,7 @@ public class McpProcessManager : IDisposable
                             var line = await readTask;
                             if (line != null)
                             {
-                                await Logger.LogAsync($"MCP [{serverId}] stderr: {line}", "INFO");
+                                _logger.Log($"MCP [{serverId}] stderr: {line}", "INFO");
                             }
                         }
                     }
@@ -333,22 +334,22 @@ public class McpProcessManager : IDisposable
                 {
                     if (!cancellationToken.IsCancellationRequested)
                     {
-                        await Logger.LogAsync($"MCP [{serverId}] stderr error: {ex.Message}", "ERROR");
+                        _logger.Log($"MCP [{serverId}] stderr error: {ex.Message}", "ERROR");
                     }
                 }
             }, cancellationToken);
 
-            await Logger.LogAsync($"MCP process started: {serverId} ({command} {args})");
+            _logger.Log($"MCP process started: {serverId} ({command} {args})");
             return $"OK: Process started: {serverId}";
         }
         catch (Exception ex)
         {
-            await Logger.LogAsync($"Failed to start MCP process {serverId}: {ex.Message}", "ERROR");
+            _logger.Log($"Failed to start MCP process {serverId}: {ex.Message}", "ERROR");
             return $"ERROR: {ex.Message}";
         }
     }
 
-    private static void SetEnvironments(Dictionary<string, string> env, ProcessStartInfo startInfo)
+    private static void SetEnvironments(Dictionary<string, string>? env, ProcessStartInfo startInfo)
     {
         // Полная очистка унаследованных переменных
         startInfo.EnvironmentVariables.Clear();
@@ -408,12 +409,12 @@ public class McpProcessManager : IDisposable
                 }
             }
 
-            await Logger.LogAsync($"MCP process stopped: {serverId}");
+            _logger.Log($"MCP process stopped: {serverId}");
             return $"OK: Process stopped: {serverId}";
         }
         catch (Exception ex)
         {
-            await Logger.LogAsync($"Error stopping MCP process {serverId}: {ex.Message}", "ERROR");
+            _logger.Log($"Error stopping MCP process {serverId}: {ex.Message}", "ERROR");
             return $"ERROR: {ex.Message}";
         }
     }
@@ -421,19 +422,19 @@ public class McpProcessManager : IDisposable
     /// <summary>
     /// Отправить сообщение и ждать ответа
     /// </summary>
-    public async Task<VsResponse> CallMethodAsync(string serverId, string id, string message, int timeoutMs = 10000)
+    public async Task<ToolResponse> CallMethodAsync(string serverId, string id, string message, int timeoutMs = 10000)
     {
         if (!_processes.TryGetValue(serverId, out var process))
         {
-            return new VsResponse { Success = false, Error = "ERROR: Process not found" };
+            return new ToolResponse { Success = false, Error = "ERROR: Process not found" };
         }
 
         UpdateLastAccess(serverId);
 
-        var tcs = new TaskCompletionSource<VsResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tcs = new TaskCompletionSource<ToolResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!_pendingRequests.TryGetValue(serverId, out var serverRequests))
         {
-            return new VsResponse
+            return new ToolResponse
             {
                 Success = false,
                 Error = "ERROR: Server requests dictionary not initialized"
@@ -446,7 +447,7 @@ public class McpProcessManager : IDisposable
         {
             await process.StandardInput.WriteLineAsync(message);
             await process.StandardInput.FlushAsync();
-            await Logger.LogAsync($"MCP [{serverId}] sent: {message}");
+            _logger.Log($"MCP [{serverId}] sent: {message}");
 
             var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs));
             if (completedTask == tcs.Task)
@@ -456,7 +457,7 @@ public class McpProcessManager : IDisposable
             else
             {
                 serverRequests.TryRemove(id, out _);
-                return new VsResponse
+                return new ToolResponse
                 {
                     Success = false,
                     Error = "ERROR: Timeout waiting for response"
@@ -466,8 +467,8 @@ public class McpProcessManager : IDisposable
         catch (Exception ex)
         {
             serverRequests.TryRemove(id, out _);
-            await Logger.LogAsync($"Error calling MCP method in {serverId}: {ex.Message}", "ERROR");
-            return new VsResponse
+            _logger.Log($"Error calling MCP method in {serverId}: {ex.Message}", "ERROR");
+            return new ToolResponse
             {
                 Success = false,
                 Error = $"ERROR: {ex.Message}"
@@ -476,7 +477,7 @@ public class McpProcessManager : IDisposable
     }
 
     /// <summary>
-    /// Отправить сообщение в stdin процесса (без ожидания ответа)
+    /// Send message to process stdin (without waiting for response)
     /// </summary>
     public async Task<string> SendMessageAsync(string serverId, string message)
     {
@@ -491,12 +492,12 @@ public class McpProcessManager : IDisposable
         {
             await process.StandardInput.WriteLineAsync(message);
             await process.StandardInput.FlushAsync();
-            await Logger.LogAsync($"MCP [{serverId}] sent raw: {message}");
+            _logger.Log($"MCP [{serverId}] sent raw: {message}");
             return "OK";
         }
         catch (Exception ex)
         {
-            await Logger.LogAsync($"Error sending to MCP process {serverId}: {ex.Message}", "ERROR");
+            _logger.Log($"Error sending to MCP process {serverId}: {ex.Message}", "ERROR");
             return $"ERROR: {ex.Message}";
         }
     }
@@ -525,10 +526,37 @@ public class McpProcessManager : IDisposable
         }
     }
 
+    /// <summary>
+    /// Get list of running server IDs
+    /// </summary>
+    public IEnumerable<string> GetRunningServers()
+    {
+        return _processes.Keys;
+    }
+
     public void Dispose()
     {
         _cleanupCts?.Cancel();
         _cleanupCts?.Dispose();
-        StopAllProcessesAsync().FileAndForget("ChatToolWindow.DisposeAll");
+        var stopTask = StopAllProcessesAsync();
+        try
+        {
+            stopTask.Wait(TimeSpan.FromSeconds(5));
+        }
+        catch (Exception)
+        {
+            // игнорируем
+        }
+    }
+
+    /// <summary>
+    /// Null logger implementation for cases when no logger is provided
+    /// </summary>
+    private class NullLogger : ILogger
+    {
+        public void Log(string message, string level = "INFO")
+        {
+            // No-op
+        }
     }
 }

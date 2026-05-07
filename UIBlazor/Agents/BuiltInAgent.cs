@@ -248,25 +248,23 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
         // Execution
         new()
         {
-            Name = BuiltInToolEnum.Exec,
+            Name = BuiltInToolEnum.Bash,
             DisplayName = SharedResource.ToolExec,
             Category = ToolCategory.Execution,
             Description = """
-                          To run a terminal command.
-                          The shell is not stateful and will not remember any previous commands.
-                          When a command is run in the background ALWAYS suggest using shell commands to stop it; NEVER suggest using Ctrl+C.
+                          To run a shell command (Git Bash).
+                          The shell is stateless. Avoid using single quotes inside your commands if possible.
                           When suggesting subsequent shell commands ALWAYS format them in shell command blocks.
                           Do NOT perform actions requiring special/admin privileges.
                           Choose terminal commands and scripts optimized for win32 and x64.
-                          You can also optionally include the waitForCompletion argument set to false to run the command in the background, without output message.
                           """,
             ExampleToSystemMessage = $"""
-                                      For example, to see the git log, you could respond with:
-                                      <function name="{BuiltInToolEnum.Exec}"> 
-                                      dotnet restore
+                                      For example:
+                                      <function name="{BuiltInToolEnum.Bash}"> 
+                                      git diff HEAD
                                       </function>
                                       """,
-            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Exec, args, c)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Bash, args, c)
         },
         
         // Git operations
@@ -275,7 +273,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.GitStatus,
             DisplayName = SharedResource.ToolGitStatus,
             Category = ToolCategory.ReadFiles,
-            Description = "Check git status of the current repository. Shows modified, staged, and untracked files.",
+            Description = "Check git status of the current repository.",
             ExampleToSystemMessage = $"""
                                      For example:
                                      <function name="{BuiltInToolEnum.GitStatus}">
@@ -288,7 +286,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.GitLog,
             DisplayName = SharedResource.ToolGitLog,
             Category = ToolCategory.ReadFiles,
-            Description = "View git commit history. Can specify number of commits to display.",
+            Description = "View git commit history with changed files in commits. Can specify number of commits to display.",
             ExampleToSystemMessage = $"""
                                      For example:
                                      <function name="{BuiltInToolEnum.GitLog}">
@@ -302,27 +300,14 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.GitDiff,
             DisplayName = SharedResource.ToolGitDiff,
             Category = ToolCategory.ReadFiles,
-            Description = "View git diff for files. Can compare working directory with staged or specific commits.",
+            Description = "View full git diff for specific commit or HEAD.",
             ExampleToSystemMessage = $"""
                                      For example:
                                      <function name="{BuiltInToolEnum.GitDiff}">
-                                     false
+                                     87b9cdf
                                      </function>
                                      """,
             ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitDiff, args, c)
-        },
-        new()
-        {
-            Name = BuiltInToolEnum.GitBranch,
-            DisplayName = SharedResource.ToolGitBranches,
-            Category = ToolCategory.ReadFiles,
-            Description = "List git branches or get current branch information.",
-            ExampleToSystemMessage = $"""
-                                     For example:
-                                     <function name="{BuiltInToolEnum.GitBranch}">
-                                     </function>
-                                     """,
-            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitBranch, args, c)
         },
         new()
         {

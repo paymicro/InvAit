@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using EnvDTE;
 using EnvDTE80;
@@ -6,6 +6,7 @@ using InvAit.Utils;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.Web.WebView2.Wpf;
 using Shared.Contracts;
+using ToolCore;
 
 namespace InvAit.Agent
 {

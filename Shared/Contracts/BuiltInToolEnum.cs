@@ -22,11 +22,10 @@ public static class BuiltInToolEnum
     public const string Build                   = "build";
 
     // Execution
-    public const string Exec            = "execute";
+    public const string Bash            = "bash";
 
     // Git operations
     public const string GitLog          = "git_log";
     public const string GitDiff         = "git_diff";
     public const string GitStatus       = "git_status";
-    public const string GitBranch       = "git_branch";
 }

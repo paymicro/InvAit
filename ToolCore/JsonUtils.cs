@@ -1,8 +1,7 @@
-using System.Collections.Generic;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 
-namespace InvAit.Utils;
+namespace ToolCore;
 
 public static class JsonUtils
 {
@@ -26,12 +25,16 @@ public static class JsonUtils
 
     public static string SerializeCompact(object value) => JsonSerializer.Serialize(value, _compactOptions);
 
-    public static T? Deserialize<T>(string json) => JsonSerializer.Deserialize<T>(json, _jsonOptions);
-
-    public static string PrettyPrintFormat(string minifiedJson)
+    public static T? Deserialize<T>(string json)
     {
-        using JsonDocument document = JsonDocument.Parse(minifiedJson);
-        return JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions { WriteIndented = true });
+        try
+        {
+            return JsonSerializer.Deserialize<T>(json, _jsonOptions);
+        }
+        catch
+        {
+            return default;
+        }
     }
 
     public static IReadOnlyDictionary<string, object> DeserializeParameters(string json)
@@ -78,7 +81,7 @@ public static class JsonUtils
         return defaultValue;
     }
 
-    public static Dictionary<string, string> GetDictionary(this IReadOnlyDictionary<string, object> parameters, string key)
+    public static Dictionary<string, string>? GetDictionary(this IReadOnlyDictionary<string, object> parameters, string key)
     {
         var value = parameters.GetValue(key);
         if (value == null) return null;

@@ -15,7 +15,7 @@ using Microsoft.Build.Evaluation;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
 using Shared.Contracts;
-using Shared.Contracts.Mcp;
+using ToolCore;
 using Process = System.Diagnostics.Process;
 using Shell = Microsoft.VisualStudio.Shell;
 using Toolkit = Community.VisualStudio.Toolkit;
@@ -25,7 +25,8 @@ namespace InvAit.Agent;
 
 public class ToolExecutor : IDisposable
 {
-    private readonly McpProcessManager _mcpProcessManager = new();
+    private readonly McpProcessManager _mcpProcessManager = new(new VsLogger());
+    private readonly ProcessExecutor _processExecutor = new(new VsLogger());
     private readonly Dictionary<string, string> _skillPathByName = [];
 
     public async Task<VsResponse> ExecuteAsync(VsRequest vsRequest)
@@ -38,7 +39,7 @@ public class ToolExecutor : IDisposable
                 BuiltInToolEnum.ReadOpenFile => await ReadCurrentlyOpenFileAsync(),
                 BuiltInToolEnum.CreateFile => await CreateNewFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.DeleteFile => await DeleteFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BuiltInToolEnum.Exec => await ExecAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.Bash => await ExecAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.SearchFiles => await SearchFilesAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GrepSearch => await GrepSearchAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.Dir => await ListDirectoryAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
@@ -51,7 +52,6 @@ public class ToolExecutor : IDisposable
                 BuiltInToolEnum.GitStatus => await GitStatusAsync(),
                 BuiltInToolEnum.GitLog => await GitLogAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GitDiff => await GitDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BuiltInToolEnum.GitBranch => await GitBranchAsync(),
                 BasicEnum.OpenFile => await OpenFileInEditorAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BasicEnum.OpenFolder => await OpenFolderInExplorerAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BasicEnum.GetSkillsMetadata => await GetSkillsMetadataAsync(),
@@ -275,77 +275,17 @@ public class ToolExecutor : IDisposable
     private async Task<VsResponse> ExecAsync(IReadOnlyDictionary<string, object> args)
     {
         var param = args.GetString("param1");
-        var exe = param.Split(' ')[0];
-        var command = param.Remove(0, exe.Length).TrimStart();
-        var waitForCompletion = !args.ContainsKey("waitForCompletion") || args.GetBool("waitForCompletion");
 
         var solutionPath = await GetSolutionPathAsync();
 
-        if (exe is not ("cmd" or "powershell" or "dotnet" or "git"))
-        {
-            return new VsResponse
-            {
-                Success = false,
-                Error = $"{exe} is unsupported."
-            };
-        }
-
-        if (string.IsNullOrWhiteSpace(command))
-        {
-            return new VsResponse
-            {
-                Success = false,
-                Error = "Command should be not empty."
-            };
-        }
-
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = exe,
-            Arguments = exe is "powershell"
-                ? $"-Command \"{command}\""
-                : command,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = solutionPath
-        };
 
-        using var process = Process.Start(startInfo);
-        if (process == null)
-        {
-            return new VsResponse
-            {
-                Success = false,
-                Error = "Failed to start process"
-            };
-        }
-
-        if (waitForCompletion)
-        {
-            var outputTask = process.StandardOutput.ReadToEndAsync();
-            var errorTask = process.StandardError.ReadToEndAsync();
-            await Task.WhenAll(outputTask, errorTask);
-            await Task.Run(process.WaitForExit);
-
-            var error = await errorTask;
-            var output = await outputTask;
-            var isSuccess = string.IsNullOrEmpty(error);
-            return new VsResponse
-            {
-                Success = isSuccess,
-                Payload = isSuccess ? $"Command executed successfully: {output}" : $"Error: {error}",
-                Error = error
-            };
-        }
-
+        var result = await _processExecutor.ExecuteBashAsync(param, solutionPath, 120_000);
         return new VsResponse
         {
-            Payload = "Command started in background"
+            Success = result.Success,
+            Payload = result.Success ? $"Command executed successfully: {result.Output}" : $"Error: {result.Error}",
+            Error = result.Error
         };
     }
 
@@ -546,11 +486,9 @@ public class ToolExecutor : IDisposable
 
         replacements = [.. replacements.OrderByDescending(r => r.StartLine)];
 
-        var parser = new UniversalDiffParser();
-
         foreach (var rep in replacements)
         {
-            var actualStart = parser.FindInFile(lines, rep.Search, rep.StartLine, 5);
+            var actualStart = UniversalDiffParser.FindInFile(lines, rep.Search, rep.StartLine, 5);
             if (actualStart == -1)
             {
                 return new VsResponse
@@ -729,10 +667,10 @@ public class ToolExecutor : IDisposable
     /// Через TestExplorer можно запустить, но не узнать о завершении и прочитать ошибки тоже нельзя
     /// </summary>
     /// <returns></returns>
-    private async Task <VsResponse> RunTestsAsync()
+    private async Task<VsResponse> RunTestsAsync()
     {
         // Для начала запуск билда
-        var build = await BuildSolutionAsync(new Dictionary<string, object>() { { "param1", "build" } } );
+        var build = await BuildSolutionAsync(new Dictionary<string, object>() { { "param1", "build" } });
         if (!build.Success)
         {
             return build;
@@ -754,6 +692,9 @@ public class ToolExecutor : IDisposable
             CreateNoWindow = true,
             WorkingDirectory = solutionPath
         };
+
+        startInfo.EnvironmentVariables["TERM"] = "dumb"; // терминал тупой - отключает интерактивность
+        startInfo.EnvironmentVariables["NO_COLOR"] = "1";
 
         using var process = Process.Start(startInfo);
         if (process == null)
@@ -819,24 +760,28 @@ public class ToolExecutor : IDisposable
 
     private async Task<VsResponse> GitStatusAsync()
     {
-        return await ExecGitCommandAsync("status");
+        return await ExecAsync(new Dictionary<string, object>()
+        {
+            ["param1"] = "git status"
+        });
     }
 
     private async Task<VsResponse> GitLogAsync(IReadOnlyDictionary<string, object> args)
     {
-        var format = args.GetString("format") ?? "oneline";
-        return await ExecGitCommandAsync($"log --pretty={format}");
+        var limit = args.GetString("param1") ?? "20";
+        return await ExecAsync(new Dictionary<string, object>()
+        {
+            ["param1"] = $"git log -n {limit} --pretty=format:\"%h - %s | %ad\" --stat --date=short"
+        });
     }
 
     private async Task<VsResponse> GitDiffAsync(IReadOnlyDictionary<string, object> args)
     {
         var revisions = args.GetString("revisions");
-        return await ExecGitCommandAsync($"diff {revisions}");
-    }
-
-    private async Task<VsResponse> GitBranchAsync()
-    {
-        return await ExecGitCommandAsync("branch --show-current");
+        return await ExecAsync(new Dictionary<string, object>()
+        {
+            ["param1"] = $"git diff {revisions}"
+        });
     }
 
     private async Task<VsResponse> GetRulesAsync()
@@ -1385,7 +1330,7 @@ public class ToolExecutor : IDisposable
             _initializedServers.TryRemove(serverId, out _);
             var solutionPath = await GetSolutionPathAsync();
             var startResult = await _mcpProcessManager.StartProcessAsync(serverId, command, arguments ?? "", solutionPath, env);
-            
+
             if (!startResult.StartsWith("OK"))
             {
                 return startResult;
@@ -1447,7 +1392,8 @@ public class ToolExecutor : IDisposable
         {
             var requestId = Guid.NewGuid().ToString("N");
             var request = new McpRequest { Id = requestId, Method = "tools/list", Params = new { } };
-            return await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(request));
+            var result = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(request));
+            return new VsResponse { Success = result.Success, Payload = result.Payload, Error = result.Error };
         }
         catch (Exception ex)
         {
@@ -1497,7 +1443,8 @@ public class ToolExecutor : IDisposable
                 Params = new { name = toolName, arguments = toolArgs ?? new { } }
             };
 
-            return await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(request));
+            var result = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(request));
+            return new VsResponse { Success = result.Success, Payload = result.Payload, Error = result.Error };
         }
         catch (Exception ex)
         {

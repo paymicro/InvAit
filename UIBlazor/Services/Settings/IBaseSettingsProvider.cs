@@ -1,5 +1,3 @@
-using System.ComponentModel;
-
 namespace UIBlazor.Services.Settings;
 
 public interface IBaseSettingsProvider : IDisposable

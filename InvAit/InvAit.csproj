@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <MinimumVisualStudioVersion>18.0</MinimumVisualStudioVersion>
@@ -37,6 +37,7 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <CopyVsixExtensionFiles>False</CopyVsixExtensionFiles>
+    <DeployExtension>True</DeployExtension>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -49,9 +50,8 @@
   <ItemGroup>
     <Compile Include="Agent\SolutionSctructure.cs" />
     <Compile Include="Agent\ToolExecutor.cs" />
-    <Compile Include="Agent\McpProcessManager.cs" />
-    <Compile Include="Agent\UniversalDiffParser.cs" />
     <Compile Include="Agent\VsCodeContextPublisher.cs" />
+    <Compile Include="Agent\VsLogger.cs" />
     <Compile Include="Commands\ChatWindowCommand.cs" />
     <Compile Include="Utils\Logger.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
@@ -66,7 +66,6 @@
     </Compile>
     <Compile Include="ToolWindows\ChatToolWindow.cs" />
     <Compile Include="ToolWindows\ChatPane.cs" />
-    <Compile Include="Utils\JsonUtils.cs" />
     <Compile Include="VSCommandTable.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
@@ -122,6 +121,10 @@
     <ProjectReference Include="..\Shared\Shared.csproj">
       <Project>{ff91403a-28fa-4c7c-a5f7-3a3c92671570}</Project>
       <Name>Shared</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\ToolCore\ToolCore.csproj">
+      <Project>{ce5f7c3b-ffb6-4b0b-adba-d10a3b42798d}</Project>
+      <Name>ToolCore</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup />

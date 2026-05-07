@@ -63,6 +63,9 @@ dotnet_naming_symbols.method_symbols.required_modifiers         = async
 dotnet_naming_style.end_in_async_style.capitalization           = pascal_case
 dotnet_naming_style.end_in_async_style.required_suffix          = Async
 
+[*Tests.cs]
+dotnet_naming_style.end_in_async_style.required_suffix = 
+
 # Naming rules - private fields must start with an underscore
 dotnet_naming_rule.field_must_start_with_underscore.severity    = warning
 dotnet_naming_rule.field_must_start_with_underscore.symbols     = private_fields
