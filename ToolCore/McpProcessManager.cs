@@ -11,7 +11,7 @@ namespace ToolCore;
 /// Подумать над отдельным процессом-сервером. Который будет на asp .Net 10+ и уже в нем вся работа с MCP.
 /// Или уже полностью переходить на VS Extensibility.
 /// </summary>
-public class McpProcessManager : IDisposable
+public class McpProcessManager : IAsyncDisposable
 {
     private static readonly List<string> _copyEnvs = ["PATH", "APPDATA", "LOCALAPPDATA", "TEMP", "SystemRoot", "SystemDrive"];
     private readonly ConcurrentDictionary<string, Process> _processes = new();
@@ -534,19 +534,11 @@ public class McpProcessManager : IDisposable
         return _processes.Keys;
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         _cleanupCts?.Cancel();
         _cleanupCts?.Dispose();
-        var stopTask = StopAllProcessesAsync();
-        try
-        {
-            stopTask.Wait(TimeSpan.FromSeconds(5));
-        }
-        catch (Exception)
-        {
-            // игнорируем
-        }
+        await StopAllProcessesAsync();
     }
 
     /// <summary>

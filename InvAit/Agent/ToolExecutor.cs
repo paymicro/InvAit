@@ -16,6 +16,7 @@ using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
 using Shared.Contracts;
 using ToolCore;
+using IAsyncDisposable = Microsoft.VisualStudio.Threading.IAsyncDisposable;
 using Process = System.Diagnostics.Process;
 using Shell = Microsoft.VisualStudio.Shell;
 using Toolkit = Community.VisualStudio.Toolkit;
@@ -23,7 +24,7 @@ using VS = Community.VisualStudio.Toolkit.VS;
 
 namespace InvAit.Agent;
 
-public class ToolExecutor : IDisposable
+public class ToolExecutor : IAsyncDisposable
 {
     private readonly McpProcessManager _mcpProcessManager = new(new VsLogger());
     private readonly ProcessExecutor _processExecutor = new(new VsLogger());
@@ -1452,9 +1453,9 @@ public class ToolExecutor : IDisposable
         }
     }
 
-    public void Dispose()
+    public async Task DisposeAsync()
     {
-        _mcpProcessManager.Dispose();
+        await _mcpProcessManager.DisposeAsync();
     }
 
     private class SearchFileInfo

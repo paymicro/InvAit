@@ -269,6 +269,6 @@ public partial class ChatControl : IDisposable
 
     public void Dispose()
     {
-        _toolExecutor.Dispose();
+        _toolExecutor.DisposeAsync().FileAndForget("Dispose tool executor");
     }
 }
