@@ -39,7 +39,7 @@
         else
         {
             var lastMessage = Messages.LastOrDefault();
-            @foreach (var message in Messages)
+            foreach (var message in Messages)
             {
                 <ChatMessageView
                     @key="message.Id"

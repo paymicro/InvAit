@@ -135,23 +135,28 @@
 
     protected override bool ShouldRender()
     {
+        // Проверяем, изменилось ли состояние загрузки конкретно для последнего (или только что переставшего быть последним) сообщения
+        var isLoadingChangedForLast = (IsLast || _oldIsLast) && (_oldIsLoading != IsLoading);
+
         return Message.IsStreaming || _oldIsStreaming ||
                Message.IsRetrying || _oldRetryCountdown != Message.RetryCountdown ||
                Message.IsEditing || _oldIsEditing ||
-               IsLast || _oldIsLast != IsLast ||
-               IsLoading || _oldIsLoading != IsLoading ||
+               _oldIsLast != IsLast ||
+               isLoadingChangedForLast ||
                Message.IsExpanded != _oldIsExpanded ||
                Message.Content != _oldContent;
     }
 
-    protected override void OnParametersSet()
+    protected override void OnAfterRender(bool firstRender)
     {
-        _oldIsStreaming = Message.IsStreaming;
-        _oldIsEditing = Message.IsEditing;
-        _oldIsLast = IsLast;
+        // Фиксируем состояния ПОСЛЕ рендера, чтобы в следующем цикле ShouldRender сравнение работало корректно
         _oldIsLoading = IsLoading;
-        _oldIsExpanded = Message.IsExpanded;
+        _oldIsLast = IsLast;
+
+        _oldIsStreaming = Message.IsStreaming;
         _oldRetryCountdown = Message.RetryCountdown;
+        _oldIsEditing = Message.IsEditing;
+        _oldIsExpanded = Message.IsExpanded;
         _oldContent = Message.Content;
     }
 }
