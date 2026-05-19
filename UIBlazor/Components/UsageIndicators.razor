@@ -1,16 +1,19 @@
 <div class="usage-indicators">
-    <div class="usage-item" title="@SharedResource.Messages: @Messages.Count / @ProfileManager.ActiveProfile.MaxMessages">
-        <div class="usage-label">
-            <span>@SharedResource.Messages</span>
-            <span>@Messages.Count / @ProfileManager.ActiveProfile.MaxMessages</span>
+    @if (ProfileManager.ActiveProfile.TokensToCompress > 0)
+    {
+        <div class="usage-item" title="@SharedResource.CompressionTokenThreshold: @(ChatService.Session?.TotalTokens ?? 0) / @ProfileManager.ActiveProfile.TokensToCompress">
+            <div class="usage-label">
+                <span>@SharedResource.CompressionTokenThreshold</span>
+                <span>@(ChatService.Session?.TotalTokens ?? 0) / @ProfileManager.ActiveProfile.TokensToCompress</span>
+            </div>
+            <div class="usage-bar-container">
+                <div class="usage-bar" style="width: @(MessageProgress)%;"></div>
+            </div>
         </div>
-        <div class="usage-bar-container">
-            <div class="usage-bar" style="width: @(MessageProgress)%;"></div>
-        </div>
-    </div>
-    <div class="usage-item" title="@SharedResource.Tokens: @ChatService.Session?.TotalTokens / @ProfileManager.ActiveProfile.ContextWindow">
+    }
+    <div class="usage-item" title="@SharedResource.ContextWindow: @ChatService.Session?.TotalTokens / @ProfileManager.ActiveProfile.ContextWindow">
         <div class="usage-label">
-            <span>@SharedResource.Tokens</span>
+            <span>@SharedResource.ContextWindow</span>
             <span>@(ChatService.Session?.TotalTokens ?? 0) / @ProfileManager.ActiveProfile.ContextWindow</span>
         </div>
         <div class="usage-bar-container">
@@ -25,8 +28,8 @@
 
     [Parameter] public List<VisualChatMessage> Messages { get; set; } = [];
 
-    private int MessageProgress => ProfileManager.ActiveProfile.MaxMessages > 0
-        ? Math.Min(100, Messages.Count * 100 / ProfileManager.ActiveProfile.MaxMessages)
+    private int MessageProgress => ProfileManager.ActiveProfile.TokensToCompress > 0
+        ? Math.Min(100, ChatService.Session.TotalTokens * 100 / ProfileManager.ActiveProfile.TokensToCompress)
         : 0;
 
     private int TokenProgress => ProfileManager.ActiveProfile.ContextWindow > 0

@@ -28,6 +28,11 @@ public class ConnectionProfile : BaseOptions
     public int MaxTokens { get; set => SetIfChanged(ref field, value); } = 10_000;
 
     /// <summary>
+    /// Максимальное количество токенов для запуска компрессии
+    /// </summary>
+    public int TokensToCompress { get; set => SetIfChanged(ref field, value); } = 0;
+
+    /// <summary>
     /// Контекстное окно = все промпты + <see cref="MaxTokens"/>
     /// </summary>
     public int ContextWindow { get; set => SetIfChanged(ref field, value); } = 128_000;
@@ -37,8 +42,6 @@ public class ConnectionProfile : BaseOptions
     public bool SkipSSL { get; set => SetIfChanged(ref field, value); } = false;
 
     public string SystemPrompt { get; set => SetIfChanged(ref field, value); } = string.Empty;
-
-    public int MaxMessages { get; set => SetIfChanged(ref field, value); } = 50;
 
     private static string PrepareEndpoint(string endpoint)
     {

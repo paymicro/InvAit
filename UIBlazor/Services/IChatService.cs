@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using UIBlazor.Services.Models;
 
 namespace UIBlazor.Services;
@@ -19,6 +20,16 @@ public interface IChatService : IDisposable
     event PropertyChangedEventHandler? SessionChanged;
 
     Task<List<SessionSummary>> GetRecentSessionsAsync(int count);
+
+    /// <summary>
+    /// Сжатие контекста. Остается 2 сообщения + сжатое сообщение
+    /// </summary>
+    IAsyncEnumerable<ChatDelta> CompressSessionAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Нужно ли сжимать сессию
+    /// </summary>
+    bool NeedCompression { get; }
 
     Task LoadSessionAsync(string id);
 

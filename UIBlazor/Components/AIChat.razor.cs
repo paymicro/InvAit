@@ -6,6 +6,7 @@ using Microsoft.JSInterop;
 using Radzen;
 using UIBlazor.Services;
 using UIBlazor.Services.Settings;
+using static System.Collections.Specialized.BitVector32;
 using ConversationSession = UIBlazor.Models.ConversationSession;
 
 namespace UIBlazor.Components;
@@ -87,9 +88,81 @@ public partial class AiChat : RadzenComponent
         await GetAiResponseInternalAsync(0);
     }
 
+    private async Task CompressAsync()
+    {
+        var compessingMessage = new VisualChatMessage
+        {
+            Role = ChatMessageRole.Assistant,
+            IsStreaming = true,
+            IsExpanded = true,
+            Content = "### Compressing... ♻ \n\n"
+        };
+
+        ChatService.Session.AddMessage(compessingMessage);
+        MessageParser.UpdateSegments(compessingMessage.Content, compessingMessage);
+
+        await InvokeAsync(StateHasChanged);
+
+        var reasoning = new StringBuilder();
+        var response = new StringBuilder();
+
+        try
+        {
+            await foreach (var delta in ChatService.CompressSessionAsync(_cts.Token))
+            {
+                if (!string.IsNullOrEmpty(delta.ReasoningContent))
+                {
+                    reasoning.Append(delta.ReasoningContent);
+                    compessingMessage.ReasoningContent = reasoning.ToString();
+                }
+                if (!string.IsNullOrEmpty(delta.Content))
+                {
+                    response.Append(delta.Content);
+                    // обновляем сегменты в сообщении
+                    MessageParser.UpdateSegments(delta.Content, compessingMessage);
+                }
+
+                compessingMessage.Model ??= ChatService.LastCompletionsModel;
+
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) when (_cts.IsCancellationRequested)
+        {
+            compessingMessage.Content = "Cancelled by user...";
+            IsLoading = false;
+        }
+        catch (Exception ex)
+        {
+            compessingMessage.Content += $"\n\nError: {ex.Message}";
+        }
+        finally
+        {
+            compessingMessage = ChatService.Session.Messages.LastOrDefault(m => m.Role == ChatMessageRole.Assistant && m.Segments.Count == 0);
+            if (compessingMessage is not null)
+            {
+                compessingMessage.ReasoningContent = reasoning.ToString();
+                compessingMessage.Model ??= ChatService.LastCompletionsModel;
+                MessageParser.UpdateSegments(compessingMessage.Content, compessingMessage);
+                compessingMessage.IsStreaming = false;
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
     private async Task GetAiResponseInternalAsync(int retryCount)
     {
         IsLoading = true;
+
+        if (ChatService.NeedCompression)
+        {
+            await CompressAsync();
+            if (_cts.Token.IsCancellationRequested)
+            {
+                IsLoading = false;
+                return;
+            }
+        }
 
         // Add assistant message placeholder
         var assistantMessage = new VisualChatMessage
@@ -498,6 +571,11 @@ public partial class AiChat : RadzenComponent
     private async Task OnSaveEditAsync(VisualChatMessage message)
     {
         message.Content = message.TempContent;
+
+        // обновляем сегменты в сообщении
+        message.Segments.Clear();
+        MessageParser.UpdateSegments(message.Content, message);
+
         message.IsEditing = false;
 
         // Update display content if it's an assistant message with tools

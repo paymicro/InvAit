@@ -160,6 +160,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Compression token threshold.
+        /// </summary>
+        public static string CompressionTokenThreshold {
+            get {
+                return ResourceManager.GetString("CompressionTokenThreshold", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Are you sure?.
         /// </summary>
         public static string ConfirmQuestion {

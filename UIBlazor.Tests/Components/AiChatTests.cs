@@ -39,7 +39,7 @@ public class AiChatTests : BunitContext
         {
             Id = "test-profile-id",
             Name = "Test Profile",
-            MaxMessages = 50,
+            TokensToCompress = 50000,
             ContextWindow = 128000,
             Stream = true
         };

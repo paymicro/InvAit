@@ -36,7 +36,7 @@ public class ChatServiceTests
             MaxTokens = 1000,
             Stream = true,
             SystemPrompt = "Test system prompt",
-            MaxMessages = 50
+            TokensToCompress = 50000
         });
 
         // Default setup for session listing
@@ -75,33 +75,6 @@ public class ChatServiceTests
 
         // Assert
         Assert.Equal(_profileManagerMock.Object.ActiveProfile, options);
-    }
-
-    [Fact]
-    public async Task AddMessageAsync_AddsMessageToSession()
-    {
-        // Arrange
-        var chatService = CreateChatService();
-        await chatService.LoadLastSessionOrGenerateNewAsync();
-        var sessionId = chatService.Session.Id;
-        var message = new VisualChatMessage
-        {
-            Role = ChatMessageRole.User,
-            Content = "Hello"
-        };
-
-        // Act
-        await chatService.AddMessageAsync(message);
-
-        // Assert
-        Assert.Single(chatService.Session.Messages);
-        Assert.Equal(ChatMessageRole.User, chatService.Session.Messages[0].Role);
-        Assert.Equal("Hello", chatService.Session.Messages[0].Content);
-
-        _localStorageMock.Verify(ls => ls.SetItemAsync(sessionId, It.Is<ConversationSession>(s =>
-            s.Messages.Count == 1 &&
-            s.Messages[0].Role == ChatMessageRole.User &&
-            s.Messages[0].Content == "Hello")), Times.Once);
     }
 
     [Fact]

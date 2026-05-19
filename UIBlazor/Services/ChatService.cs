@@ -23,7 +23,8 @@ public class ChatService(
     private const string _models        = "/v1/models";
     private readonly JsonSerializerOptions _jsonSerializerOptions = new()
     {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
     public ConnectionProfile Options => profileManager.ActiveProfile;
@@ -93,10 +94,73 @@ public class ChatService(
                ?? throw new JsonException("Models deserialization exception");
     }
 
-    public async Task AddMessageAsync(VisualChatMessage message)
+    public bool NeedCompression => Options.TokensToCompress > 0 && Session.Messages.Count > 5 && Session.TotalTokens > Options.TokensToCompress;
+
+    public async IAsyncEnumerable<ChatDelta> CompressSessionAsync([EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        Session.AddMessage(message);
-        await SaveSessionAsync();
+        var (Messages, LastUserMessage) = Session.GetFormattedMessagesForCompress(await systemPromptBuilder.PrepareSystemPromptAsync(Session.Mode, cancellationToken));
+
+        // Получаем сжатый текст от LLM
+        var contentSb = new StringBuilder();
+        await foreach (var chatDelta in GetCompletionsAsync(Messages, cancellationToken))
+        {
+            if (chatDelta.Content is not null)
+            {
+                contentSb.Append(chatDelta.Content);
+            }
+            yield return chatDelta;
+        }
+
+        if (!cancellationToken.IsCancellationRequested)
+        {
+            // Создаем новый объект сообщения со сжатым контекстом
+            var compressedMessage = new VisualChatMessage()
+            {
+                Content = contentSb.ToString(),
+                Role = ChatMessageRole.Assistant,
+                IsExpanded = true,
+            };
+
+            int totalCount = Session.Messages.Count;
+            int windowSize = totalCount < 6 ? 2 : 3;
+
+            var topMessages = new List<VisualChatMessage>();
+            var bottomMessages = new List<VisualChatMessage>();
+
+            for (int i = 0; i < totalCount - 1; i++)
+            {
+                var msg = Session.Messages[i];
+
+                if (msg.Id == LastUserMessage?.Id)
+                    continue;
+
+                // Первые сообщения
+                if (i < windowSize)
+                {
+                    topMessages.Add(msg);
+                }
+
+                // Оставшиеся сообщения
+                else if (i >= totalCount - 1 - windowSize)
+                {
+                    bottomMessages.Add(msg);
+                }
+            }
+
+            var keptMessages = new List<VisualChatMessage>(topMessages.Count + bottomMessages.Count + 2);
+            keptMessages.AddRange(topMessages);
+            keptMessages.AddRange(bottomMessages);
+            keptMessages.Add(compressedMessage);
+
+            // Восстанавливаем сообщение пользователя после компрессии
+            if (LastUserMessage is not null)
+            {
+                keptMessages.Add(LastUserMessage);
+            }
+
+            // Перезаписываем историю
+            Session.Messages = keptMessages;
+        }
     }
 
     /// <summary>
@@ -150,22 +214,7 @@ public class ChatService(
 
     public string? FinishReason { get; private set; }
 
-    /// <summary>
-    /// Asynchronously generates a sequence of chat completion deltas for the current conversation session.
-    /// </summary>
-    /// <remarks>
-    /// This method streams chat completion results as they become available, allowing for real-time
-    /// processing of partial responses. The returned sequence may include reasoning content or message content
-    /// depending on the model and response format. If streaming is not enabled, the method yields a single completion
-    /// result.
-    /// </remarks>
-    /// <param name="cancellationToken">A cancellation token that can be used to cancel the asynchronous operation.</param>
-    /// <returns>
-    /// An asynchronous stream of <see cref="ChatDelta"/> objects representing incremental updates to the chat
-    /// completion. The stream completes when the response is fully received.
-    /// </returns>
-    /// <exception cref="Exception">Thrown if the chat completion request fails or the server returns an unsuccessful response.</exception>
-    public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync([EnumeratorCancellation] CancellationToken cancellationToken)
+    private async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(IEnumerable<object> messages, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         LastCompletionsModel = null;
         LastUsage = null;
@@ -176,15 +225,12 @@ public class ChatService(
         var url = $"{Options.Endpoint}{_complitions}";
         var effectiveApiKeyHeader = Options.ApiKeyHeader;
 
-        // Get formatted messages including conversation history
-        var messages = Session.GetFormattedMessages(await systemPromptBuilder.PrepareSystemPromptAsync(Session.Mode, cancellationToken)) ?? [];
-
         var payload = new
         {
             model = Options.Model,
             messages = messages,
             temperature = Options.Temperature,
-            max_tokens = Options.MaxTokens,
+            max_tokens = Options.MaxTokens >= 1000 ? Options.MaxTokens : -1,
             stream = Options.Stream,
             stream_options = Options.Stream ? new { include_usage = true } : null
         };
@@ -390,6 +436,32 @@ public class ChatService(
         }
     }
 
+    /// <summary>
+    /// Asynchronously generates a sequence of chat completion deltas for the current conversation session.
+    /// </summary>
+    /// <remarks>
+    /// This method streams chat completion results as they become available, allowing for real-time
+    /// processing of partial responses. The returned sequence may include reasoning content or message content
+    /// depending on the model and response format. If streaming is not enabled, the method yields a single completion
+    /// result.
+    /// </remarks>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the asynchronous operation.</param>
+    /// <returns>
+    /// An asynchronous stream of <see cref="ChatDelta"/> objects representing incremental updates to the chat
+    /// completion. The stream completes when the response is fully received.
+    /// </returns>
+    /// <exception cref="Exception">Thrown if the chat completion request fails or the server returns an unsuccessful response.</exception>
+    public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync([EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        // Get formatted messages including conversation history
+        var messages = Session.GetFormattedMessages(await systemPromptBuilder.PrepareSystemPromptAsync(Session.Mode, cancellationToken)) ?? [];
+        
+        await foreach (var chatDelta in GetCompletionsAsync(messages, cancellationToken))
+        {
+            yield return chatDelta;
+        }
+    }
+
     private const int _maxSessions = 5;
     private List<SessionSummary>? _recentSessionsCache;
 
@@ -437,7 +509,6 @@ public class ChatService(
         }
 
         Session = CreateNewSession();
-        Session.MaxMessages = Options.MaxMessages;
 
         await CleanupOldSessionsAsync();
     }
@@ -461,7 +532,6 @@ public class ChatService(
         if (session != null)
         {
             session.Id = id;
-            session.MaxMessages = Options.MaxMessages;
             Session = session;
         }
     }
@@ -471,7 +541,6 @@ public class ChatService(
         if (Session?.Id == id)
         {
             Session = CreateNewSession();
-            Session.MaxMessages = Options.MaxMessages;
         }
         await localStorage.RemoveItemAsync(id);
 
@@ -509,7 +578,6 @@ public class ChatService(
         {
             Session = CreateNewSession();
         }
-        Session.MaxMessages = Options.MaxMessages;
     }
 
     public void Dispose()
