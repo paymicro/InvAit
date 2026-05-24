@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using Microsoft.JSInterop;
-using UIBlazor.Services;
 using UIBlazor.Services.Settings;
 
 namespace UIBlazor.VS;
@@ -57,7 +56,6 @@ public class VsBridge : IVsBridge, IDisposable
     {
         return new VsToolResult
         {
-            Args = vsRequest.Payload ?? string.Empty,
             ErrorMessage = vsResponse.Error ?? string.Empty,
             Name = vsRequest.Action,
             Result = vsResponse.Payload ?? vsResponse.Error ?? string.Empty,
@@ -82,7 +80,7 @@ public class VsBridge : IVsBridge, IDisposable
                 return new VsResponse
                 {
                     Success = false,
-                    Error = $"WebView2 API is`t find."
+                    Error = $"WebView2 API not found."
                 };
             }
 
@@ -91,8 +89,9 @@ public class VsBridge : IVsBridge, IDisposable
             // Дебаг не быстрый)
             timeOut = TimeSpan.FromDays(1);
 #endif
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(timeOut);
+            cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
+
+            using var timeoutCts = new CancellationTokenSource(timeOut);
             timeoutCts.Token.Register(() =>
                 tcs.TrySetException(new TimeoutException("Request timed out")));
 
@@ -159,11 +158,11 @@ public class VsBridge : IVsBridge, IDisposable
             {
                 if (response.Success)
                 {
-                    tcs.SetResult(response);
+                    tcs.TrySetResult(response);
                 }
                 else
                 {
-                    tcs.SetException(new Exception(response.Error ?? "Request failed"));
+                    tcs.TrySetException(new Exception(response.Error ?? "Request failed"));
                 }
             }
             else

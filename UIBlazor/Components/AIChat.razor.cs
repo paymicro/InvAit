@@ -1,69 +1,52 @@
-using System.Collections.Concurrent;
 using System.ComponentModel;
-using System.Diagnostics;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Radzen;
-using UIBlazor.Services;
-using UIBlazor.Services.Settings;
-using static System.Collections.Specialized.BitVector32;
 using ConversationSession = UIBlazor.Models.ConversationSession;
 
 namespace UIBlazor.Components;
 
 public partial class AiChat : RadzenComponent
 {
+    private static readonly Regex PlanRegex = new(
+        @"<plan>(?<plan>.*?)</plan>",
+        RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.NonBacktracking,
+        TimeSpan.FromMilliseconds(200));
+
     private List<VisualChatMessage> Messages => ChatService.Session.Messages;
 
     private bool IsLoading { get; set; }
 
     private DotNetObjectReference<AiChat>? _dotNetRef;
 
-    private readonly ConcurrentDictionary<string, TaskCompletionSource<ToolApprovalStatus>> _approvalWaiters = [];
-
     private CancellationTokenSource _cts = new();
 
     private bool _callSettings;
 
     [Inject] private NotificationService NotificationService { get; set; } = null!;
-
     [Inject] private DialogService DialogService { get; set; } = null!;
-
-    [Inject] IChatService ChatService { get; set; } = null!;
-
+    [Inject] private IChatService ChatService { get; set; } = null!;
     [Inject] private IToolManager ToolManager { get; set; } = null!;
-
     [Inject] private IProfileManager ProfileManager { get; set; } = null!;
-
     [Inject] private ICommonSettingsProvider CommonSettingsProvider { get; set; } = null!;
-
     [Inject] private IVsBridge VsBridge { get; set; } = null!;
-
     [Inject] private IJSRuntime JsRuntime { get; set; } = null!;
-
     [Inject] private IMessageParser MessageParser { get; set; } = null!;
-
     [Inject] private ILogger<AiChat> Logger { get; set; } = null!;
+    [Inject] private IRetryHandler RetryHandler { get; set; } = null!;
+    [Inject] private IToolCallHandler ToolCallHandler { get; set; } = null!;
 
-    /// <summary>
-    /// Starts a new session.
-    /// </summary>
     public async Task NewSessionAsync()
     {
         await ChatService.NewSessionAsync();
         await InvokeAsync(StateHasChanged);
     }
 
-    /// <summary>
-    /// Sends a message programmatically.
-    /// </summary>
-    /// <param name="content">The message content to send.</param>
     public async Task SendMessageAsync(string content)
     {
         if (string.IsNullOrWhiteSpace(content) || IsLoading)
             return;
 
-        // Add user message
         var userMessage = new VisualChatMessage
         {
             Content = content,
@@ -72,245 +55,116 @@ public partial class AiChat : RadzenComponent
         };
 
         ChatService.Session.AddMessage(userMessage);
+        await ScrollToBottomAsync();
+        await GetAiResponseAsync();
+    }
 
-        // скролл вниз
+    private async Task ScrollToBottomAsync()
+    {
         await Task.Yield();
         await JsRuntime.InvokeVoidAsync("scrollToAnchor");
-
-        // Get AI response
-        await GetAiResponseAsync();
     }
 
     private async Task GetAiResponseAsync()
     {
-        await _cts.CancelAsync();
+        await CancelResponseAsync();
         _cts = new CancellationTokenSource();
-        await GetAiResponseInternalAsync(0);
+        await GetAiResponseInternalAsync(0, _cts.Token);
     }
 
-    private async Task CompressAsync()
+    /// <summary>
+    /// Сжатие сессии. Полностью прозрачный для пользователя процесс.
+    /// Выглядит как еще один промежуточный запрос и реорганизация сообщений.
+    /// </summary>
+    /// <param name="retryCount">Количество повторов</param>
+    /// <returns>Сжалась ли сессия. False если завершилось ошибкой</returns>
+    private async Task<bool> CompressAsync(int retryCount, CancellationToken cancellationToken)
     {
-        var compessingMessage = new VisualChatMessage
-        {
-            Role = ChatMessageRole.Assistant,
-            IsStreaming = true,
-            IsExpanded = true,
-            Content = "### Compressing... ♻ \n\n"
-        };
-
-        ChatService.Session.AddMessage(compessingMessage);
-        MessageParser.UpdateSegments(compessingMessage.Content, compessingMessage);
-
+        var assistantMessage = CreateStreamingMessage("## ♻ \n\n");
+        MessageParser.UpdateSegments(assistantMessage.Content, assistantMessage);
+        ChatService.Session.AddMessage(assistantMessage);
         await InvokeAsync(StateHasChanged);
 
-        var reasoning = new StringBuilder();
-        var response = new StringBuilder();
+        var result = false;
 
         try
         {
-            await foreach (var delta in ChatService.CompressSessionAsync(_cts.Token))
-            {
-                if (!string.IsNullOrEmpty(delta.ReasoningContent))
-                {
-                    reasoning.Append(delta.ReasoningContent);
-                    compessingMessage.ReasoningContent = reasoning.ToString();
-                }
-                if (!string.IsNullOrEmpty(delta.Content))
-                {
-                    response.Append(delta.Content);
-                    // обновляем сегменты в сообщении
-                    MessageParser.UpdateSegments(delta.Content, compessingMessage);
-                }
-
-                compessingMessage.Model ??= ChatService.LastCompletionsModel;
-
-                await InvokeAsync(StateHasChanged);
-            }
+            await ChatService.ProcessStreamAsync(
+                 assistantMessage,
+                 ChatService.CompressSessionAsync(cancellationToken),
+                 onContentUpdate: content => MessageParser.UpdateSegments(content, assistantMessage),
+                 onStateChange: () =>
+                 {
+                     assistantMessage.Model ??= ChatService.LastCompletionsModel;
+                     InvokeAsync(StateHasChanged);
+                 },
+                 cancellationToken);
+            result = true;
         }
-        catch (OperationCanceledException) when (_cts.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            compessingMessage.Content = "Cancelled by user...";
-            IsLoading = false;
+            HandleCancellation(assistantMessage);
         }
         catch (Exception ex)
         {
-            compessingMessage.Content += $"\n\nError: {ex.Message}";
+            await HandleErrorAsync(assistantMessage, ex, ++retryCount,
+                async () =>
+                {
+                    result = await CompressAsync(retryCount, cancellationToken);
+                },
+                cancellationToken);
         }
         finally
         {
-            compessingMessage = ChatService.Session.Messages.LastOrDefault(m => m.Role == ChatMessageRole.Assistant && m.Segments.Count == 0);
-            if (compessingMessage is not null)
-            {
-                compessingMessage.ReasoningContent = reasoning.ToString();
-                compessingMessage.Model ??= ChatService.LastCompletionsModel;
-                MessageParser.UpdateSegments(compessingMessage.Content, compessingMessage);
-                compessingMessage.IsStreaming = false;
-            }
+            assistantMessage.IsStreaming = false;
             await InvokeAsync(StateHasChanged);
         }
+
+        return result;
     }
 
-    private async Task GetAiResponseInternalAsync(int retryCount)
+    private async Task GetAiResponseInternalAsync(int retryCount, CancellationToken cancellationToken)
     {
         IsLoading = true;
 
         if (ChatService.NeedCompression)
         {
-            await CompressAsync();
-            if (_cts.Token.IsCancellationRequested)
+            var result = await CompressAsync(0, cancellationToken);
+            if (!result || cancellationToken.IsCancellationRequested)
             {
                 IsLoading = false;
                 return;
             }
         }
 
-        // Add assistant message placeholder
-        var assistantMessage = new VisualChatMessage
-        {
-            Role = ChatMessageRole.Assistant,
-            IsStreaming = true,
-            IsExpanded = true
-        };
-
+        var assistantMessage = CreateStreamingMessage();
         ChatService.Session.AddMessage(assistantMessage);
         await ChatService.SaveSessionAsync();
         await InvokeAsync(StateHasChanged);
 
         try
         {
-            var sw = Stopwatch.StartNew();
-            var reasoning = new StringBuilder();
-            var response = new StringBuilder();
-            var firstToken = 0L;
-            var firstContentToken = 0L;
-            var endTokens = 0L;
-
-            await foreach (var delta in ChatService.GetCompletionsAsync(_cts.Token))
-            {
-                if (firstToken == 0)
+            await ChatService.ProcessStreamAsync(
+                assistantMessage,
+                ChatService.GetCompletionsAsync(cancellationToken),
+                onContentUpdate: content => MessageParser.UpdateSegments(content, assistantMessage),
+                onStateChange: () =>
                 {
-                    firstToken = sw.ElapsedMilliseconds;
-                }
-                if (!string.IsNullOrEmpty(delta.ReasoningContent))
-                {
-                    reasoning.Append(delta.ReasoningContent);
-                    assistantMessage.ReasoningContent = reasoning.ToString();
-                }
-                if (!string.IsNullOrEmpty(delta.Content))
-                {
-                    if (firstContentToken == 0)
-                    {
-                        firstContentToken = sw.ElapsedMilliseconds;
-                    }
-                    response.Append(delta.Content);
-                    // обновляем сегменты в сообщении
-                    MessageParser.UpdateSegments(delta.Content, assistantMessage);
-                }
-
-                assistantMessage.Model ??= ChatService.LastCompletionsModel;
-
-                await InvokeAsync(StateHasChanged);
-            }
-
-            endTokens = sw.ElapsedMilliseconds;
-            var correctedFirstToken = ProfileManager.ActiveProfile.Stream
-                ? firstToken
-                : Math.Min(500, endTokens - 500);
-            var secForTokens = (endTokens - correctedFirstToken) / 1000f;
-            sw.Stop();
-
-            assistantMessage.Content = response.ToString();
-            assistantMessage.IsStreaming = false;
-            assistantMessage.Timings = new MessageTimings
-            {
-                FirstToken = TimeSpan.FromMilliseconds(firstToken),
-                Reasoning = !string.IsNullOrEmpty(assistantMessage.ReasoningContent)
-                    ? TimeSpan.FromMilliseconds(firstContentToken - firstToken)
-                    : TimeSpan.Zero,
-                Content = TimeSpan.FromMilliseconds(endTokens - firstContentToken),
-                Total = TimeSpan.FromMilliseconds(endTokens),
-                TokensInSec = ChatService.LastUsage != null && secForTokens > 0
-                    ? ChatService.LastUsage.CompletionTokens / secForTokens
-                    : 0f
-            };
-
-            if (ChatService.FinishReason?.Equals("length", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = NotificationSeverity.Error,
-                    Summary = SharedResource.ErrorFinishByLength,
-                    Detail = string.Empty,
-                    Duration = 30_000,
-                    ShowProgress = true,
-                });
-            }
-
-            if (!string.IsNullOrEmpty(ChatService.LastError))
-            {
-                NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = NotificationSeverity.Error,
-                    Summary = ChatService.LastError,
-                    Detail = string.Empty,
-                    Duration = 30_000,
-                    ShowProgress = true,
-                });
-            }
-
-            ParsePlan(assistantMessage);
-
-            await ChatService.SaveSessionAsync();
-
-            // TODO: надо подумать что делать, если прервался на незакрытом тулзе...
-            // Думаю нужно выдавать ошибку модели
-            await HandleToolCallAsync(assistantMessage, [.. assistantMessage.Segments.Where(s => s.Type == SegmentType.Tool && s.IsClosed)]);
+                    assistantMessage.Model ??= ChatService.LastCompletionsModel;
+                    InvokeAsync(StateHasChanged);
+                },
+                cancellationToken);
+            await HandleStreamCompletionAsync(assistantMessage, cancellationToken);
         }
-        catch (OperationCanceledException) when (_cts.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            // если вручную отменили, тогда не включать повторы
-            if (string.IsNullOrEmpty(assistantMessage.Content))
-            {
-                assistantMessage.Content = "Cancelled by user...";
-                MessageParser.UpdateSegments(assistantMessage.Content, assistantMessage);
-            }
+            HandleCancellation(assistantMessage);
         }
         catch (Exception ex)
         {
-            var maxRetries = CommonSettingsProvider.Current.MaxRetries;
-            assistantMessage.Content = $"Error: {ex.Message} [{retryCount}/{maxRetries}]";
-            // обновляем сегменты в сообщении
-            MessageParser.UpdateSegments(assistantMessage.Content, assistantMessage);
-            Logger.LogError(ex, "Getting response error");
-
-            if (retryCount < maxRetries)
-            {
-                retryCount++;
-                var delay = GetRetryDelay(retryCount);
-
-                assistantMessage.MaxRetryAttempts = maxRetries;
-                assistantMessage.RetryAttempt = retryCount;
-
-                try
-                {
-                    for (var i = delay; i > 0; i--)
-                    {
-                        assistantMessage.RetryCountdown = i;
-                        await InvokeAsync(StateHasChanged);
-                        await Task.Delay(1000, _cts.Token);
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    assistantMessage.RetryCountdown = 0;
-                    return;
-                }
-
-                assistantMessage.RetryCountdown = 0;
-                ChatService.Session.RemoveMessage(assistantMessage.Id);
-                IsLoading = false;
-                await GetAiResponseInternalAsync(retryCount);
-            }
+            await HandleErrorAsync(assistantMessage, ex, ++retryCount,
+                async () => await GetAiResponseInternalAsync(retryCount, cancellationToken),
+                cancellationToken);
         }
         finally
         {
@@ -320,28 +174,131 @@ public partial class AiChat : RadzenComponent
         }
     }
 
-    private static int GetRetryDelay(int attempt)
+    private async Task HandleStreamCompletionAsync(VisualChatMessage message, CancellationToken cancellationToken)
     {
-        return attempt switch
+        NotifyIfNeeded();
+        ParsePlan(message);
+        await ChatService.SaveSessionAsync();
+
+        var toolSegments = message.Segments
+            .Where(s => s.Type == SegmentType.Tool && s.IsClosed)
+            .ToList();
+
+        if (toolSegments.Count > 0)
         {
-            1 => 2,
-            2 => 5,
-            3 => 10,
-            _ => 20
-        };
+            await ToolCallHandler.ProcessToolCallsAsync(message, toolSegments, cancellationToken);
+            await ChatService.SaveSessionAsync();
+            await InvokeAsync(StateHasChanged);
+
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                await GetAiResponseAsync();
+            }
+        }
     }
+
+    private void NotifyIfNeeded()
+    {
+        if (ChatService.FinishReason?.Equals("length", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = SharedResource.ErrorFinishByLength,
+                Detail = string.Empty,
+                Duration = 30_000,
+                ShowProgress = true,
+            });
+        }
+
+        if (!string.IsNullOrEmpty(ChatService.LastError))
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = ChatService.LastError,
+                Detail = string.Empty,
+                Duration = 30_000,
+                ShowProgress = true,
+            });
+        }
+    }
+
+    private void HandleCancellation(VisualChatMessage message)
+    {
+        if (string.IsNullOrEmpty(message.Content))
+        {
+            message.Content = "Cancelled by user...";
+            MessageParser.UpdateSegments(message.Content, message);
+        }
+    }
+
+    private async Task HandleErrorAsync(VisualChatMessage message, Exception ex,
+        int retryCount, Func<Task> retryAction, CancellationToken cancellationToken)
+    {
+        var maxRetries = CommonSettingsProvider.Current.MaxRetries;
+        message.Content = $"Error: {ex.Message} [{retryCount}/{maxRetries}]";
+        MessageParser.UpdateSegments(message.Content, message);
+        Logger.LogError(ex, "Getting response error");
+
+        NotificationService.Notify(new NotificationMessage
+        {
+            Severity = NotificationSeverity.Error,
+            Summary = $"[{retryCount}/{maxRetries}] Response error",
+            Detail = ex.Message,
+            Duration = 30_000,
+            ShowProgress = true,
+        });
+
+        if (retryCount >= maxRetries)
+        {
+            return;
+        }
+
+        var delay = RetryHandler.GetRetryDelay(retryCount);
+
+        message.MaxRetryAttempts = maxRetries;
+        message.RetryAttempt = retryCount;
+
+        try
+        {
+            await RetryHandler.WaitForRetryAsync(delay, i =>
+            {
+                message.RetryCountdown = i;
+                InvokeAsync(StateHasChanged);
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        finally
+        {
+            message.RetryCountdown = 0;
+        }
+        
+        ChatService.Session.RemoveMessage(message.Id);
+        await retryAction.Invoke();
+    }
+
+    private static VisualChatMessage CreateStreamingMessage(string initialContent = "") => new()
+    {
+        Role = ChatMessageRole.Assistant,
+        IsStreaming = true,
+        IsExpanded = true,
+        Content = initialContent
+    };
 
     private static void ParsePlan(VisualChatMessage message)
     {
         if (string.IsNullOrEmpty(message.Content)) return;
 
-        var planRegex = new Regex(@"<plan>(?<plan>.*?)</plan>", RegexOptions.Singleline | RegexOptions.IgnoreCase);
-        var match = planRegex.Match(message.Content);
+        var match = PlanRegex.Match(message.Content);
         if (match.Success)
         {
             message.PlanContent = match.Groups["plan"].Value.Trim();
-            // Remove the plan block from display content to avoid double showing
-            message.DisplayContent = planRegex.Replace(message.DisplayContent ?? message.Content, string.Empty).Trim();
+            message.DisplayContent = PlanRegex.Replace(message.DisplayContent ?? message.Content, string.Empty).Trim();
+
             if (string.IsNullOrEmpty(message.DisplayContent))
             {
                 message.DisplayContent = "Proposed Plan:";
@@ -353,134 +310,13 @@ public partial class AiChat : RadzenComponent
     {
         if (!message.HasPlan) return;
 
-        // Switch mode to Agent
         ChatService.Session.Mode = AppMode.Agent;
-
-        // Send confirmation message to start implementation
         await SendMessageAsync("Implement the plan.");
     }
 
-    private async Task HandleToolApprovalAsync((string MessageId, string SegmentId, bool Approved) args)
+    private Task HandleToolApprovalAsync((string MessageId, string SegmentId, bool Approved) args)
     {
-        // оно всегда должно быть, потому что мы блокируем UI,
-        // пока не придет ответ от модели, и юзер не может кликнуть раньше времени. Но на всякий случай проверим.
-        var message = Messages.FirstOrDefault(m => m.Id == args.MessageId);
-        if (message != null)
-        {
-            var status = args.Approved ? ToolApprovalStatus.Approved : ToolApprovalStatus.Rejected;
-            message.Segments.FirstOrDefault(s => s.Id == args.SegmentId)?.ApprovalStatus = status;
-            await InvokeAsync(StateHasChanged);
-
-            if (_approvalWaiters.TryRemove($"{args.MessageId}_{args.SegmentId}", out var tcs))
-            {
-                tcs.SetResult(status);
-            }
-        }
-    }
-
-    private async Task<VsToolResult> CallToolAsync(Tool tool, ContentSegment segment)
-    {
-        if (segment.ApprovalStatus != ToolApprovalStatus.Approved)
-        {
-            return new VsToolResult
-            {
-                Name = segment.ToolName,
-                Success = false,
-                ErrorMessage = "Execution was denied by user."
-            };
-        }
-
-        if (segment.ToolName.StartsWith("mcp__"))
-        {
-            // для MCP десериализуем параметры
-            var args = JsonUtils.DeserializeParameters(string.Join('\n', segment.ToolParams.Values))
-                .Where(x => x.Value is not null).ToDictionary(); // удаляем null-ы
-            return await tool.ExecuteAsync(args, _cts.Token);
-        }
-
-        return await tool.ExecuteAsync(segment.ToolParams, _cts.Token);
-    }
-
-    private async Task HandleToolCallAsync(VisualChatMessage assistantMessage, List<ContentSegment> toolsSegments)
-    {
-        if (toolsSegments.Count == 0)
-        {
-            return;
-        }
-
-        _approvalWaiters.Clear();
-
-        foreach (var segment in toolsSegments)
-        {
-            if (_cts.Token.IsCancellationRequested)
-            {
-                return;
-            }
-
-            var tool = ToolManager.GetTool(segment.ToolName);
-
-            VsToolResult vsToolResult;
-            if (tool == null)
-            {
-                vsToolResult = new VsToolResult
-                {
-                    Name = segment.ToolName,
-                    Success = false,
-                    ErrorMessage = "Tool not found."
-                };
-            }
-            else
-            {
-                // Спрашиваем разрешение если нужно
-                if (segment.ApprovalStatus == ToolApprovalStatus.Pending)
-                {
-                    var tcs = new TaskCompletionSource<ToolApprovalStatus>();
-                    var waiterKey = $"{assistantMessage.Id}_{segment.Id}";
-                    _approvalWaiters[waiterKey] = tcs;
-
-                    try
-                    {
-                        // Ждем аппрува от пользователя или отмены всего стрима
-                        segment.ApprovalStatus = await tcs.Task.WaitAsync(_cts.Token);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        _approvalWaiters.Clear();
-                        return;
-                    }
-                    finally
-                    {
-                        _approvalWaiters.TryRemove(waiterKey, out _);
-                    }
-                }
-
-                if (_cts.Token.IsCancellationRequested)
-                {
-                    return;
-                }
-
-                // Уже должен быть известен статус тулза - или разрешен, или запрещен.
-                vsToolResult = await CallToolAsync(tool, segment);
-            }
-#if DEBUG
-            // Безголовые (без Visual Studio) тесты
-            vsToolResult = HeadlessMocker.GetVsToolResult(vsToolResult);
-            Logger.LogTrace("{request} >>>>>> {result}", JsonUtils.Serialize(tool), JsonUtils.Serialize(vsToolResult));
-#endif
-            // вложенные тулзы — часть сообщения ассистента
-            assistantMessage.ToolResults.Add(ToolResult.Convert(vsToolResult, tool.DisplayName, tool.Name));
-
-            await InvokeAsync(StateHasChanged);
-        }
-
-        await ChatService.SaveSessionAsync();
-
-        if (_cts.Token.IsCancellationRequested)
-        {
-            return;
-        }
-
-        await GetAiResponseAsync();
+        return ToolCallHandler.HandleApprovalAsync(args.SegmentId, args.Approved);
     }
 
     private void LoadMessagesFromSession()
@@ -495,10 +331,11 @@ public partial class AiChat : RadzenComponent
             chatMessage.IsExpanded = IsShortMessage(chatMessage.DisplayContent ?? chatMessage.Content);
             MessageParser.UpdateSegments(chatMessage.Content, chatMessage, isHistory: true);
 
-            // восстанавливаем ToolDisplayName для вложенных тулзов
             foreach (var toolMsg in chatMessage.ToolResults)
             {
-                toolMsg.DisplayName = ToolResult.GetDisplayName(toolMsg.Success, ToolManager.GetTool(toolMsg.Name)?.DisplayName ?? toolMsg.Name);
+                toolMsg.DisplayName = ToolResult.GetDisplayName(
+                    toolMsg.Success,
+                    ToolManager.GetTool(toolMsg.Name)?.DisplayName ?? toolMsg.Name);
             }
         }
 
@@ -513,12 +350,11 @@ public partial class AiChat : RadzenComponent
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
-        _dotNetRef = DotNetObjectReference.Create(this);
 
+        _dotNetRef = DotNetObjectReference.Create(this);
         ChatService.SessionChanged += HandleSessionChanged;
 
         ToolManager.RegisterAllTools();
-
         await VsBridge.InitializeAsync();
         await InvokeAsync(StateHasChanged);
     }
@@ -550,7 +386,7 @@ public partial class AiChat : RadzenComponent
             {
                 Severity = NotificationSeverity.Info,
                 Summary = "Profile Changed",
-                Detail = $"Active profile updated.",
+                Detail = "Active profile updated.",
                 Duration = 1000
             });
         }
@@ -571,14 +407,10 @@ public partial class AiChat : RadzenComponent
     private async Task OnSaveEditAsync(VisualChatMessage message)
     {
         message.Content = message.TempContent;
-
-        // обновляем сегменты в сообщении
         message.Segments.Clear();
         MessageParser.UpdateSegments(message.Content, message);
-
         message.IsEditing = false;
 
-        // Update display content if it's an assistant message with tools
         ParsePlan(message);
 
         ChatService.Session.UpdateMessage(message.Id, message.Content);
@@ -605,13 +437,11 @@ public partial class AiChat : RadzenComponent
 
     private async Task OnShowSettingsAsync()
     {
-        _callSettings = true;
-
-        StateHasChanged();
-
+        _callSettings = true; // для отрисовки анимации кнопки IsBusy
+        await InvokeAsync(StateHasChanged);
         await Task.Yield();
 
-        await DialogService.OpenSideAsync<SettingsDialog>(@SharedResource.Settings,
+        await DialogService.OpenSideAsync<SettingsDialog>(SharedResource.Settings,
             options: new SideDialogOptions
             {
                 CloseDialogOnOverlayClick = true,
@@ -620,10 +450,10 @@ public partial class AiChat : RadzenComponent
                 MinHeight = 250.0,
                 MinWidth = 400.0
             });
+
         _callSettings = false;
     }
 
-    /// <inheritdoc />
     public override void Dispose()
     {
         base.Dispose();

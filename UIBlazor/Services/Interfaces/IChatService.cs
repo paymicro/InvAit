@@ -1,8 +1,6 @@
 using System.ComponentModel;
-using System.Runtime.CompilerServices;
-using UIBlazor.Services.Models;
 
-namespace UIBlazor.Services;
+namespace UIBlazor.Services.Interfaces;
 
 public interface IChatService : IDisposable
 {
@@ -20,11 +18,6 @@ public interface IChatService : IDisposable
     event PropertyChangedEventHandler? SessionChanged;
 
     Task<List<SessionSummary>> GetRecentSessionsAsync(int count);
-
-    /// <summary>
-    /// Сжатие контекста. Остается 2 сообщения + сжатое сообщение
-    /// </summary>
-    IAsyncEnumerable<ChatDelta> CompressSessionAsync(CancellationToken cancellationToken);
 
     /// <summary>
     /// Нужно ли сжимать сессию
@@ -47,6 +40,14 @@ public interface IChatService : IDisposable
 
     public UsageInfo? LastUsage { get; }
 
+    /// <summary>
+    /// Сжатие контекста. Остается 2 сообщения + сжатое сообщение
+    /// </summary>
+    IAsyncEnumerable<ChatDelta> CompressSessionAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Получение стандартного ответа
+    /// </summary>
     IAsyncEnumerable<ChatDelta> GetCompletionsAsync(CancellationToken cancellationToken);
 
     /// <summary>
@@ -56,4 +57,19 @@ public interface IChatService : IDisposable
     /// <exception cref="HttpRequestException"></exception>
     /// <exception cref="JsonException"></exception>
     Task<AiModelList> GetModelsAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Обертка над стримингом <seealso cref="ChatDelta"/>.
+    /// Вызывает события по обновлению контента и считает токены.
+    /// </summary>
+    /// <param name="message">Сообщение с которым работаем</param>
+    /// <param name="deltas">Функция получения <seealso cref="ChatDelta"/></param>
+    /// <param name="onContentUpdate">Обновление <see cref="VisualChatMessage.Content"/></param>
+    /// <param name="onStateChange">Внесены изменения в <see cref="VisualChatMessage"/></param>
+    Task ProcessStreamAsync(
+        VisualChatMessage message,
+        IAsyncEnumerable<ChatDelta> deltas,
+        Action<string>? onContentUpdate,
+        Action? onStateChange,
+        CancellationToken cancellationToken);
 }

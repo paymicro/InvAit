@@ -253,7 +253,7 @@ public class SystemPromptBuilderTests
             SelectionStartLine = 0,
             SelectionEndLine = 0,
             ActiveFileContent = string.Empty,
-            SolutionFiles = new List<string>()
+            SolutionFiles = []
         };
         _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns(context);
 
@@ -364,14 +364,14 @@ public class SystemPromptBuilderTests
         var context = new VsCodeContext
         {
             SolutionPath = "B:\\TestSolution",
-            SolutionFiles = new List<string>
-            {
+            SolutionFiles =
+            [
                 $"{VsCodeContext.DirPrefix} B:\\TestSolution\\src",
                 "B:\\TestSolution\\src\\File1.cs",
                 "B:\\TestSolution\\src\\File2.cs",
                 $"{VsCodeContext.DirPrefix} B:\\TestSolution\\lib",
                 "B:\\TestSolution\\lib\\Lib1.cs"
-            }
+            ]
         };
         var builder = CreateBuilder();
 

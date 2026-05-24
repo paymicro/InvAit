@@ -1,11 +1,10 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Net.Mime;
 using System.Runtime.CompilerServices;
-using UIBlazor.Services.Models;
-using UIBlazor.Services.Settings;
 
 namespace UIBlazor.Services;
 
@@ -96,6 +95,60 @@ public class ChatService(
 
     public bool NeedCompression => Options.TokensToCompress > 0 && Session.Messages.Count > 5 && Session.TotalTokens > Options.TokensToCompress;
 
+    public async Task ProcessStreamAsync(
+        VisualChatMessage message,
+        IAsyncEnumerable<ChatDelta> deltas,
+        Action<string>? onContentUpdate,
+        Action? onStateChange,
+        CancellationToken cancellationToken)
+    {
+        var sw = Stopwatch.StartNew();
+        var reasoning = new StringBuilder();
+        var response = new StringBuilder();
+        double firstTokenMs = 0;
+        double firstContentTokenMs = 0;
+
+        message.Timings ??= new MessageTimings();
+        var tokens = 0;
+        await foreach (var delta in deltas.WithCancellation(cancellationToken))
+        {
+            if (firstTokenMs == 0)
+                firstTokenMs = sw.ElapsedMilliseconds;
+
+            if (!string.IsNullOrEmpty(delta.ReasoningContent))
+            {
+                reasoning.Append(delta.ReasoningContent);
+                message.ReasoningContent = reasoning.ToString();
+            }
+
+            if (!string.IsNullOrEmpty(delta.Content))
+            {
+                if (firstContentTokenMs == 0)
+                    firstContentTokenMs = sw.ElapsedMilliseconds;
+
+                response.Append(delta.Content);
+                message.Content = response.ToString();
+                onContentUpdate?.Invoke(delta.Content);
+            }
+
+            var elapsedMs = sw.ElapsedMilliseconds;
+            tokens += delta.Tokens;
+            var secForTokens = Math.Max(1, (elapsedMs - firstTokenMs) / 1000.0);
+            message.Timings.TokensInSec = (float)(tokens / secForTokens);
+            message.Timings.Total = TimeSpan.FromMilliseconds(elapsedMs);
+            message.Timings.FirstToken = TimeSpan.FromMilliseconds(firstTokenMs);
+
+            if (firstContentTokenMs > 0)
+            {
+                message.Timings.Content = TimeSpan.FromMilliseconds(elapsedMs - firstContentTokenMs);
+            }
+
+            onStateChange?.Invoke();
+        }
+
+        message.IsStreaming = false;
+    }
+
     public async IAsyncEnumerable<ChatDelta> CompressSessionAsync([EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var (Messages, LastUserMessage) = Session.GetFormattedMessagesForCompress(await systemPromptBuilder.PrepareSystemPromptAsync(Session.Mode, cancellationToken));
@@ -121,13 +174,13 @@ public class ChatService(
                 IsExpanded = true,
             };
 
-            int totalCount = Session.Messages.Count;
-            int windowSize = totalCount < 6 ? 2 : 3;
+            var totalCount = Session.Messages.Count;
+            var windowSize = totalCount < 6 ? 2 : 3;
 
             var topMessages = new List<VisualChatMessage>();
             var bottomMessages = new List<VisualChatMessage>();
 
-            for (int i = 0; i < totalCount - 1; i++)
+            for (var i = 0; i < totalCount - 1; i++)
             {
                 var msg = Session.Messages[i];
 
@@ -228,7 +281,7 @@ public class ChatService(
         var payload = new
         {
             model = Options.Model,
-            messages = messages,
+            messages,
             temperature = Options.Temperature,
             max_tokens = Options.MaxTokens >= 1000 ? Options.MaxTokens : -1,
             stream = Options.Stream,
@@ -287,6 +340,7 @@ public class ChatService(
                 {
                     LastUsage = chunk.Usage;
                     Session.TotalTokens = chunk.Usage.TotalTokens;
+                    message.Tokens = chunk.Usage.CompletionTokens;
                 }
                 yield return message;
             }
@@ -305,6 +359,7 @@ public class ChatService(
         // чтобы html-теги <function> склеивать в один чанк
         var _pendingText = string.Empty;
         ChatChoice lastChoise = null!;
+        var completionTokens = 0;
         while ((line = await reader.ReadLineAsync(cancellationToken)) is not null && !cancellationToken.IsCancellationRequested)
         {
             if (string.IsNullOrWhiteSpace(line) || !line.StartsWith("data:"))
@@ -349,7 +404,11 @@ public class ChatService(
             LastCompletionsModel ??= chunk.Model;
             lastChoise = chunk.Choices[0];
             var delta = lastChoise.Delta;
-            var content = delta!.Content;
+            if (delta is null)
+                continue;
+
+            var content = delta.Content;
+            delta.Tokens = ++completionTokens;
             role ??= delta?.Role;
 
             // Размышляющие модели по разному отдают размышления
@@ -371,7 +430,7 @@ public class ChatService(
                     {
                         // начать думать можно только в первом чанке
                         isReasoningContent = true;
-                        delta.ReasoningContent = content.Replace(_thinkStart, string.Empty);
+                        delta!.ReasoningContent = content.Replace(_thinkStart, string.Empty);
                         delta.Content = null;
                     }
                 }
@@ -381,13 +440,13 @@ public class ChatService(
                     {
                         // если закончил думать, то можно в контент добавить часть чанка (актуально для Kimi2)
                         isReasoningContent = false;
-                        delta.Content = content.Replace(_thinkEnd, string.Empty);
+                        delta!.Content = content.Replace(_thinkEnd, string.Empty);
                         delta.ReasoningContent = null;
                     }
                     else
                     {
                         // если не конец - то все пихаем в ReasoningContent и очищаем Content
-                        delta.Content = null;
+                        delta!.Content = null;
                         delta.ReasoningContent = content;
                     }
                 }
@@ -424,6 +483,7 @@ public class ChatService(
                 delta.Content = incomingText;
             }
 
+            completionTokens = 0;
             yield return delta;
 
             isStart = false;
@@ -562,7 +622,7 @@ public class ChatService(
         // сортируем сессии по времени создания и берем самую свежую
         var lastSessionId = sessionList.OrderByDescending(id =>
         {
-            if (DateTime.TryParseExact(id.Substring(8), "s", CultureInfo.InvariantCulture, DateTimeStyles.None, out var result))
+            if (DateTime.TryParseExact(id[8..], "s", CultureInfo.InvariantCulture, DateTimeStyles.None, out var result))
             {
                 return result;
             }

@@ -80,17 +80,20 @@
             </div>
         
         <!-- Message Actions -->
-        @if (!Message.IsStreaming && !Message.IsEditing)
+        @if (!Message.IsEditing)
         {
             <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.25rem" class="rz-chat-message-actions">
-                <RadzenButton Icon="edit" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
-                              Click="@(() => OnEdit.InvokeAsync(Message))" Title="@SharedResource.MessageEdit" />
-                <RadzenButton Icon="delete" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
-                              Click="@(() => OnDelete.InvokeAsync(Message))" Title="@SharedResource.MessageDelete" />
-                @if (!IsLoading && IsLast && Message.Role == ChatMessageRole.Assistant)
+                @if (!Message.IsStreaming)
                 {
-                    <RadzenButton Icon="refresh" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
-                                  Click="@OnRegenerate" Title="@SharedResource.MessageRegenerate" />
+                    <RadzenButton Icon="edit" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
+                    Click="@(() => OnEdit.InvokeAsync(Message))" Title="@SharedResource.MessageEdit" />
+                    <RadzenButton Icon="delete" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
+                    Click="@(() => OnDelete.InvokeAsync(Message))" Title="@SharedResource.MessageDelete" />
+                    @if (!IsLoading && IsLast && Message.Role == ChatMessageRole.Assistant)
+                    {
+                        <RadzenButton Icon="refresh" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
+                        Click="@OnRegenerate" Title="@SharedResource.MessageRegenerate" />
+                    }
                 }
                 <div class="message-badges">
                     @if (CommonSettingsProvider.Current.ShowMessageTimings && Message.Timings is { FirstToken.TotalMilliseconds: > 100 })

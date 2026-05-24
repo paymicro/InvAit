@@ -17,7 +17,7 @@
             <span>@(ChatService.Session?.TotalTokens ?? 0) / @ProfileManager.ActiveProfile.ContextWindow</span>
         </div>
         <div class="usage-bar-container">
-            <div class="usage-bar" style="width: @(TokenProgress)%; background: var(--rz-secondary);"></div>
+            <div class="usage-bar" style="width: @(TokenProgress)%;"></div>
         </div>
     </div>
 </div>

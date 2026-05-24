@@ -10,7 +10,7 @@ public class UniversalDiffParserTests
     [InlineData(new[] { "line1", "line2", "line3" }, new[] { "line3" }, 3, 2)]
     public void FindInFile_ExactMatch_ReturnsCorrectIndex(string[] target, string[] search, int hint, int expected)
     {
-        var result = UniversalDiffParser.FindInFile(new List<string>(target), new List<string>(search), hint, 0);
+        var result = UniversalDiffParser.FindInFile([.. target], [.. search], hint, 0);
         Assert.Equal(expected, result);
     }
 
@@ -19,7 +19,7 @@ public class UniversalDiffParserTests
     [InlineData(new[] { "line1", "line2", "line3" }, new[] { "line3" }, 1, 3, 2)]
     public void FindInFile_MatchWithTolerance_ReturnsCorrectIndex(string[] target, string[] search, int hint, int tolerance, int expected)
     {
-        var result = UniversalDiffParser.FindInFile(new List<string>(target), new List<string>(search), hint, tolerance);
+        var result = UniversalDiffParser.FindInFile([.. target], [.. search], hint, tolerance);
         Assert.Equal(expected, result);
     }
 
@@ -29,21 +29,21 @@ public class UniversalDiffParserTests
     [InlineData(new[] { "line1", "line2", "line3", "line4" }, new[] { "line3", "line4" }, 3, 2)]
     public void FindInFile_MultilineMatch_ReturnsCorrectIndex(string[] target, string[] search, int hint, int expected)
     {
-        var result = UniversalDiffParser.FindInFile(new List<string>(target), new List<string>(search), hint, 0);
+        var result = UniversalDiffParser.FindInFile([.. target], [.. search], hint, 0);
         Assert.Equal(expected, result);
     }
 
     [Fact]
     public void FindInFile_NoMatch_ReturnsMinusOne()
     {
-        var result = UniversalDiffParser.FindInFile(new List<string> { "line1", "line2", "line3" }, new List<string> { "notfound" }, -1, 0);
+        var result = UniversalDiffParser.FindInFile(["line1", "line2", "line3"], ["notfound"], -1, 0);
         Assert.Equal(-1, result);
     }
 
     [Fact]
     public void FindInFile_FullSearch_ReturnsFirstMatch()
     {
-        var result = UniversalDiffParser.FindInFile(new List<string> { "same", "same", "different" }, new List<string> { "same" }, -1, 0);
+        var result = UniversalDiffParser.FindInFile(["same", "same", "different"], ["same"], -1, 0);
         Assert.Equal(0, result);
     }
 
@@ -57,7 +57,7 @@ public class UniversalDiffParserTests
     [InlineData(new[] { "HeLLo WoRLd" }, new[] { "hElLo wOrLd" }, -1, 0)]
     public void FindInFile_CaseInsensitive_ReturnsCorrectIndex(string[] target, string[] search, int hint, int expected)
     {
-        var result = UniversalDiffParser.FindInFile(new List<string>(target), new List<string>(search), hint, 5);
+        var result = UniversalDiffParser.FindInFile([.. target], [.. search], hint, 5);
         Assert.Equal(expected, result);
     }
 
@@ -74,7 +74,7 @@ public class UniversalDiffParserTests
     [InlineData(new[] { "  bla bla  " }, new[] { "   bla bla   " }, -1, 0)]
     public void FindInFile_TrimsWhitespace_ReturnsCorrectIndex(string[] target, string[] search, int hint, int expected)
     {
-        var result = UniversalDiffParser.FindInFile(new List<string>(target), new List<string>(search), hint, 5);
+        var result = UniversalDiffParser.FindInFile([.. target], [.. search], hint, 5);
         Assert.Equal(expected, result);
     }
 
@@ -100,7 +100,7 @@ public class UniversalDiffParserTests
     [InlineData(new[] { "line1", "line2", "line3", "line4", "line5" }, new[] { "line1", "line2" }, 3, 0)]
     public void FindInFile_WithHint_ReturnsCorrectIndex(string[] target, string[] search, int hint, int expected)
     {
-        var result = UniversalDiffParser.FindInFile(new List<string>(target), new List<string>(search), hint, 5);
+        var result = UniversalDiffParser.FindInFile([.. target], [.. search], hint, 5);
         Assert.Equal(expected, result);
     }
 
@@ -120,7 +120,7 @@ public class UniversalDiffParserTests
     [InlineData(new[] { "line1", "line2" }, new[] { "line2" }, 2, -10, 1)]
     public void FindInFile_NegativeTolerance_DefaultsToZero(string[] target, string[] search, int hint, int tolerance, int expected)
     {
-        var result = UniversalDiffParser.FindInFile(new List<string>(target), new List<string>(search), hint, tolerance);
+        var result = UniversalDiffParser.FindInFile([.. target], [.. search], hint, tolerance);
         Assert.Equal(expected, result);
     }
 
@@ -135,7 +135,7 @@ public class UniversalDiffParserTests
     [InlineData(new[] { "line1", "line2", "", "" }, new[] { "line2" }, 2, 1)]
     public void FindInFile_WithEmptyLines_ReturnsCorrectIndex(string[] target, string[] search, int hint, int expected)
     {
-        var result = UniversalDiffParser.FindInFile(new List<string>(target), new List<string>(search), hint, 5);
+        var result = UniversalDiffParser.FindInFile([.. target], [.. search], hint, 5);
         Assert.Equal(expected, result);
     }
 
@@ -145,7 +145,7 @@ public class UniversalDiffParserTests
     [InlineData(new[] { "line1", "", "", "line2" }, new[] { "", "" }, -1, 1)]
     public void FindInFile_EmptyLinesInSearch_MatchesCorrectly(string[] target, string[] search, int hint, int expected)
     {
-        var result = UniversalDiffParser.FindInFile(new List<string>(target), new List<string>(search), hint, 5);
+        var result = UniversalDiffParser.FindInFile([.. target], [.. search], hint, 5);
         Assert.Equal(expected, result);
     }
 
@@ -154,28 +154,28 @@ public class UniversalDiffParserTests
     [InlineData(new[] { "start", "middle", "content", "end" }, new[] { "middle", "", "end" }, -1, -1)]
     public void FindInFile_EmptySearch_DoesNotMatchContent(string[] target, string[] search, int hint, int expected)
     {
-        var result = UniversalDiffParser.FindInFile(new List<string>(target), new List<string>(search), hint, 0);
+        var result = UniversalDiffParser.FindInFile([.. target], [.. search], hint, 0);
         Assert.Equal(expected, result);
     }
 
     [Fact]
     public void FindInFile_EmptySearchLine_MatchesEmptyTargetLine()
     {
-        var result = UniversalDiffParser.FindInFile(new List<string> { "line1", "", "line3" }, new List<string> { "" }, -1, 0);
+        var result = UniversalDiffParser.FindInFile(["line1", "", "line3"], [""], -1, 0);
         Assert.Equal(1, result);
     }
 
     [Fact]
     public void FindInFile_WhitespaceOnlySearchLine_MatchesWhitespaceTarget()
     {
-        var result = UniversalDiffParser.FindInFile(new List<string> { "line1", "   ", "line3" }, new List<string> { "   " }, -1, 0);
+        var result = UniversalDiffParser.FindInFile(["line1", "   ", "line3"], ["   "], -1, 0);
         Assert.Equal(1, result);
     }
 
     [Fact]
     public void FindInFile_WhitespaceOnlySearchLine_DoesNotMatchContent()
     {
-        var result = UniversalDiffParser.FindInFile(new List<string> { "line1", "some content", "line3" }, new List<string> { "   " }, -1, 0);
+        var result = UniversalDiffParser.FindInFile(["line1", "some content", "line3"], ["   "], -1, 0);
         Assert.Equal(-1, result);
     }
 
@@ -234,7 +234,7 @@ public class UniversalDiffParserTests
             "Console.WriteLine(\"Hello?\");"
         };
 
-        var result = UniversalDiffParser.FindInFile(target, new List<string> { "Console.WriteLine(\"Hello!\");" }, -1, 5);
+        var result = UniversalDiffParser.FindInFile(target, ["Console.WriteLine(\"Hello!\");"], -1, 5);
 
         Assert.Equal(1, result);
     }

@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Radzen;
 using UIBlazor;
 using UIBlazor.Services;
-using UIBlazor.Services.Settings;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
@@ -26,6 +25,8 @@ builder.Services
     .AddScoped<BuiltInAgent>()
     .AddScoped<IToolManager, ToolManager>()
     .AddScoped<ISystemPromptBuilder, SystemPromptBuilder>()
+    .AddScoped<IRetryHandler, RetryHandler>()
+    .AddScoped<IToolCallHandler, ToolCallHandler>()
     .AddScoped(sp =>
     {
         var client = new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) };

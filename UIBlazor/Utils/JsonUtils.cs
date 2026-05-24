@@ -36,12 +36,33 @@ public static class JsonUtils
     {
         try
         {
-            return JsonSerializer.Deserialize<Dictionary<string, object>>(json, _jsonOptions) ?? [];
+            var document = JsonDocument.Parse(json);
+            var result = new Dictionary<string, object>();
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                result[property.Name] = ConvertJsonElement(property.Value);
+            }
+            return result;
         }
         catch
         {
             return new Dictionary<string, object>();
         }
+    }
+
+    private static object ConvertJsonElement(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.String => element.GetString() ?? string.Empty,
+            JsonValueKind.Number => element.TryGetInt64(out var l) ? l : element.GetDouble(),
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Null => string.Empty,
+            JsonValueKind.Array => element.EnumerateArray().Select(ConvertJsonElement).ToList(),
+            JsonValueKind.Object => element.EnumerateObject().ToDictionary(p => p.Name, p => ConvertJsonElement(p.Value)),
+            _ => element.GetRawText()
+        };
     }
 
     public static object? GetValue(this IReadOnlyDictionary<string, object> parameters, string key)

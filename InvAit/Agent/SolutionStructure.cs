@@ -9,7 +9,7 @@ using VS = Community.VisualStudio.Toolkit.VS;
 
 namespace InvAit.Agent;
 
-public class SolutionSctructure
+public class SolutionStructure
 {
     // TODO: сделать настраиваемым?
     private const int _maxFilesInFolder = 25;

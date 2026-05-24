@@ -201,7 +201,7 @@ public partial class MessageParser(IToolManager toolManager) : IMessageParser
     /// </summary>
     /// <param name="toolName">Имя тулзы</param>
     /// <param name="toolLines">Параметры по линиям</param>
-    public static Dictionary<string, object> Parse(string toolName, List<string> toolLines, bool isClosed = false)
+    public static Dictionary<string, object> Parse(string toolName, List<string> toolLines)
     {
         var result = new Dictionary<string, object>();
         var paramIndex = 0;

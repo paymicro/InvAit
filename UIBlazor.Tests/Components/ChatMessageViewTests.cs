@@ -43,7 +43,7 @@ public class ChatMessageViewTests : BunitContext
         });
     }
 
-    private VisualChatMessage CreateMessage(string role = ChatMessageRole.User, string content = "Test message")
+    private static VisualChatMessage CreateMessage(string role = ChatMessageRole.User, string content = "Test message")
     {
         return new VisualChatMessage
         {
@@ -299,21 +299,6 @@ public class ChatMessageViewTests : BunitContext
         var buttons = cut.FindAll("button");
         var regenerateButton = buttons.FirstOrDefault(b => b.InnerHtml.Contains("refresh"));
         Assert.Null(regenerateButton);
-    }
-
-    [Fact]
-    public void ShouldNotRenderActions_WhenStreaming()
-    {
-        // Arrange
-        var message = CreateMessage();
-        message.IsStreaming = true;
-
-        // Act
-        var cut = Render<ChatMessageView>(parameters => parameters
-            .Add(p => p.Message, message));
-
-        // Assert
-        Assert.Throws<ElementNotFoundException>(() => cut.Find(".rz-chat-message-actions"));
     }
 
     [Fact]

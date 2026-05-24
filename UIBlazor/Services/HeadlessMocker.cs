@@ -11,7 +11,7 @@ public class HeadlessMocker
 {
     public static VsToolResult GetVsToolResult(VsToolResult original)
     {
-        if (original.Success || original.ErrorMessage != "WebView2 API is`t find.")
+        if (original.Success || original.ErrorMessage != "WebView2 API not found.")
         {
             return original;
         }

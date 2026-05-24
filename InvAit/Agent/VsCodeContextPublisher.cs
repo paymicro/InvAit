@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading.Tasks;
 using EnvDTE;
 using EnvDTE80;
@@ -99,8 +99,8 @@ namespace InvAit.Agent
                 // 1. Get Solution Files
                 if (_dte.Solution != null && _dte.Solution.IsOpen)
                 {
-                    context.SolutionFiles = await SolutionSctructure.BuildStructureAsync(fullPath: true);
-                    context.SolutionPath = await SolutionSctructure.GetSolutionPathAsync();
+                    context.SolutionFiles = await SolutionStructure.BuildStructureAsync(fullPath: true);
+                    context.SolutionPath = await SolutionStructure.GetSolutionPathAsync();
                 }
 
                 // 2. Get Active Document info

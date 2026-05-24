@@ -11,5 +11,8 @@ global using UIBlazor.Models;
 global using UIBlazor.Options;
 global using UIBlazor.Processors;
 global using UIBlazor.Processors.Models;
+global using UIBlazor.Services.Interfaces;
+global using UIBlazor.Services.Models;
+global using UIBlazor.Services.Settings;
 global using UIBlazor.Utils;
 global using UIBlazor.VS;

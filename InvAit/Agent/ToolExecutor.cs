@@ -29,6 +29,7 @@ public class ToolExecutor : IAsyncDisposable
     private readonly McpProcessManager _mcpProcessManager = new(new VsLogger());
     private readonly ProcessExecutor _processExecutor = new(new VsLogger());
     private readonly Dictionary<string, string> _skillPathByName = [];
+    private readonly FileUtils _fileUtils = new();
 
     public async Task<VsResponse> ExecuteAsync(VsRequest vsRequest)
     {
@@ -438,7 +439,7 @@ public class ToolExecutor : IAsyncDisposable
         var dirPath = GetAbsolutePath(args.GetString("param1"), solutionPath);
         var recursive = args.GetBool("param2");
 
-        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         if (!Directory.Exists(dirPath))
             return new VsResponse
             {
@@ -478,10 +479,8 @@ public class ToolExecutor : IAsyncDisposable
         if (!File.Exists(filepath))
             return new VsResponse { Success = false, Error = "File doesn't exist." };
 
-        if (replacements == null || replacements.Count == 0)
-            return new VsResponse { Success = false, Error = "No valid replacements found in diff." };
-
-        var lines = File.ReadAllLines(filepath).ToList();
+        var fileData = await _fileUtils.ReadFileWithMetadataAsync(filepath);
+        var lines = fileData.Lines;
         var totalReplacements = 0;
         var appliedReplacements = new List<string>();
 
@@ -492,11 +491,8 @@ public class ToolExecutor : IAsyncDisposable
             var actualStart = UniversalDiffParser.FindInFile(lines, rep.Search, rep.StartLine, 5);
             if (actualStart == -1)
             {
-                return new VsResponse
-                {
-                    Success = false,
-                    Error = $"Failed to apply diff at line {rep.StartLine} in file {inputFileName}"
-                };
+                appliedReplacements.Add($"FAILED at line {rep.StartLine}");
+                continue;
             }
 
             // Replace from actualStart
@@ -514,7 +510,7 @@ public class ToolExecutor : IAsyncDisposable
         try
         {
             var tempFile = Path.Combine(Path.GetTempPath(), Path.GetFileName(filepath));
-            File.WriteAllLines(filepath, lines, Encoding.UTF8);
+            await _fileUtils.SaveFileAsync(filepath, lines, fileData.Encoding, fileData.Separator, fileData.HasFinalNewLine);
             await OpenEditorAsync(filepath);
             await Logger.LogAsync($"{totalReplacements} changes successfully applied to {inputFileName}.");
         }
@@ -735,7 +731,7 @@ public class ToolExecutor : IAsyncDisposable
     {
         return new VsResponse
         {
-            Payload = string.Join("\n", await SolutionSctructure.BuildStructureAsync(fullPath: false))
+            Payload = string.Join("\n", await SolutionStructure.BuildStructureAsync(fullPath: false))
         };
     }
 
