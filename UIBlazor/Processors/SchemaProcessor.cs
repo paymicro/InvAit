@@ -31,7 +31,35 @@ public static class SchemaProcessor
 
         if (schema.TryGetProperty("type", out var typeElement))
         {
-            property.Type = typeElement.GetString();
+            if (typeElement.ValueKind == JsonValueKind.Array)
+            {
+                string? primaryType = null;
+
+                foreach (var element in typeElement.EnumerateArray())
+                {
+                    if (element.ValueKind == JsonValueKind.String)
+                    {
+                        var typeStr = element.GetString();
+
+                        if (string.Equals(typeStr, "null", StringComparison.OrdinalIgnoreCase))
+                        {
+                            property.IsNullable = true;
+                        }
+                        else
+                        {
+                            // Запоминаем первый найденный значимый тип
+                            primaryType ??= typeStr;
+                        }
+                    }
+                }
+
+                property.Type = primaryType;
+            }
+            else if (typeElement.ValueKind == JsonValueKind.String)
+            {
+                property.Type = typeElement.GetString();
+                property.IsNullable = string.Equals(property.Type, "null", StringComparison.OrdinalIgnoreCase);
+            }
         }
 
         if (schema.TryGetProperty("description", out var descriptionElement))

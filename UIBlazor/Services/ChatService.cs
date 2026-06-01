@@ -20,11 +20,6 @@ public class ChatService(
     private const string _thinkEnd      = "</think>";
     private const string _complitions   = "/v1/chat/completions";
     private const string _models        = "/v1/models";
-    private readonly JsonSerializerOptions _jsonSerializerOptions = new()
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
 
     public ConnectionProfile Options => profileManager.ActiveProfile;
 
@@ -278,20 +273,19 @@ public class ChatService(
         var url = $"{Options.Endpoint}{_complitions}";
         var effectiveApiKeyHeader = Options.ApiKeyHeader;
 
-        var payload = new
+        var payload = new OpenAiChatRequest
         {
-            model = Options.Model,
-            messages,
-            temperature = Options.Temperature,
-            max_tokens = Options.MaxTokens >= 1000 ? Options.MaxTokens : -1,
-            stream = Options.Stream,
-            stream_options = Options.Stream ? new { include_usage = true } : null
+            Model = Options.Model,
+            Messages = messages,
+            Temperature = Options.Temperature,
+            MaxTokens = Options.MaxTokens >= 1000 ? Options.MaxTokens : null,
+            Stream = Options.Stream
         };
 
         var request = new HttpRequestMessage(HttpMethod.Post, url)
         {
             Content = new StringContent(
-                JsonSerializer.Serialize(payload, _jsonSerializerOptions),
+                JsonSerializer.Serialize(payload),
                 Encoding.UTF8,
                 MediaTypeNames.Application.Json)
         };
