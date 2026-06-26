@@ -96,13 +96,15 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.Common" Version="5.3.0" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.VisualStudio.LanguageServices" Version="4.14.0" ExcludeAssets="runtime" />
     <PackageReference Include="Microsoft.VisualStudio.SDK" Version="17.14.40265" ExcludeAssets="runtime" NoWarn="NU1604" />
     <PackageReference Include="Microsoft.VSSDK.BuildTools">
       <Version>18.5.40034</Version>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3912.50" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4022.49" />
   </ItemGroup>
   <ItemGroup>
     <Page Include="ToolWindows\ChatControl.xaml">

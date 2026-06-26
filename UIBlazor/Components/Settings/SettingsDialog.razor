@@ -129,7 +129,7 @@
                 <RadzenStack Gap="0.2rem">
                     <RadzenLabel Text="@SharedResource.ToolRequestTimeoutSec" />
                     <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                        <RadzenSlider @bind-Value="@CommonSettingsProvider.Current.ToolTimeoutMs" Min="20000" Max="600000" Step="1000" Style="width: 100%; height: 20px;" />
+                        <RadzenSlider @bind-Value="@CommonSettingsProvider.Current.ToolTimeoutMs" Min="20000" Max="1800000" Step="1000" Style="width: 100%; height: 20px;" />
                         <RadzenLabel Text="@($"{CommonSettingsProvider.Current.ToolTimeoutMs / 1000} s")" Style="text-align: right; width: 50px;" />
                     </RadzenStack>
                 </RadzenStack>

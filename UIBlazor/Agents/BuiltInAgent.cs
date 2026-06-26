@@ -164,6 +164,34 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
         },
         new()
         {
+            Name = BuiltInToolEnum.FindSymbols,
+            DisplayName = SharedResource.ToolFindSymbols,
+            Category = ToolCategory.ReadFiles,
+            Description = "Quick symbol search by name. Returns locations only (no code). Only for charp",
+            ExampleToSystemMessage = $"""
+                                     For example:
+                                     <function name="{BuiltInToolEnum.FindSymbols}">
+                                     SymbolName
+                                     </function>
+                                     """,
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.FindSymbols, args, c)
+        },
+        new()
+        {
+            Name = BuiltInToolEnum.GetReferences,
+            DisplayName = SharedResource.ToolGetReferences,
+            Category = ToolCategory.ReadFiles,
+            Description = "Quick search references to symbol. Return location only (no code). Only for charp",
+            ExampleToSystemMessage = $"""
+                                     For example:
+                                     <function name="{BuiltInToolEnum.GetReferences}">
+                                     SymbolName
+                                     </function>
+                                     """,
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetReferences, args, c)
+        },
+        new()
+        {
             Name = BuiltInToolEnum.Dir,
             DisplayName = SharedResource.ToolDir,
             Category = ToolCategory.ReadFiles,
@@ -188,7 +216,6 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             ExampleToSystemMessage = $"""
                                      For example:
                                      <function name="{BuiltInToolEnum.Build}">
-                                     build
                                      </function>
                                      """,
             ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Build, args, c)

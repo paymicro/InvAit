@@ -103,8 +103,7 @@ public class ChatService(
         double firstTokenMs = 0;
         double firstContentTokenMs = 0;
 
-        message.Timings ??= new MessageTimings();
-        var tokens = 0;
+        message.Timings ??= new MessageTimings() { Tokens = 0 };
         await foreach (var delta in deltas.WithCancellation(cancellationToken))
         {
             if (firstTokenMs == 0)
@@ -119,7 +118,10 @@ public class ChatService(
             if (!string.IsNullOrEmpty(delta.Content))
             {
                 if (firstContentTokenMs == 0)
+                {
                     firstContentTokenMs = sw.ElapsedMilliseconds;
+                    message.Timings.Reasoning = TimeSpan.FromMilliseconds(firstContentTokenMs - firstTokenMs);
+                }
 
                 response.Append(delta.Content);
                 message.Content = response.ToString();
@@ -127,9 +129,9 @@ public class ChatService(
             }
 
             var elapsedMs = sw.ElapsedMilliseconds;
-            tokens += delta.Tokens;
+            message.Timings.Tokens += delta.Tokens;
             var secForTokens = Math.Max(1, (elapsedMs - firstTokenMs) / 1000.0);
-            message.Timings.TokensInSec = (float)(tokens / secForTokens);
+            message.Timings.TokensInSec = (float)(message.Timings.Tokens / secForTokens);
             message.Timings.Total = TimeSpan.FromMilliseconds(elapsedMs);
             message.Timings.FirstToken = TimeSpan.FromMilliseconds(firstTokenMs);
 

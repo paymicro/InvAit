@@ -14,12 +14,6 @@ public class CommonSettingsProvider(
             // Превратит "en" в "en-US", "ru" в "ru-RU" на основе системных данных
             Current.Culture = CultureInfo.CreateSpecificCulture(Current.Culture).Name;
         }
-
-        // Переходный период с 0.0.12 версии. Там было 3 сек и ничего не успевало.
-        if (Current.ToolTimeoutMs < 20_000)
-        {
-            await ResetAsync();
-        }
     }
 
     public override async Task ResetAsync()

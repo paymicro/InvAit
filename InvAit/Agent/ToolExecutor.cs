@@ -12,6 +12,10 @@ using EnvDTE;
 using EnvDTE80;
 using InvAit.Utils;
 using Microsoft.Build.Evaluation;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.VisualStudio.ComponentModelHost;
+using Microsoft.VisualStudio.LanguageServices;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
 using Shared.Contracts;
@@ -27,6 +31,7 @@ namespace InvAit.Agent;
 public class ToolExecutor : IAsyncDisposable
 {
     private readonly McpProcessManager _mcpProcessManager = new(new VsLogger());
+    // private readonly McpManager _mcpManager = new(new VsLogger());
     private readonly ProcessExecutor _processExecutor = new(new VsLogger());
     private readonly Dictionary<string, string> _skillPathByName = [];
     private readonly FileUtils _fileUtils = new();
@@ -44,10 +49,12 @@ public class ToolExecutor : IAsyncDisposable
                 BuiltInToolEnum.Bash => await ExecAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.SearchFiles => await SearchFilesAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GrepSearch => await GrepSearchAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.FindSymbols => await FindSymbolsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.GetReferences => await GetReferencesAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.Dir => await ListDirectoryAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.ApplyDiff => await ApplyDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.Build => await BuildSolutionAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BuiltInToolEnum.RunTests => await RunTestsAsync(),
+                BuiltInToolEnum.RunTests => await RunTestsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GetErrors => await GetErrorListAsync(),
                 BuiltInToolEnum.GetProjectInfo => await GetProjectInfoAsync(),
                 BuiltInToolEnum.GetSolutionStructure => await GetSolutionStructureAsync(),
@@ -202,7 +209,8 @@ public class ToolExecutor : IAsyncDisposable
         return new VsResponse
         {
             Success = isSuccess,
-            Payload = sb.ToString()
+            Payload = isSuccess ? sb.ToString() : null,
+            Error = isSuccess ? null : sb.ToString()
         };
     }
 
@@ -433,6 +441,93 @@ public class ToolExecutor : IAsyncDisposable
         return new VsResponse { Payload = header + sb.ToString() };
     }
 
+    private async Task<VsResponse> FindSymbolsAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var symbolName = args.GetString("param1");
+        var componentModel = (IComponentModel)Package.GetGlobalService(typeof(SComponentModel));
+        var workspace = componentModel.GetService<VisualStudioWorkspace>();
+        var solution = workspace.CurrentSolution;
+
+        // Находим декларации символов по текстовому имени во всем решении
+        var symbols = (await SymbolFinder.FindSourceDeclarationsWithPatternAsync(
+            solution,
+            symbolName,
+            SymbolFilter.Type | SymbolFilter.Member)).ToList();
+
+        if (symbols.Count == 0)
+        {
+            return new VsResponse { Success = false, Error = $"Symbol '{symbolName}' is`t found." };
+        }
+
+        var result = symbols.Select(s => $"{s.Name} | {s.Kind} | {s.Locations.FirstOrDefault()?.SourceTree?.FilePath}").ToList();
+
+        return new VsResponse
+        {
+            Payload = string.Join("\n", result)
+        };
+    }
+
+    private async Task<VsResponse> GetReferencesAsync(IReadOnlyDictionary<string, object> args)
+    {
+        var symbolName = args.GetString("param1");
+
+        var componentModel = (IComponentModel)Package.GetGlobalService(typeof(SComponentModel));
+        var workspace = componentModel.GetService<VisualStudioWorkspace>();
+        var solution = workspace.CurrentSolution;
+
+        // Находим декларации символов по текстовому имени во всем решении
+        var symbols = (await SymbolFinder.FindSourceDeclarationsWithPatternAsync(
+            solution,
+            symbolName,
+            SymbolFilter.Type | SymbolFilter.Member)).ToList();
+
+        if (symbols.Count == 0)
+        {
+            return new VsResponse { Success = false, Error = $"Symbol '{symbolName}' is`t found." };
+        }
+
+        var sb = new StringBuilder();
+
+        // Для каждого найденного символа (на случай, если имя дублируется в разных классах)
+        foreach (var symbol in symbols)
+        {
+            // Вызываем поиск зависимостей
+            var references = await SymbolFinder.FindReferencesAsync(symbol, solution);
+            var refs = new Dictionary<string, HashSet<int>>();
+            foreach (var reference in references)
+            {
+                foreach (var location in reference.Locations)
+                {
+                    // Защита от ссылок вне физических документов проекта
+                    if (location.Document == null)
+                        continue;
+
+                    if (!refs.TryGetValue(location.Document.FilePath, out var lines))
+                    {
+                        refs[location.Document.FilePath] = lines = [];
+                    }
+
+                    var linePos = location.Location.GetLineSpan().StartLinePosition.Line + 1;
+                    lines.Add(linePos);
+                }
+            }
+
+            if (refs.Count == 0)
+            {
+                continue;
+            }
+
+            sb.AppendLine($"--- References for: {symbol.ToDisplayString()} ---");
+            foreach (var r in refs)
+            {
+                var sortedLines = r.Value.OrderBy(n => n);
+                sb.AppendLine($"Used in: {r.Key}, line: {string.Join(", ", sortedLines)}");
+            }
+        }
+
+        return new VsResponse { Payload = sb.ToString() };
+    }
+
     private async Task<VsResponse> ListDirectoryAsync(IReadOnlyDictionary<string, object> args)
     {
         var solutionPath = await GetSolutionPathAsync();
@@ -558,7 +653,7 @@ public class ToolExecutor : IAsyncDisposable
 
     private async Task<VsResponse> BuildSolutionAsync(IReadOnlyDictionary<string, object> args)
     {
-        var buildAction = args.GetString("param1").ToLower() switch
+        var buildAction = args.GetString("param1")?.ToLower() switch
         {
             "clean" => Toolkit.BuildAction.Clean,
             "rebuild" => Toolkit.BuildAction.Rebuild,
@@ -634,11 +729,12 @@ public class ToolExecutor : IAsyncDisposable
         return string.Join("\n", errors.Select(e => $" - {e.FileName} | line:{e.Line}\n{e.Message}\n"));
     }
 
-    private async Task<List<string>> GetTestAssembliesAsync()
+    private async Task<(List<string> Dlls, List<string> Exes)> GetTestAssembliesAsync()
     {
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         var projects = await VS.Solutions.GetAllProjectsAsync();
         var dllPaths = new List<string>();
+        var exePaths = new List<string>();
 
         foreach (var project in projects)
         {
@@ -655,8 +751,14 @@ public class ToolExecutor : IAsyncDisposable
             {
                 dllPaths.Add(fullDllPath);
             }
+
+            var exe = Path.ChangeExtension(fullDllPath, "exe");
+            if (File.Exists(exe))
+            {
+                exePaths.Add(exe);
+            }
         }
-        return dllPaths;
+        return (dllPaths, exePaths);
     }
 
     /// <summary>
@@ -664,7 +766,7 @@ public class ToolExecutor : IAsyncDisposable
     /// Через TestExplorer можно запустить, но не узнать о завершении и прочитать ошибки тоже нельзя
     /// </summary>
     /// <returns></returns>
-    private async Task<VsResponse> RunTestsAsync()
+    private async Task<VsResponse> RunTestsAsync(IReadOnlyDictionary<string, object> args)
     {
         // Для начала запуск билда
         var build = await BuildSolutionAsync(new Dictionary<string, object>() { { "param1", "build" } });
@@ -674,13 +776,16 @@ public class ToolExecutor : IAsyncDisposable
         }
 
         var solutionPath = await GetSolutionPathAsync();
-        var testDlls = await GetTestAssembliesAsync();
+        var (testDlls, testExe) = await GetTestAssembliesAsync();
         var allDlls = string.Join(" ", testDlls.Select(d => $"\"{d}\""));
+        var addArgs = string.Join(" ", args.Select(a => a.Value));
+
+        
 
         var startInfo = new ProcessStartInfo
         {
             FileName = "dotnet",
-            Arguments = $"test {allDlls} -v d",
+            Arguments = $"test {allDlls} -v d {addArgs}",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8,
@@ -689,6 +794,18 @@ public class ToolExecutor : IAsyncDisposable
             CreateNoWindow = true,
             WorkingDirectory = solutionPath
         };
+
+        // xUnit - запуск исполняемых файлов вместо dotnet test
+        if (testExe.Count > 0)
+        {
+            startInfo.FileName = testExe[0];
+            startInfo.Arguments = addArgs;
+            Logger.Log($"Run xUnit exe {testExe[0]} {addArgs}");
+        }
+        else
+        {
+            Logger.Log($"Run dotnet test for {allDlls} {addArgs}");
+        }
 
         startInfo.EnvironmentVariables["TERM"] = "dumb"; // терминал тупой - отключает интерактивность
         startInfo.EnvironmentVariables["NO_COLOR"] = "1";
@@ -1112,26 +1229,6 @@ public class ToolExecutor : IAsyncDisposable
 
     #endregion
 
-    private async Task<VsResponse> ExecGitCommandAsync(string arguments)
-    {
-        return await ExecAsync(new Dictionary<string, object>() { { "param1", $"git {arguments}" } });
-    }
-
-    private async Task FileDiffAsync(string file1, string file2, string file1Title, string file2Title)
-    {
-        if (string.IsNullOrEmpty(file1Title))
-        {
-            file1Title = Path.GetFileName(file1);
-        }
-        if (string.IsNullOrEmpty(file2Title))
-        {
-            file2Title = Path.GetFileName(file2);
-        }
-        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-        var dte = Shell.Package.GetGlobalService(typeof(DTE)) as DTE;
-        dte?.ExecuteCommand("Tools.DiffFiles", $"\"{file1}\" \"{file2}\" \"{file1Title}\" \"{file2Title}\"");
-    }
-
     private async Task<string> GetSolutionPathAsync()
     {
         var solution = await VS.Solutions.GetCurrentSolutionAsync();
@@ -1214,6 +1311,7 @@ public class ToolExecutor : IAsyncDisposable
         try
         {
             await _mcpProcessManager.StopAllProcessesAsync();
+            // await _mcpManager.StopAllAsync();
             _initializedServers.Clear();
             return new VsResponse { Success = true, Payload = "All MCP processes stopped." };
         }
@@ -1352,7 +1450,7 @@ public class ToolExecutor : IAsyncDisposable
             }
         };
 
-        var responseJson = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(initRequest));
+        var responseJson = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(initRequest), 100_000);
         if (!responseJson.Success)
             return responseJson.Error;
 
@@ -1379,6 +1477,17 @@ public class ToolExecutor : IAsyncDisposable
             return new VsResponse { Success = false, Error = "serverId is required" };
         }
 
+        //try
+        //{
+        //    var result = await _mcpManager.ListToolsAsync(serverId);
+        //    return new VsResponse { Payload = JsonUtils.Serialize(result) };
+        //}
+        //catch (Exception ex)
+        //{
+        //    return new VsResponse { Success = false, Error = ex.Message };
+        //}
+
+        // old
         var runResult = await EnsureServerRunningAsync(serverId, command, arguments, env);
         if (runResult != "OK")
         {
@@ -1389,7 +1498,7 @@ public class ToolExecutor : IAsyncDisposable
         {
             var requestId = Guid.NewGuid().ToString("N");
             var request = new McpRequest { Id = requestId, Method = "tools/list", Params = new { } };
-            var result = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(request));
+            var result = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(request), 20_000);
             return new VsResponse { Success = result.Success, Payload = result.Payload, Error = result.Error };
         }
         catch (Exception ex)
@@ -1424,6 +1533,17 @@ public class ToolExecutor : IAsyncDisposable
             return new VsResponse { Success = false, Error = "serverId and toolName are required" };
         }
 
+        //try
+        //{
+        //    var result = await _mcpManager.CallToolAsync(serverId, toolName, toolArgs);
+        //    return new VsResponse { Success = result.Success, Payload = result.Payload, Error = result.Error };
+        //}
+        //catch (Exception ex)
+        //{
+        //    return new VsResponse { Success = false, Error = ex.Message };
+        //}
+
+        // old
         var runResult = await EnsureServerRunningAsync(serverId, command, commandArgs, env);
         if (runResult != "OK")
         {
@@ -1440,7 +1560,7 @@ public class ToolExecutor : IAsyncDisposable
                 Params = new { name = toolName, arguments = toolArgs ?? new { } }
             };
 
-            var result = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(request));
+            var result = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(request), 600_000);
             return new VsResponse { Success = result.Success, Payload = result.Payload, Error = result.Error };
         }
         catch (Exception ex)
@@ -1451,7 +1571,7 @@ public class ToolExecutor : IAsyncDisposable
 
     public async Task DisposeAsync()
     {
-        await _mcpProcessManager.DisposeAsync();
+        await StopAllMcpServersAsync();
     }
 
     private class SearchFileInfo

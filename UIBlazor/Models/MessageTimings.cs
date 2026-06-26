@@ -14,4 +14,6 @@ public class MessageTimings
     public TimeSpan Total { get; set; } = TimeSpan.Zero;
 
     public float TokensInSec { get; set; } = 0;
+
+    public int Tokens { get; set; } = 0;
 }

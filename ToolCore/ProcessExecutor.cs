@@ -227,7 +227,7 @@ public class ProcessExecutor
     public async Task<ProcessResult> ExecuteBashAsync(
         string command,
         string? workingDirectory = null,
-        int timeoutMs = 30000)
+        int timeoutMs = 120_000)
     {
         return await ExecuteAsync("sh", $"-c '{command.Replace('\\', '/').Replace("'", "'\\''")}'", workingDirectory, timeoutMs);
     }

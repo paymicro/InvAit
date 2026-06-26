@@ -405,4 +405,10 @@
   <data name="CompressionTokenThreshold" xml:space="preserve">
     <value>Порог токенов для сжатия контекста</value>
   </data>
+  <data name="ToolFindSymbols" xml:space="preserve">
+    <value>Поиск символов</value>
+  </data>
+  <data name="ToolGetReferences" xml:space="preserve">
+    <value>Поиск ссылок</value>
+  </data>
 </root>

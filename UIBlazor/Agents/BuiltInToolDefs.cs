@@ -22,6 +22,12 @@ public class BuiltInToolDefs
         return Task.FromResult("1234");
     }
 
+    [Description("To run a shell command (Git Bash). The shell is stateless. Avoid using single quotes inside your commands if possible. Do NOT perform actions requiring special/admin privileges. Choose terminal commands and scripts optimized for win32 and x64.")]
+    public Task<string> Bash([Description("Shell command to execute")] string command)
+    {
+        return Task.FromResult("");
+    }
+
     public static NativeToolDefinition MapMethodToTool(MethodInfo? method)
     {
         ArgumentNullException.ThrowIfNull(method);

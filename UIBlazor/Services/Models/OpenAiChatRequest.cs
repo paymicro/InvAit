@@ -21,4 +21,16 @@ public class OpenAiChatRequest
     [JsonPropertyName("stream_options")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public object? StreamOptions => Stream ? new { include_usage = true } : null;
+
+    [JsonPropertyName("tools")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<UIBlazor.Agents.NativeToolDefinition>? Tools { get; set; }
+
+    [JsonPropertyName("tool_choice")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public object? ToolChoice { get; set; }
+
+    [JsonPropertyName("parallel_tool_calls")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? ParallelToolCalls { get; set; }
 }

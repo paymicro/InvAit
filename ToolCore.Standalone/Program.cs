@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 
 namespace ToolCore.Standalone;
@@ -10,6 +11,9 @@ class Program
 
     static async Task<int> Main(string[] args)
     {
+        Console.InputEncoding = Encoding.UTF8;
+        Console.OutputEncoding = Encoding.UTF8;
+
         if (args.Length == 0)
         {
             PrintHelp();

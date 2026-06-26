@@ -27,6 +27,17 @@ public class McpProcessManager : IAsyncDisposable
 
     public McpProcessManager(ILogger logger)
     {
+        //var client = await McpClient.CreateAsync(
+        //    new StdioClientTransport(
+        //new StdioClientTransportOptions()
+        //{
+        //    Command = "npx",
+
+        //}
+        //), new McpClientOptions() {});
+
+        //await client.ListToolsAsync();
+
         _logger = logger ?? new NullLogger();
     }
 
@@ -136,6 +147,22 @@ public class McpProcessManager : IAsyncDisposable
     /// </summary>
     public async Task<string> StartProcessAsync(string serverId, string command, string args, string workingDirectory, Dictionary<string, string>? env)
     {
+        //var client = await McpClient.CreateAsync(
+        //    new StdioClientTransport(
+        //    new StdioClientTransportOptions()
+        //    {
+        //        Name = serverId,
+        //        Command = command,
+        //        Arguments = args.Split(' '),
+        //        WorkingDirectory = workingDirectory,
+        //        EnvironmentVariables = env
+        //    }
+        //    ));
+
+        //_mcpClietns.TryGetValue(serverId, client, c => );
+
+        //var tools = await client.ListToolsAsync();
+
         lock (_processLock)
         {
             if (_processes.TryGetValue(serverId, out var proc))
@@ -422,7 +449,7 @@ public class McpProcessManager : IAsyncDisposable
     /// <summary>
     /// Отправить сообщение и ждать ответа
     /// </summary>
-    public async Task<ToolResponse> CallMethodAsync(string serverId, string id, string message, int timeoutMs = 10000)
+    public async Task<ToolResponse> CallMethodAsync(string serverId, string id, string message, int timeoutMs = 600_000)
     {
         if (!_processes.TryGetValue(serverId, out var process))
         {

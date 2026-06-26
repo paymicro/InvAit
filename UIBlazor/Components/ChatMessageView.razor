@@ -102,10 +102,21 @@
                             <i class="fa-solid fa-arrow-right-arrow-left"></i> @Message.Timings.FirstToken.TotalSeconds.ToString("F1")
                         </RadzenBadge>
                         <RadzenBadge BadgeStyle="BadgeStyle.Light" >
-                            <i class="fa-solid fa-gauge-high"></i> @Message.Timings.TokensInSec.ToString("F1") t/s
+                            <i class="fa-regular fa-clock"></i> @Message.Timings.TokensInSec.ToString("F1") t/s
                         </RadzenBadge>
-                        <RadzenBadge BadgeStyle="BadgeStyle.Light" >
-                            <i class="fa-solid fa-flag-checkered"></i> @Message.Timings.Total.TotalSeconds.ToString("F1")
+                        <RadzenBadge BadgeStyle="BadgeStyle.Light">
+                            <i class="fa-solid fa-pen"></i> @(Message.Timings.Tokens) tok
+                        </RadzenBadge>
+                        <RadzenBadge BadgeStyle="BadgeStyle.Light" class="@(Message.IsStreaming ? "icon-spin" : null)">
+                            @if (Message.IsStreaming)
+                            {
+                                <i class="fa-solid fa-circle-notch"></i> 
+                            }
+                            else
+                            {
+                                <i class="fa-solid fa-flag"></i> 
+                            }
+                            @($" {Message.Timings.Total.TotalSeconds:F1}")
                         </RadzenBadge>
                     }
                 </div>

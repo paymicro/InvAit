@@ -736,6 +736,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Find Symbols.
+        /// </summary>
+        public static string ToolFindSymbols {
+            get {
+                return ResourceManager.GetString("ToolFindSymbols", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Get errors.
         /// </summary>
         public static string ToolGetErrors {
@@ -750,6 +759,15 @@ namespace UIBlazor.Localization {
         public static string ToolGetProjectInfo {
             get {
                 return ResourceManager.GetString("ToolGetProjectInfo", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Get references.
+        /// </summary>
+        public static string ToolGetReferences {
+            get {
+                return ResourceManager.GetString("ToolGetReferences", resourceCulture);
             }
         }
         

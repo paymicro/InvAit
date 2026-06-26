@@ -12,6 +12,8 @@ public static class BuiltInToolEnum
     // Search and navigation
     public const string SearchFiles     = "search_files";
     public const string GrepSearch      = "grep_search";
+    public const string FindSymbols     = "find_symbols";
+    public const string GetReferences   = "get_references";
     public const string Dir             = "dir";
     
     // Project
