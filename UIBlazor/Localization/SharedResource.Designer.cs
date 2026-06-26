@@ -367,7 +367,7 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Max output tokens.
+        ///   Looks up a localized string similar to Max completion tokens.
         /// </summary>
         public static string MaxTokens {
             get {

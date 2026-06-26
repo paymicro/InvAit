@@ -280,7 +280,7 @@ public class ChatService(
             Model = Options.Model,
             Messages = messages,
             Temperature = Options.Temperature,
-            MaxTokens = Options.MaxTokens >= 1000 ? Options.MaxTokens : null,
+            MaxCompletionTokens = Options.MaxTokens >= 1000 ? Options.MaxTokens : null,
             Stream = Options.Stream
         };
 

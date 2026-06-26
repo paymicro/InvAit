@@ -166,7 +166,7 @@
     <value>Describe your goal to create a plan...</value>
   </data>
   <data name="MaxTokens" xml:space="preserve">
-    <value>Max output tokens</value>
+    <value>Max completion tokens</value>
   </data>
   <data name="Messages" xml:space="preserve">
     <value>Messages</value>

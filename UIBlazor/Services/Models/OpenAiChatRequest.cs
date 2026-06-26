@@ -13,7 +13,11 @@ public class OpenAiChatRequest
 
     [JsonPropertyName("max_tokens")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public double? MaxTokens { get; set; }
+    public int? MaxTokens => MaxCompletionTokens;
+
+    [JsonPropertyName("max_completion_tokens")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? MaxCompletionTokens { get; set; }
 
     [JsonPropertyName("stream")]
     public bool Stream { get; set; }
@@ -24,7 +28,7 @@ public class OpenAiChatRequest
 
     [JsonPropertyName("tools")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public IReadOnlyList<UIBlazor.Agents.NativeToolDefinition>? Tools { get; set; }
+    public IReadOnlyList<NativeToolDefinition>? Tools { get; set; }
 
     [JsonPropertyName("tool_choice")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

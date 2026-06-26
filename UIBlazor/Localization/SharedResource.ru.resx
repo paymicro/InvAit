@@ -166,7 +166,7 @@
     <value>Опишите цель для создания плана...</value>
   </data>
   <data name="MaxTokens" xml:space="preserve">
-    <value>Максимум выходных токенов</value>
+    <value>Максимум токенов ответа</value>
   </data>
   <data name="Messages" xml:space="preserve">
     <value>Сообщения</value>
