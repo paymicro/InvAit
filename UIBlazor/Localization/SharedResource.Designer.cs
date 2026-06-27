@@ -736,11 +736,11 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Find Symbols.
+        ///   Looks up a localized string similar to Find declarations.
         /// </summary>
-        public static string ToolFindSymbols {
+        public static string ToolFindDeclarations {
             get {
-                return ResourceManager.GetString("ToolFindSymbols", resourceCulture);
+                return ResourceManager.GetString("ToolFindDeclarations", resourceCulture);
             }
         }
         
@@ -763,11 +763,11 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Get references.
+        ///   Looks up a localized string similar to Find references.
         /// </summary>
-        public static string ToolGetReferences {
+        public static string ToolFindReferences {
             get {
-                return ResourceManager.GetString("ToolGetReferences", resourceCulture);
+                return ResourceManager.GetString("ToolFindReferences", resourceCulture);
             }
         }
         

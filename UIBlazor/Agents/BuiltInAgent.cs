@@ -150,45 +150,53 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
         },
         new()
         {
-            Name = BuiltInToolEnum.GrepSearch,
+            Name = BuiltInToolEnum.Grep,
             DisplayName = SharedResource.ToolGrepSearch,
             Category = ToolCategory.ReadFiles,
             Description = "To perform a grep search within the project, call the grep_search tool with the regex pattern to match.",
             ExampleToSystemMessage = $"""
                                      For example:
-                                     <function name="{BuiltInToolEnum.GrepSearch}">
+                                     <function name="{BuiltInToolEnum.Grep}">
                                      ^.*?main_services.*
                                      </function>
                                      """,
-            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GrepSearch, args, c)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Grep, args, c)
         },
         new()
         {
-            Name = BuiltInToolEnum.FindSymbols,
-            DisplayName = SharedResource.ToolFindSymbols,
+            Name = BuiltInToolEnum.FindDeclarations,
+            DisplayName = SharedResource.ToolFindDeclarations,
             Category = ToolCategory.ReadFiles,
-            Description = "Quick symbol search by name. Returns locations only (no code). Only for charp",
+            Description = $"""
+                          Use instead of {BuiltInToolEnum.Grep} when you need to find where a type, method, property, or other symbol is DECLARED/DEFINED in C# code.
+                          Uses Roslyn semantic analysis — understands code structure, won't match strings/comments/unrelated identifiers unlike grep.
+                          Returns symbol name, kind (class/method/property/etc), and source file path. C# only.
+                          """,
             ExampleToSystemMessage = $"""
-                                     For example:
-                                     <function name="{BuiltInToolEnum.FindSymbols}">
-                                     SymbolName
+                                     For example, to find where class MyService is defined:
+                                     <function name="{BuiltInToolEnum.FindDeclarations}">
+                                     MyService
                                      </function>
                                      """,
-            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.FindSymbols, args, c)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.FindDeclarations, args, c)
         },
         new()
         {
-            Name = BuiltInToolEnum.GetReferences,
-            DisplayName = SharedResource.ToolGetReferences,
+            Name = BuiltInToolEnum.FindReferences,
+            DisplayName = SharedResource.ToolFindReferences,
             Category = ToolCategory.ReadFiles,
-            Description = "Quick search references to symbol. Return location only (no code). Only for charp",
+            Description = $"""
+                          Use instead of {BuiltInToolEnum.Grep} to find all USAGES (references) of a C# symbol across the solution — where a method is called, a class is used, a property is accessed.
+                          Uses Roslyn semantic analysis — finds actual code references, ignores comments/strings/coincidental text matches.
+                          Returns file paths and line numbers. C# only.
+                          """,
             ExampleToSystemMessage = $"""
-                                     For example:
-                                     <function name="{BuiltInToolEnum.GetReferences}">
-                                     SymbolName
+                                     For example, to find all usages of method CalculateTotal:
+                                     <function name="{BuiltInToolEnum.FindReferences}">
+                                     CalculateTotal
                                      </function>
                                      """,
-            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetReferences, args, c)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.FindReferences, args, c)
         },
         new()
         {

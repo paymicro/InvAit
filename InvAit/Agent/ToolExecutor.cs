@@ -48,9 +48,9 @@ public class ToolExecutor : IAsyncDisposable
                 BuiltInToolEnum.DeleteFile => await DeleteFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.Bash => await ExecAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.SearchFiles => await SearchFilesAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BuiltInToolEnum.GrepSearch => await GrepSearchAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BuiltInToolEnum.FindSymbols => await FindSymbolsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BuiltInToolEnum.GetReferences => await GetReferencesAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.Grep => await GrepSearchAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.FindDeclarations => await FindDeclarationsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.FindReferences => await FindReferencesAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.Dir => await ListDirectoryAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.ApplyDiff => await ApplyDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.Build => await BuildSolutionAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
@@ -441,7 +441,7 @@ public class ToolExecutor : IAsyncDisposable
         return new VsResponse { Payload = header + sb.ToString() };
     }
 
-    private async Task<VsResponse> FindSymbolsAsync(IReadOnlyDictionary<string, object> args)
+    private async Task<VsResponse> FindDeclarationsAsync(IReadOnlyDictionary<string, object> args)
     {
         var symbolName = args.GetString("param1");
         var componentModel = (IComponentModel)Package.GetGlobalService(typeof(SComponentModel));
@@ -467,7 +467,7 @@ public class ToolExecutor : IAsyncDisposable
         };
     }
 
-    private async Task<VsResponse> GetReferencesAsync(IReadOnlyDictionary<string, object> args)
+    private async Task<VsResponse> FindReferencesAsync(IReadOnlyDictionary<string, object> args)
     {
         var symbolName = args.GetString("param1");
 

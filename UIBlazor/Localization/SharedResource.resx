@@ -405,10 +405,10 @@
   <data name="CompressionTokenThreshold" xml:space="preserve">
     <value>Compression token threshold</value>
   </data>
-  <data name="ToolFindSymbols" xml:space="preserve">
-    <value>Find Symbols</value>
+  <data name="ToolFindDeclarations" xml:space="preserve">
+    <value>Find declarations</value>
   </data>
-  <data name="ToolGetReferences" xml:space="preserve">
-    <value>Get references</value>
+  <data name="ToolFindReferences" xml:space="preserve">
+    <value>Find references</value>
   </data>
 </root>
