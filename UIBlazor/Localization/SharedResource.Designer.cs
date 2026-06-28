@@ -160,6 +160,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Summarize session to reduce context size.
+        /// </summary>
+        public static string CommandCompact {
+            get {
+                return ResourceManager.GetString("CommandCompact", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Compression token threshold.
         /// </summary>
         public static string CompressionTokenThreshold {
@@ -745,6 +754,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Find references.
+        /// </summary>
+        public static string ToolFindReferences {
+            get {
+                return ResourceManager.GetString("ToolFindReferences", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Get errors.
         /// </summary>
         public static string ToolGetErrors {
@@ -759,15 +777,6 @@ namespace UIBlazor.Localization {
         public static string ToolGetProjectInfo {
             get {
                 return ResourceManager.GetString("ToolGetProjectInfo", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Find references.
-        /// </summary>
-        public static string ToolFindReferences {
-            get {
-                return ResourceManager.GetString("ToolFindReferences", resourceCulture);
             }
         }
         

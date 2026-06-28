@@ -233,7 +233,11 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.RunTests,
             DisplayName = SharedResource.ToolRunTests,
             Category = ToolCategory.ReadFiles,
-            Description = "To run all tests in solution. When any errors returns errors list. Note: the solution build will be triggered automatically when this tool is called.",
+            Description = """
+                          To run all tests in solution.
+                          The solution BUILD will be triggered automatically when this tool is called.
+                          Uses VStest, for new MTPv2 exec `dotnet test --filter-class "*"`.
+                          """,            
             ExampleToSystemMessage = $"""
                                      For example:
                                      <function name="{BuiltInToolEnum.RunTests}">

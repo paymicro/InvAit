@@ -148,7 +148,7 @@ public class ChatService(
 
     public async IAsyncEnumerable<ChatDelta> CompressSessionAsync([EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var (Messages, LastUserMessage) = Session.GetFormattedMessagesForCompress(await systemPromptBuilder.PrepareSystemPromptAsync(Session.Mode, cancellationToken));
+        var (Messages, LastUserMessage) = Session.GetFormattedMessagesForCompress();
 
         // Получаем сжатый текст от LLM
         var contentSb = new StringBuilder();
@@ -168,7 +168,7 @@ public class ChatService(
             {
                 Content = contentSb.ToString(),
                 Role = ChatMessageRole.Assistant,
-                IsExpanded = true,
+                IsExpanded = true
             };
 
             var totalCount = Session.Messages.Count;

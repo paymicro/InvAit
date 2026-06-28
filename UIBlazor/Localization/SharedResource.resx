@@ -411,4 +411,7 @@
   <data name="ToolFindReferences" xml:space="preserve">
     <value>Find references</value>
   </data>
+  <data name="CommandCompact" xml:space="preserve">
+    <value>Summarize session to reduce context size</value>
+  </data>
 </root>

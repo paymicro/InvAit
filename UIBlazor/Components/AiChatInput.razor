@@ -18,28 +18,28 @@
         @* Поле ввода *@
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Start">
             <textarea @ref="_textareaRef"
-                      rows="1"
-                      class="text-input"
-                      placeholder="@ModePlaceholder"
-                      @bind="_currentInput"
-                      @oninput="HandleInputAsync"
-                      @onkeydown="OnKeyDown"
-                      @onkeydown:preventDefault="_shouldPreventDefault"
-                      disabled="@IsLoading"/>
-                  
+            rows="1"
+            class="text-input"
+            placeholder="@ModePlaceholder"
+            @bind="_currentInput"
+            @oninput="HandleInputAsync"
+            @onkeydown="OnKeyDown"
+            @onkeydown:preventDefault="_shouldPreventDefault"
+            disabled="@IsLoading"/>
+
             <div class="misc">
                 <RadzenToggleButton @bind-Value="CommonSettingsProvider.Current.SendCurrentFile"
-                                    ButtonStyle="ButtonStyle.Base"
-                                    Size="ButtonSize.Small"
-                                    Variant="Variant.Flat"
-                                    title="@SharedResource.SendCurrentFile">
+                ButtonStyle="ButtonStyle.Base"
+                Size="ButtonSize.Small"
+                Variant="Variant.Flat"
+                title="@SharedResource.SendCurrentFile">
                     <i class="fa-solid fa-file"></i>
                 </RadzenToggleButton>
                 <RadzenToggleButton @bind-Value="CommonSettingsProvider.Current.SendSolutionsStricture"
-                                    ButtonStyle="ButtonStyle.Base"
-                                    Size="ButtonSize.Small"
-                                    Variant="Variant.Flat"
-                                    title="@SharedResource.SendSolutionsStricture">
+                ButtonStyle="ButtonStyle.Base"
+                Size="ButtonSize.Small"
+                Variant="Variant.Flat"
+                title="@SharedResource.SendSolutionsStricture">
                     <i class="fa-solid fa-folder-tree"></i>
                 </RadzenToggleButton>
             </div>
@@ -59,28 +59,48 @@
 
                     <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" JustifyContent="JustifyContent.End" AlignItems="AlignItems.Center">
                         <RadzenButton Icon="send"
-                                      ButtonStyle="ButtonStyle.Base"
-                                      Variant="Variant.Text"
-                                      Visible="@(!IsLoading)"
-                                      Disabled="@(!CanSend())"
-                                      Click="@OnSendClick"
-                                      title="@SharedResource.SendMessage"
-                                      class="rz-chat-send-btn" />
+                        ButtonStyle="ButtonStyle.Base"
+                        Variant="Variant.Text"
+                        Visible="@(!IsLoading)"
+                        Disabled="@(!CanSend())"
+                        Click="@OnSendClick"
+                        title="@SharedResource.SendMessage"
+                        class="rz-chat-send-btn" />
                         <RadzenButton Icon="cancel"
-                                      ButtonStyle="ButtonStyle.Danger"
-                                      Variant="Variant.Text"
-                                      Visible="@IsLoading"
-                                      Click="@Cancel.InvokeAsync"
-                                      title="@SharedResource.Cancel"
-                                      class="rz-chat-cancel-btn" />
+                        ButtonStyle="ButtonStyle.Danger"
+                        Variant="Variant.Text"
+                        Visible="@IsLoading"
+                        Click="@Cancel.InvokeAsync"
+                        title="@SharedResource.Cancel"
+                        class="rz-chat-cancel-btn" />
                     </RadzenStack>
                 </RadzenStack>
             </RadzenStack>
         </div>
     </div>
 
-    @* Всплывающее меню с файлами *@
-    @if (_filteredFiles.Any())
+    @* Всплывающее меню с файлами или командами *@
+    @if (_filteredCommands.Any())
+    {
+        <div class="hints-menu">
+            <ul class="hints-list">
+                @for (var i = 0; i < _filteredCommands.Count; i++)
+                {
+                    var index = i;
+                    var cmd = _filteredCommands[i];
+                    var desc = _availableCommands[cmd];
+                    var isSelected = index == _selectedIndex;
+                    <li class="hint-item @(isSelected ? "selected" : "")"
+                    @onclick="() => SendCommandAsync(cmd)">
+                        <span class="file-icon">⌘</span>
+                        <span class="file-name">@cmd</span>
+                        <span class="file-path">@desc</span>
+                    </li>
+                }
+            </ul>
+        </div>
+    }
+    else if (_filteredFiles.Any())
     {
         <div class="hints-menu">
             <ul class="hints-list">
@@ -93,7 +113,7 @@
                     var fileDir = Path.GetDirectoryName(file.Replace('\\', '/')) ?? "";
                     var icon = GetFileIcon(fileName);
                     <li class="hint-item @(isSelected ? "selected" : "")"
-                        @onclick="() => AddFileTokenAsync(file)">
+                    @onclick="() => AddFileTokenAsync(file)">
                         <span class="file-icon">@icon</span>
                         <span class="file-name">@fileName</span>
                         <span class="file-path">@fileDir</span>
@@ -107,6 +127,7 @@
 @code {
     [Parameter] public EventCallback<string> SendMessage { get; set; }
     [Parameter] public EventCallback<string> Cancel { get; set; }
+    [Parameter] public EventCallback<string> CommandTriggered { get; set; }
     [Parameter] public bool IsLoading { get; set; }
 
     [Inject] private IChatService ChatService { get; set; } = null!;
@@ -115,10 +136,16 @@
     [Inject] private IVsBridge VsBridge { get; set; } = null!;
     [Inject] private ICommonSettingsProvider CommonSettingsProvider { get; set; } = null!;
 
+    private static readonly Dictionary<string, string> _availableCommands = new()
+    {
+        ["compact"] = SharedResource.CommandCompact
+    };
+
     private ElementReference _textareaRef;
     private readonly List<InputToken> _tokens = [];
     private string _currentInput = string.Empty;
     private List<string> _filteredFiles = [];
+    private List<string> _filteredCommands = [];
     private int _selectedIndex;
     private bool _shouldPreventDefault;
 
@@ -140,8 +167,23 @@
     {
         _currentInput = e.Value?.ToString() ?? string.Empty;
 
-        // Проверяем, есть ли @ в конце
-        if (_currentInput.EndsWith(" @"))
+        var trimmed = _currentInput.TrimStart();
+
+        // Команда через / в начале строки
+        if (trimmed.StartsWith('/'))
+        {
+            var query = trimmed.Substring(1); // текст после /
+
+            _filteredCommands = string.IsNullOrEmpty(query)
+                ? [.. _availableCommands.Keys]
+                : _availableCommands.Keys
+                    .Where(c => c.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+                    .Take(10)
+                    .ToList();
+            _filteredFiles.Clear();
+            _selectedIndex = 0;
+        }
+        else if (_currentInput.EndsWith(" @"))
         {
             // Показываем все файлы
             var source = VsCodeContextService.CurrentContext?.SolutionFiles ??
@@ -167,6 +209,7 @@
         else
         {
             _filteredFiles.Clear();
+            _filteredCommands.Clear();
         }
     }
 
@@ -202,6 +245,27 @@
         await FocusInputAsync();
     }
 
+    private async Task SendCommandAsync(string command)
+    {
+        // Удаляем / и текст после него из currentInput
+        var trimmed = _currentInput.TrimStart();
+        if (trimmed.StartsWith('/'))
+        {
+            var slashIndex = _currentInput.IndexOf('/');
+            if (slashIndex >= 0)
+            {
+                _currentInput = _currentInput.Substring(0, slashIndex);
+            }
+        }
+
+        _filteredCommands.Clear();
+        _selectedIndex = 0;
+        await FocusInputAsync();
+
+        // вызов команды
+        await CommandTriggered.InvokeAsync(command);
+    }
+
     private async Task FocusInputAsync()
     {
         try
@@ -216,37 +280,46 @@
 
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
-        if (_filteredFiles.Any())
+        var count = _filteredFiles.Count + _filteredCommands.Count;
+        if (count > 0)
         {
             switch (e.Key)
             {
                 case "ArrowDown":
-                    _selectedIndex = (_selectedIndex + 1) % _filteredFiles.Count;
+                    _selectedIndex = (_selectedIndex + 1) % count;
                     _shouldPreventDefault = true;
                     return;
                 case "ArrowUp":
-                    _selectedIndex = (_selectedIndex - 1 + _filteredFiles.Count) % _filteredFiles.Count;
+                    _selectedIndex = (_selectedIndex - 1 + count) % count;
                     _shouldPreventDefault = true;
                     return;
                 case "Tab":
                 case "Enter":
                     {
                         _shouldPreventDefault = true;
-                        if (_selectedIndex >= 0 && _selectedIndex < _filteredFiles.Count)
+                        if (_selectedIndex >= 0 && _selectedIndex < count)
                         {
-                            await AddFileTokenAsync(_filteredFiles[_selectedIndex]);
+                            if (_filteredCommands.Count > 0)
+                            {
+                                await SendCommandAsync(_filteredCommands[_selectedIndex]);
+                            }
+                            else
+                            {
+                                await AddFileTokenAsync(_filteredFiles[_selectedIndex]);
+                            }
                         }
                         return;
                     }
                 case "Escape":
                     _shouldPreventDefault = true;
                     _filteredFiles.Clear();
+                    _filteredCommands.Clear();
                     return;
             }
         }
 
         // Enter без Shift/Ctrl — отправка
-        if (e is { Key: "Enter", CtrlKey: false, ShiftKey: false } && !_filteredFiles.Any())
+        if (e is { Key: "Enter", CtrlKey: false, ShiftKey: false } && !_filteredFiles.Any() && !(_filteredCommands.Any()))
         {
             _shouldPreventDefault = true;
             await OnSendClick();
@@ -296,6 +369,7 @@
         _currentInput = string.Empty;
         _tokens.Clear();
         _filteredFiles.Clear();
+        _filteredCommands.Clear();
 
         await SendMessage.InvokeAsync(message);
     }

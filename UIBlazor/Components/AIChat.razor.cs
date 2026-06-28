@@ -59,6 +59,30 @@ public partial class AiChat : RadzenComponent
         await GetAiResponseAsync();
     }
 
+    public async Task HandleCommandAsync(string command)
+    {
+        if (IsLoading) return;
+
+        switch (command)
+        {
+            case "compact":
+                await CancelResponseAsync();
+                _cts = new CancellationTokenSource();
+                IsLoading = true;
+                await InvokeAsync(StateHasChanged);
+                try
+                {
+                    await CompressAsync(0, _cts.Token);
+                }
+                finally
+                {
+                    IsLoading = false;
+                    await InvokeAsync(StateHasChanged);
+                }
+                break;
+        }
+    }
+
     private async Task ScrollToBottomAsync()
     {
         await Task.Yield();
@@ -99,6 +123,11 @@ public partial class AiChat : RadzenComponent
                      InvokeAsync(StateHasChanged);
                  },
                  cancellationToken);
+            // обновление потерянных сегментов
+            foreach (var message in ChatService.Session.Messages.Where(m => m.Segments.Count == 0))
+            {
+                MessageParser.UpdateSegments(message.Content, message);
+            }
             result = true;
         }
         catch (OperationCanceledException)
