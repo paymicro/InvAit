@@ -275,14 +275,19 @@ public class ChatService(
         var url = $"{Options.Endpoint}{_complitions}";
         var effectiveApiKeyHeader = Options.ApiKeyHeader;
 
-        var payload = new OpenAiChatRequest
+        var payload = new Dictionary<string, object>
         {
-            Model = Options.Model,
-            Messages = messages,
-            Temperature = Options.Temperature,
-            MaxCompletionTokens = Options.MaxTokens >= 1000 ? Options.MaxTokens : null,
-            Stream = Options.Stream
+            { "model", Options.Model },
+            { "messages", messages },
+            { "temperature", Options.Temperature },
+            { "stream", Options.Stream }
         };
+
+        if (Options.MaxTokens >= 1000)
+        {
+            payload.Add("max_tokens", Options.MaxTokens);
+            payload.Add("max_completion_tokens", Options.MaxTokens);
+        }
 
         var request = new HttpRequestMessage(HttpMethod.Post, url)
         {

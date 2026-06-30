@@ -80,6 +80,8 @@
                 <RadzenFormField Text="@SharedResource.SystemPrompt" Variant="Variant.Outlined" AllowFloatingLabel="false">
                     <RadzenTextArea @bind-Value="@ProfileManager.ActiveProfile.SystemPrompt" Style="min-height: 90px" />
                 </RadzenFormField>
+
+                <CheckBox Text="@SharedResource.SendCurrentDate" @bind-Value=@ProfileManager.ActiveProfile.SendCurrentDate />
                 
                 <ExtraHeaderPicker />
                 <CheckBox Text="@SharedResource.SkipSSL" @bind-Value=@ProfileManager.ActiveProfile.SkipSSL />

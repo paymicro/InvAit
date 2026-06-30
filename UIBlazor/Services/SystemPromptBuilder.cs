@@ -1,5 +1,3 @@
-using UIBlazor.Services.Settings;
-
 namespace UIBlazor.Services;
 
 public class SystemPromptBuilder(
@@ -64,7 +62,7 @@ public class SystemPromptBuilder(
             contextSection.ToString(),
             rules,
             !string.IsNullOrEmpty(agents) ? string.Join("# Agents instructions\n", agents) : null,
-            $"Current date: {DateTime.Now:f}"];
+            profileManager.ActiveProfile.SendCurrentDate ? $"Current date: {DateTime.Now:dd-MM-yyyy}" : null];
 
         return string.Join(Environment.NewLine, systemPromptBlocks.Where(b => !string.IsNullOrEmpty(b)));
     }

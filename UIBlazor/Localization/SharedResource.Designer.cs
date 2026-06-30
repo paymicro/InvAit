@@ -547,6 +547,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Send current date.
+        /// </summary>
+        public static string SendCurrentDate {
+            get {
+                return ResourceManager.GetString("SendCurrentDate", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Send current file.
         /// </summary>
         public static string SendCurrentFile {

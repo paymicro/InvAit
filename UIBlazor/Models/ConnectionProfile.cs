@@ -43,6 +43,8 @@ public class ConnectionProfile : BaseOptions
 
     public string SystemPrompt { get; set => SetIfChanged(ref field, value); } = string.Empty;
 
+    public bool SendCurrentDate { get; set => SetIfChanged(ref field, value); } = true;
+
     private static string PrepareEndpoint(string endpoint)
     {
         endpoint = endpoint.TrimEnd('/', '\\');

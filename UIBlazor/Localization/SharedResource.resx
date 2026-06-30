@@ -414,4 +414,7 @@
   <data name="CommandCompact" xml:space="preserve">
     <value>Summarize session to reduce context size</value>
   </data>
+  <data name="SendCurrentDate" xml:space="preserve">
+    <value>Send current date</value>
+  </data>
 </root>
