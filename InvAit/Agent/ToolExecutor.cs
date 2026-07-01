@@ -1221,6 +1221,10 @@ public class ToolExecutor : IAsyncDisposable
                 {
                     description = line.Substring(12).Trim();
                 }
+                else if (!string.IsNullOrEmpty(description))
+                {
+                    description += line.Trim(); // некоторые пишут в несколько строк
+                }
             }
         }
 

@@ -313,6 +313,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Extra payload.
+        /// </summary>
+        public static string ExtraPayload {
+            get {
+                return ResourceManager.GetString("ExtraPayload", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to First token.
         /// </summary>
         public static string FirstToken {

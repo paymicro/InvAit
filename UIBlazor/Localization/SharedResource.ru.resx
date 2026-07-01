@@ -417,4 +417,7 @@
   <data name="SendCurrentDate" xml:space="preserve">
     <value>Отправить текущую дату</value>
   </data>
+  <data name="ExtraPayload" xml:space="preserve">
+    <value>Дополнительный payload</value>
+  </data>
 </root>

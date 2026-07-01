@@ -45,6 +45,8 @@ public class ConnectionProfile : BaseOptions
 
     public bool SendCurrentDate { get; set => SetIfChanged(ref field, value); } = true;
 
+    public string ExtraPayload { get; set => SetIfChanged(ref field, value); } = string.Empty;
+
     private static string PrepareEndpoint(string endpoint)
     {
         endpoint = endpoint.TrimEnd('/', '\\');

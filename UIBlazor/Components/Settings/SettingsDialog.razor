@@ -78,12 +78,16 @@
                 </RadzenStack>
 
                 <RadzenFormField Text="@SharedResource.SystemPrompt" Variant="Variant.Outlined" AllowFloatingLabel="false">
-                    <RadzenTextArea @bind-Value="@ProfileManager.ActiveProfile.SystemPrompt" Style="min-height: 90px" />
+                    <RadzenTextArea @bind-Value="@ProfileManager.ActiveProfile.SystemPrompt" Style="min-height: 96px" />
                 </RadzenFormField>
 
                 <CheckBox Text="@SharedResource.SendCurrentDate" @bind-Value=@ProfileManager.ActiveProfile.SendCurrentDate />
-                
+                    <RadzenFormField Text="@SharedResource.ExtraPayload" Variant="Variant.Outlined" AllowFloatingLabel="false">
+                        <RadzenTextArea @bind-Value="@ProfileManager.ActiveProfile.ExtraPayload" Style="min-height: 96px" Placeholder="@_extraPayloadPlaceholder" />
+                    </RadzenFormField>
+
                 <ExtraHeaderPicker />
+
                 <CheckBox Text="@SharedResource.SkipSSL" @bind-Value=@ProfileManager.ActiveProfile.SkipSSL />
             </RadzenStack>
         </RadzenTabsItem>
@@ -179,7 +183,13 @@
         ToolCategory.Execution
     ];
     private readonly string[] _providers = ["OpenAI Compatible"];
-    bool _isModelUpdating;
+    private bool _isModelUpdating;
+    private readonly string _extraPayloadPlaceholder = """
+                                                       {
+                                                         "resoning_efforts": "high",
+                                                         "reasoning_split": true
+                                                       }
+                                                       """;
 
     private async Task OnAddProfile()
     {

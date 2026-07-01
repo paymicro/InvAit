@@ -289,6 +289,25 @@ public class ChatService(
             payload.Add("max_completion_tokens", Options.MaxTokens);
         }
 
+        if (!string.IsNullOrEmpty(Options.ExtraPayload))
+        {
+            try
+            {
+                var extra = JsonSerializer.Deserialize<Dictionary<string, object>>(Options.ExtraPayload);
+                if (extra != null)
+                {
+                    foreach (var kvp in extra)
+                    {
+                        payload[kvp.Key] = kvp.Value;
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                // skip invalid ExtraPayload
+            }
+        }
+
         var request = new HttpRequestMessage(HttpMethod.Post, url)
         {
             Content = new StringContent(
