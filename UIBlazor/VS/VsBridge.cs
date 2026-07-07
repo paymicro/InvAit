@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using Microsoft.JSInterop;
-using UIBlazor.Services.Settings;
 
 namespace UIBlazor.VS;
 
@@ -39,12 +38,12 @@ public class VsBridge : IVsBridge, IDisposable
         }
     }
 
-    public async Task<VsToolResult> ExecuteToolAsync(string name, IReadOnlyDictionary<string, object>? args = null, CancellationToken cancellationToken = default)
+    public async Task<VsToolResult> ExecuteToolAsync(string name, string? args, CancellationToken cancellationToken = default)
     {
         var request = new VsRequest
         {
             Action = name,
-            Payload = args != null ? JsonUtils.Serialize(args) : null
+            Payload = args
         };
 
         var response = await SendRequestAsync(request, cancellationToken);

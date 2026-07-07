@@ -7,7 +7,6 @@ public interface IToolCallHandler
     /// </summary>
     Task ProcessToolCallsAsync(
         VisualChatMessage message,
-        List<ContentSegment> toolSegments,
         CancellationToken cancellationToken);
 
     /// <summary>

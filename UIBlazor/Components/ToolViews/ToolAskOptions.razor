@@ -29,14 +29,14 @@
 </div>
 
 @code {
-    [Parameter] public List<string> Lines { get; set; } = [];
+    [Parameter] public string Args { get; set; } = string.Empty;
     [Parameter] public EventCallback<string> OnOptionSelectedCallback { get; set; }
 
     private string _customOption = string.Empty;
 
-    private string Question => Lines.Count > 0 ? Lines[0] : string.Empty;
-    
-    private List<string> Options => Lines.Count > 1 ? Lines.Skip(1).ToList() : [];
+    private string Question => string.Empty; //Lines.Count > 0 ? Lines[0] : string.Empty;
+
+    private List<string> Options => []; //Lines.Count > 1 ? Lines.Skip(1).ToList() : [];
 
     private async Task OnOptionSelected(string selectedOption)
     {

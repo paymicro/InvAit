@@ -17,5 +17,5 @@ public class AiTool
     /// <summary>
     /// Gets or sets the function to call, represented by the <see cref="AiToolToCall"/> object.
     /// </summary>
-    public AiToolToCall Function { get; set; }
+    public AiToolToCall Function { get; set; } = new();
 }

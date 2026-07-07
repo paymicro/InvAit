@@ -2,15 +2,13 @@ using System.ComponentModel;
 
 namespace Shared.Contracts;
 
-/// <summary>
-/// TODO Будет использоваться в системном туллинге
-/// </summary>
 public class DiffEdit
 {
     /// <summary>
     /// Начальная линия (с tolerance)
     /// </summary>
     [Description("Approximate start line or null")]
+    [DefaultValue(-1)]
     public int? ApproximateLine { get; set; } = null;
 
     [Description("Unique fragment of code")]

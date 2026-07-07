@@ -36,7 +36,7 @@ public class McpSettingsProviderTests
     public async Task LoadAsync_HandlesEmptyMcpJson()
     {
         // Arrange
-        _vsBridgeMock.Setup(v => v.ExecuteToolAsync(BasicEnum.ReadMcpSettingsFile, It.IsAny<IReadOnlyDictionary<string, object>?>()))
+        _vsBridgeMock.Setup(v => v.ExecuteToolAsync(BasicEnum.ReadMcpSettingsFile, It.IsAny<string?>()))
             .ReturnsAsync(new VsToolResult { Success = true, Result = "" });
 
         // Act
@@ -58,7 +58,7 @@ public class McpSettingsProviderTests
             }
         };
 
-        _vsBridgeMock.Setup(v => v.ExecuteToolAsync(BasicEnum.ReadMcpSettingsFile, It.IsAny<IReadOnlyDictionary<string, object>?>()))
+        _vsBridgeMock.Setup(v => v.ExecuteToolAsync(BasicEnum.ReadMcpSettingsFile, It.IsAny<string?>()))
             .ReturnsAsync(new VsToolResult { Success = true, Result = JsonUtils.Serialize(mcpJson) });
 
         // Mock RefreshToolsAsync for stdio
@@ -77,7 +77,7 @@ public class McpSettingsProviderTests
                 }
             }
         };
-        _vsBridgeMock.Setup(v => v.ExecuteToolAsync(BasicEnum.McpGetTools, It.IsAny<IReadOnlyDictionary<string, object>?>()))
+        _vsBridgeMock.Setup(v => v.ExecuteToolAsync(BasicEnum.McpGetTools, It.IsAny<string?>()))
             .ReturnsAsync(new VsToolResult { Success = true, Result = JsonUtils.Serialize(toolsResult) });
 
         // Act

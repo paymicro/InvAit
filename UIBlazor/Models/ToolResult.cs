@@ -5,12 +5,15 @@ namespace UIBlazor.Models;
 /// </summary>
 public class ToolResult
 {
-    public string Id { get; } = $"tool{Guid.NewGuid()}";
-
     /// <summary>
     /// Имя тулзы
     /// </summary>
     public string Name { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Tool call ID from native API (used for role: "tool" responses).
+    /// </summary>
+    public string ToolCallId { get; init; } = string.Empty;
 
     /// <summary>
     /// Локализованное имя тулзы. Только для UI
@@ -31,20 +34,15 @@ public class ToolResult
     /// </summary>
     public bool Success { get; set; }
 
-    public static ToolResult Convert(VsToolResult vsToolResult, string displayName, string name)
-    {
-        return new ToolResult
+    public static ToolResult Convert(VsToolResult vsToolResult, string displayName, string name, string toolCallId = "")
+        => new()
         {
-            DisplayName = GetDisplayName(vsToolResult.Success, !string.IsNullOrEmpty(displayName) ? displayName : name),
             Name = name,
-            Content = $"""
-                       <tool_result name="{name}" success={vsToolResult.Success}>
-                       {(vsToolResult.Success ? vsToolResult.Result : vsToolResult.ErrorMessage)}
-                       </tool_result>
-                       """,
+            DisplayName = GetDisplayName(vsToolResult.Success, !string.IsNullOrEmpty(displayName) ? displayName : name),
+            ToolCallId = toolCallId,
+            Content = vsToolResult.Success ? vsToolResult.Result : vsToolResult.ErrorMessage,
             Success = vsToolResult.Success
         };
-    }
 
     public static string GetDisplayName(bool success, string displayName)
         => $"{(success ? '✅' : '❌')} {displayName}";

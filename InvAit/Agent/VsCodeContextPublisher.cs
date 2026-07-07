@@ -104,22 +104,29 @@ namespace InvAit.Agent
                 }
 
                 // 2. Get Active Document info
-                if (_dte.ActiveDocument != null)
+                try
                 {
-                    context.ActiveFilePath = _dte.ActiveDocument.FullName;
-
-                    var textDoc = (TextDocument)_dte.ActiveDocument.Object("TextDocument");
-                    if (textDoc != null)
+                    if (_dte.ActiveDocument != null)
                     {
-                        var startPoint = textDoc.StartPoint.CreateEditPoint();
-                        context.ActiveFileContent = startPoint.GetText(textDoc.EndPoint);
-                    }
+                        context.ActiveFilePath = _dte.ActiveDocument.FullName;
 
-                    if (_dte.ActiveDocument.Selection is TextSelection selection)
-                    {
-                        context.SelectionStartLine = selection.TopLine;
-                        context.SelectionEndLine = selection.BottomLine;
+                        var textDoc = (TextDocument)_dte.ActiveDocument.Object("TextDocument");
+                        if (textDoc != null)
+                        {
+                            var startPoint = textDoc.StartPoint.CreateEditPoint();
+                            context.ActiveFileContent = startPoint.GetText(textDoc.EndPoint);
+                        }
+
+                        if (_dte.ActiveDocument.Selection is TextSelection selection)
+                        {
+                            context.SelectionStartLine = selection.TopLine;
+                            context.SelectionEndLine = selection.BottomLine;
+                        }
                     }
+                }
+                catch (Exception ex)
+                {
+                    await Logger.LogAsync($"Error updating ActiveDocument context: {ex.Message}", "WARN");
                 }
 
                 _lastContext = context;

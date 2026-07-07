@@ -1,43 +1,145 @@
+#pragma warning disable IDE0060 // Remove unused parameter
+
 using System.Collections;
 using System.ComponentModel;
 using System.Reflection;
 
 namespace UIBlazor.Agents;
 
-public class BuiltInToolDefs
+public static class BuiltInToolDefs
 {
-    [Description("Request to read the contents of one or more files.")]
-    public Task<string> ReadFiles([Description("File information")] ReadFileParams[] filePath)
-    {
-        // тут чтение файлов
-        return Task.FromResult("");
-    }
+    [DisplayName(BuiltInToolEnum.ReadFiles)]
+    [Description("Request to read the contents of one or more files")]
+    public static void ReadFiles(
+        [Description("File information")] ReadFileParams[] files)
+    { }
 
+    [DisplayName(BuiltInToolEnum.ReadOpenFile)]
+    [Description("Read open file")]
+    public static void ReadOpenFile()
+    { }
+
+    [DisplayName(BuiltInToolEnum.CreateFile)]
+    [Description("Create a new file. The old file will be overwritten if it exists.")]
+    public static void CreateFile(
+        [Description("Relative or absolute file path")] string filePath,
+        [Description("Content")] string content)
+    { }
+
+    [DisplayName(BuiltInToolEnum.Edits)]
     [Description("Applies a series of Search & Replace edits to the specified file.")]
-    public Task<string> ApplyDiff(
+    public static void Edit(
         [Description("File path")] string filePath,
         [Description("List of pairs 'search/replace'. Executed sequentially.")] DiffEdit[] edits)
-    {
-        // тут применение изменений
-        return Task.FromResult("1234");
-    }
+    { }
 
+    [DisplayName(BuiltInToolEnum.SearchFiles)]
+    [Description("To return a list of files with patches in solution directory.")]
+    public static void SearchFiles(
+        [Description("Regex pattern")] string regex,
+        [Description("Max count of matches"), DefaultValue(50)] int maxMatches)
+    { }
+
+    [DisplayName(BuiltInToolEnum.Grep)]
+    [Description("Grep search within the project.")]
+    public static void Grep(
+        [Description("Regex pattern")] string regex,
+        [Description("Lines below and after of match"), DefaultValue(3)] int contextLines,
+        [Description("Max count of matches"), DefaultValue(50)] int maxMatches)
+    { }
+
+    [DisplayName(BuiltInToolEnum.FindDeclarations)]
+    [Description("Find where a type, method, property, or other symbol is DECLARED/DEFINED in C# code.")]
+    public static void FindDeclarations(
+        [Description("Symbol name")] string symbol)
+    { }
+
+    [DisplayName(BuiltInToolEnum.FindReferences)]
+    [Description("Find all USAGES (references) of a C# symbol across the solution — where a method is called, a class is used, a property is accessed")]
+    public static void FindReferences(
+        [Description("Symbol name")] string symbol)
+    { }
+
+    [DisplayName(BuiltInToolEnum.Dir)]
+    [Description("List files and folders in a given directory")]
+    public static void Dir(
+        [Description("Directory")] string path,
+        [Description("Recursive search"), DefaultValue(false)] bool recursive)
+    { }
+
+    [DisplayName(BuiltInToolEnum.Build)]
+    [Description("Rebuild solution in Visual Studio")]
+    public static void Build()
+    { }
+
+    [DisplayName(BuiltInToolEnum.RunTests)]
+    [Description("Run all tests in solution")]
+    public static void RunTests()
+    { }
+
+    [DisplayName(BuiltInToolEnum.GetErrors)]
+    [Description("Get error list of current solution and current file")]
+    public static void GetErrors()
+    { }
+
+    [DisplayName(BuiltInToolEnum.GetProjectInfo)]
+    [Description("Get information about the solution and projects. Returns list of projects, their types, target frameworks, and file structure.")]
+    public static void GetProjectInfo()
+    { }
+
+    [DisplayName(BuiltInToolEnum.GetSolutionStructure)]
+    [Description("Get a tree-like structure of the entire solution, including projects, folders, and files.")]
+    public static void GetSolutionStructure()
+    { }
+
+    [DisplayName(BuiltInToolEnum.Bash)]
     [Description("To run a shell command (Git Bash). The shell is stateless. Avoid using single quotes inside your commands if possible. Do NOT perform actions requiring special/admin privileges. Choose terminal commands and scripts optimized for win32 and x64.")]
-    public Task<string> Bash([Description("Shell command to execute")] string command)
-    {
-        return Task.FromResult("");
-    }
+    public static void Bash(
+        [Description("Shell command to execute")] string command)
+    { }
+
+    [DisplayName(BuiltInToolEnum.GitStatus)]
+    [Description("View git status.")]
+    public static void GitStatus()
+    { }
+
+    [DisplayName(BuiltInToolEnum.GitLog)]
+    [Description("View git commit history with changed files in commits.")]
+    public static void GitLog(
+        [Description("Number of commits to display")] int number)
+    { }
+
+    [DisplayName(BasicEnum.SwitchMode)]
+    [Description("Switch the current mode. Available modes: Chat, Agent, Plan.")]
+    public static void SwitchMode(
+        [Description("Mode")] string mode)
+    { }
+
+    [DisplayName(BasicEnum.ReadSkillContent)]
+    [Description("Load the full content of a skill when you need detailed instructions.")]
+    public static void ReadSkillContent(
+        [Description("Skill name")] string skillName)
+    { }
+
+    [DisplayName(BuiltInToolEnum.DeleteFile)]
+    [Description("Delete file")]
+    public static void DeleteFile(
+        [Description("Relative or absolute filepath")] string path)
+    { }
+
+    public static NativeToolDefinition MapMethodToTool(string methodName)
+        => MapMethodToTool(typeof(BuiltInToolDefs).GetMethod(methodName));
 
     public static NativeToolDefinition MapMethodToTool(MethodInfo? method)
     {
         ArgumentNullException.ThrowIfNull(method);
         var methodDesc = method.GetCustomAttribute<DescriptionAttribute>()?.Description ?? string.Empty;
 
-        var tool = new NativeToolDefinition
+        var nativeToolDefinition = new NativeToolDefinition
         {
             Function = new NativeToolFunction
             {
-                Name = method.Name,
+                Name = method.GetCustomAttribute<DisplayNameAttribute>()?.DisplayName ?? "undefined",
                 Description = methodDesc,
                 Parameters = new NativeParameters
                 {
@@ -48,10 +150,13 @@ public class BuiltInToolDefs
             }
         };
 
-        var parameters = tool.Function.Parameters;
+        var parameters = nativeToolDefinition.Function.Parameters;
 
         foreach (var param in method.GetParameters())
         {
+            if (param.ParameterType == typeof(CancellationToken))
+                continue;
+
             var paramDesc = param.GetCustomAttribute<DescriptionAttribute>()?.Description ?? string.Empty;
             var paramName = ToCamelCase(param.Name!);
 
@@ -61,7 +166,7 @@ public class BuiltInToolDefs
             parameters.Required.Add(paramName);
         }
 
-        return tool;
+        return nativeToolDefinition;
     }
 
     private static NativePropertyDefinition MapTypeToProperty(Type type, string? description = null, bool isOptional = false)
@@ -90,7 +195,7 @@ public class BuiltInToolDefs
                 {
                     Type = NativeToolType.Object,
                     Properties = arrayObjects.Properties!,
-                    Required = [.. arrayObjects.Properties!.Select(p => p.Key)]
+                    Required = [.. arrayObjects.Properties!.Where(p => !p.Value.IsUnionType).Select(p => p.Key)]
                 }
                 : arrayObjects;
 
@@ -113,9 +218,11 @@ public class BuiltInToolDefs
                 var propName = ToCamelCase(p.Name);
 
                 // Проверяем, имеет ли свойство дефолтное значение или nullable
-                var hasDefaultValue = p.GetCustomAttribute<DefaultValueAttribute>() != null;
+                var defaultValue = p.GetCustomAttribute<DefaultValueAttribute>()?.Value;
+                if (defaultValue is not null)
+                    pDesc += $" (default '{defaultValue}')";
                 var isNullableProperty = IsNullableProperty(p);
-                var isPropOptional = hasDefaultValue || isNullableProperty;
+                var isPropOptional = defaultValue is not null || isNullableProperty;
                 prop.Properties.Add(propName, MapTypeToProperty(p.PropertyType, pDesc, isPropOptional));
             }
 
@@ -185,57 +292,6 @@ public class BuiltInToolDefs
     {
         if (string.IsNullOrEmpty(name))
             return name;
-        return char.ToLowerInvariant(name[0]) + name.Substring(1);
-    }
-
-    public async Task<string> InvokeToolAsync(string methodName, string argumentsJson)
-    {
-        // Находим метод по имени (кейс-сенситив или нет - на ваше усмотрение)
-        var method = typeof(BuiltInToolDefs).GetMethod(methodName);
-        if (method == null)
-            return $"Error: Method {methodName} not found.";
-
-        // Настраиваем десериализатор
-        var options = new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true,
-            // Converters = { new JsonStringEnumConverter() }
-        };
-
-        var parameters = method.GetParameters();
-        var args = new object?[parameters.Length];
-
-        // Парсим JSON один раз в документ, чтобы разобрать по параметрам
-        using var doc = JsonDocument.Parse(argumentsJson);
-        var root = doc.RootElement;
-
-        for (var i = 0; i < parameters.Length; i++)
-        {
-            var p = parameters[i];
-            var jsonName = ToCamelCase(p.Name!);
-
-            if (root.TryGetProperty(jsonName, out var propertyElement))
-            {
-                // Десериализуем конкретный параметр в нужный тип
-                args[i] = JsonSerializer.Deserialize(propertyElement.GetRawText(), p.ParameterType, options);
-            }
-            else if (p.HasDefaultValue)
-            {
-                args[i] = p.DefaultValue;
-            }
-            else
-            {
-                // В Strict Mode это не должно случиться, но для безопасности:
-                args[i] = null;
-            }
-        }
-
-        // Вызываем метод (предполагаем, что они все Task<string>)
-        var result = method.Invoke(this, args);
-
-        if (result is Task<string> task)
-            return await task;
-
-        return result?.ToString() ?? string.Empty;
+        return char.ToLowerInvariant(name[0]) + name[1..];
     }
 }

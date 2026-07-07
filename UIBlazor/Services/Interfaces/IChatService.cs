@@ -36,6 +36,8 @@ public interface IChatService : IDisposable
 
     string? FinishReason { get; }
 
+    List<ToolCall>? AccumulatedToolCalls { get; }
+
     public string? LastError { get; }
 
     public UsageInfo? LastUsage { get; }
@@ -70,6 +72,7 @@ public interface IChatService : IDisposable
         VisualChatMessage message,
         IAsyncEnumerable<ChatDelta> deltas,
         Action<string>? onContentUpdate,
+        Action<List<ToolCall>> onToolCallsUpdate,
         Action? onStateChange,
         CancellationToken cancellationToken);
 }

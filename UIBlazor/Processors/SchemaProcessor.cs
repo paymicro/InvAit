@@ -125,37 +125,117 @@ public static class SchemaProcessor
         return property;
     }
 
-    /// <summary>
-    /// Build a readable schema description for LLM prompt
-    /// </summary>
-    public static string BuildSchemaDescription(string toolName, McpToolConfig toolConfig)
+    public static NativeToolDefinition BuildNativeToolDefinition(string toolName, McpToolConfig toolConfig)
     {
-        try
+        var nativeToolDefinition = new NativeToolDefinition
         {
-            var schemaElement = toolConfig.InputSchema;
-            var schemaProperty = DeserializeSchema(schemaElement);
-            if (schemaProperty == null)
+            Function = new NativeToolFunction
             {
-                return string.Empty;
+                Name = toolName,
+                Description = toolConfig.Description ?? string.Empty,
+                Parameters = ConvertToNativeParameters(toolConfig.InputSchema.Value, toolConfig.RequiredArguments)
             }
+        };
 
-            var sb = new StringBuilder();
-            var exampleObj = GenerateObjectExample(schemaProperty);
+        return nativeToolDefinition;
+    }
 
-            sb.AppendLine("For example:");
-            sb.AppendLine($"<function name=\"{toolName}\">");
-            sb.AppendLine(JsonUtils.Serialize(exampleObj));
-            sb.AppendLine("</function>");
-
-            sb.AppendLine("*Properties schema:*");
-            AppendSchemaDescription(sb, schemaProperty, parentPath: "");
-
-            return sb.ToString();
-        }
-        catch (Exception)
+    private static NativeParameters ConvertToNativeParameters(JsonElement schema, List<string>? explicitRequired)
+    {
+        var parameters = new NativeParameters
         {
-            return string.Empty;
+            Type = NativeToolType.Object,
+            Properties = [],
+            Required = explicitRequired ?? []
+        };
+
+        if (schema.ValueKind != JsonValueKind.Object)
+            return parameters;
+
+        // type
+        if (schema.TryGetProperty("type", out var typeEl) && typeEl.ValueKind == JsonValueKind.String)
+        {
+            parameters.Type = typeEl.GetString() ?? NativeToolType.Object;
         }
+
+        // properties
+        if (schema.TryGetProperty("properties", out var propsEl) && propsEl.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var prop in propsEl.EnumerateObject())
+            {
+                var nativeProp = ConvertToNativeProperty(prop.Value);
+                if (nativeProp != null)
+                {
+                    parameters.Properties[prop.Name] = nativeProp;
+                }
+            }
+        }
+
+        // required из схемы (если не передан явно)
+        if (explicitRequired == null && schema.TryGetProperty("required", out var reqEl) && reqEl.ValueKind == JsonValueKind.Array)
+        {
+            parameters.Required = [.. reqEl.EnumerateArray()
+                .Where(e => e.ValueKind == JsonValueKind.String)
+                .Select(e => e.GetString()!)];
+        }
+
+        return parameters;
+    }
+
+    private static NativePropertyDefinition? ConvertToNativeProperty(JsonElement element, int depth = 0)
+    {
+        if (element.ValueKind != JsonValueKind.Object || depth > 5)
+            return null;
+
+        var prop = new NativePropertyDefinition();
+
+        // type: string или ["string", "null"]
+        if (element.TryGetProperty("type", out var typeEl))
+        {
+            if (typeEl.ValueKind == JsonValueKind.String)
+            {
+                prop.SetSingleType(typeEl.GetString()!);
+            }
+            else if (typeEl.ValueKind == JsonValueKind.Array)
+            {
+                var types = typeEl.EnumerateArray()
+                    .Where(e => e.ValueKind == JsonValueKind.String)
+                    .Select(e => e.GetString()!)
+                    .ToArray();
+
+                prop.SetUnionTypes(types);
+            }
+        }
+
+        // description
+        if (element.TryGetProperty("description", out var descEl) && descEl.ValueKind == JsonValueKind.String)
+        {
+            prop.Description = descEl.GetString();
+            if (element.TryGetProperty("enum", out var enumEl) && enumEl.ValueKind == JsonValueKind.Array)
+            {
+                prop.Description += $" | Enum: {enumEl.GetRawText()}";
+            }
+        }
+
+        // properties (для object)
+        if (element.TryGetProperty("properties", out var propsEl) && propsEl.ValueKind == JsonValueKind.Object)
+        {
+            prop.Properties = [];
+            foreach (var p in propsEl.EnumerateObject())
+            {
+                var nested = ConvertToNativeProperty(p.Value, depth + 1);
+                if (nested != null)
+                    prop.Properties[p.Name] = nested;
+            }
+        }
+
+        // items (для array)
+        if (element.TryGetProperty("items", out var itemsEl) && itemsEl.ValueKind == JsonValueKind.Object)
+        {
+            prop.Items = ConvertToNativeProperty(itemsEl, depth + 1);
+        }
+
+        return prop;
     }
 
     public static void AppendSchemaDescription(StringBuilder sb, JsonSchemaProperty prop, string parentPath, int depth = 0)

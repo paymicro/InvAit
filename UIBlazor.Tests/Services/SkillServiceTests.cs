@@ -78,7 +78,7 @@ public class SkillServiceTests
     {
         // Arrange
         _vsBridgeMock
-            .Setup(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.IsAny<IReadOnlyDictionary<string, object>>()))
+            .Setup(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.IsAny<string>()))
             .ReturnsAsync(new VsToolResult { Success = false });
 
         // Act
@@ -100,7 +100,7 @@ public class SkillServiceTests
         }";
 
         _vsBridgeMock
-            .Setup(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.Is<IReadOnlyDictionary<string, object>>(d => (string)d["param1"] == filePath)))
+            .Setup(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.Is<string>(s => s.Contains(filePath))))
             .ReturnsAsync(new VsToolResult { Success = true, Result = jsonResponse });
 
         // Act 1
@@ -117,7 +117,7 @@ public class SkillServiceTests
 
         // Assert 2
         Assert.Same(result1, result2);
-        _vsBridgeMock.Verify(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.IsAny<IReadOnlyDictionary<string, object>>()), Times.Once);
+        _vsBridgeMock.Verify(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.IsAny<string>()), Times.Once);
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public class SkillServiceTests
         {
             var i1 = i;
             _vsBridgeMock
-                .Setup(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.Is<IReadOnlyDictionary<string, object>>(d => d != null && d.ContainsKey("param1") && (string)d["param1"] == $"Skill{i1}")))
+                .Setup(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.Is<string>(s => s.Contains($"Skill{i1}"))))
                 .ReturnsAsync(new VsToolResult { Success = true, Result = $@"{{ ""name"": ""Skill{i1}"", ""description"": ""skill desc"", ""content"": ""no"", ""resources"": [] }}" });
         }
 
@@ -143,8 +143,8 @@ public class SkillServiceTests
 
         // Assert
         Assert.NotNull(resultReloaded);
-        _vsBridgeMock.Verify(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.Is<IReadOnlyDictionary<string, object>>(d => d != null && d.ContainsKey("param1") && (string)d["param1"] == $"Skill1")), Times.Once);
-        _vsBridgeMock.Verify(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.Is<IReadOnlyDictionary<string, object>>(d => d != null && d.ContainsKey("param1") && (string)d["param1"] == $"Skill0")), Times.Exactly(2));
+        _vsBridgeMock.Verify(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.Is<string>(s => s != null && s.Contains("param1") && s.Contains("\"Skill1\""))), Times.Once);
+        _vsBridgeMock.Verify(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.Is<string>(s => s != null && s.Contains("param1") && s.Contains("\"Skill0\""))), Times.Exactly(2));
         Assert.NotNull(result1);
     }
 
@@ -188,7 +188,7 @@ public class SkillServiceTests
             .ReturnsAsync(new VsToolResult { Success = true, Result = @"[{ ""name"": ""MetadataSkill"" }]" });
 
         _vsBridgeMock
-            .Setup(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.IsAny<IReadOnlyDictionary<string, object>>()))
+            .Setup(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.IsAny<string>()))
             .ReturnsAsync(new VsToolResult { Success = true, Result = @"{ ""name"": ""ContentSkill"" }" });
 
         // Populate both caches
@@ -206,6 +206,6 @@ public class SkillServiceTests
 
         // Request content again to verify cache was cleared
         await _skillService.LoadSkillContentAsync("path1", CancellationToken.None);
-        _vsBridgeMock.Verify(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.IsAny<IReadOnlyDictionary<string, object>>()), Times.Once);
+        _vsBridgeMock.Verify(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.IsAny<string>()), Times.Once);
     }
 }

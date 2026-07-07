@@ -18,7 +18,7 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
             return _skillsCache;
         }
 
-        var result = await vsBridge.ExecuteToolAsync(BasicEnum.GetSkillsMetadata, cancellationToken: cancellationToken);
+        var result = await vsBridge.ExecuteToolAsync(BasicEnum.GetSkillsMetadata, null, cancellationToken);
         if (!result.Success)
         {
             return _skillsCache ?? [];
@@ -59,7 +59,7 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
             { "param1", skillName }
         };
 
-        var result = await vsBridge.ExecuteToolAsync(BasicEnum.ReadSkillContent, args, cancellationToken);
+        var result = await vsBridge.ExecuteToolAsync(BasicEnum.ReadSkillContent, JsonUtils.SerializeCompact(args), cancellationToken);
         if (!result.Success)
         {
             return null;
@@ -133,9 +133,9 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
         await GetSkillsMetadataAsync(cancellationToken); // Перезагружаем метаданные
     }
 
-    public async Task<VsToolResult> LoadSkillContentMarkDownAsync(IReadOnlyDictionary<string, object> args, CancellationToken cancellationToken)
+    public async Task<VsToolResult> LoadSkillContentMarkDownAsync(string args, CancellationToken cancellationToken)
     {
-        var skillName = args.GetString("param1");
+        var skillName = JsonUtils.DeserializeParameters(args).GetString("param1");
         if (string.IsNullOrEmpty(skillName))
         {
             return new VsToolResult

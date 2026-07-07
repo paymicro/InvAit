@@ -26,6 +26,8 @@ public static class JsonUtils
 
     public static T? Deserialize<T>(string json) => JsonSerializer.Deserialize<T>(json, _jsonOptions);
 
+    public static T DeserializeAnonymousType<T>(string json, T anonymousTypeObject) => JsonSerializer.Deserialize<T>(json, _jsonOptions);
+
     public static string PrettyPrintFormat(string minifiedJson)
     {
         using var document = JsonDocument.Parse(minifiedJson);

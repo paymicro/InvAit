@@ -17,7 +17,7 @@ public class BuiltInAgentTests
         Assert.NotEmpty(_agent.Tools);
         Assert.Contains(_agent.Tools, t => t.Name == BuiltInToolEnum.ReadFiles);
         Assert.Contains(_agent.Tools, t => t.Name == BuiltInToolEnum.CreateFile);
-        Assert.Contains(_agent.Tools, t => t.Name == BuiltInToolEnum.ApplyDiff);
+        Assert.Contains(_agent.Tools, t => t.Name == BuiltInToolEnum.Edits);
     }
 
     [Fact]
@@ -25,7 +25,7 @@ public class BuiltInAgentTests
     {
         // Arrange
         var tool = _agent.Tools.First(t => t.Name == BuiltInToolEnum.ReadFiles);
-        var args = new Dictionary<string, object> { { "path", "test.cs" } };
+        var args = JsonSerializer.Serialize(new Dictionary<string, object> { { "path", "test.cs" } });
 
         // Act
         await tool.ExecuteAsync(args, CancellationToken.None);
@@ -38,14 +38,14 @@ public class BuiltInAgentTests
     public async Task Execute_ApplyDiff_CallsBridge()
     {
         // Arrange
-        var tool = _agent.Tools.First(t => t.Name == BuiltInToolEnum.ApplyDiff);
-        var args = new Dictionary<string, object> { { "path", "test.cs" } };
+        var tool = _agent.Tools.First(t => t.Name == BuiltInToolEnum.Edits);
+        var args = JsonSerializer.Serialize(new Dictionary<string, object> { { "path", "test.cs" } });
 
         // Act
         await tool.ExecuteAsync(args, CancellationToken.None);
 
         // Assert
-        _vsBridgeMock.Verify(b => b.ExecuteToolAsync(BuiltInToolEnum.ApplyDiff, args, CancellationToken.None), Times.Once);
+        _vsBridgeMock.Verify(b => b.ExecuteToolAsync(BuiltInToolEnum.Edits, args, CancellationToken.None), Times.Once);
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public class BuiltInAgentTests
     {
         // Arrange
         var tool = _agent.Tools.First(t => t.Name == BuiltInToolEnum.Bash);
-        var args = new Dictionary<string, object> { { "command", "dir" } };
+        var args = JsonSerializer.Serialize(new Dictionary<string, object> { { "command", "dir" } });
 
         // Act
         await tool.ExecuteAsync(args, CancellationToken.None);

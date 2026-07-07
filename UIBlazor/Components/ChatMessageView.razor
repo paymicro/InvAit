@@ -144,7 +144,8 @@
         // Проверяем, изменилось ли состояние загрузки конкретно для последнего (или только что переставшего быть последним) сообщения
         var isLoadingChangedForLast = (IsLast || _oldIsLast) && (_oldIsLoading != IsLoading);
 
-        return Message.IsStreaming || _oldIsStreaming ||
+        return Message.IsShouldRender ||
+               Message.IsStreaming || _oldIsStreaming ||
                Message.IsRetrying || _oldRetryCountdown != Message.RetryCountdown ||
                Message.IsEditing || _oldIsEditing ||
                _oldIsLast != IsLast ||
@@ -164,5 +165,6 @@
         _oldIsEditing = Message.IsEditing;
         _oldIsExpanded = Message.IsExpanded;
         _oldContent = Message.Content;
+        Message.IsShouldRender = false;
     }
 }

@@ -342,7 +342,7 @@
             {
                 var readFileTool = await VsBridge.ExecuteToolAsync(
                     BuiltInToolEnum.ReadFiles,
-                    new Dictionary<string, object> { { $"file{++fileIndex}", new ReadFileParams { Name = fileToken.FilePath } } });
+                    JsonUtils.Serialize(new Dictionary<string, object> { { $"file{++fileIndex}", new ReadFileParams { Path = fileToken.FilePath } } }));
 
                 fileToken.FileContent = readFileTool.Result;
             }
@@ -416,12 +416,12 @@
 
     private async Task OpenRulesAsync()
     {
-        await VsBridge.ExecuteToolAsync(BasicEnum.OpenFile, new Dictionary<string, object> { { "param1", ".agents/rules.md" } });
+        await VsBridge.ExecuteToolAsync(BasicEnum.OpenFile, JsonUtils.Serialize(new Dictionary<string, object> { { "param1", ".agents/rules.md" } }));
     }
 
     private async Task OpenSkillsAsync()
     {
-        await VsBridge.ExecuteToolAsync(BasicEnum.OpenFolder, new Dictionary<string, object> { { "param1", ".agents/skills/" } });
+        await VsBridge.ExecuteToolAsync(BasicEnum.OpenFolder, JsonUtils.Serialize(new Dictionary<string, object> { { "param1", ".agents/skills/" } }));
     }
 
     public void Dispose()

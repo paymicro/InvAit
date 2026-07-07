@@ -7,6 +7,7 @@ public class BuiltInToolDefsTests
     public void MethodWithoutParameters() { }
 
     // Метод с описанием
+    [DisplayName("display_name")]
     [Description("Test method description")]
     public string MethodWithDescription(string param1)
     {
@@ -96,7 +97,7 @@ public class BuiltInToolDefsTests
         var result = BuiltInToolDefs.MapMethodToTool(method);
 
         // Assert
-        Assert.Equal("MethodWithoutParameters", result.Function.Name);
+        Assert.Equal("undefined", result.Function.Name);
         Assert.Equal("", result.Function.Description);
         Assert.Equal("object", result.Function.Parameters.Type);
         Assert.Empty(result.Function.Parameters.Properties);
@@ -113,7 +114,7 @@ public class BuiltInToolDefsTests
         var result = BuiltInToolDefs.MapMethodToTool(method);
 
         // Assert
-        Assert.Equal("MethodWithDescription", result.Function.Name);
+        Assert.Equal("display_name", result.Function.Name);
         Assert.Equal("Test method description", result.Function.Description);
     }
 
@@ -148,7 +149,7 @@ public class BuiltInToolDefsTests
     public void MapMethodToTool_ApplyDiff_ReturnsCorrectPropertyDescription()
     {
         // Arrange
-        var method = typeof(BuiltInToolDefs).GetMethod(nameof(BuiltInToolDefs.ApplyDiff));
+        var method = typeof(BuiltInToolDefs).GetMethod(nameof(BuiltInToolDefs.Edit));
 
         // Act
         var result = BuiltInToolDefs.MapMethodToTool(method);
@@ -157,7 +158,7 @@ public class BuiltInToolDefsTests
         // Assert
         Assert.True(result.Function.Parameters.Properties.ContainsKey("filePath"));
         Assert.Equal("File path", result.Function.Parameters.Properties["filePath"].Description);
-        Assert.Equivalent(json, "{\"type\":\"function\",\"function\":{\"name\":\"ApplyDiff\",\"description\":\"Applies a series of Search & Replace edits to the specified file.\",\"strict\":true,\"parameters\":{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"string\",\"description\":\"File path\"},\"edits\":{\"type\":\"array\",\"description\":\"List of pairs 'search/replace'. Executed sequentially.\",\"items\":{\"type\":\"object\",\"properties\":{\"approximateLine\":{\"type\":[\"integer\",\"null\"],\"description\":\"Approximate start line or null\"},\"oldStr\":{\"type\":\"string\",\"description\":\"Unique fragment of code\"},\"newStr\":{\"type\":\"string\",\"description\":\"New fragment of code\"}},\"required\":[\"approximateLine\",\"oldStr\",\"newStr\"],\"additionalProperties\":false}}},\"required\":[\"filePath\",\"edits\"],\"additionalProperties\":false}}}");
+        Assert.Equivalent(json, "{\"type\":\"function\",\"function\":{\"name\":\"edits\",\"description\":\"Applies a series of Search & Replace edits to the specified file.\",\"strict\":true,\"parameters\":{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"string\",\"description\":\"File path\"},\"edits\":{\"type\":\"array\",\"description\":\"List of pairs 'search/replace'. Executed sequentially.\",\"items\":{\"type\":\"object\",\"properties\":{\"approximateLine\":{\"type\":[\"integer\",\"null\"],\"description\":\"Approximate start line or null\"},\"oldStr\":{\"type\":\"string\",\"description\":\"Unique fragment of code\"},\"newStr\":{\"type\":\"string\",\"description\":\"New fragment of code\"}},\"required\":[\"approximateLine\",\"oldStr\",\"newStr\"],\"additionalProperties\":false}}},\"required\":[\"filePath\",\"edits\"],\"additionalProperties\":false}}}");
     }
 
     [Fact]
@@ -385,25 +386,4 @@ public class BuiltInToolDefsTests
     }
 
     #endregion
-
-    [Fact]
-    public async Task InvokeToolAsync_ApplyDiff()
-    {
-        // Arrange
-        var defs = new BuiltInToolDefs();
-        var payload = new
-        {
-            filePath = "C:\\file.cs",
-            edits = new List<DiffEdit>()
-            {
-                { new DiffEdit { ApproximateLine = 1, OldStr = "old", NewStr = "new" } }
-            }
-        };
-
-        // Act
-        var result = await defs.InvokeToolAsync(nameof(BuiltInToolDefs.ApplyDiff), JsonUtils.SerializeCompact(payload));
-
-        // Assert
-        Assert.Contains("1234", result);
-    }
 }

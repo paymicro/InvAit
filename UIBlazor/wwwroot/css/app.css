@@ -339,12 +339,18 @@ code.hljs {
     color: var(--rz-on-base-dark);
     border-left: 4px solid var(--rz-info);
     white-space: normal;
+    display: flex;
+    align-items: center;
 }
 
     .tool-call-header strong {
         color: var(--rz-info-light);
         margin-left: 0.3rem;
         font-weight: 600;
+    }
+
+    .tool-call-header span:last-child {
+        margin-left: auto;
     }
 
 .tool-call-args {

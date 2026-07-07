@@ -119,7 +119,7 @@
                                                     {
                                                         <RadzenStack Orientation="Orientation.Vertical" JustifyContent="JustifyContent.SpaceBetween">
                                                             <CheckBox Text="@tool.Name" @bind-Value="@tool.Enabled" @bind-Value:after="() => OnToolSettingChanged(tool)" />
-                                                            <RadzenText TextStyle="TextStyle.Caption" class="tool-description">@tool.Description</RadzenText>
+                                                            <RadzenText TextStyle="TextStyle.Caption" class="tool-description">@tool.NativeTool.Function.Description</RadzenText>
                                                         </RadzenStack>
                                                     }
                                                 </RadzenStack>

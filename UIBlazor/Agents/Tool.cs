@@ -15,16 +15,18 @@ public class Tool
     /// <summary>
     /// Description for LLM
     /// </summary>
+    [Obsolete]
     public string Description { get; init; } = string.Empty;
 
     /// <summary>
     /// Used for native tools_calling
     /// </summary>
-    public NativeToolDefinition NativeTool { get; init; } = null!;
+    public required NativeToolDefinition NativeTool { get; init; } = null!;
 
     /// <summary>
     /// Example in system message. Only form prompt tool calling.
     /// </summary>
+    [Obsolete]
     public string ExampleToSystemMessage { get; init; } = string.Empty;
 
     /// <summary>
@@ -46,5 +48,5 @@ public class Tool
     /// Function to execute the tool
     /// </summary>
     [JsonIgnore]
-    public Func<IReadOnlyDictionary<string, object>, CancellationToken, Task<VsToolResult>> ExecuteAsync { get; init; } = null!;
+    public required Func<string?, CancellationToken, Task<VsToolResult>> ExecuteAsync { get; init; } = null!;
 }

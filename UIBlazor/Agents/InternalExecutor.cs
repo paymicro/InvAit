@@ -5,11 +5,12 @@ namespace UIBlazor.Agents;
 /// </summary>
 public class InternalExecutor(IServiceProvider serviceProvider) : IInternalExecutor
 {
-    public async Task<VsToolResult> ExecuteToolAsync(string name, IReadOnlyDictionary<string, object> args, CancellationToken cancellationToken)
+    public async Task<VsToolResult> ExecuteToolAsync(string name, string argsJson, CancellationToken cancellationToken)
     {
         if (name == BasicEnum.SwitchMode)
         {
-            if (args != null && args.TryGetValue("param1", out var modeObj))
+            var args = JsonUtils.DeserializeParameters(argsJson);
+            if (args != null && args.TryGetValue("mode", out var modeObj))
             {
                 if (Enum.TryParse<AppMode>(modeObj.ToString(), true, out var mode))
                 {
@@ -30,7 +31,7 @@ public class InternalExecutor(IServiceProvider serviceProvider) : IInternalExecu
 
         if (name == BasicEnum.AskUser)
         {
-            return ExecuteAskUserAsync(args);
+            return ExecuteAskUserAsync(argsJson);
         }
 
         return new VsToolResult
@@ -45,8 +46,9 @@ public class InternalExecutor(IServiceProvider serviceProvider) : IInternalExecu
     /// param1 = question, param2+ = options
     /// Returns JSON with question and options for UI to render.
     /// </summary>
-    private static VsToolResult ExecuteAskUserAsync(IReadOnlyDictionary<string, object> args)
+    private static VsToolResult ExecuteAskUserAsync(string argsJson)
     {
+        var args = JsonUtils.DeserializeParameters(argsJson);
         var question = string.Empty;
         var options = new List<string>();
 

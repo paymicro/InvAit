@@ -25,5 +25,17 @@ public class ToolCall
     /// Gets or sets the function to call, represented by the <see cref="ToolCallFunction"/> object.
     /// </summary>
     [JsonPropertyName("function")]
-    public ToolCallFunction Function { get; set; }
+    public ToolCallFunction Function { get; set; } = new();
+
+    [JsonIgnore]
+    public int Tokens => (int)(8 + (Function.Arguments.Length + Result?.Content.Length ?? 0) / 2.5);
+
+    [JsonPropertyName("isReady")]
+    public bool IsReady { get; set; } = true;
+
+    [JsonPropertyName("status")]
+    public ToolApprovalStatus? ApprovalStatus { get; set; } = ToolApprovalStatus.Approved;
+
+    [JsonPropertyName("result")]
+    public ToolResult? Result { get; set; }
 }

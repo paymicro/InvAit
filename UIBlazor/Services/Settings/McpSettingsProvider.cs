@@ -11,7 +11,7 @@ public class McpSettingsProvider(
 {
     public async Task StopAllAsync()
     {
-        await vsBridge.ExecuteToolAsync(BasicEnum.McpStopAll);
+        await vsBridge.ExecuteToolAsync(BasicEnum.McpStopAll, null);
     }
 
     public override async Task ResetAsync()
@@ -39,7 +39,7 @@ public class McpSettingsProvider(
         {
             logger.LogInformation("Loading MCP settings from mcp.json");
             Current.ServerErrors.Clear();
-            var result = await vsBridge.ExecuteToolAsync(BasicEnum.ReadMcpSettingsFile);
+            var result = await vsBridge.ExecuteToolAsync(BasicEnum.ReadMcpSettingsFile, null);
 
 #if DEBUG
             result = HeadlessMocker.GetVsToolResult(result);
@@ -116,7 +116,7 @@ public class McpSettingsProvider(
     /// </summary>
     public async Task OpenSettingsFileAsync()
     {
-        await vsBridge.ExecuteToolAsync(BasicEnum.OpenMcpSettings);
+        await vsBridge.ExecuteToolAsync(BasicEnum.OpenMcpSettings, null);
     }
 
     public async Task<string> RefreshToolsAsync(McpServerConfig server)
@@ -138,7 +138,7 @@ public class McpSettingsProvider(
                 };
 
                 logger.LogInformation($"Starting stdio server: {server.Command} {argsString}");
-                var result = await vsBridge.ExecuteToolAsync(BasicEnum.McpGetTools, toolArgs);
+                var result = await vsBridge.ExecuteToolAsync(BasicEnum.McpGetTools, JsonUtils.Serialize(toolArgs));
 #if DEBUG
                 result = HeadlessMocker.GetVsToolResult(result);
 #endif

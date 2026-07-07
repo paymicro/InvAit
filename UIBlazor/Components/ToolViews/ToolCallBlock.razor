@@ -1,61 +1,79 @@
 @inject IToolManager ToolManager
 
-<div class="tool-call-block" data-tool="@Segment.ToolName">
+<div class="tool-call-block" data-tool="@ToolCall.Function.Name">
     <div class="tool-call-header @StatusClass">
-        @SharedResource.CallingTool: <strong>@DisplayName</strong>@(Segment.IsClosed ? "" : " ...")
+        @SharedResource.CallingTool: <strong>@DisplayName</strong>
+        @if (!ToolCall.IsReady)
+        {
+            <i class="fa-regular fa-hourglass fa-spin"></i>
+        }
+        <RadzenBadge BadgeStyle="BadgeStyle.Light" Variant="Variant.Text" title="Tokens for tool">
+            ~@ToolCall.Tokens tokens
+        </RadzenBadge>
     </div>
 
-    @if (Segment.Lines.Count > 0)
+    @if (ToolCall.Function.Arguments.Length > 0)
     {
         <div class="tool-call-args">
-            @if (Segment.ToolName == BuiltInToolEnum.ApplyDiff)
+            @if (ToolCall.Function.Name == BuiltInToolEnum.Edits)
             {
-                <DiffView LinesCount="@Segment.Lines.Count" ToolParams="@Segment.ToolParams" IsClosed="@Segment.IsClosed" />
+                var template = new
+                {
+                    filePath = default(string),
+                    edits = default(DiffEdit[])
+                };
+                var result = JsonUtils.DeserializeAnonymousType(ToolCall.Function.Arguments, template);
+                <DiffView FilePath="@result.filePath" Edits="@result.edits" />
             }
-            else if (Segment.ToolName == BuiltInToolEnum.CreateFile)
+            else if (ToolCall.Function.Name == BuiltInToolEnum.CreateFile)
             {
-                <ToolCreateNewFile Lines="@Segment.Lines" />
+                var template = new
+                {
+                    filePath = default(string),
+                    content = default(string)
+                };
+                var result = JsonUtils.DeserializeAnonymousType(ToolCall.Function.Arguments, template);
+                <ToolCreateNewFile FilePath="template.filePath" Args="@template.content" />
             }
-            else if (Segment.ToolName == BasicEnum.AskUser)
+            else if (ToolCall.Function.Name == BasicEnum.AskUser)
             {
-                <ToolAskOptions Lines="@Segment.Lines" />
+                <ToolAskOptions Args="@ToolCall.Function.Arguments" />
             }
             else
             {
-                <pre>@string.Join("\n", Segment.Lines)</pre>
+                <pre>@ToolCall.Function.Arguments</pre>
             }
         </div>
     }
 
-    @if (Segment.IsClosed)
+    @if (ToolCall.IsReady)
     {
         <div class="tool-approval-footer @StatusClass">
-            @if (Segment.ApprovalStatus == ToolApprovalStatus.Pending)
+            @if (ToolCall.ApprovalStatus == ToolApprovalStatus.Pending)
             {
                 <div class="tool-approval-label"><i class="rz-icon-notification rz-ml-2"></i>@SharedResource.ApproveRequired</div>
                 <div class="tool-approval-actions">
-                    <RadzenButton Icon="check" class="tool-approve-btn rz-m-2" Click="@(async () => await OnApproval.InvokeAsync((Segment.Id, true)))" />
-                    <RadzenButton Icon="close" class="tool-reject-btn rz-m-2" Click="@(async () => await OnApproval.InvokeAsync((Segment.Id, false)))" />
+                    <RadzenButton Icon="check" class="tool-approve-btn rz-m-2" Click="@(async () => await OnApproval.InvokeAsync((ToolCall.Id, true)))" />
+                    <RadzenButton Icon="close" class="tool-reject-btn rz-m-2" Click="@(async () => await OnApproval.InvokeAsync((ToolCall.Id, false)))" />
                 </div>
             }
         </div>
-        @if (ToolResult is not null)
+        @if (ToolCall.Result is not null)
         {
-            <Details Text="@ToolResult.DisplayName">
-                <pre class="rz-p-2 rz-background-color-base-900 rz-color-white">@ToolResult.GetDisplayContent</pre>
+            <Details Text="@ToolCall.Result.DisplayName">
+                <pre class="rz-p-2 rz-background-color-base-900 rz-color-white">@ToolCall.Result.Content</pre>
             </Details>
         }
     }
 </div>
 
 @code {
-    [Parameter] public ContentSegment Segment { get; set; } = null!;
+    [Parameter] public ToolCall ToolCall { get; set; } = null!;
     [Parameter] public EventCallback<(string SegmentId, bool Approved)> OnApproval { get; set; }
-    [Parameter] public ToolResult? ToolResult { get; set; }
 
-    private string DisplayName => ToolManager.GetTool(Segment.ToolName)?.DisplayName ?? Segment.ToolName;
+    private string DisplayName => ToolManager.GetTool(ToolCall.Function.Name)?.DisplayName ?? ToolCall.Function.Name;
 
-    private string StatusClass => Segment.ApprovalStatus switch
+    private string StatusClass => ToolCall.ApprovalStatus switch
     {
         ToolApprovalStatus.Approved => "approved",
         ToolApprovalStatus.Rejected => "rejected",

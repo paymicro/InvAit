@@ -50,6 +50,7 @@ public class ConversationSession : BaseOptions
         var message = Messages.FirstOrDefault(m => m.Id == id);
         if (message != null)
         {
+            TotalTokens -= message.Timings?.Tokens ?? 0 + message.ToolCalls?.Sum(t => t.Tokens) ?? 0;
             Messages.Remove(message);
             LastUpdated = DateTime.Now;
         }
@@ -81,21 +82,54 @@ public class ConversationSession : BaseOptions
             new { role = ChatMessageRole.System, content = systemPrompt }
         };
 
-        // Add conversation messages, flattening nested tool messages
-        foreach (var message in Messages)
-        {
-            messages.Add(new { role = message.Role, content = message.Content });
-
-            // Tool results stored nested must be sent as separate messages to the LLM
-            foreach (var toolMessage in message.ToolResults)
-            {
-                messages.Add(new { role = ChatMessageRole.User, content = toolMessage.Content });
-            }
-        }
+        messages.AddRange(PrepareMessages(Messages));
 
         return Messages is [.., { IsStreaming: true }] // не отправлять последнее сообщение, если оно стримится
             ? messages.SkipLast(1)
             : messages;
+    }
+
+    private IEnumerable<object> PrepareMessages(IEnumerable<VisualChatMessage> Input)
+    {
+        var messages = new List<object>();
+
+        foreach (var message in Input)
+        {
+            if (message.Role == ChatMessageRole.Assistant && message.ToolCalls is { Count: > 0 })
+            {
+                // Assistant message with native tool_calls
+                var toolCalls = message.ToolCalls.Select(tc => new
+                {
+                    id = tc.Id,
+                    type = tc.Type,
+                    function = new { name = tc.Function.Name, arguments = tc.Function.Arguments }
+                }).ToList();
+
+                messages.Add(new
+                {
+                    role = ChatMessageRole.Assistant,
+                    content = string.IsNullOrEmpty(message.Content) ? null : message.Content,
+                    tool_calls = toolCalls
+                });
+
+                // Tool results stored nested must be sent as separate messages to the LLM
+                foreach (var toolCall in message.ToolCalls.Where(c => c.Result is not null && !string.IsNullOrEmpty(c.Id)))
+                {
+                    messages.Add(new
+                    {
+                        role = ChatMessageRole.Tool,
+                        tool_call_id = toolCall.Id,
+                        content = toolCall.Result!.Content
+                    });
+                }
+            }
+            else
+            {
+                messages.Add(new { role = message.Role, content = message.Content });
+            }
+        }
+
+        return messages;
     }
 
     public (IEnumerable<object> Messages, VisualChatMessage? LastUserMessage) GetFormattedMessagesForCompress()
@@ -117,17 +151,7 @@ public class ConversationSession : BaseOptions
         var lastUserMessage = Messages.TakeLast(2).FirstOrDefault(m => m.Role == ChatMessageRole.User);
         var compressedMessages = Messages.SkipLast(lastUserMessage is null ? 1 : 2);
 
-        // Add conversation messages, flattening nested tool messages
-        foreach (var message in compressedMessages)
-        {
-            messages.Add(new { role = message.Role, content = message.Content });
-
-            // Tool results stored nested must be sent as separate messages to the LLM
-            foreach (var toolMessage in message.ToolResults)
-            {
-                messages.Add(new { role = ChatMessageRole.User, content = toolMessage.Content });
-            }
-        }
+        messages.AddRange(PrepareMessages(compressedMessages));
 
         messages.Add(new
         {

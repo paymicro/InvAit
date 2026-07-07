@@ -57,7 +57,7 @@ public class NativeParameters
     public required Dictionary<string, NativePropertyDefinition> Properties { get; set; }
 
     /// <summary>
-    /// Массив с обязательными свойствами. При<see cref="NativeToolFunction.Strict"/> все должны быть обязательны
+    /// Массив с обязательными свойствами. При <see cref="NativeToolFunction.Strict"/> все должны быть обязательны
     /// </summary>
     [JsonPropertyName("required")]
     public List<string> Required { get; set; } = [];

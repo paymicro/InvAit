@@ -6,6 +6,7 @@ public class ToolManager(
     BuiltInAgent builtInAgent,
     ILogger<ToolManager> logger,
     ILocalStorageService localStorage,
+    ICommonSettingsProvider commonSettingsProvider,
     IMcpSettingsProvider mcpSettingsProvider,
     IVsBridge vsBridge)
     : BaseSettingsProvider<ToolSettings>(localStorage, logger, "ToolSettings"), IToolManager
@@ -161,6 +162,11 @@ public class ToolManager(
             // перебор всех тулзов в MCP этом сервере
             foreach (var toolConfig in server.Tools)
             {
+                if (toolConfig.InputSchema is null)
+                {
+                    continue;
+                }
+
                 var toolName = $"mcp__{server.Name}__{toolConfig.Name}";
 
                 var isEnabled = !mcpSettingsProvider.Current.ToolDisabledStates.Contains(toolName);
@@ -170,14 +176,13 @@ public class ToolManager(
                 {
                     Name = toolName,
                     DisplayName = currentToolConfig.Name,
-                    Description = currentToolConfig.Description ?? string.Empty,
                     Category = ToolCategory.Mcp,
                     Server = currentServer.Name,
                     Enabled = isEnabled,
-                    ExampleToSystemMessage = SchemaProcessor.BuildSchemaDescription(toolName, currentToolConfig),
-                    ExecuteAsync = (args, cancellationToken) =>
+                    NativeTool = SchemaProcessor.BuildNativeToolDefinition(toolName, currentToolConfig),
+                    ExecuteAsync = (argsJson, cancellationToken) =>
                     {
-                        var arguments = GetArgumentNamesFromSchema(currentToolConfig.InputSchema, args);
+                        var arguments = GetArgumentNamesFromSchema(currentToolConfig.InputSchema, JsonUtils.DeserializeParameters(argsJson));
                         var mcpArgs = new Dictionary<string, object>
                         {
                             { "serverId", currentServer.Name },
@@ -186,10 +191,11 @@ public class ToolManager(
                             // Command/Arguments for auto-start if needed
                             { "command", currentServer.Command },
                             { "args", string.Join(" ", currentServer.Args) },
-                            { "env", currentServer.Env }
+                            { "env", currentServer.Env },
+                            { "timeoutMs", commonSettingsProvider.Current.ToolTimeoutMs }
                         };
 
-                        return vsBridge.ExecuteToolAsync(BasicEnum.McpCallTool, mcpArgs, cancellationToken);
+                        return vsBridge.ExecuteToolAsync(BasicEnum.McpCallTool, JsonUtils.Serialize(mcpArgs), cancellationToken);
                     }
                 };
             }
@@ -230,7 +236,7 @@ public class ToolManager(
     {
         var enabledTools = GetEnabledTools().ToList();
 
-        if (!hasSkills) // если нет скиллов, то не нужно их читать
+        if (!hasSkills)
         {
             enabledTools = [.. enabledTools.Where(t => t.Name != BasicEnum.ReadSkillContent)];
         }
@@ -247,11 +253,7 @@ public class ToolManager(
         var otherModes = string.Join(", ", Enum.GetValues<AppMode>().Where(m => m != mode).Select(m => GetModeDesc(m)));
 
         var sb = new StringBuilder();
-        sb.AppendLine($"Your current mode: {GetModeDesc(mode)}");
-        if (enabledTools.FirstOrDefault(t => t.Category == ToolCategory.ModeSwitch)?.Enabled == true)
-        {
-            sb.AppendLine($"Other available modes: {otherModes}.");
-        }
+        // TODO опционально
         sb.AppendLine("Use Mermaid diagrams for clarity in explanations. This will help you better visualize the answer formula. Don`t use \", {, }, (, ), [, ], in Mermaid node names.");
 
         if (mode == AppMode.Plan)
@@ -278,64 +280,12 @@ public class ToolManager(
 
         if (enabledTools.Any(t => t.Name == BasicEnum.SwitchMode))
         {
-            sb.AppendLine($"You can use '{BasicEnum.SwitchMode}' tool to change current mode if you need more tools or want to switch context.");
-        }
-
-        if (enabledTools.Count == 0)
-        {
-            return sb.ToString();
-        }
-
-        if (mode == AppMode.Agent)
-        {
-            sb.AppendLine("You are a tool-calling agent. You should take actions to fulfill the user's request.");
-            sb.AppendLine();
-        }
-
-        if (enabledTools.Count > 0)
-        {
-            sb.AppendLine("""
-                      ## Tool use instructions
-
-                      You have access to several tools/functions that you can use at any time to retrieve information and/or perform tasks for the User.
-
-                      ## Execution Rules
-
-                      **Multi-call:** You SHOULD invoke multiple tools within a single message if the task requires it. Do not limit yourself to one tool per response.
-
-                      **Prioritize Examples:** Each tool has a specific usage example below. Always follow the tool's specific example and parameter format, as requirements vary between tools.
-                      
-                      **Syntax:** You MUST invoke tools exclusively with the following literal syntax:
-
-                            <function name="toolName">
-                            Parameters
-                            </function>
-
-                      **Constraints:**
-                            - Use <function> tags ONLY for actual tool calls.
-                            - Stop generation immediately after the last tool call.
-                            - No conversational filler or explanations after tools.
-
-                      The following tools/functions are available to you:
-
-                      """);
-
-            foreach (var tool in enabledTools)
+            sb.AppendLine($"Your current mode: {GetModeDesc(mode)}");
+            if (enabledTools.FirstOrDefault(t => t.Category == ToolCategory.ModeSwitch)?.Enabled == true)
             {
-                sb.AppendLine("---");
-                sb.AppendLine($"### Tool: {tool.Name}");
-                sb.AppendLine($"**Description:** {tool.Description}");
-                sb.AppendLine("**Calling:**");
-                sb.AppendLine(tool.ExampleToSystemMessage);
-                sb.AppendLine();
+                sb.AppendLine($"Other available modes: {otherModes}.");
             }
-
-            sb.AppendLine("""
-
-                          If it seems like the User's request could be solved with the tools, choose the BEST tool for the job based on the user's request and the tool descriptions
-                          Do not perform actions with/for hypothetical files. Use tools to deduce which files are relevant.
-                          You can call multiple tools once.
-                          """);
+            sb.AppendLine($"You can use '{BasicEnum.SwitchMode}' tool to change current mode if you need more tools or want to switch context.");
         }
 
         return sb.ToString();
