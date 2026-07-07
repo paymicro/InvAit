@@ -139,7 +139,7 @@ public class FileUtilsTests
         cts.Cancel();
 
         // Act & Assert
-        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+        await Assert.ThrowsAsync<TaskCanceledException>(async () =>
         {
             await utils.ReadFileWithMetadataAsync(_targetPath, cts.Token);
         });

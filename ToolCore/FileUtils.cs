@@ -26,79 +26,69 @@ public class FileUtils
             return (lines, encoding, separator, hasFinalNewLine);
         }
 
-        // Открываем FileStream через фабрику интерфейса
-        using var fs = _fileSystem.FileStream.New(filepath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.Asynchronous);
-        using var reader = new StreamReader(fs, encoding, detectEncodingFromByteOrderMarks: true);
-
-        reader.Peek();
-        encoding = reader.CurrentEncoding;
-
-        var sb = new StringBuilder();
-        var buffer = new char[4096];
-        int charsRead;
-        var detectedSeparator = false;
-        var lastCharWasNewLine = false;
-
-        while ((charsRead = await reader.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0)
+        // Ограничиваем максимальный размер
+        var fileInfo = _fileSystem.FileInfo.New(filepath);
+        const long maxAllowedSize = 2 * 1024 * 1024; // 2 МБ и то много
+        if (fileInfo.Length > maxAllowedSize)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            // Файл слишком большой для этого метода, возвращаем пустой результат
+            return (lines, encoding, separator, hasFinalNewLine);
+        }
 
-            for (var i = 0; i < charsRead; i++)
+        // ПРОВЕРКА НА БИНАРНОСТЬ: Заглядываем в начало файла
+        using (var fsCheck = _fileSystem.FileStream.New(filepath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.Asynchronous))
+        {
+            var sampleBuffer = new byte[1024];
+            var bytesRead = await fsCheck.ReadAsync(sampleBuffer, 0, sampleBuffer.Length, cancellationToken).ConfigureAwait(false);
+
+            for (var i = 0; i < bytesRead; i++)
             {
-                var c = buffer[i];
-
-                if (c == '\r')
+                if (sampleBuffer[i] == 0x00) // Обнаружен Null-символ -> это бинарный файл
                 {
-                    var nextChar = '\0';
-                    if (i + 1 < charsRead)
-                    {
-                        nextChar = buffer[i + 1];
-                    }
-                    else
-                    {
-                        var peeked = reader.Peek();
-                        if (peeked != -1) nextChar = (char)peeked;
-                    }
-
-                    if (nextChar == '\n')
-                    {
-                        if (!detectedSeparator) { separator = "\r\n"; detectedSeparator = true; }
-                        lines.Add(sb.ToString());
-                        sb.Clear();
-                        i++;
-                        lastCharWasNewLine = true;
-                    }
-                    else
-                    {
-                        if (!detectedSeparator) { separator = "\r"; detectedSeparator = true; }
-                        lines.Add(sb.ToString());
-                        sb.Clear();
-                        lastCharWasNewLine = true;
-                    }
-                }
-                else if (c == '\n')
-                {
-                    if (!detectedSeparator) { separator = "\n"; detectedSeparator = true; }
-                    lines.Add(sb.ToString());
-                    sb.Clear();
-                    lastCharWasNewLine = true;
-                }
-                else
-                {
-                    sb.Append(c);
-                    lastCharWasNewLine = false;
+                    // Пропускаем чтение бинарного файла
+                    return (lines, encoding, separator, hasFinalNewLine);
                 }
             }
         }
 
-        if (sb.Length > 0)
+        // Читаем текстовый файл
+        string fullText;
+        using (var fs = _fileSystem.FileStream.New(filepath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.Asynchronous))
+        using (var reader = new StreamReader(fs, encoding, detectEncodingFromByteOrderMarks: true))
         {
-            lines.Add(sb.ToString());
-            hasFinalNewLine = false;
+            fullText = await reader.ReadToEndAsync().ConfigureAwait(false);
+            encoding = reader.CurrentEncoding;
         }
-        else if (lines.Count > 0 && lastCharWasNewLine)
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (string.IsNullOrEmpty(fullText))
+        {
+            return (lines, encoding, separator, hasFinalNewLine);
+        }
+
+        // Определение разделителей
+        if (fullText.Contains("\r\n")) separator = "\r\n";
+        else if (fullText.Contains("\n")) separator = "\n";
+        else if (fullText.Contains("\r")) separator = "\r";
+
+        if (fullText.EndsWith("\n") || fullText.EndsWith("\r"))
         {
             hasFinalNewLine = true;
+        }
+
+        // Парсинг строк
+        var splitSeparators = new[] { "\r\n", "\r", "\n" };
+        var allLines = fullText.Split(splitSeparators, StringSplitOptions.None);
+
+        if (allLines.Length > 0)
+        {
+            lines.AddRange(allLines);
+
+            if (hasFinalNewLine && lines.Count > 0 && string.IsNullOrEmpty(lines[lines.Count - 1]))
+            {
+                lines.RemoveAt(lines.Count - 1);
+            }
         }
 
         return (lines, encoding, separator, hasFinalNewLine);
