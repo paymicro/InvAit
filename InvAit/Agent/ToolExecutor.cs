@@ -12,10 +12,7 @@ using EnvDTE;
 using EnvDTE80;
 using InvAit.Utils;
 using Microsoft.Build.Evaluation;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.VisualStudio.ComponentModelHost;
-using Microsoft.VisualStudio.LanguageServices;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
 using Shared.Contracts;
@@ -444,88 +441,53 @@ public class ToolExecutor : IAsyncDisposable
     private async Task<VsResponse> FindDeclarationsAsync(IReadOnlyDictionary<string, object> args)
     {
         var symbolName = args.GetString("param1");
-        var componentModel = (IComponentModel)Package.GetGlobalService(typeof(SComponentModel));
-        var workspace = componentModel.GetService<VisualStudioWorkspace>();
-        var solution = workspace.CurrentSolution;
 
-        // Находим декларации символов по текстовому имени во всем решении
-        var symbols = (await SymbolFinder.FindSourceDeclarationsWithPatternAsync(
-            solution,
-            symbolName,
-            SymbolFilter.Type | SymbolFilter.Member)).ToList();
-
-        if (symbols.Count == 0)
+        try
         {
-            return new VsResponse { Success = false, Error = $"Symbol '{symbolName}' is`t found." };
+            // Вызов изолированного сервиса (сборка Roslyn загрузится только здесь)
+            var service = new RoslynSearchService();
+            return await service.FindDeclarationsAsync(ServiceProvider.GlobalProvider, symbolName);
         }
-
-        var result = symbols.Select(s => $"{s.Name} | {s.Kind} | {s.Locations.FirstOrDefault()?.SourceTree?.FilePath}").ToList();
-
-        return new VsResponse
+        catch (FileNotFoundException ex)
         {
-            Payload = string.Join("\n", result)
-        };
+            Logger.Log($"Roslyn compatibility error: {ex.Message}", "ERROR");
+            return new VsResponse
+            {
+                Success = false,
+                Error = $"Roslyn compatibility error in VS 2026. File not found: {ex.FileName}"
+            };
+        }
+        catch (Exception ex)
+        {
+            Logger.Log(ex.Message, "ERROR");
+            return new VsResponse { Success = false, Error = $"Critical error: {ex.Message}" };
+        }
     }
 
     private async Task<VsResponse> FindReferencesAsync(IReadOnlyDictionary<string, object> args)
     {
         var symbolName = args.GetString("param1");
 
-        var componentModel = (IComponentModel)Package.GetGlobalService(typeof(SComponentModel));
-        var workspace = componentModel.GetService<VisualStudioWorkspace>();
-        var solution = workspace.CurrentSolution;
-
-        // Находим декларации символов по текстовому имени во всем решении
-        var symbols = (await SymbolFinder.FindSourceDeclarationsWithPatternAsync(
-            solution,
-            symbolName,
-            SymbolFilter.Type | SymbolFilter.Member)).ToList();
-
-        if (symbols.Count == 0)
+        try
         {
-            return new VsResponse { Success = false, Error = $"Symbol '{symbolName}' is`t found." };
+            var service = new RoslynSearchService();
+            return await service.FindReferencesAsync(ServiceProvider.GlobalProvider, symbolName);
         }
-
-        var sb = new StringBuilder();
-
-        // Для каждого найденного символа (на случай, если имя дублируется в разных классах)
-        foreach (var symbol in symbols)
+        catch (FileNotFoundException ex)
         {
-            // Вызываем поиск зависимостей
-            var references = await SymbolFinder.FindReferencesAsync(symbol, solution);
-            var refs = new Dictionary<string, HashSet<int>>();
-            foreach (var reference in references)
+            Logger.Log($"Roslyn compatibility error: {ex.Message}", "ERROR");
+            // Перехватываем критическую ошибку несовместимости сборок Roslyn в VS 2022 и 2026
+            return new VsResponse
             {
-                foreach (var location in reference.Locations)
-                {
-                    // Защита от ссылок вне физических документов проекта
-                    if (location.Document == null)
-                        continue;
-
-                    if (!refs.TryGetValue(location.Document.FilePath, out var lines))
-                    {
-                        refs[location.Document.FilePath] = lines = [];
-                    }
-
-                    var linePos = location.Location.GetLineSpan().StartLinePosition.Line + 1;
-                    lines.Add(linePos);
-                }
-            }
-
-            if (refs.Count == 0)
-            {
-                continue;
-            }
-
-            sb.AppendLine($"--- References for: {symbol.ToDisplayString()} ---");
-            foreach (var r in refs)
-            {
-                var sortedLines = r.Value.OrderBy(n => n);
-                sb.AppendLine($"Used in: {r.Key}, line: {string.Join(", ", sortedLines)}");
-            }
+                Success = false,
+                Error = $"Roslyn compatibility error in VS 2026. File not found: {ex.FileName}. Message: {ex.Message}"
+            };
         }
-
-        return new VsResponse { Payload = sb.ToString() };
+        catch (Exception ex)
+        {
+            Logger.Log(ex.Message, "ERROR");
+            return new VsResponse { Success = false, Error = $"Critical error: {ex.Message}" };
+        }
     }
 
     private async Task<VsResponse> ListDirectoryAsync(IReadOnlyDictionary<string, object> args)
