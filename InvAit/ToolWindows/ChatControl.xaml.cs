@@ -80,13 +80,24 @@ public partial class ChatControl : IDisposable
         _vsVersion ??= (await VS.Shell.GetVsVersionAsync()).ToString();
         WebViewHost.Content = _webView = new WV.WebView2();
         _webView.CoreWebView2InitializationCompleted += CoreWebView2InitializationCompleted;
+        _webView.CoreWebView2.WebResourceRequested += CoreWebView2WebResourceRequested;
+        _webView.CoreWebView2.Settings.IsReputationCheckingRequired = false; // Блокирует отправку Microsoft SmartScreen
 
         var userDataFolder = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "InvAitChatWebView2");
 
         // Включаем CORS выключаем защиту
-        var options = new CoreWebView2EnvironmentOptions("--allow-running-insecure-content --disable-web-security --disable-features=BlockInsecurePrivateNetworkRequests");
+        var options = new CoreWebView2EnvironmentOptions(
+            "--allow-running-insecure-content " +
+            "--disable-web-security " +
+            "--disable-background-networking " +
+            "--disable-component-update " +
+            "--disable-translation " +
+            "--disable-features=BlockInsecurePrivateNetworkRequests")
+        {
+            IsCustomCrashReportingEnabled = true // Блокирует отправку Crash Dumps в Microsoft
+        };
         var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder, options);
         await _webView.EnsureCoreWebView2Async(env);
 
@@ -140,6 +151,18 @@ public partial class ChatControl : IDisposable
                 });
             }
         };
+    }
+
+    /// <summary>
+    /// Блокировка хождения в интернет и любой фоновой телеметрии Chromium движка
+    /// </summary>
+    private void CoreWebView2WebResourceRequested(object sender, CoreWebView2WebResourceRequestedEventArgs e)
+    {
+        if (!e.Request.Uri.StartsWith(_virtualUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            // Жестко блокируем запрос, возвращая "Доступ запрещен"
+            e.Response = _webView.CoreWebView2.Environment.CreateWebResourceResponse(null, 403, "Forbidden", "Content-Type: text/plain");
+        }
     }
 
     /// <summary>
