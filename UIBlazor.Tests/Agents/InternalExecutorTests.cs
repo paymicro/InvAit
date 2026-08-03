@@ -24,7 +24,7 @@ public class InternalExecutorTests
     public async Task ExecuteToolAsync_SwitchMode_WithValidMode_ReturnsSuccess()
     {
         // Arrange
-        var args = "{ \"param1\": \"Agent\" }";
+        var args = "{ \"mode\": \"Agent\" }";
 
         // Act
         var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args, CancellationToken.None);
@@ -41,7 +41,7 @@ public class InternalExecutorTests
     {
         // Arrange
         _session.Mode = AppMode.Agent; // Start with different mode
-        var args = JsonSerializer.Serialize(new Dictionary<string, object> { { "param1", "Chat" } });
+        var args = JsonSerializer.Serialize(new Dictionary<string, object> { { "mode", "Chat" } });
 
         // Act
         var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args, CancellationToken.None);
@@ -56,7 +56,7 @@ public class InternalExecutorTests
     public async Task ExecuteToolAsync_SwitchMode_WithPlanMode_ReturnsSuccess()
     {
         // Arrange
-        var args = JsonSerializer.Serialize(new Dictionary<string, object> { { "param1", "Plan" } });
+        var args = JsonSerializer.Serialize(new Dictionary<string, object> { { "mode", "Plan" } });
 
         // Act
         var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args, CancellationToken.None);
@@ -71,7 +71,7 @@ public class InternalExecutorTests
     public async Task ExecuteToolAsync_SwitchMode_WithCaseInsensitiveMode_ReturnsSuccess()
     {
         // Arrange
-        var args = JsonSerializer.Serialize(new Dictionary<string, object> { { "param1", "AGENT" } });
+        var args = JsonSerializer.Serialize(new Dictionary<string, object> { { "mode", "AGENT" } });
 
         // Act
         var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args, CancellationToken.None);
@@ -176,7 +176,7 @@ public class InternalExecutorTests
     public async Task ExecuteToolAsync_SwitchMode_AllModesCaseInsensitive(string modeValue)
     {
         // Arrange
-        var args = JsonSerializer.Serialize(new Dictionary<string, object> { { "param1", modeValue } });
+        var args = JsonSerializer.Serialize(new Dictionary<string, object> { { "mode", modeValue } });
 
         // Act
         var result = await _executor.ExecuteToolAsync(BasicEnum.SwitchMode, args, CancellationToken.None);
