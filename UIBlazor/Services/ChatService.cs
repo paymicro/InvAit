@@ -530,7 +530,13 @@ public class ChatService(
                     var idx = tc.Index ?? 0;
                     if (!toolCallAcc.TryGetValue(idx, out var existing))
                     {
-                        existing = new ToolCall { Index = idx, Function = new ToolCallFunction() };
+                        existing = new ToolCall
+                        {
+                            Index = idx,
+                            Function = new ToolCallFunction(),
+                            IsReady = false,
+                            ApprovalStatus = ToolApprovalStatus.Pending
+                        };
                         toolCallAcc[idx] = existing;
                     }
                     if (!string.IsNullOrEmpty(tc.Id))

@@ -8,12 +8,8 @@ public class ToolResult
     /// <summary>
     /// Имя тулзы
     /// </summary>
+    [JsonPropertyName("name")]
     public string Name { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Tool call ID from native API (used for role: "tool" responses).
-    /// </summary>
-    public string ToolCallId { get; init; } = string.Empty;
 
     /// <summary>
     /// Локализованное имя тулзы. Только для UI
@@ -24,6 +20,7 @@ public class ToolResult
     /// <summary>
     /// Полное содержание ответа включая теги <tool_result></tool_result>
     /// </summary>
+    [JsonPropertyName("content")]
     public string Content { get; init; } = string.Empty;
 
     [JsonIgnore]
@@ -32,6 +29,7 @@ public class ToolResult
     /// <summary>
     /// Статус
     /// </summary>
+    [JsonPropertyName("success")]
     public bool Success { get; set; }
 
     public static ToolResult Convert(VsToolResult vsToolResult, string displayName, string name, string toolCallId = "")

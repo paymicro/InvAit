@@ -30,10 +30,10 @@ public class ToolCall
     [JsonIgnore]
     public int Tokens => (int)(8 + (Function.Arguments.Length + Result?.Content.Length ?? 0) / 2.5);
 
-    [JsonPropertyName("isReady")]
+    [JsonIgnore]
     public bool IsReady { get; set; } = true;
 
-    [JsonPropertyName("status")]
+    [JsonIgnore]
     public ToolApprovalStatus? ApprovalStatus { get; set; } = ToolApprovalStatus.Approved;
 
     [JsonPropertyName("result")]

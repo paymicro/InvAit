@@ -57,8 +57,8 @@ public class ToolExecutor : IAsyncDisposable
                 BuiltInToolEnum.GitStatus => await GitStatusAsync(),
                 BuiltInToolEnum.GitLog => await GitLogAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GitDiff => await GitDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BasicEnum.OpenFile => await OpenFileInEditorAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BasicEnum.OpenFolder => await OpenFolderInExplorerAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BasicEnum.OpenFile => await OpenFileInEditorAsync(vsRequest.Payload),
+                BasicEnum.OpenFolder => await OpenFolderInExplorerAsync(vsRequest.Payload),
                 BasicEnum.GetSkillsMetadata => await GetSkillsMetadataAsync(),
                 BasicEnum.ReadSkillContent => await ReadSkillContentAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BasicEnum.GetRules => await GetRulesAsync(),
@@ -68,7 +68,7 @@ public class ToolExecutor : IAsyncDisposable
                 BasicEnum.McpCallTool => await McpCallToolAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BasicEnum.McpStopAll => await StopAllMcpServersAsync(),
                 BasicEnum.ReadMcpSettingsFile => await ReadMcpSettingsAsync(),
-                BasicEnum.WriteMcpSettings => await WriteMcpSettingsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BasicEnum.WriteMcpSettings => await WriteMcpSettingsAsync(vsRequest.Payload),
                 BasicEnum.OpenMcpSettings => await OpenMcpSettingsAsync(),
                 _ => new VsResponse { Success = false, Error = "Unknown action" }
             };
@@ -874,9 +874,8 @@ public class ToolExecutor : IAsyncDisposable
         }
     }
 
-    private async Task<VsResponse> OpenFileInEditorAsync(IReadOnlyDictionary<string, object> args)
+    private async Task<VsResponse> OpenFileInEditorAsync(string relativePath)
     {
-        var relativePath = args.GetString("param1");
         if (string.IsNullOrEmpty(relativePath))
         {
             return new VsResponse { Success = false, Error = "File path is empty" };
@@ -931,9 +930,8 @@ public class ToolExecutor : IAsyncDisposable
         }
     }
 
-    private async Task<VsResponse> OpenFolderInExplorerAsync(IReadOnlyDictionary<string, object> args)
+    private async Task<VsResponse> OpenFolderInExplorerAsync(string relativePath)
     {
-        var relativePath = args.GetString("param1");
         var solutionPath = await GetSolutionPathAsync();
         var folderPath = string.IsNullOrEmpty(relativePath) ? solutionPath : GetAbsolutePath(relativePath, solutionPath);
 
@@ -1282,11 +1280,10 @@ public class ToolExecutor : IAsyncDisposable
         }
     }
 
-    private async Task<VsResponse> WriteMcpSettingsAsync(IReadOnlyDictionary<string, object> args)
+    private async Task<VsResponse> WriteMcpSettingsAsync(string content)
     {
         try
         {
-            var content = args.GetString("param1");
             if (string.IsNullOrEmpty(content))
             {
                 return new VsResponse { Success = false, Error = "Content is empty" };

@@ -6,26 +6,37 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
 {
     private readonly ConcurrentDictionary<string, ApprovalWaiter> _approvalWaiters = new();
 
-    public async Task ProcessToolCallsAsync(
-        VisualChatMessage message,
-        CancellationToken cancellationToken)
+    public void PrepareToolsForApprovals(List<ToolCall> toolCalls)
     {
-        if (message.ToolCalls is null)
-            return;
-
         CancelPendingApprovals();
 
         // Pre-register approval waiters for all pending segments
         // so users can approve tools in any order
-        foreach (var toolCall in message.ToolCalls)
+        foreach (var toolCall in toolCalls)
         {
-            if (toolCall.ApprovalStatus == ToolApprovalStatus.Pending)
+            toolCall.IsReady = true;
+            var approvalMode = toolManager.GetApprovalModeByToolName(toolCall.Function.Name);
+            switch (approvalMode)
             {
-                _approvalWaiters[toolCall.Id] = new ApprovalWaiter(new (), toolCall);
+                case ToolApprovalMode.Ask:
+                    toolCall.ApprovalStatus = ToolApprovalStatus.Pending;
+                    _approvalWaiters[toolCall.Id] = new ApprovalWaiter(new(), toolCall);
+                    break;
+                case ToolApprovalMode.Deny:
+                    toolCall.ApprovalStatus = ToolApprovalStatus.Rejected;
+                    break;
+                default:
+                    toolCall.ApprovalStatus = ToolApprovalStatus.Approved;
+                    break;
             }
         }
+    }
 
-        foreach (var toolCall in message.ToolCalls)
+    public async Task ProcessToolCallsAsync(
+        List<ToolCall> toolCalls,
+        CancellationToken cancellationToken)
+    {
+        foreach (var toolCall in toolCalls)
         {
             if (cancellationToken.IsCancellationRequested)
                 return;

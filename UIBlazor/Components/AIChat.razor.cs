@@ -223,8 +223,12 @@ public partial class AiChat : RadzenComponent
         if (nativeToolCalls is { Count: > 0 })
         {
             message.ToolCalls = nativeToolCalls;
-            await ToolCallHandler.ProcessToolCallsAsync(message, cancellationToken);
+            ToolCallHandler.PrepareToolsForApprovals(message.ToolCalls);
+            message.IsShouldRender = true;
+            await InvokeAsync(StateHasChanged);
+            await ToolCallHandler.ProcessToolCallsAsync(message.ToolCalls, cancellationToken);
             await ChatService.SaveSessionAsync();
+            message.IsShouldRender = true;
             await InvokeAsync(StateHasChanged);
 
             if (!cancellationToken.IsCancellationRequested)

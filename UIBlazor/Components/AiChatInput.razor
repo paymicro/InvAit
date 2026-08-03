@@ -416,12 +416,12 @@
 
     private async Task OpenRulesAsync()
     {
-        await VsBridge.ExecuteToolAsync(BasicEnum.OpenFile, JsonUtils.Serialize(new Dictionary<string, object> { { "param1", ".agents/rules.md" } }));
+        await VsBridge.ExecuteToolAsync(BasicEnum.OpenFile, ".agents/rules.md");
     }
 
     private async Task OpenSkillsAsync()
     {
-        await VsBridge.ExecuteToolAsync(BasicEnum.OpenFolder, JsonUtils.Serialize(new Dictionary<string, object> { { "param1", ".agents/skills/" } }));
+        await VsBridge.ExecuteToolAsync(BasicEnum.OpenFolder, ".agents/skills/");
     }
 
     public void Dispose()
