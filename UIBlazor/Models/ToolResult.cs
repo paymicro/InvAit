@@ -32,12 +32,11 @@ public class ToolResult
     [JsonPropertyName("success")]
     public bool Success { get; set; }
 
-    public static ToolResult Convert(VsToolResult vsToolResult, string displayName, string name, string toolCallId = "")
+    public static ToolResult Convert(VsToolResult vsToolResult, string displayName, string name)
         => new()
         {
             Name = name,
             DisplayName = GetDisplayName(vsToolResult.Success, !string.IsNullOrEmpty(displayName) ? displayName : name),
-            ToolCallId = toolCallId,
             Content = vsToolResult.Success ? vsToolResult.Result : vsToolResult.ErrorMessage,
             Success = vsToolResult.Success
         };

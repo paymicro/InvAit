@@ -872,7 +872,7 @@ public class AiChatInputTests : BunitContext
         // Assert
         _mockVsBridge.Verify(x => x.ExecuteToolAsync(
             BasicEnum.OpenFile,
-            It.Is<string>(s => s.Contains("param1")),
+            It.Is<string>(s => s.Contains(".agents/rules.md")),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -901,7 +901,7 @@ public class AiChatInputTests : BunitContext
         // Assert
         _mockVsBridge.Verify(x => x.ExecuteToolAsync(
             BasicEnum.OpenFolder,
-            It.Is<string>(s => s.Contains("param1")),
+            It.Is<string>(s => s.Contains(".agents/skills/")),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
