@@ -84,7 +84,7 @@ public class SystemPromptBuilder(
                 }
                 else
                 {
-                    pathIndex = item.IndexOf(VsCodeContext.DirPrefix);
+                    pathIndex = item.IndexOf(VsCodeContext.DirPrefix, StringComparison.Ordinal);
                 }
 
                 if (pathIndex != -1)
@@ -104,7 +104,7 @@ public class SystemPromptBuilder(
                         // Если формат файла похож на папку (есть какой-то отступ/префикс),
                         // нужно найти индекс начала пути. Допустим, он всегда после какого-то символа 
                         // или просто ищем вхождение lastDir.
-                        var dirPos = item.IndexOf(lastDir);
+                        var dirPos = item.IndexOf(lastDir, StringComparison.Ordinal);
                         if (dirPos != -1)
                         {
                             // Пишем всё ДО пути + сам файл ПОСЛЕ пути

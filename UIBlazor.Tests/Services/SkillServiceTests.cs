@@ -143,8 +143,8 @@ public class SkillServiceTests
 
         // Assert
         Assert.NotNull(resultReloaded);
-        _vsBridgeMock.Verify(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.Is<string>(s => s != null && s.Contains("param1") && s.Contains("\"Skill1\""))), Times.Once);
-        _vsBridgeMock.Verify(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.Is<string>(s => s != null && s.Contains("param1") && s.Contains("\"Skill0\""))), Times.Exactly(2));
+        _vsBridgeMock.Verify(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.Is<string>(s => s.Equals("{\"skillName\":\"Skill1\"}"))), Times.Once);
+        _vsBridgeMock.Verify(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.Is<string>(s => s.Equals("{\"skillName\":\"Skill0\"}"))), Times.Exactly(2));
         Assert.NotNull(result1);
     }
 

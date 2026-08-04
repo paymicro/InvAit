@@ -54,12 +54,8 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
             return cachedContent;
         }
 
-        var args = new Dictionary<string, object>
-        {
-            { "param1", skillName }
-        };
-
-        var result = await vsBridge.ExecuteToolAsync(BasicEnum.ReadSkillContent, JsonUtils.SerializeCompact(args), cancellationToken);
+        var args = JsonUtils.SerializeCompact(new { skillName });
+        var result = await vsBridge.ExecuteToolAsync(BasicEnum.ReadSkillContent, args, cancellationToken);
         if (!result.Success)
         {
             return null;
@@ -135,13 +131,13 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
 
     public async Task<VsToolResult> LoadSkillContentMarkDownAsync(string args, CancellationToken cancellationToken)
     {
-        var skillName = JsonUtils.DeserializeParameters(args).GetString("param1");
+        var skillName = JsonUtils.DeserializeParameters(args).GetString("skillName");
         if (string.IsNullOrEmpty(skillName))
         {
             return new VsToolResult
             {
                 Success = false,
-                Result = "Skill name is required parameter!"
+                ErrorMessage = "Skill name is missing"
             };
         }
         var skillContent = await LoadSkillContentAsync(skillName, cancellationToken);
@@ -151,7 +147,7 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
             return new VsToolResult
             {
                 Success = false,
-                Result = "Skill content is empty..."
+                ErrorMessage = "<empty>"
             };
         }
         var sb = new StringBuilder();

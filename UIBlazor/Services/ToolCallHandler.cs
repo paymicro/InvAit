@@ -15,6 +15,7 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
         foreach (var toolCall in toolCalls)
         {
             toolCall.IsReady = true;
+            toolCall.Function.Arguments = CleanJsonArguments(toolCall.Function.Arguments);
             var approvalMode = toolManager.GetApprovalModeByToolName(toolCall.Function.Name);
             switch (approvalMode)
             {
@@ -25,6 +26,7 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
                 case ToolApprovalMode.Deny:
                     toolCall.ApprovalStatus = ToolApprovalStatus.Rejected;
                     break;
+                case ToolApprovalMode.Allow:
                 default:
                     toolCall.ApprovalStatus = ToolApprovalStatus.Approved;
                     break;
@@ -97,6 +99,27 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
         }
     }
 
+    private static string CleanJsonArguments(string rawArguments)
+    {
+        if (string.IsNullOrWhiteSpace(rawArguments))
+            return "{}";
+
+        var trimmed = rawArguments.Trim();
+
+        // Находим первый символ '{' и ПОСЛЕДНИЙ символ '}'
+        var firstBrace = trimmed.IndexOf('{');
+        var lastBrace = trimmed.LastIndexOf('}');
+
+        // Если скобки найдены и они расположены правильно
+        if (firstBrace != -1 && lastBrace > firstBrace)
+        {
+            // Вырезаем только то, что находится внутри объекта включительно
+            return trimmed.Substring(firstBrace, lastBrace - firstBrace + 1);
+        }
+
+        return "{}"; // Фолбэк, если структура вообще нарушена
+    }
+
     private static async Task<VsToolResult> ExecuteToolAsync(
         Tool tool,
         ToolCall toolCall,
@@ -134,4 +157,4 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
     }
 }
 
-record ApprovalWaiter(TaskCompletionSource<ToolApprovalStatus> TaskSource, ToolCall ToolCall);
+internal record ApprovalWaiter(TaskCompletionSource<ToolApprovalStatus> TaskSource, ToolCall ToolCall);

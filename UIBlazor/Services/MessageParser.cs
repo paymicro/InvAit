@@ -75,24 +75,24 @@ public class MessageParser : IMessageParser
         segment.CurrentLine.Append(token);
 
         // Если есть перенос строки - фиксируем завершенные линии
-        if (segment.Type != SegmentType.Markdown && token.Contains('\n'))
+        if (segment.Type == SegmentType.Markdown || !token.Contains('\n'))
+            return;
+        
+        var content = segment.CurrentLine.ToString();
+        var parts = content.Split('\n');
+
+        if (!string.IsNullOrWhiteSpace(parts[0]))
         {
-            var content = segment.CurrentLine.ToString();
-            var parts = content.Split('\n');
-
-            if (!string.IsNullOrWhiteSpace(parts[0]))
-            {
-                segment.Lines.Add(parts[0]);
-            }
-
-            for (var i = 1; i < parts.Length - 1; i++)
-            {
-                segment.Lines.Add(parts[i]);
-            }
-
-            segment.CurrentLine.Clear();
-            segment.CurrentLine.Append(parts.Last());
+            segment.Lines.Add(parts[0]);
         }
+
+        for (var i = 1; i < parts.Length - 1; i++)
+        {
+            segment.Lines.Add(parts[i]);
+        }
+
+        segment.CurrentLine.Clear();
+        segment.CurrentLine.Append(parts.Last());
     }
 
     private static void AppendToken(ContentSegment segment, string token)

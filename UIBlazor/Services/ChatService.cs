@@ -105,7 +105,7 @@ public class ChatService(
         double firstTokenMs = 0;
         double firstContentTokenMs = 0;
 
-        message.Timings ??= new MessageTimings() { Tokens = 0 };
+        message.Timings ??= new MessageTimings { Tokens = 0 };
         await foreach (var delta in deltas.WithCancellation(cancellationToken))
         {
             if (firstTokenMs == 0)
@@ -180,56 +180,56 @@ public class ChatService(
             yield return chatDelta;
         }
 
-        if (!cancellationToken.IsCancellationRequested)
+        if (cancellationToken.IsCancellationRequested)
+            yield break;
+        
+        // Создаем новый объект сообщения со сжатым контекстом
+        var compressedMessage = new VisualChatMessage
         {
-            // Создаем новый объект сообщения со сжатым контекстом
-            var compressedMessage = new VisualChatMessage()
+            Content = contentSb.ToString(),
+            Role = ChatMessageRole.Assistant,
+            IsExpanded = true
+        };
+
+        var totalCount = Session.Messages.Count;
+        var windowSize = totalCount < 6 ? 2 : 3;
+
+        var topMessages = new List<VisualChatMessage>();
+        var bottomMessages = new List<VisualChatMessage>();
+
+        for (var i = 0; i < totalCount - 1; i++)
+        {
+            var msg = Session.Messages[i];
+
+            if (msg.Id == LastUserMessage?.Id)
+                continue;
+
+            // Первые сообщения
+            if (i < windowSize)
             {
-                Content = contentSb.ToString(),
-                Role = ChatMessageRole.Assistant,
-                IsExpanded = true
-            };
-
-            var totalCount = Session.Messages.Count;
-            var windowSize = totalCount < 6 ? 2 : 3;
-
-            var topMessages = new List<VisualChatMessage>();
-            var bottomMessages = new List<VisualChatMessage>();
-
-            for (var i = 0; i < totalCount - 1; i++)
-            {
-                var msg = Session.Messages[i];
-
-                if (msg.Id == LastUserMessage?.Id)
-                    continue;
-
-                // Первые сообщения
-                if (i < windowSize)
-                {
-                    topMessages.Add(msg);
-                }
-
-                // Оставшиеся сообщения
-                else if (i >= totalCount - 1 - windowSize)
-                {
-                    bottomMessages.Add(msg);
-                }
+                topMessages.Add(msg);
             }
 
-            var keptMessages = new List<VisualChatMessage>(topMessages.Count + bottomMessages.Count + 2);
-            keptMessages.AddRange(topMessages);
-            keptMessages.AddRange(bottomMessages);
-            keptMessages.Add(compressedMessage);
-
-            // Восстанавливаем сообщение пользователя после компрессии
-            if (LastUserMessage is not null)
+            // Оставшиеся сообщения
+            else if (i >= totalCount - 1 - windowSize)
             {
-                keptMessages.Add(LastUserMessage);
+                bottomMessages.Add(msg);
             }
-
-            // Перезаписываем историю
-            Session.Messages = keptMessages;
         }
+
+        var keptMessages = new List<VisualChatMessage>(topMessages.Count + bottomMessages.Count + 2);
+        keptMessages.AddRange(topMessages);
+        keptMessages.AddRange(bottomMessages);
+        keptMessages.Add(compressedMessage);
+
+        // Восстанавливаем сообщение пользователя после компрессии
+        if (LastUserMessage is not null)
+        {
+            keptMessages.Add(LastUserMessage);
+        }
+
+        // Перезаписываем историю
+        Session.Messages = keptMessages;
     }
 
     /// <summary>
@@ -426,13 +426,12 @@ public class ChatService(
         // Accumulator for partial tool_calls arguments (keyed by index)
         var toolCallAcc = new Dictionary<int, ToolCall>();
 
-        string? line;
         var isReasoningContent = false;
         var isStart = true;
         string? role = null;
 
         ChatChoice lastChoise = null!;
-        while ((line = await reader.ReadLineAsync(cancellationToken)) is not null && !cancellationToken.IsCancellationRequested)
+        while (await reader.ReadLineAsync(cancellationToken) is { } line && !cancellationToken.IsCancellationRequested)
         {
             if (string.IsNullOrWhiteSpace(line) || !line.StartsWith("data:"))
             {
@@ -682,14 +681,10 @@ public class ChatService(
         var sessionList = await GetAllSessionIdsAsync();
         // сортируем сессии по времени создания и берем самую свежую
         var lastSessionId = sessionList.OrderByDescending(id =>
-        {
-            if (DateTime.TryParseExact(id[8..], "s", CultureInfo.InvariantCulture, DateTimeStyles.None, out var result))
-            {
-                return result;
-            }
-            return DateTime.MinValue;
-        }).FirstOrDefault();
-        if (lastSessionId != default)
+            DateTime.TryParseExact(id[8..], "s", CultureInfo.InvariantCulture, DateTimeStyles.None, out var result)
+                ? result
+                : DateTime.MinValue).FirstOrDefault();
+        if (lastSessionId is not null)
         {
             var fromStorage = await localStorage.TryGetItemAsync<ConversationSession>(lastSessionId);
             fromStorage?.Id = lastSessionId;

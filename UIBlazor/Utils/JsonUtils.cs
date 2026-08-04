@@ -67,50 +67,52 @@ public static class JsonUtils
         };
     }
 
-    public static object? GetValue(this IReadOnlyDictionary<string, object> parameters, string key)
+    extension(IReadOnlyDictionary<string, object> parameters)
     {
-        return parameters.TryGetValue(key, out var value) ? value : null;
-    }
-
-    public static string? GetString(this IReadOnlyDictionary<string, object> parameters, string key)
-    {
-        return parameters.GetValue(key)?.ToString();
-    }
-
-    public static bool GetBool(this IReadOnlyDictionary<string, object> parameters, string key, bool defaultValue = false)
-    {
-        var value = parameters.GetValue(key);
-        return value?.ToString()?.ToLowerInvariant() switch
+        public object? GetValue(string key)
         {
-            "true" or "1" or "yes" => true,
-            "false" or "0" or "no" => false,
-            _ => defaultValue
-        };
-    }
-
-    public static int GetInt(this IReadOnlyDictionary<string, object> parameters, string key, int defaultValue = 0)
-    {
-        var value = parameters.GetValue(key);
-        if (value == null) return defaultValue;
-
-        if (int.TryParse(value.ToString(), out int result))
-            return result;
-
-        return defaultValue;
-    }
-
-    public static T? GetObject<T>(this IReadOnlyDictionary<string, object> parameters, string key) where T : class
-    {
-        var value = parameters.GetValue(key);
-        if (value == null) return null;
-
-        try
-        {
-            return JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(value, _jsonOptions), _jsonOptions);
+            return parameters.GetValueOrDefault(key);
         }
-        catch
+
+        public string? GetString(string key)
         {
-            return null;
+            return parameters.GetValue(key)?.ToString();
+        }
+
+        public bool GetBool(string key, bool defaultValue = false)
+        {
+            var value = parameters.GetValue(key);
+            return value?.ToString()?.ToLowerInvariant() switch
+            {
+                "true" or "1" or "yes" => true,
+                "false" or "0" or "no" => false,
+                _ => defaultValue
+            };
+        }
+
+        public int GetInt(string key, int defaultValue = 0)
+        {
+            var value = parameters.GetValue(key);
+            if (value == null) return defaultValue;
+
+            return int.TryParse(value.ToString(), out var result)
+                ? result
+                : defaultValue;
+        }
+
+        public T? GetObject<T>(string key) where T : class
+        {
+            var value = parameters.GetValue(key);
+            if (value == null) return null;
+
+            try
+            {
+                return JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(value, _jsonOptions), _jsonOptions);
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 
