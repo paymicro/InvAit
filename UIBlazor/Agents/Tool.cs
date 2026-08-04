@@ -13,21 +13,9 @@ public class Tool
     public string DisplayName { get; init; } = string.Empty;
 
     /// <summary>
-    /// Description for LLM
-    /// </summary>
-    [Obsolete]
-    public string Description { get; init; } = string.Empty;
-
-    /// <summary>
     /// Used for native tools_calling
     /// </summary>
     public required NativeToolDefinition NativeTool { get; init; } = null!;
-
-    /// <summary>
-    /// Example in system message. Only form prompt tool calling.
-    /// </summary>
-    [Obsolete]
-    public string ExampleToSystemMessage { get; init; } = string.Empty;
 
     /// <summary>
     /// Enabled for use

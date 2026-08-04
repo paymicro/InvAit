@@ -40,7 +40,6 @@ public class ToolManagerTests
         var tool = new Tool
         {
             Name = "test_tool",
-            Description = "Test tool",
             Category = ToolCategory.ReadFiles,
             NativeTool = _nativeTool,
             ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true, Result = "test result" })

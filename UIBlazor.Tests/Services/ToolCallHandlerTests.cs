@@ -70,7 +70,6 @@ public class ToolCallHandlerTests
         {
             Name = "read_files",
             DisplayName = "Read Files",
-            Description = "Test tool",
             Enabled = true,
             NativeTool = _nativeTool,
             ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true })
@@ -97,7 +96,6 @@ public class ToolCallHandlerTests
         {
             Name = "read_files",
             DisplayName = "Read Files",
-            Description = "Test tool",
             Enabled = true,
             NativeTool = _nativeTool,
             ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true, Result = "file content" })
