@@ -517,8 +517,8 @@ public class ToolExecutor : IAsyncDisposable
 
         foreach (var rep in diffEdits)
         {
-            var search = rep.OldStr.Remove('\r').Split('\n').ToList();
-            var replace = rep.NewStr.Remove('\r').Split('\n').ToList();
+            var search = Regex.Replace(rep.OldStr, "\r", "").Split('\n').ToList();
+            var replace = Regex.Replace(rep.NewStr, "\r", "").Split('\n').ToList();
             var actualStart = UniversalDiffParser.FindInFile(lines, search, rep.ApproximateLine ?? -1, 5);
             if (actualStart == -1)
             {
@@ -550,13 +550,14 @@ public class ToolExecutor : IAsyncDisposable
             await Logger.LogAsync(e.Message);
             return new VsResponse
             {
-                Payload = $"Changes to {inputFileName} is FAILED.\r\n{e.Message}"
+                Success = false,
+                Error = $"Changes to {inputFileName} is FAILED. {e.Message}"
             };
         }
 
         return new VsResponse
         {
-            Payload = $"Changes successfully applied to {inputFileName}.\nApplied {totalReplacements}/{diffEdits.Count} replacements."
+            Payload = $"Changes successfully applied to {inputFileName}. {totalReplacements}/{diffEdits.Count}."
         };
     }
 

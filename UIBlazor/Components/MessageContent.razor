@@ -5,7 +5,6 @@
     }
     else
     {
-        toolCount = 0;
         @if (!string.IsNullOrEmpty(Message.ReasoningContent))
         {
             var header = Message.Timings is { Reasoning.TotalMilliseconds: > 100 } 
@@ -40,8 +39,6 @@
     [Parameter] public VisualChatMessage Message { get; set; } = new();
     [Parameter] public EventCallback<(string MessageId, string SegmentId, bool Approved)> OnToolApproval { get; set; }
     [Inject] private IToolManager ToolManager { get; set; } = null!;
-
-    private int toolCount;
 
     private async Task OnToolApprovalHandler((string SegmentId, bool Approved) args)
     {

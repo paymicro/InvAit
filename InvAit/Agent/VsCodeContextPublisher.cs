@@ -138,7 +138,7 @@ namespace InvAit.Agent
             }
             catch (Exception ex)
             {
-                await Logger.LogAsync($"Error updating context: {ex.Message}", "ERROR");
+                await Logger.LogAsync($"Error updating context: {ex.Message}", "WARN");
             }
         }
 
