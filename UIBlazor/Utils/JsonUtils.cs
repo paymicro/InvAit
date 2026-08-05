@@ -26,7 +26,30 @@ public static class JsonUtils
 
     public static T? Deserialize<T>(string json) => JsonSerializer.Deserialize<T>(json, _jsonOptions);
 
-    public static T DeserializeAnonymousType<T>(string json, T anonymousTypeObject) => JsonSerializer.Deserialize<T>(json, _jsonOptions);
+    public static T DeserializePartialAnonymousType<T>(string partialJson, T anonymousTypeObject)
+    {
+        if (string.IsNullOrWhiteSpace(partialJson))
+        {
+            return anonymousTypeObject;
+        }
+
+        // Чиним JSON, делая его валидным для стандартного сериализатора
+        var sb = new StringBuilder(partialJson.Length + 32);
+        sb.Append(partialJson);
+
+        RepairJson(sb);
+
+        try
+        {
+            // Используем стандартный метод восстановления для анонимных типов
+            var repairedJson = sb.ToString();
+            return JsonSerializer.Deserialize<T>(repairedJson, _jsonOptions);
+        }
+        catch (JsonException)
+        {
+            return anonymousTypeObject;
+        }
+    }
 
     public static string PrettyPrintFormat(string minifiedJson)
     {
@@ -125,6 +148,164 @@ public static class JsonUtils
         catch
         {
             return null;
+        }
+    }
+
+    private static void RepairJson(StringBuilder sb)
+    {
+        var stack = new Stack<char>();
+        var inString = false;
+        var isEscaped = false;
+        var lastTokenStartIndex = 0;
+
+        // 1. Проход по StringBuilder без создания подстрок
+        for (var i = 0; i < sb.Length; i++)
+        {
+            var c = sb[i];
+
+            if (inString)
+            {
+                if (isEscaped)
+                {
+                    isEscaped = false;
+                }
+                else if (c == '\\')
+                {
+                    isEscaped = true;
+                }
+                else if (c == '"')
+                {
+                    inString = false;
+                }
+            }
+            else
+            {
+                if (c == '"')
+                {
+                    inString = true;
+                    lastTokenStartIndex = i;
+                }
+                else if (c == '{' || c == '[')
+                {
+                    stack.Push(c);
+                    lastTokenStartIndex = i + 1;
+                }
+                else if (c == '}' || c == ']')
+                {
+                    if (stack.Count > 0) stack.Pop();
+                    lastTokenStartIndex = i + 1;
+                }
+                else if (c == ',' || c == ':')
+                {
+                    lastTokenStartIndex = i + 1;
+                }
+            }
+        }
+
+        // Смотрим, какой контейнер сейчас является самым верхним
+        var currentContainer = stack.Count > 0 ? stack.Peek() : '\0';
+
+        // 2. Обработка незавершенной строки
+        if (inString)
+        {
+            var isValue = false;
+
+            // Если мы внутри массива, то любая строка — это значение, а не ключ
+            if (currentContainer == '[')
+            {
+                isValue = true;
+            }
+            else
+            {
+                // Если мы внутри объекта, ищем двоеточие перед строкой
+                for (var i = lastTokenStartIndex - 1; i >= 0; i--)
+                {
+                    var prevChar = sb[i];
+                    if (char.IsWhiteSpace(prevChar)) continue;
+                    if (prevChar == ':') isValue = true;
+                    break;
+                }
+            }
+
+            if (isValue)
+            {
+                if (isEscaped && sb[^1] == '\\')
+                {
+                    sb.Append('\\'); // Дублируем бэкслеш
+                }
+                sb.Append('"'); // Закрываем кавычку значения
+            }
+            else
+            {
+                // Это недописанный ключ в объекте — отсекаем его
+                sb.Length = lastTokenStartIndex;
+            }
+        }
+
+        // 3. Очищаем хвост от висящих запятых, двоеточий и пробелов
+        while (sb.Length > 0)
+        {
+            var lastChar = sb[^1];
+            if (lastChar == ',' || lastChar == ':' || char.IsWhiteSpace(lastChar))
+            {
+                sb.Length--;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        // 4. Дополнительная проверка на «осиротевший» ключ (актуально только для ОБЪЕКТОВ)
+        if (currentContainer == '{' && sb.Length > 0 && sb[^1] == '"')
+        {
+            var lastQuoteStart = -1;
+            for (var i = sb.Length - 2; i >= 0; i--)
+            {
+                if (sb[i] == '"' && (i == 0 || sb[i - 1] != '\\'))
+                {
+                    lastQuoteStart = i;
+                    break;
+                }
+            }
+
+            if (lastQuoteStart >= 0)
+            {
+                var hasColon = false;
+                for (var i = lastQuoteStart - 1; i >= 0; i--)
+                {
+                    var prevChar = sb[i];
+                    if (char.IsWhiteSpace(prevChar)) continue;
+                    if (prevChar == ':') hasColon = true;
+                    break;
+                }
+
+                // Если перед строкой в объекте нет двоеточия — это ключ без значения, удаляем его
+                if (!hasColon)
+                {
+                    sb.Length = lastQuoteStart;
+
+                    while (sb.Length > 0)
+                    {
+                        var lastChar = sb[^1];
+                        if (lastChar == ',' || char.IsWhiteSpace(lastChar))
+                        {
+                            sb.Length--;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5. Закрываем все открытые контейнеры
+        while (stack.Count > 0)
+        {
+            var openChar = stack.Pop();
+            sb.Append(openChar == '{' ? '}' : ']');
         }
     }
 }

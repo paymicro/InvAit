@@ -22,7 +22,7 @@
                     filePath = default(string),
                     edits = default(DiffEdit[])
                 };
-                var result = JsonUtils.DeserializeAnonymousType(ToolCall.Function.Arguments, template);
+                var result = JsonUtils.DeserializePartialAnonymousType(ToolCall.Function.Arguments, template);
                 <DiffView FilePath="@result.filePath" Edits="@result.edits" />
             }
             else if (ToolCall.Function.Name == BuiltInToolEnum.CreateFile)
@@ -32,8 +32,8 @@
                     filePath = default(string),
                     content = default(string)
                 };
-                var result = JsonUtils.DeserializeAnonymousType(ToolCall.Function.Arguments, template);
-                <ToolCreateNewFile FilePath="template.filePath" Args="@template.content" />
+                var result = JsonUtils.DeserializePartialAnonymousType(ToolCall.Function.Arguments, template);
+                <ToolCreateNewFile FilePath="@template.filePath" Content="@template.content" />
             }
             else if (ToolCall.Function.Name == BasicEnum.AskUser)
             {

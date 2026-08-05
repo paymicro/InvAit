@@ -9,6 +9,275 @@ public class JsonUtilsTests
     }
 
     [Fact]
+    public void Deserialize_CompleteJson_ReturnsAllFields()
+    {
+        // Arrange
+        var _template = new
+        {
+            filePath = default(string),
+            content = default(string)
+        };
+        var json = "{\"filePath\": \"config.json\", \"content\": \"hello\"}";
+
+        // Act
+        var result = JsonUtils.DeserializePartialAnonymousType(json, _template);
+
+        // Assert
+        Assert.Equal("config.json", result.filePath);
+        Assert.Equal("hello", result.content);
+    }
+
+    [Fact]
+    public void Deserialize_CutOnKey_IgnoresIncompleteKey()
+    {
+        // Arrange
+        // Оборвалось на ключе "cont
+        var _template = new
+        {
+            filePath = default(string),
+            content = default(string)
+        };
+        var json = "{\"filePath\": \"config.json\", \"cont";
+
+        // Act
+        var result = JsonUtils.DeserializePartialAnonymousType(json, _template);
+
+        // Assert
+        Assert.Equal("config.json", result.filePath);
+        Assert.Null(result.content); // Ключ проигнорирован
+    }
+
+    [Fact]
+    public void Deserialize_CutOnTrailingComma_RemovesCommaAndCloses()
+    {
+        // Arrange
+        // Оборвалось сразу после запятой
+        var _template = new
+        {
+            filePath = default(string),
+            content = default(string)
+        };
+        var json = "{\"filePath\": \"config.json\", ";
+
+        // Act
+        var result = JsonUtils.DeserializePartialAnonymousType(json, _template);
+
+        // Assert
+        Assert.Equal("config.json", result.filePath);
+        Assert.Null(result.content);
+    }
+
+    [Fact]
+    public void Deserialize_CutOnValue_ClosesQuotesAndReturnsPartialValue()
+    {
+        // Arrange
+        // Оборвалось внутри значения "he
+        var _template = new
+        {
+            filePath = default(string),
+            content = default(string)
+        };
+        var json = "{\"filePath\": \"config.json\", \"content\": \"he";
+
+        // Act
+        var result = JsonUtils.DeserializePartialAnonymousType(json, _template);
+
+        // Assert
+        Assert.Equal("config.json", result.filePath);
+        Assert.Equal("he", result.content); // Значение успешно прочитано частично
+    }
+
+    [Fact]
+    public void Deserialize_CutOnColon_IgnoresKeyWithoutValue()
+    {
+        // Arrange
+        // Оборвалось сразу на двоеточии после ключа
+        var _template = new
+        {
+            filePath = default(string),
+            content = default(string)
+        };
+        var json = "{\"filePath\": \"config.json\", \"content\"::";
+
+        // Act
+        var result = JsonUtils.DeserializePartialAnonymousType(json, _template);
+
+        // Assert
+        Assert.Equal("config.json", result.filePath);
+        Assert.Null(result.content);
+    }
+
+    [Fact]
+    public void Deserialize_CutOnEscapeCharacter_RemovesEscapeCharAndCloses()
+    {
+        // Arrange
+        var _template = new
+        {
+            filePath = default(string),
+            content = default(string)
+        };
+        var json = "{\"filePath\": \"C:\\\\Users\\\\Admin\\\\";
+
+        // Act
+        var result = JsonUtils.DeserializePartialAnonymousType(json, _template);
+
+        // Assert
+        Assert.Equal("C:\\Users\\Admin\\", result.filePath);
+    }
+
+    [Fact]
+    public void Deserialize_CutInsideArrayValue_ClosesArrayCorrectly()
+    {
+        // Arrange
+        var _complexTemplate = new
+        {
+            filePath = default(string),
+            tags = default(string[]),
+            meta = new
+            {
+                author = default(string),
+                version = default(int)
+            }
+        };
+        // Стрим оборвался внутри строкового значения внутри массива tags
+        var json = "{\"filePath\": \"1.txt\", \"tags\": [\"git\", \"csh";
+
+        // Act
+        var result = JsonUtils.DeserializePartialAnonymousType(json, _complexTemplate);
+
+        Assert.Equal("1.txt", result.filePath);
+        Assert.NotNull(result.tags);
+        Assert.Equal(2, result.tags.Length);
+        Assert.Equal("git", result.tags[0]);
+        Assert.Equal("csh", result.tags[1]); // Частичное значение закрылось кавычкой
+    }
+
+    [Fact]
+    public void Deserialize_CutOnArrayComma_RemovesCommaAndClosesArray()
+    {
+        // Arrange
+        var _complexTemplate = new
+        {
+            filePath = default(string),
+            tags = default(string[]), // Массив строк
+            meta = new
+            {
+                author = default(string),
+                version = default(int)
+            }
+        };
+        // Стрим оборвался сразу после запятой в массиве, перед следующим элементом
+        var json = "{\"filePath\": \"1.txt\", \"tags\": [\"git\", ";
+
+        // Act
+        var result = JsonUtils.DeserializePartialAnonymousType(json, _complexTemplate);
+
+        Assert.Equal("1.txt", result.filePath);
+        Assert.NotNull(result.tags);
+        Assert.Single(result.tags); // В массиве должен остаться ровно 1 валидный элемент
+        Assert.Equal("git", result.tags[0]);
+    }
+
+    [Fact]
+    public void Deserialize_CutInsideNestedObject_ClosesNestedObjectAndRoot()
+    {
+        // Arrange
+        var _complexTemplate = new
+        {
+            filePath = default(string),
+            tags = default(string[]), // Массив строк
+            meta = new
+            {
+                author = default(string),
+                version = default(int)
+            }
+        };
+        // Стрим оборвался глубоко внутри вложенного объекта meta на значении author
+        var json = "{\"filePath\": \"1.txt\", \"meta\": {\"author\": \"Jo";
+
+        // Act
+        var result = JsonUtils.DeserializePartialAnonymousType(json, _complexTemplate);
+
+        Assert.Equal("1.txt", result.filePath);
+        Assert.NotNull(result.meta);
+        Assert.Equal("Jo", result.meta.author); // Вложенный объект успешно частично собран
+        Assert.Equal(0, result.meta.version);   // Недошедшее поле осталось дефолтным
+    }
+
+    [Fact]
+    public void Deserialize_CutOnNestedObjectKey_IgnoresIncompleteNestedKey()
+    {
+        // Arrange
+        var _complexTemplate = new
+        {
+            filePath = default(string),
+            tags = default(string[]), // Массив строк
+            meta = new
+            {
+                author = default(string),
+                version = default(int)
+            }
+        };
+        // Стрим оборвался на ключе внутри вложенного объекта: "vers
+        var json = "{\"filePath\": \"1.txt\", \"meta\": {\"author\": \"John\", \"vers";
+
+        // Act
+        var result = JsonUtils.DeserializePartialAnonymousType(json, _complexTemplate);
+
+        Assert.Equal("1.txt", result.filePath);
+        Assert.NotNull(result.meta);
+        Assert.Equal("John", result.meta.author);
+        Assert.Equal(0, result.meta.version); // Недописанный ключ проигнорирован, объект валиден
+    }
+
+    [Fact]
+    public void Deserialize_CutOnNestedObjectColon_IgnoresKeyWithoutValueInNestedObject()
+    {
+        // Arrange
+        var _complexTemplate = new
+        {
+            filePath = default(string),
+            tags = default(string[]), // Массив строк
+            meta = new
+            {
+                author = default(string),
+                version = default(int)
+            }
+        };
+        // Стрим оборвался на двоеточии после ключа во вложенном объекте
+        var json = "{\"filePath\": \"1.txt\", \"meta\": {\"author\": \"John\", \"version\"::";
+
+        // Act
+        var result = JsonUtils.DeserializePartialAnonymousType(json, _complexTemplate);
+
+        Assert.Equal("1.txt", result.filePath);
+        Assert.NotNull(result.meta);
+        Assert.Equal("John", result.meta.author);
+        Assert.Equal(0, result.meta.version);
+    }
+
+    [Fact]
+    public void Deserialize_EmptyOrInvalidStart_ReturnsDefaultTemplate()
+    {
+        // Arrange
+        var _template = new
+        {
+            filePath = default(string),
+            content = default(string)
+        };
+
+        // Act
+        var resultEmpty = JsonUtils.DeserializePartialAnonymousType("", _template);
+        var resultOnlyBrace = JsonUtils.DeserializePartialAnonymousType("{", _template);
+        var resultFirstKeyCut = JsonUtils.DeserializePartialAnonymousType("{\"file", _template);
+
+        // Assert
+        Assert.Null(resultEmpty.filePath);
+        Assert.Null(resultOnlyBrace.filePath);
+        Assert.Null(resultFirstKeyCut.filePath);
+    }
+
+    [Fact]
     public void Serialize_ReturnsJsonString()
     {
         var obj = new TestObject { Name = "test", Value = 123 };
