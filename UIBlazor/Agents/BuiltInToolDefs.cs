@@ -73,7 +73,7 @@ public static class BuiltInToolDefs
     { }
 
     [DisplayName(BuiltInToolEnum.RunTests)]
-    [Description("Run all tests in solution")]
+    [Description("Rebuild and run all tests in solution")]
     public static void RunTests()
     { }
 

@@ -85,7 +85,7 @@ public class ToolManagerTests
         _toolManager.GetTool("test_tool")!.Enabled = false;
 
         // Act
-        var enabledTools = _toolManager.GetEnabledTools();
+        var enabledTools = _toolManager.GetEnabledTools(AppMode.Agent);
 
         // Assert
         Assert.Empty(enabledTools);
@@ -341,7 +341,7 @@ public class ToolManagerTests
         };
 
         // Act
-        var enabledTools = _toolManager.GetEnabledTools();
+        var enabledTools = _toolManager.GetEnabledTools(AppMode.Agent);
 
         // Assert
         Assert.DoesNotContain(enabledTools, t => t.Name == "category_tool");
@@ -368,7 +368,7 @@ public class ToolManagerTests
         };
 
         // Act
-        var enabledTools = _toolManager.GetEnabledTools();
+        var enabledTools = _toolManager.GetEnabledTools(AppMode.Agent);
 
         // Assert
         Assert.Contains(enabledTools, t => t.Name == "category_tool");
@@ -419,64 +419,6 @@ public class ToolManagerTests
     #endregion
 
     #region GetToolUseSystemInstructions Mode Tests
-
-    [Fact]
-    public void GetToolUseSystemInstructions_IncludesOtherModes_WhenModeSwitchToolEnabled()
-    {
-        // Arrange - create ToolManager with switch_mode tool enabled
-        var modeSwitchTool = new Tool
-        {
-            Name = BasicEnum.SwitchMode,
-            Category = ToolCategory.ModeSwitch,
-            Enabled = true,
-            NativeTool = _nativeTool,
-            ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true })
-        };
-        var agent = new BuiltInAgent(_vsBridgeMock.Object, Mock.Of<ISkillService>(), Mock.Of<IInternalExecutor>()) { Tools = [modeSwitchTool] };
-
-        // Setup storage to return settings with ModeSwitch category enabled
-        var savedSettings = new ToolSettings();
-        savedSettings.CategoryStates[ToolCategory.ModeSwitch] = new ToolCategorySettings
-        {
-            IsEnabled = true,
-            ApprovalMode = ToolApprovalMode.Allow
-        };
-        _localStorageMock.Setup(ls => ls.TryGetItemAsync<ToolSettings>("ToolSettings"))
-            .ReturnsAsync(savedSettings);
-
-        var toolManager = new ToolManager(agent, _logger, _localStorageMock.Object, _commonSettingsMock.Object, _mcpSettingsMock.Object, _vsBridgeMock.Object);
-        toolManager.RegisterAllTools();
-
-        // Act
-        var instructions = toolManager.GetToolUseSystemInstructions(AppMode.Agent, false);
-
-        // Assert
-        Assert.Contains("Other available modes:", instructions);
-        Assert.Contains("Chat", instructions);
-        Assert.Contains("Plan", instructions);
-    }
-
-    [Fact]
-    public void GetToolUseSystemInstructions_ExcludesOtherModes_WhenModeSwitchToolDisabled()
-    {
-        // Arrange - create ToolManager with switch_mode tool disabled
-        var modeSwitchTool = new Tool
-        {
-            Name = BasicEnum.SwitchMode,
-            Category = ToolCategory.ModeSwitch,
-            Enabled = false,
-            NativeTool = _nativeTool,
-            ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true })
-        };
-        var agent = new BuiltInAgent(_vsBridgeMock.Object, Mock.Of<ISkillService>(), Mock.Of<IInternalExecutor>()) { Tools = [modeSwitchTool] };
-        var toolManager = new ToolManager(agent, _logger, _localStorageMock.Object, _commonSettingsMock.Object, _mcpSettingsMock.Object, _vsBridgeMock.Object);
-
-        // Act
-        var instructions = toolManager.GetToolUseSystemInstructions(AppMode.Agent, false);
-
-        // Assert
-        Assert.DoesNotContain("Other available modes:", instructions);
-    }
 
     [Fact]
     public void GetToolUseSystemInstructions_PlanModeIncludesPlanningInstructions()

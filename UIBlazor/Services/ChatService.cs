@@ -336,7 +336,7 @@ public class ChatService(
         // Add native tool definitions
         if (withTools)
         {
-            var enabledTools = toolManager.GetEnabledTools().Where(t => t.NativeTool != null).Select(t => t.NativeTool).ToList();
+            var enabledTools = toolManager.GetEnabledTools(Session.Mode).Select(t => t.NativeTool).ToList();
             if (enabledTools.Count > 0)
             {
                 payload["tools"] = enabledTools;

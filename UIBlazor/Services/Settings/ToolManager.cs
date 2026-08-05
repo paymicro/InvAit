@@ -102,15 +102,15 @@ public class ToolManager(
         return SaveAsync();
     }
 
-    public IEnumerable<Tool> GetEnabledTools()
+    public IEnumerable<Tool> GetEnabledTools(AppMode mode)
     {
         var builtIn = _registeredTools.Values.Where(t =>
         {
             if (Current.CategoryStates.TryGetValue(t.Category, out var state))
             {
-                return state.IsEnabled && t.Enabled;
+                return state.IsEnabled && t.Enabled && EnableInMode(t, mode);
             }
-            return t.Enabled;
+            return t.Enabled && EnableInMode(t, mode);
         });
 
         var mcp = mcpSettingsProvider.Current.Enabled
@@ -118,6 +118,15 @@ public class ToolManager(
             : [];
 
         return builtIn.Concat(mcp);
+    }
+
+    private static bool EnableInMode(Tool tool, AppMode mode)
+    {
+        return mode switch
+        {
+            AppMode.Chat or AppMode.Plan => tool.Category is ToolCategory.ReadFiles or ToolCategory.ModeSwitch,
+            _ => true,
+        };
     }
 
     public IEnumerable<Tool> GetBuiltInTools() => _registeredTools.Values;
@@ -234,28 +243,10 @@ public class ToolManager(
 
     public string GetToolUseSystemInstructions(AppMode mode, bool hasSkills)
     {
-        var enabledTools = GetEnabledTools().ToList();
-
-        if (!hasSkills)
-        {
-            enabledTools = [.. enabledTools.Where(t => t.Name != BasicEnum.ReadSkillContent)];
-        }
-
-        // Filter tools based on mode
-        enabledTools = mode switch
-        {
-            AppMode.Chat => [.. enabledTools.Where(t => t.Category is ToolCategory.ReadFiles or ToolCategory.ModeSwitch or ToolCategory.Mcp)],
-            AppMode.Agent => enabledTools,
-            AppMode.Plan => [.. enabledTools.Where(t => t.Category is ToolCategory.ReadFiles or ToolCategory.ModeSwitch or ToolCategory.Mcp)],
-            _ => enabledTools
-        };
-
-        var otherModes = string.Join(", ", Enum.GetValues<AppMode>().Where(m => m != mode).Select(m => GetModeDesc(m)));
-
         var sb = new StringBuilder();
         // TODO опционально
         sb.AppendLine("Use Mermaid diagrams for clarity in explanations. This will help you better visualize the answer formula. Don`t use \", {, }, (, ), [, ], in Mermaid node names.");
-
+        sb.AppendLine($"Your current mode: {GetModeDesc(mode)}");
         if (mode == AppMode.Plan)
         {
             sb.AppendLine("""
@@ -276,16 +267,6 @@ public class ToolManager(
                           In this mode, you should NOT make any changes to files. Your goal is to get user approval for the plan.
                           Once the plan is approved, the mode will be switched to **Agent** for execution.
                           """);
-        }
-
-        if (enabledTools.Any(t => t.Name == BasicEnum.SwitchMode))
-        {
-            sb.AppendLine($"Your current mode: {GetModeDesc(mode)}");
-            if (enabledTools.FirstOrDefault(t => t.Category == ToolCategory.ModeSwitch)?.Enabled == true)
-            {
-                sb.AppendLine($"Other available modes: {otherModes}.");
-            }
-            sb.AppendLine($"You can use '{BasicEnum.SwitchMode}' tool to change current mode if you need more tools or want to switch context.");
         }
 
         return sb.ToString();

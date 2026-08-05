@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace UIBlazor.Tests.Services.Settings;
 
 public class ToolManagerMcpTests
@@ -71,7 +73,7 @@ public class ToolManagerMcpTests
 
         // Act
         var tools = _toolManager.GetAllTools().ToList();
-        var enabledTools = _toolManager.GetEnabledTools().ToList();
+        var enabledTools = _toolManager.GetEnabledTools(AppMode.Agent).ToList();
 
         // Assert
         Assert.Contains(tools, t => t.Name == toolName);
@@ -515,7 +517,7 @@ public class ToolManagerMcpTests
         _mcpOptions.Servers.Add(server);
 
         // Act
-        var enabledTools = _toolManager.GetEnabledTools().ToList();
+        var enabledTools = _toolManager.GetEnabledTools(AppMode.Agent).ToList();
 
         // Assert
         Assert.Contains(enabledTools, t => t.Name == "mcp__test-server__enabled-tool");
@@ -536,7 +538,7 @@ public class ToolManagerMcpTests
         _mcpOptions.ToolDisabledStates.Add(toolName);
 
         // Act
-        var enabledTools = _toolManager.GetEnabledTools().ToList();
+        var enabledTools = _toolManager.GetEnabledTools(AppMode.Agent).ToList();
 
         // Assert
         Assert.DoesNotContain(enabledTools, t => t.Name == toolName);
