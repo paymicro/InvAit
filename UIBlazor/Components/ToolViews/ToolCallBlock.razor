@@ -17,23 +17,23 @@
         <div class="tool-call-args">
             @if (ToolCall.Function.Name == BuiltInToolEnum.Edits)
             {
-                var template = new
+                var result = new
                 {
                     filePath = default(string),
                     edits = default(DiffEdit[])
                 };
-                var result = JsonUtils.DeserializePartialAnonymousType(ToolCall.Function.Arguments, template);
-                <DiffView FilePath="@result.filePath" Edits="@result.edits" />
+                result = JsonUtils.DeserializePartialAnonymousType(ToolCall.Function.Arguments, result);
+                <DiffView FilePath="@(result.filePath ?? string.Empty)" Edits="@(result.edits ?? [])" />
             }
             else if (ToolCall.Function.Name == BuiltInToolEnum.CreateFile)
             {
-                var template = new
+                var result = new
                 {
                     filePath = default(string),
                     content = default(string)
                 };
-                var result = JsonUtils.DeserializePartialAnonymousType(ToolCall.Function.Arguments, template);
-                <ToolCreateNewFile FilePath="@template.filePath" Content="@template.content" />
+                result = JsonUtils.DeserializePartialAnonymousType(ToolCall.Function.Arguments, result);
+                <ToolCreateNewFile FilePath="@(result.filePath ?? string.Empty)" Content="@(result.content ?? string.Empty)" />
             }
             else if (ToolCall.Function.Name == BasicEnum.AskUser)
             {
