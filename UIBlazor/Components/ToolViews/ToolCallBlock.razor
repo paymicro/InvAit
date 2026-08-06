@@ -2,11 +2,11 @@
 
 <div class="tool-call-block" data-tool="@ToolCall.Function.Name">
     <div class="tool-call-header @StatusClass">
-        @SharedResource.CallingTool: <strong>@DisplayName</strong>
         @if (!ToolCall.IsReady)
         {
-            <i class="fa-regular fa-hourglass fa-spin"></i>
+            <i class="fa-regular fa-hourglass fa-spin"></i> 
         }
+        @SharedResource.CallingTool: <strong>@DisplayName</strong>        
         <RadzenBadge BadgeStyle="BadgeStyle.Light" Variant="Variant.Text" title="Tokens for tool">
             ~@ToolCall.Tokens tokens
         </RadzenBadge>

@@ -34,9 +34,9 @@
 
     private string _customOption = string.Empty;
 
-    private string Question => string.Empty; //Lines.Count > 0 ? Lines[0] : string.Empty;
+    private string Question => string.Empty;
 
-    private List<string> Options => []; //Lines.Count > 1 ? Lines.Skip(1).ToList() : [];
+    private List<string> Options => [];
 
     private async Task OnOptionSelected(string selectedOption)
     {

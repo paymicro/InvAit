@@ -219,14 +219,14 @@ public partial class AiChat : RadzenComponent
         await ChatService.SaveSessionAsync();
 
         // Handle native tool_calls from the API response
-        var nativeToolCalls = ChatService.AccumulatedToolCalls;
-        if (nativeToolCalls is { Count: > 0 })
+        message.ToolCalls = ChatService.AccumulatedToolCalls;
+        if (message.ToolCalls is { Count: > 0 })
         {
-            message.ToolCalls = nativeToolCalls;
             ToolCallHandler.PrepareToolsForApprovals(message.ToolCalls);
             message.IsShouldRender = true;
             await InvokeAsync(StateHasChanged);
             await ToolCallHandler.ProcessToolCallsAsync(message.ToolCalls, cancellationToken);
+            ChatService.Session.TotalTokens += message.ToolCalls?.Sum(t => t.Tokens) ?? 0;
             await ChatService.SaveSessionAsync();
             message.IsShouldRender = true;
             await InvokeAsync(StateHasChanged);
@@ -272,6 +272,15 @@ public partial class AiChat : RadzenComponent
         {
             message.Content = "Cancelled by user...";
             MessageParser.UpdateSegments(message.Content, message);
+        }
+
+        if (message.ToolCalls is { Count: > 0 })
+        {
+            foreach (var toolCall in message.ToolCalls)
+            {
+                toolCall.IsReady = true;
+                toolCall.ApprovalStatus = ToolApprovalStatus.Rejected;
+            }
         }
     }
 
