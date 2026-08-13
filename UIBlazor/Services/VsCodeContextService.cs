@@ -1,15 +1,14 @@
-namespace UIBlazor.Services
+namespace UIBlazor.Services;
+
+public class VsCodeContextService : IVsCodeContextService
 {
-    public class VsCodeContextService : IVsCodeContextService
+    public VsCodeContext? CurrentContext { get; private set; }
+
+    public event Action? OnContextChanged;
+
+    public void UpdateContext(VsCodeContext context)
     {
-        public VsCodeContext? CurrentContext { get; private set; }
-
-        public event Action? OnContextChanged;
-
-        public void UpdateContext(VsCodeContext context)
-        {
-            CurrentContext = context;
-            OnContextChanged?.Invoke();
-        }
+        CurrentContext = context;
+        OnContextChanged?.Invoke();
     }
 }

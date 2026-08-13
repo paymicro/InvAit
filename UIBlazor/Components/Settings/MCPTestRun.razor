@@ -45,7 +45,7 @@
                 .Where(f => f.Value is not null)
                 .ToDictionary(f => f.Key, f => f.Value!);
 
-            var vsToolResult = await tool.ExecuteAsync(filterdArgs, CancellationToken.None);
+            var vsToolResult = await tool.ExecuteAsync(JsonUtils.Serialize(filterdArgs), CancellationToken.None);
 #if DEBUG
             vsToolResult = HeadlessMocker.GetVsToolResult(vsToolResult);
 #endif

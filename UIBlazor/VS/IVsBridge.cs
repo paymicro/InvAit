@@ -4,5 +4,10 @@ public interface IVsBridge
 {
     Task InitializeAsync();
 
-    Task<VsToolResult> ExecuteToolAsync(string name, IReadOnlyDictionary<string, object>? args = null, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Выполнение тулзы
+    /// </summary>
+    /// <param name="name">Имя тулзы</param>
+    /// <param name="args">Сериализованный объект</param>
+    Task<VsToolResult> ExecuteToolAsync(string name, string? args, CancellationToken cancellationToken = default);
 }

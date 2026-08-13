@@ -18,7 +18,7 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
             return _skillsCache;
         }
 
-        var result = await vsBridge.ExecuteToolAsync(BasicEnum.GetSkillsMetadata, cancellationToken: cancellationToken);
+        var result = await vsBridge.ExecuteToolAsync(BasicEnum.GetSkillsMetadata, null, cancellationToken);
         if (!result.Success)
         {
             return _skillsCache ?? [];
@@ -54,11 +54,7 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
             return cachedContent;
         }
 
-        var args = new Dictionary<string, object>
-        {
-            { "param1", skillName }
-        };
-
+        var args = JsonUtils.SerializeCompact(new { skillName });
         var result = await vsBridge.ExecuteToolAsync(BasicEnum.ReadSkillContent, args, cancellationToken);
         if (!result.Success)
         {
@@ -133,15 +129,15 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
         await GetSkillsMetadataAsync(cancellationToken); // Перезагружаем метаданные
     }
 
-    public async Task<VsToolResult> LoadSkillContentMarkDownAsync(IReadOnlyDictionary<string, object> args, CancellationToken cancellationToken)
+    public async Task<VsToolResult> LoadSkillContentMarkDownAsync(string args, CancellationToken cancellationToken)
     {
-        var skillName = args.GetString("param1");
+        var skillName = JsonUtils.DeserializeParameters(args).GetString("skillName");
         if (string.IsNullOrEmpty(skillName))
         {
             return new VsToolResult
             {
                 Success = false,
-                Result = "Skill name is required parameter!"
+                ErrorMessage = "Skill name is missing"
             };
         }
         var skillContent = await LoadSkillContentAsync(skillName, cancellationToken);
@@ -151,7 +147,7 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
             return new VsToolResult
             {
                 Success = false,
-                Result = "Skill content is empty..."
+                ErrorMessage = "<empty>"
             };
         }
         var sb = new StringBuilder();

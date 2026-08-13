@@ -5,7 +5,6 @@
     }
     else
     {
-        toolCount = 0;
         @if (!string.IsNullOrEmpty(Message.ReasoningContent))
         {
             var header = Message.Timings is { Reasoning.TotalMilliseconds: > 100 } 
@@ -16,19 +15,21 @@
             </Details>
         }
 
-        @foreach (var segment in Message.Segments)
+        foreach (var segment in Message.Segments)
         {
-            if (segment.Type == SegmentType.Tool)
-            {
-                <ToolCallBlock @key="segment.Id"
-                    Segment="@segment"
-                    OnApproval="@OnToolApprovalHandler"
-                    ToolResult="@(toolCount < Message.ToolResults.Count ? Message.ToolResults[toolCount] : null)" />
-                toolCount++;
-            }
-            else if (segment.Type is SegmentType.Markdown)
+            if (segment.Type is SegmentType.Markdown)
             {
                 <MarkdownBlock @key="segment.Id" Content="@segment.CurrentLine.ToString()" />
+            }
+        }
+
+        if (Message.ToolCalls is not null)
+        {
+            foreach (var toolCall in Message.ToolCalls)
+            {
+                <ToolCallBlock @key="toolCall.Id"
+                               ToolCall="@toolCall"
+                               OnApproval="@OnToolApprovalHandler" />
             }
         }
     }
@@ -38,8 +39,6 @@
     [Parameter] public VisualChatMessage Message { get; set; } = new();
     [Parameter] public EventCallback<(string MessageId, string SegmentId, bool Approved)> OnToolApproval { get; set; }
     [Inject] private IToolManager ToolManager { get; set; } = null!;
-
-    private int toolCount;
 
     private async Task OnToolApprovalHandler((string SegmentId, bool Approved) args)
     {

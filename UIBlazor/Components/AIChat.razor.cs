@@ -2,6 +2,7 @@ using System.ComponentModel;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Radzen;
+using UIBlazor.Services;
 using ConversationSession = UIBlazor.Models.ConversationSession;
 
 namespace UIBlazor.Components;
@@ -117,6 +118,10 @@ public partial class AiChat : RadzenComponent
                  assistantMessage,
                  ChatService.CompressSessionAsync(cancellationToken),
                  onContentUpdate: content => MessageParser.UpdateSegments(content, assistantMessage),
+                 onToolCallsUpdate: toolCalls => {
+                     assistantMessage.ToolCalls = toolCalls;
+                     assistantMessage.IsShouldRender = true;
+                 },
                  onStateChange: () =>
                  {
                      assistantMessage.Model ??= ChatService.LastCompletionsModel;
@@ -177,6 +182,10 @@ public partial class AiChat : RadzenComponent
                 assistantMessage,
                 ChatService.GetCompletionsAsync(cancellationToken),
                 onContentUpdate: content => MessageParser.UpdateSegments(content, assistantMessage),
+                onToolCallsUpdate: toolCalls => {
+                    assistantMessage.ToolCalls = toolCalls;
+                    assistantMessage.IsShouldRender = true;
+                },
                 onStateChange: () =>
                 {
                     assistantMessage.Model ??= ChatService.LastCompletionsModel;
@@ -209,20 +218,24 @@ public partial class AiChat : RadzenComponent
         ParsePlan(message);
         await ChatService.SaveSessionAsync();
 
-        var toolSegments = message.Segments
-            .Where(s => s.Type == SegmentType.Tool && s.IsClosed)
-            .ToList();
-
-        if (toolSegments.Count > 0)
+        // Handle native tool_calls from the API response
+        message.ToolCalls = ChatService.AccumulatedToolCalls;
+        if (message.ToolCalls is { Count: > 0 })
         {
-            await ToolCallHandler.ProcessToolCallsAsync(message, toolSegments, cancellationToken);
+            ToolCallHandler.PrepareToolsForApprovals(message.ToolCalls);
+            message.IsShouldRender = true;
+            await InvokeAsync(StateHasChanged);
+            await ToolCallHandler.ProcessToolCallsAsync(message.ToolCalls, cancellationToken);
+            ChatService.Session.TotalTokens += message.ToolCalls?.Sum(t => t.Tokens) ?? 0;
             await ChatService.SaveSessionAsync();
+            message.IsShouldRender = true;
             await InvokeAsync(StateHasChanged);
 
             if (!cancellationToken.IsCancellationRequested)
             {
                 await GetAiResponseAsync();
             }
+            return;
         }
     }
 
@@ -259,6 +272,15 @@ public partial class AiChat : RadzenComponent
         {
             message.Content = "Cancelled by user...";
             MessageParser.UpdateSegments(message.Content, message);
+        }
+
+        if (message.ToolCalls is { Count: > 0 })
+        {
+            foreach (var toolCall in message.ToolCalls)
+            {
+                toolCall.IsReady = true;
+                toolCall.ApprovalStatus = ToolApprovalStatus.Rejected;
+            }
         }
     }
 
@@ -360,11 +382,14 @@ public partial class AiChat : RadzenComponent
             chatMessage.IsExpanded = IsShortMessage(chatMessage.DisplayContent ?? chatMessage.Content);
             MessageParser.UpdateSegments(chatMessage.Content, chatMessage, isHistory: true);
 
-            foreach (var toolMsg in chatMessage.ToolResults)
+            if (chatMessage.ToolCalls is not null)
             {
-                toolMsg.DisplayName = ToolResult.GetDisplayName(
-                    toolMsg.Success,
-                    ToolManager.GetTool(toolMsg.Name)?.DisplayName ?? toolMsg.Name);
+                foreach (var toolCall in chatMessage.ToolCalls.Where(tc => tc.Result is not null))
+                {
+                    var result = toolCall.Result;
+                    result.DisplayName = ToolResult.GetDisplayName(
+                        result.Success, ToolManager.GetTool(result.Name)?.DisplayName ?? result.Name);
+                }
             }
         }
 

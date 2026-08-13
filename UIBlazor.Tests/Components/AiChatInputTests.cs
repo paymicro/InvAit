@@ -695,7 +695,7 @@ public class AiChatInputTests : BunitContext
 
         _mockVsBridge.Setup(x => x.ExecuteToolAsync(
                 BuiltInToolEnum.ReadFiles,
-                It.IsAny<Dictionary<string, object>>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new VsToolResult { Result = "file content here" });
 
@@ -717,7 +717,7 @@ public class AiChatInputTests : BunitContext
         // Assert
         _mockVsBridge.Verify(x => x.ExecuteToolAsync(
             BuiltInToolEnum.ReadFiles,
-            It.IsAny<Dictionary<string, object>>(),
+            It.IsAny<string>(),
             It.IsAny<CancellationToken>()), Times.Once);
         Assert.Contains("file content here", sentMessage);
     }
@@ -730,7 +730,7 @@ public class AiChatInputTests : BunitContext
 
         _mockVsBridge.Setup(x => x.ExecuteToolAsync(
                 BuiltInToolEnum.ReadFiles,
-                It.IsAny<Dictionary<string, object>>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new VsToolResult { Result = "FILE_CONTENT" });
 
@@ -853,7 +853,7 @@ public class AiChatInputTests : BunitContext
         // Arrange
         _mockVsBridge.Setup(x => x.ExecuteToolAsync(
                 BasicEnum.OpenFile,
-                It.IsAny<Dictionary<string, object>>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new VsToolResult());
 
@@ -872,7 +872,7 @@ public class AiChatInputTests : BunitContext
         // Assert
         _mockVsBridge.Verify(x => x.ExecuteToolAsync(
             BasicEnum.OpenFile,
-            It.Is<Dictionary<string, object>>(d => d.ContainsKey("param1")),
+            It.Is<string>(s => s.Contains(".agents/rules.md")),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -882,7 +882,7 @@ public class AiChatInputTests : BunitContext
         // Arrange
         _mockVsBridge.Setup(x => x.ExecuteToolAsync(
                 BasicEnum.OpenFolder,
-                It.IsAny<Dictionary<string, object>>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new VsToolResult());
 
@@ -901,7 +901,7 @@ public class AiChatInputTests : BunitContext
         // Assert
         _mockVsBridge.Verify(x => x.ExecuteToolAsync(
             BasicEnum.OpenFolder,
-            It.Is<Dictionary<string, object>>(d => d.ContainsKey("param1")),
+            It.Is<string>(s => s.Contains(".agents/skills/")),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 

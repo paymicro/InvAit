@@ -4,6 +4,5 @@ public enum SegmentType
 {
     Unknown,
     Markdown,
-    Tool,
     Plan
 }

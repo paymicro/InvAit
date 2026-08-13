@@ -33,13 +33,18 @@ public class VisualChatMessage
     [JsonIgnore]
     public string ReasoningContent { get; set; } = string.Empty;
 
-    [JsonIgnore]
     public MessageTimings? Timings { get; set; }
 
     /// <summary>
     /// Gets or sets the timestamp when the message was created.
     /// </summary>
     public DateTime Timestamp { get; set; } = DateTime.Now;
+
+    /// <summary>
+    /// Флаг, что что-то поменялось
+    /// </summary>
+    [JsonIgnore]
+    public bool IsShouldRender { get; set; }
 
     /// <summary>
     /// Gets or sets whether this message is currently streaming.
@@ -68,9 +73,9 @@ public class VisualChatMessage
     public string Role { get; set; } = ChatMessageRole.User;
 
     /// <summary>
-    /// Nested tool messages for assistant messages.
+    /// Native tool_calls from the API response (for assistant messages using native tools).
     /// </summary>
-    public List<ToolResult> ToolResults { get; set; } = [];
+    public List<ToolCall>? ToolCalls { get; set; }
 
     /// <summary>
     /// Whether the message block is expanded or collapsed.

@@ -13,7 +13,8 @@ public class ChatService(
     IProfileManager profileManager,
     ISystemPromptBuilder systemPromptBuilder,
     ILocalStorageService localStorage,
-    ILogger<IChatService> logger
+    ILogger<IChatService> logger,
+    IToolManager toolManager
     ) : IChatService
 {
     private const string _thinkStart    = "<think>";
@@ -88,12 +89,13 @@ public class ChatService(
                ?? throw new JsonException("Models deserialization exception");
     }
 
-    public bool NeedCompression => Options.TokensToCompress > 0 && Session.Messages.Count > 5 && Session.TotalTokens > Options.TokensToCompress;
+    public bool NeedCompression => Options.TokensToCompress > 0 && Session.TotalTokens > Options.TokensToCompress;
 
     public async Task ProcessStreamAsync(
         VisualChatMessage message,
         IAsyncEnumerable<ChatDelta> deltas,
         Action<string>? onContentUpdate,
+        Action<List<ToolCall>>? onToolCallsUpdate,
         Action? onStateChange,
         CancellationToken cancellationToken)
     {
@@ -103,7 +105,7 @@ public class ChatService(
         double firstTokenMs = 0;
         double firstContentTokenMs = 0;
 
-        message.Timings ??= new MessageTimings() { Tokens = 0 };
+        message.Timings ??= new MessageTimings { Tokens = 0 };
         await foreach (var delta in deltas.WithCancellation(cancellationToken))
         {
             if (firstTokenMs == 0)
@@ -128,22 +130,39 @@ public class ChatService(
                 onContentUpdate?.Invoke(delta.Content);
             }
 
-            var elapsedMs = sw.ElapsedMilliseconds;
-            message.Timings.Tokens += delta.Tokens;
-            var secForTokens = Math.Max(1, (elapsedMs - firstTokenMs) / 1000.0);
-            message.Timings.TokensInSec = (float)(message.Timings.Tokens / secForTokens);
-            message.Timings.Total = TimeSpan.FromMilliseconds(elapsedMs);
-            message.Timings.FirstToken = TimeSpan.FromMilliseconds(firstTokenMs);
+            if (delta.ToolCalls is { Count: > 0 } && AccumulatedToolCalls is not null)
+            {
+                if (firstContentTokenMs == 0)
+                {
+                    firstContentTokenMs = sw.ElapsedMilliseconds;
+                    message.Timings.Reasoning = TimeSpan.FromMilliseconds(firstContentTokenMs - firstTokenMs);
+                }
+
+                onToolCallsUpdate?.Invoke(AccumulatedToolCalls);
+            }
+
+            CalcTimings(message, sw, firstTokenMs);
 
             if (firstContentTokenMs > 0)
             {
-                message.Timings.Content = TimeSpan.FromMilliseconds(elapsedMs - firstContentTokenMs);
+                message.Timings.Content = TimeSpan.FromMilliseconds(sw.ElapsedMilliseconds - firstContentTokenMs);
             }
 
             onStateChange?.Invoke();
         }
 
+        CalcTimings(message, sw, firstTokenMs);
         message.IsStreaming = false;
+    }
+
+    private void CalcTimings(VisualChatMessage message, Stopwatch sw, double firstTokenMs)
+    {
+        var elapsedMs = sw.ElapsedMilliseconds;
+        message.Timings.Tokens = LastUsage?.CompletionTokens ?? 1 + message.Timings.Tokens;
+        var secForTokens = Math.Max(1, (elapsedMs - firstTokenMs) / 1000.0);
+        message.Timings.TokensInSec = (float)(message.Timings.Tokens / secForTokens);
+        message.Timings.Total = TimeSpan.FromMilliseconds(elapsedMs);
+        message.Timings.FirstToken = TimeSpan.FromMilliseconds(firstTokenMs);
     }
 
     public async IAsyncEnumerable<ChatDelta> CompressSessionAsync([EnumeratorCancellation] CancellationToken cancellationToken)
@@ -152,7 +171,7 @@ public class ChatService(
 
         // Получаем сжатый текст от LLM
         var contentSb = new StringBuilder();
-        await foreach (var chatDelta in GetCompletionsAsync(Messages, cancellationToken))
+        await foreach (var chatDelta in GetCompletionsAsync(Messages, false, cancellationToken))
         {
             if (chatDelta.Content is not null)
             {
@@ -161,56 +180,56 @@ public class ChatService(
             yield return chatDelta;
         }
 
-        if (!cancellationToken.IsCancellationRequested)
+        if (cancellationToken.IsCancellationRequested)
+            yield break;
+        
+        // Создаем новый объект сообщения со сжатым контекстом
+        var compressedMessage = new VisualChatMessage
         {
-            // Создаем новый объект сообщения со сжатым контекстом
-            var compressedMessage = new VisualChatMessage()
+            Content = contentSb.ToString(),
+            Role = ChatMessageRole.Assistant,
+            IsExpanded = true
+        };
+
+        var totalCount = Session.Messages.Count;
+        var windowSize = totalCount < 6 ? 2 : 3;
+
+        var topMessages = new List<VisualChatMessage>();
+        var bottomMessages = new List<VisualChatMessage>();
+
+        for (var i = 0; i < totalCount - 1; i++)
+        {
+            var msg = Session.Messages[i];
+
+            if (msg.Id == LastUserMessage?.Id)
+                continue;
+
+            // Первые сообщения
+            if (i < windowSize)
             {
-                Content = contentSb.ToString(),
-                Role = ChatMessageRole.Assistant,
-                IsExpanded = true
-            };
-
-            var totalCount = Session.Messages.Count;
-            var windowSize = totalCount < 6 ? 2 : 3;
-
-            var topMessages = new List<VisualChatMessage>();
-            var bottomMessages = new List<VisualChatMessage>();
-
-            for (var i = 0; i < totalCount - 1; i++)
-            {
-                var msg = Session.Messages[i];
-
-                if (msg.Id == LastUserMessage?.Id)
-                    continue;
-
-                // Первые сообщения
-                if (i < windowSize)
-                {
-                    topMessages.Add(msg);
-                }
-
-                // Оставшиеся сообщения
-                else if (i >= totalCount - 1 - windowSize)
-                {
-                    bottomMessages.Add(msg);
-                }
+                topMessages.Add(msg);
             }
 
-            var keptMessages = new List<VisualChatMessage>(topMessages.Count + bottomMessages.Count + 2);
-            keptMessages.AddRange(topMessages);
-            keptMessages.AddRange(bottomMessages);
-            keptMessages.Add(compressedMessage);
-
-            // Восстанавливаем сообщение пользователя после компрессии
-            if (LastUserMessage is not null)
+            // Оставшиеся сообщения
+            else if (i >= totalCount - 1 - windowSize)
             {
-                keptMessages.Add(LastUserMessage);
+                bottomMessages.Add(msg);
             }
-
-            // Перезаписываем историю
-            Session.Messages = keptMessages;
         }
+
+        var keptMessages = new List<VisualChatMessage>(topMessages.Count + bottomMessages.Count + 2);
+        keptMessages.AddRange(topMessages);
+        keptMessages.AddRange(bottomMessages);
+        keptMessages.Add(compressedMessage);
+
+        // Восстанавливаем сообщение пользователя после компрессии
+        if (LastUserMessage is not null)
+        {
+            keptMessages.Add(LastUserMessage);
+        }
+
+        // Перезаписываем историю
+        Session.Messages = keptMessages;
     }
 
     /// <summary>
@@ -264,7 +283,12 @@ public class ChatService(
 
     public string? FinishReason { get; private set; }
 
-    private async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(IEnumerable<object> messages, [EnumeratorCancellation] CancellationToken cancellationToken)
+    /// <summary>
+    /// Accumulated native tool_calls from the last streaming response.
+    /// </summary>
+    public List<ToolCall>? AccumulatedToolCalls { get; private set; }
+
+    private async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(IEnumerable<object> messages, bool withTools, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         LastCompletionsModel = null;
         LastUsage = null;
@@ -280,7 +304,8 @@ public class ChatService(
             { "model", Options.Model },
             { "messages", messages },
             { "temperature", Options.Temperature },
-            { "stream", Options.Stream }
+            { "stream", Options.Stream },
+            { "stream_options", new { include_usage = true } }
         };
 
         if (Options.MaxTokens >= 1000)
@@ -305,6 +330,17 @@ public class ChatService(
             catch (JsonException)
             {
                 // skip invalid ExtraPayload
+            }
+        }
+
+        // Add native tool definitions
+        if (withTools)
+        {
+            var enabledTools = toolManager.GetEnabledTools(Session.Mode).Select(t => t.NativeTool).ToList();
+            if (enabledTools.Count > 0)
+            {
+                payload["tools"] = enabledTools;
+                payload["tool_choice"] = "auto";
             }
         }
 
@@ -344,8 +380,28 @@ public class ChatService(
         // если не стрим, то возвращаем как один чанк
         if (!Options.Stream)
         {
+            // Reset accumulated tool calls
+            AccumulatedToolCalls = null;
+
             var chunk = await response.Content.ReadFromJsonAsync<StreamChunk>(cancellationToken);
             var message = chunk?.Choice?.Message;
+
+            LastCompletionsModel ??= chunk?.Model;
+            if (chunk?.Usage != null)
+            {
+                LastUsage = chunk.Usage;
+                Session.TotalTokens = chunk.Usage.TotalTokens;
+            }
+
+            if (message?.ToolCalls is { Count: > 0 })
+            {
+                // Native tool calls in non-streaming response
+                AccumulatedToolCalls = [.. message.ToolCalls];
+                FinishReason = chunk?.Choice?.FinishReason ?? "tool_calls";
+                yield return message;
+                yield break;
+            }
+
             if (message?.Content != null)
             {
                 // Удаление <think> блока из контента и перенос его в ReasoningContent если его там нет.
@@ -355,32 +411,27 @@ public class ChatService(
                     message.ReasoningContent ??= regex.Groups["reason"].Value;
                     message.Content = message.Content[regex.Length..];
                 }
-                LastCompletionsModel ??= chunk?.Model;
-                if (chunk?.Usage != null)
-                {
-                    LastUsage = chunk.Usage;
-                    Session.TotalTokens = chunk.Usage.TotalTokens;
-                    message.Tokens = chunk.Usage.CompletionTokens;
-                }
                 yield return message;
             }
             yield break;
         }
 
         // стрим
+        // Reset accumulated tool calls for this response
+        AccumulatedToolCalls = null;
+
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);
 
-        string? line;
+        // Accumulator for partial tool_calls arguments (keyed by index)
+        var toolCallAcc = new Dictionary<int, ToolCall>();
+
         var isReasoningContent = false;
         var isStart = true;
         string? role = null;
 
-        // чтобы html-теги <function> склеивать в один чанк
-        var _pendingText = string.Empty;
         ChatChoice lastChoise = null!;
-        var completionTokens = 0;
-        while ((line = await reader.ReadLineAsync(cancellationToken)) is not null && !cancellationToken.IsCancellationRequested)
+        while (await reader.ReadLineAsync(cancellationToken) is { } line && !cancellationToken.IsCancellationRequested)
         {
             if (string.IsNullOrWhiteSpace(line) || !line.StartsWith("data:"))
             {
@@ -412,23 +463,21 @@ public class ChatService(
                 LastUsage = chunk.Usage;
                 Session.TotalTokens = chunk.Usage.TotalTokens;
             }
+            else
+            {
+                // Динамический подсчёт токенов во время стрима (приблизительный)
+                Session.TotalTokens++;
+            }
+
+            LastCompletionsModel ??= chunk.Model;
 
             if (chunk.Choices.Count != 1 || chunk.Choices[0].Delta == null)
             {
                 continue;
             }
 
-            // Динамический подсчёт токенов во время стрима (приблизительный)
-            Session.TotalTokens++;
-
-            LastCompletionsModel ??= chunk.Model;
-            lastChoise = chunk.Choices[0];
-            var delta = lastChoise.Delta;
-            if (delta is null)
-                continue;
-
-            var content = delta.Content;
-            delta.Tokens = ++completionTokens;
+            var delta = chunk.Choices[0].Delta!;
+            var content = delta.Content;            
             role ??= delta?.Role;
 
             // Размышляющие модели по разному отдают размышления
@@ -472,47 +521,38 @@ public class ChatService(
                 }
             }
 
-            // Если есть контент, то проверяем на разрезанные теги и склеиваем их
-            if (delta.Content != null)
+            // Accumulate native tool_calls across chunks
+            if (delta.ToolCalls is { Count: > 0 })
             {
-                var incomingText = _pendingText + delta.Content;
-                _pendingText = string.Empty;
-
-                var lastOpenIndex = incomingText.LastIndexOf('<');
-
-                // Проверяем, есть ли незакрытый тег в конце строки
-                if (lastOpenIndex >= 0)
+                foreach (var tc in delta.ToolCalls)
                 {
-                    var potentialTag = incomingText[lastOpenIndex..];
-
-                    // Если в "потенциальном теге" нет символов закрытия
-                    if (potentialTag.IndexOfAny(['>', '\n']) == -1)
+                    var idx = tc.Index ?? 0;
+                    if (!toolCallAcc.TryGetValue(idx, out var existing))
                     {
-                        // Сохраняем в буфер ТОЛЬКО незакрытую часть
-                        _pendingText = potentialTag;
-                        // А из текущей дельты вырезаем этот кусок
-                        incomingText = incomingText[..lastOpenIndex];
+                        existing = new ToolCall
+                        {
+                            Index = idx,
+                            Function = new ToolCallFunction(),
+                            IsReady = false,
+                            ApprovalStatus = ToolApprovalStatus.Pending
+                        };
+                        toolCallAcc[idx] = existing;
                     }
+                    if (!string.IsNullOrEmpty(tc.Id))
+                        existing.Id = tc.Id;
+                    if (!string.IsNullOrEmpty(tc.Type))
+                        existing.Type = tc.Type;
+                    if (!string.IsNullOrEmpty(tc.Function?.Name))
+                        existing.Function.Name = tc.Function.Name;
+                    if (!string.IsNullOrEmpty(tc.Function?.Arguments))
+                        existing.Function.Arguments += tc.Function.Arguments;
                 }
-
-                // Если после обрезки буфера текста не осталось — идем за следующей дельтой
-                if (string.IsNullOrEmpty(incomingText) && !string.IsNullOrEmpty(_pendingText))
-                    continue;
-
-                delta.Role ??= role;
-                delta.Content = incomingText;
+                AccumulatedToolCalls = [.. toolCallAcc.Values];
             }
 
-            completionTokens = 0;
             yield return delta;
 
             isStart = false;
-        }
-
-        // если после окончания стрима остался неотправленный текст, отправляем его
-        if (!string.IsNullOrEmpty(_pendingText))
-        {
-            yield return new ChatDelta() { Content = _pendingText };
         }
     }
 
@@ -536,7 +576,7 @@ public class ChatService(
         // Get formatted messages including conversation history
         var messages = Session.GetFormattedMessages(await systemPromptBuilder.PrepareSystemPromptAsync(Session.Mode, cancellationToken)) ?? [];
         
-        await foreach (var chatDelta in GetCompletionsAsync(messages, cancellationToken))
+        await foreach (var chatDelta in GetCompletionsAsync(messages, true, cancellationToken))
         {
             yield return chatDelta;
         }
@@ -641,14 +681,10 @@ public class ChatService(
         var sessionList = await GetAllSessionIdsAsync();
         // сортируем сессии по времени создания и берем самую свежую
         var lastSessionId = sessionList.OrderByDescending(id =>
-        {
-            if (DateTime.TryParseExact(id[8..], "s", CultureInfo.InvariantCulture, DateTimeStyles.None, out var result))
-            {
-                return result;
-            }
-            return DateTime.MinValue;
-        }).FirstOrDefault();
-        if (lastSessionId != default)
+            DateTime.TryParseExact(id[8..], "s", CultureInfo.InvariantCulture, DateTimeStyles.None, out var result)
+                ? result
+                : DateTime.MinValue).FirstOrDefault();
+        if (lastSessionId is not null)
         {
             var fromStorage = await localStorage.TryGetItemAsync<ConversationSession>(lastSessionId);
             fromStorage?.Id = lastSessionId;

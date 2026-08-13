@@ -80,9 +80,7 @@ public partial class ChatControl : IDisposable
         _vsVersion ??= (await VS.Shell.GetVsVersionAsync()).ToString();
         WebViewHost.Content = _webView = new WV.WebView2();
         _webView.CoreWebView2InitializationCompleted += CoreWebView2InitializationCompleted;
-        _webView.CoreWebView2.WebResourceRequested += CoreWebView2WebResourceRequested;
-        _webView.CoreWebView2.Settings.IsReputationCheckingRequired = false; // Блокирует отправку Microsoft SmartScreen
-
+        
         var userDataFolder = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "InvAitChatWebView2");
@@ -99,11 +97,22 @@ public partial class ChatControl : IDisposable
             IsCustomCrashReportingEnabled = true // Блокирует отправку Crash Dumps в Microsoft
         };
         var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder, options);
-        await _webView.EnsureCoreWebView2Async(env);
+        try
+        {
+            await _webView.EnsureCoreWebView2Async(env);
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"Failed to launch WebView. To completely wipe data, delete the folder '{userDataFolder}' and restart the application. " +
+                $"Details: {ex.Message}", "ERROR");
+            throw;
+        }
 
         SetupVirtualHost();
 
         _webView.WebMessageReceived += (sender, e) => _ = HandleWebMessageAsync(e);
+        _webView.CoreWebView2.WebResourceRequested += CoreWebView2WebResourceRequested;
+        _webView.CoreWebView2.Settings.IsReputationCheckingRequired = false; // Блокирует отправку Microsoft SmartScreen
         _webView.CoreWebView2.NavigationStarting += (_, _) => SetupVirtualHost();
         _webView.CoreWebView2.ServerCertificateErrorDetected += (s, e) =>
         {

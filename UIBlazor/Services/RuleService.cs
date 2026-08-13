@@ -18,7 +18,7 @@ public class RuleService(IVsBridge vsBridge) : IRuleService
             return _rulesCache;
         }
 
-        var result = await vsBridge.ExecuteToolAsync(BasicEnum.GetRules, cancellationToken: cancellationToken);
+        var result = await vsBridge.ExecuteToolAsync(BasicEnum.GetRules, null, cancellationToken);
         if (!result.Success)
         {
             return _rulesCache ?? string.Empty;
@@ -40,7 +40,7 @@ public class RuleService(IVsBridge vsBridge) : IRuleService
             return _agentsCache;
         }
 
-        var result = await vsBridge.ExecuteToolAsync(BasicEnum.GetAgents, cancellationToken: cancellationToken);
+        var result = await vsBridge.ExecuteToolAsync(BasicEnum.GetAgents, null, cancellationToken);
         if (!result.Success)
         {
             return _agentsCache ?? string.Empty;

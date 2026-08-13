@@ -10,31 +10,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.ReadFiles,
             DisplayName = SharedResource.ToolReadFiles,
             Category = ToolCategory.ReadFiles,
-            Description = "Request to read the contents of one or more files. File path can be relative or absolute.",
-            ExampleToSystemMessage = $"""
-                                     SYNTAX EXAMPLES:
-                                     C:\user\project\src\file.cs [L100:C50] — Starts at line 100, includes 50 lines.
-                                     C:\user\project\src\file.cs [L100] — Starts at line 100, goes to the end.
-                                     src\file.cs — Includes the entire file. Relative path.
-                                     
-                                     OPTIONAL PARAMETERS:
-                                     Use the following format at the end of the file path: [Lstart_line:Cline_count]
-                                     L[start_line]: A 1-based start line. (e.g., L100). Default: first line.
-                                     C[line_count]: The number of lines to include. (e.g., C50). Default: until the end of the file.
-
-                                     For example, to read a specific range, from 100 to 150 line:
-                                     <function name="{BuiltInToolEnum.ReadFiles}">
-                                     C:\user\project\large_file.cs [L100:C50]
-                                     </function>
-
-                                     Example to read the entire files (up to 7 at once):
-                                     <function name="{BuiltInToolEnum.ReadFiles}">
-                                     C:\user\project\file.cs
-                                     \fil2.cs [L550]
-                                     \fil3.cs [L100:C50]
-                                     </function>
-                                     """,
-            NativeTool = BuiltInToolDefs.MapMethodToTool(typeof(BuiltInToolDefs).GetMethod(nameof(BuiltInToolDefs.ReadFiles))),
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.ReadFiles)),
             ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, args, c)
         },
         new()
@@ -42,95 +18,24 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.ReadOpenFile,
             DisplayName = SharedResource.ToolReadOpenFile,
             Category = ToolCategory.ReadFiles,
-            Description = $"""
-                          To view the user's currently open file, use the {BuiltInToolEnum.ReadOpenFile} tool. 
-                          The tool returns the absolute file path and its line-numbered content (e.g. "1 | const x = 1").
-                          If the user is asking about a file and you don't see any code, use this to check the current file.
-                          """,
-            ExampleToSystemMessage = $"""
-                                     For example
-                                     <function name="{BuiltInToolEnum.ReadOpenFile}"></function>
-                                     """,
-            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ReadOpenFile, args, c)
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.ReadOpenFile)),
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ReadOpenFile, null, c)
         },
         new()
         {
             Name = BuiltInToolEnum.CreateFile,
             DisplayName = SharedResource.ToolCreateFile,
             Category = ToolCategory.WriteFiles,
-            Description = """
-                          To create a NEW file with the relative or absolute filepath and new contents.
-                          Note: The old file will be overwritten if it exists.
-                          Use this when you need to make large changes to a single file and it's easier to recreate it.
-                          """,
-            ExampleToSystemMessage = $"""
-                                     For example, to create a file located at 'C:\user\project\file.cs', you would respond with:
-                                     <function name="{BuiltInToolEnum.CreateFile}">
-                                     C:\user\project\file.cs
-                                     Contents of the file.
-                                     And second line of this file.
-                                     </function>
-                                     """,
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.CreateFile)),
             ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.CreateFile, args, c)
         },
         new()
         {
-            Name = BuiltInToolEnum.ApplyDiff,
+            Name = BuiltInToolEnum.Edits,
             DisplayName = SharedResource.ToolApplyDiff,
             Category = ToolCategory.WriteFiles,
-            Description = $"""
-                Performs precise, surgical modifications to a file using SEARCH/REPLACE blocks. 
-                Use this tool to modify existing code with 100% accuracy.
-
-                STRUCTURE:
-                [file_path]
-                <<<<<<< SEARCH [:start_line:]
-                [exact content to find]
-                =======
-                [new content to replace with]
-                >>>>>>> REPLACE
-
-                OPTIONAL PARAMETERS:
-                - :start_line:: A hint for the line number to speed up searching. Example: `<<<<<<< SEARCH :10:`
-
-                CRITICAL RULES:
-                1. EXACT MATCH: The SEARCH block must match the file content exactly (including spaces, tabs, and indentation).
-                2. BREVITY: Keep each SEARCH block under 15 lines. If the change is larger, use multiple consecutive SEARCH/REPLACE blocks for one file.
-                3. EFFICIENCY: Combine all related changes for a single file into one {BuiltInToolEnum.ApplyDiff} call with serial SEARCH/REPLACE blocks separated by a newline.
-                4. INTEGRITY: Ensure syntax balance (brackets, quotes) is maintained after the replacement.
-                5. UNCERTAINTY: If you don't have the exact text, you MUST use {BuiltInToolEnum.ReadFiles} first.
-                """,
-            ExampleToSystemMessage = $"""
-                                     For example:
-                                     <function name="{BuiltInToolEnum.ApplyDiff}">
-                                     C:\path\to\file.cs
-                                     <<<<<<< SEARCH :10:
-                                     old code
-                                     =======
-                                     new code
-                                     >>>>>>> REPLACE
-                                     </function>
-                                     
-                                     Example for multi replacments in one file:
-                                     <function name="{BuiltInToolEnum.ApplyDiff}">
-                                     C:\path\to\file.cs
-                                     <<<<<<< SEARCH
-                                     old code
-                                     =======
-                                     new code
-                                     >>>>>>> REPLACE
-                                     
-                                     <<<<<<< SEARCH :40:
-                                         var z = "old code";
-                                     =======
-                                         // this is new code
-                                         var isNew = true;
-                                         var z = isNew ? "new code" : "old code";
-                                     >>>>>>> REPLACE
-                                     </function>
-                                     """,
-            NativeTool = BuiltInToolDefs.MapMethodToTool(typeof(BuiltInToolDefs).GetMethod(nameof(BuiltInToolDefs.ApplyDiff))),
-            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.ApplyDiff, args, c)
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.Edit)),
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Edits, args, c)
         },
         
         // Search and navigation
@@ -139,13 +44,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.SearchFiles,
             DisplayName = SharedResource.ToolSearchFiles,
             Category = ToolCategory.ReadFiles,
-            Description = "To return a list of files with patches in solution directory based on a search regex pattern, use the search_files tool.",
-            ExampleToSystemMessage = $"""
-                                     For example:
-                                     <function name="{BuiltInToolEnum.SearchFiles}">
-                                     ^.*\.cs$
-                                     </function>
-                                     """,
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.SearchFiles)),
             ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.SearchFiles, args, c)
         },
         new()
@@ -153,13 +52,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.Grep,
             DisplayName = SharedResource.ToolGrepSearch,
             Category = ToolCategory.ReadFiles,
-            Description = "To perform a grep search within the project, call the grep_search tool with the regex pattern to match.",
-            ExampleToSystemMessage = $"""
-                                     For example:
-                                     <function name="{BuiltInToolEnum.Grep}">
-                                     ^.*?main_services.*
-                                     </function>
-                                     """,
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.Grep)),
             ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Grep, args, c)
         },
         new()
@@ -167,17 +60,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.FindDeclarations,
             DisplayName = SharedResource.ToolFindDeclarations,
             Category = ToolCategory.ReadFiles,
-            Description = $"""
-                          Use instead of {BuiltInToolEnum.Grep} when you need to find where a type, method, property, or other symbol is DECLARED/DEFINED in C# code.
-                          Uses Roslyn semantic analysis — understands code structure, won't match strings/comments/unrelated identifiers unlike grep.
-                          Returns symbol name, kind (class/method/property/etc), and source file path. C# only.
-                          """,
-            ExampleToSystemMessage = $"""
-                                     For example, to find where class MyService is defined:
-                                     <function name="{BuiltInToolEnum.FindDeclarations}">
-                                     MyService
-                                     </function>
-                                     """,
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.FindDeclarations)),
             ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.FindDeclarations, args, c)
         },
         new()
@@ -185,17 +68,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.FindReferences,
             DisplayName = SharedResource.ToolFindReferences,
             Category = ToolCategory.ReadFiles,
-            Description = $"""
-                          Use instead of {BuiltInToolEnum.Grep} to find all USAGES (references) of a C# symbol across the solution — where a method is called, a class is used, a property is accessed.
-                          Uses Roslyn semantic analysis — finds actual code references, ignores comments/strings/coincidental text matches.
-                          Returns file paths and line numbers. C# only.
-                          """,
-            ExampleToSystemMessage = $"""
-                                     For example, to find all usages of method CalculateTotal:
-                                     <function name="{BuiltInToolEnum.FindReferences}">
-                                     CalculateTotal
-                                     </function>
-                                     """,
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.FindReferences)),
             ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.FindReferences, args, c)
         },
         new()
@@ -203,14 +76,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.Dir,
             DisplayName = SharedResource.ToolDir,
             Category = ToolCategory.ReadFiles,
-            Description = "To list files and folders in a given directory, call this tool with \"dirPath\" and \"recursive\".",
-            ExampleToSystemMessage = $"""
-                                     For example:
-                                     <function name="{BuiltInToolEnum.Dir}">
-                                     C:\path\to\dir
-                                     false
-                                     </function>
-                                     """,
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.Dir)),
             ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Dir, args, c)
         },
         
@@ -220,29 +86,15 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.Build,
             DisplayName = SharedResource.ToolBuild,
             Category = ToolCategory.ReadFiles,
-            Description = "To build solution in Visual Studio. With action - Build, Rebuild or Clean. When any errors returns errors list.",
-            ExampleToSystemMessage = $"""
-                                     For example:
-                                     <function name="{BuiltInToolEnum.Build}">
-                                     </function>
-                                     """,
-            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Build, args, c)
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.Build)),
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Build, null, c)
         },
         new()
         {
             Name = BuiltInToolEnum.RunTests,
             DisplayName = SharedResource.ToolRunTests,
             Category = ToolCategory.ReadFiles,
-            Description = """
-                          To run all tests in solution.
-                          The solution BUILD will be triggered automatically when this tool is called.
-                          Uses VStest, for new MTPv2 exec `dotnet test --filter-class "*"`.
-                          """,            
-            ExampleToSystemMessage = $"""
-                                     For example:
-                                     <function name="{BuiltInToolEnum.RunTests}">
-                                     </function>
-                                     """,
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.RunTests)),
             ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.RunTests, args, c)
         },
         new()
@@ -250,23 +102,15 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.GetErrors,
             DisplayName = SharedResource.ToolGetErrors,
             Category = ToolCategory.ReadFiles,
-            Description = "To get error list of current solution and current file from Visual Studio.",
-            ExampleToSystemMessage = $"""
-                                     For example:
-                                     <function name="{BuiltInToolEnum.GetErrors}"></function>
-                                     """,
-            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetErrors)
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.GetErrors)),
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetErrors, null, c)
         },
         new()
         {
             Name = BuiltInToolEnum.GetProjectInfo,
             DisplayName = SharedResource.ToolGetProjectInfo,
             Category = ToolCategory.ReadFiles,
-            Description = "Get information about the solution and projects. Returns list of projects, their types, target frameworks, and file structure.",
-            ExampleToSystemMessage = $"""
-                                     For example:
-                                     <function name="{BuiltInToolEnum.GetProjectInfo}"></function>
-                                     """,
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.GetProjectInfo)),
             ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetProjectInfo, args, c)
         },
         new()
@@ -274,12 +118,8 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.GetSolutionStructure,
             DisplayName = SharedResource.ToolGetSolutionStructure,
             Category = ToolCategory.ReadFiles,
-            Description = "Get a tree-like structure of the entire solution, including projects, folders, and files.",
-            ExampleToSystemMessage = $"""
-                                     For example:
-                                     <function name="{BuiltInToolEnum.GetSolutionStructure}"></function>
-                                     """,
-            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetSolutionStructure)
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.GetSolutionStructure)),
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetSolutionStructure, null, c)
         },
         
         // Execution
@@ -288,19 +128,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.Bash,
             DisplayName = SharedResource.ToolExec,
             Category = ToolCategory.Execution,
-            Description = """
-                          To run a shell command (Git Bash).
-                          The shell is stateless. Avoid using single quotes inside your commands if possible.
-                          When suggesting subsequent shell commands ALWAYS format them in shell command blocks.
-                          Do NOT perform actions requiring special/admin privileges.
-                          Choose terminal commands and scripts optimized for win32 and x64.
-                          """,
-            ExampleToSystemMessage = $"""
-                                      For example:
-                                      <function name="{BuiltInToolEnum.Bash}"> 
-                                      git diff HEAD
-                                      </function>
-                                      """,
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.Bash)),
             ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Bash, args, c)
         },
         
@@ -310,12 +138,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.GitStatus,
             DisplayName = SharedResource.ToolGitStatus,
             Category = ToolCategory.ReadFiles,
-            Description = "Check git status of the current repository.",
-            ExampleToSystemMessage = $"""
-                                     For example:
-                                     <function name="{BuiltInToolEnum.GitStatus}">
-                                     </function>
-                                     """,
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.GitStatus)),
             ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitStatus, args, c)
         },
         new()
@@ -323,41 +146,15 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.GitLog,
             DisplayName = SharedResource.ToolGitLog,
             Category = ToolCategory.ReadFiles,
-            Description = "View git commit history with changed files in commits. Can specify number of commits to display.",
-            ExampleToSystemMessage = $"""
-                                     For example:
-                                     <function name="{BuiltInToolEnum.GitLog}">
-                                     10
-                                     </function>
-                                     """,
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.GitLog)),
             ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitLog, args, c)
-        },
-        new()
-        {
-            Name = BuiltInToolEnum.GitDiff,
-            DisplayName = SharedResource.ToolGitDiff,
-            Category = ToolCategory.ReadFiles,
-            Description = "View full git diff for specific commit or HEAD.",
-            ExampleToSystemMessage = $"""
-                                     For example:
-                                     <function name="{BuiltInToolEnum.GitDiff}">
-                                     87b9cdf
-                                     </function>
-                                     """,
-            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitDiff, args, c)
         },
         new()
         {
             Name = BasicEnum.SwitchMode,
             DisplayName = SharedResource.ToolSwitchMode,
             Category = ToolCategory.ModeSwitch,
-            Description = "Switch the current application mode. Available modes: Chat, Agent, Plan. Use this when you need tools from another mode.",
-            ExampleToSystemMessage = $"""
-                                     For example, to switch to Agent mode:
-                                     <function name="{BasicEnum.SwitchMode}">
-                                     Agent
-                                     </function>
-                                     """,
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.SwitchMode)),
             ExecuteAsync = (args, c) => internalExecutor.ExecuteToolAsync(BasicEnum.SwitchMode, args, c)
         },
 
@@ -367,18 +164,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BasicEnum.ReadSkillContent,
             DisplayName = SharedResource.ToolReadSkillContent,
             Category = ToolCategory.ReadFiles,
-            Description = """
-                          Load the full content of a skill when you need detailed instructions.
-                          Skills are pre-listed in your system prompt with name and description.
-                          Use this tool only when you determine a skill is relevant to the current task.
-                          For parameter use skill name.
-                          """,
-            ExampleToSystemMessage = $"""
-                                     For example, to load a specific skill:
-                                     <function name="{BasicEnum.ReadSkillContent}">
-                                     Example skill name
-                                     </function>
-                                     """,
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.ReadSkillContent)),
             ExecuteAsync = skillService.LoadSkillContentMarkDownAsync
         },
         new()
@@ -386,41 +172,18 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Name = BuiltInToolEnum.DeleteFile,
             DisplayName = SharedResource.ToolDeleteFile,
             Category = ToolCategory.DeleteFiles,
-            Description = "To delete a file, use this tool with the relative or absolute filepath.",
-            ExampleToSystemMessage = $"""
-                                     For example, to delete a file located at 'path\\to\\file.cs', you would respond with:
-                                     <function name="{BuiltInToolEnum.DeleteFile}">
-                                     C:\path\to\file.cs
-                                     </function>
-                                     """,
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.DeleteFile)),
             ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.DeleteFile, args, c)
         },
 
-        // TODO
         // User interaction
-        //new()
-        //{
-        //    Name = BasicEnum.AskUser,
-        //    DisplayName = SharedResource.ToolAskUser,
-        //    Category = ToolCategory.ReadFiles,
-        //    Description = """
-        //                  Ask the user a question and present options for them to choose from.
-        //                  Use this when you need clarification or user input to proceed.
-        //                  The user can select one of the provided options or enter their own answer.
-        //                  Parameters:
-        //                  - question: The question to ask the user - first line
-        //                  - options: A list of options for the user to choose from (one per line)
-        //                  """,
-        //    ExampleToSystemMessage = $"""
-        //                             For example, to ask which file to open:
-        //                             <function name="{BasicEnum.AskUser}">
-        //                             Which file would you like me to open?
-        //                             src/main.cs
-        //                             src/utils.cs
-        //                             src/config.cs
-        //                             </function>
-        //                             """,
-        //    ExecuteAsync = (args, c) => internalExecutor.ExecuteToolAsync(BasicEnum.AskUser, args, c)
-        //}
+        new()
+        {
+            Name = BasicEnum.AskUser,
+            DisplayName = SharedResource.ToolAskUser,
+            Category = ToolCategory.ReadFiles,
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.AskUser)),
+            ExecuteAsync = (args, c) => internalExecutor.ExecuteToolAsync(BasicEnum.AskUser, args, c)
+        }
     ];
 }

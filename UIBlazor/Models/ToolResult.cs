@@ -5,11 +5,10 @@ namespace UIBlazor.Models;
 /// </summary>
 public class ToolResult
 {
-    public string Id { get; } = $"tool{Guid.NewGuid()}";
-
     /// <summary>
     /// Имя тулзы
     /// </summary>
+    [JsonPropertyName("name")]
     public string Name { get; init; } = string.Empty;
 
     /// <summary>
@@ -21,6 +20,7 @@ public class ToolResult
     /// <summary>
     /// Полное содержание ответа включая теги <tool_result></tool_result>
     /// </summary>
+    [JsonPropertyName("content")]
     public string Content { get; init; } = string.Empty;
 
     [JsonIgnore]
@@ -29,22 +29,17 @@ public class ToolResult
     /// <summary>
     /// Статус
     /// </summary>
+    [JsonPropertyName("success")]
     public bool Success { get; set; }
 
     public static ToolResult Convert(VsToolResult vsToolResult, string displayName, string name)
-    {
-        return new ToolResult
+        => new()
         {
-            DisplayName = GetDisplayName(vsToolResult.Success, !string.IsNullOrEmpty(displayName) ? displayName : name),
             Name = name,
-            Content = $"""
-                       <tool_result name="{name}" success={vsToolResult.Success}>
-                       {(vsToolResult.Success ? vsToolResult.Result : vsToolResult.ErrorMessage)}
-                       </tool_result>
-                       """,
+            DisplayName = GetDisplayName(vsToolResult.Success, !string.IsNullOrEmpty(displayName) ? displayName : name),
+            Content = vsToolResult.Success ? vsToolResult.Result : vsToolResult.ErrorMessage,
             Success = vsToolResult.Success
         };
-    }
 
     public static string GetDisplayName(bool success, string displayName)
         => $"{(success ? '✅' : '❌')} {displayName}";

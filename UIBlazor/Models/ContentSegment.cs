@@ -15,8 +15,6 @@ public class ContentSegment
     /// </summary>
     public Dictionary<string, object> ToolParams { get; set; } = [];
 
-    public ToolApprovalStatus? ApprovalStatus { get; set; } = ToolApprovalStatus.Approved;
-
     public bool IsClosed { get; internal set; }
 
     // Список готовых строк для UI-парсеров (DiffView и т.д.)

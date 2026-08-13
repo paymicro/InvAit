@@ -153,7 +153,7 @@ public class HeadlessMocker
                             6 |}
                             """
             },
-            BuiltInToolEnum.ApplyDiff => new VsToolResult
+            BuiltInToolEnum.Edits => new VsToolResult
             {
                 Result = "All replacements is successful."
             },

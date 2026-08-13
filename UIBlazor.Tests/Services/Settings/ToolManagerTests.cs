@@ -6,39 +6,55 @@ public class ToolManagerTests
     private readonly BuiltInAgent _builtInAgent;
     private readonly Mock<ILocalStorageService> _localStorageMock;
     private readonly Mock<IMcpSettingsProvider> _mcpSettingsMock;
+    private readonly Mock<ICommonSettingsProvider> _commonSettingsMock;
     private readonly Mock<IVsBridge> _vsBridgeMock;
     private readonly McpOptions _mcpOptions;
     private readonly ILogger<ToolManager> _logger;
+    private readonly NativeToolDefinition _nativeTool;
 
     public ToolManagerTests()
     {
         _localStorageMock = new Mock<ILocalStorageService>();
         _mcpSettingsMock = new Mock<IMcpSettingsProvider>();
+        _commonSettingsMock = new Mock<ICommonSettingsProvider>();
         _vsBridgeMock = new Mock<IVsBridge>();
         _logger = new LoggerMock<ToolManager>();
 
         _mcpOptions = new McpOptions { Enabled = true };
         _mcpSettingsMock.Setup(m => m.Current).Returns(_mcpOptions);
+        _nativeTool = new NativeToolDefinition()
+        {
+            Function = new NativeToolFunction
+            {
+                Description = "Test tool",
+                Name = "test_tool",
+                Parameters = new NativeParameters()
+                {
+                    Type = NativeToolType.String,
+                    Properties = []
+                }
+            }
+        };
 
         // Setup default tool
         var tool = new Tool
         {
             Name = "test_tool",
-            Description = "Test tool",
             Category = ToolCategory.ReadFiles,
+            NativeTool = _nativeTool,
             ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true, Result = "test result" })
         };
         _builtInAgent = new BuiltInAgent(_vsBridgeMock.Object, Mock.Of<ISkillService>(), Mock.Of<IInternalExecutor>()) { Tools = [tool] };
 
-        _toolManager = new ToolManager(_builtInAgent, _logger, _localStorageMock.Object, _mcpSettingsMock.Object, _vsBridgeMock.Object);
+        _toolManager = new ToolManager(_builtInAgent, _logger, _localStorageMock.Object, _commonSettingsMock.Object, _mcpSettingsMock.Object, _vsBridgeMock.Object);
     }
 
     [Fact]
     public void RegisterAllTools_RegistersToolsFromAgent()
     {
         // Arrange
-        var tool1 = new Tool { Name = "tool1", ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true, Result = "result1" }) };
-        var tool2 = new Tool { Name = "tool2", ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true, Result = "result2" }) };
+        var tool1 = new Tool { Name = "tool1", NativeTool = _nativeTool, ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true, Result = "result1" }) };
+        var tool2 = new Tool { Name = "tool2", NativeTool = _nativeTool, ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true, Result = "result2" }) };
         _builtInAgent.Tools = [tool1, tool2];
 
         // Act
@@ -69,7 +85,7 @@ public class ToolManagerTests
         _toolManager.GetTool("test_tool")!.Enabled = false;
 
         // Act
-        var enabledTools = _toolManager.GetEnabledTools();
+        var enabledTools = _toolManager.GetEnabledTools(AppMode.Agent);
 
         // Assert
         Assert.Empty(enabledTools);
@@ -103,21 +119,6 @@ public class ToolManagerTests
         Assert.NotNull(tool);
         Assert.Equal("test_tool", tool.Name);
         Assert.Null(nonexistentTool);
-    }
-
-    [Fact]
-    public void GetToolUseSystemInstructions_ReturnsFormattedInstructions()
-    {
-        // Arrange
-        _toolManager.RegisterAllTools();
-
-        // Act
-        var instructions = _toolManager.GetToolUseSystemInstructions(AppMode.Agent, false);
-
-        // Assert
-        Assert.Contains("test_tool", instructions);
-        Assert.Contains("Test tool", instructions);
-        Assert.Contains("tool-calling agent", instructions);
     }
 
     [Fact]
@@ -223,8 +224,8 @@ public class ToolManagerTests
     public async Task SaveAsync_UpdatesCategoryStatesForNewCategories()
     {
         // Arrange
-        var tool1 = new Tool { Name = "tool1", Category = ToolCategory.Execution, ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true }) };
-        var tool2 = new Tool { Name = "tool2", Category = ToolCategory.DeleteFiles, ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true }) };
+        var tool1 = new Tool { Name = "tool1", NativeTool = _nativeTool, Category = ToolCategory.Execution, ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true }) };
+        var tool2 = new Tool { Name = "tool2", NativeTool = _nativeTool, Category = ToolCategory.DeleteFiles, ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true }) };
         _builtInAgent.Tools = [tool1, tool2];
         _toolManager.RegisterAllTools();
 
@@ -328,6 +329,7 @@ public class ToolManagerTests
         {
             Name = "category_tool",
             Category = ToolCategory.Execution,
+            NativeTool = _nativeTool,
             ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true })
         };
         _builtInAgent.Tools = [tool];
@@ -339,7 +341,7 @@ public class ToolManagerTests
         };
 
         // Act
-        var enabledTools = _toolManager.GetEnabledTools();
+        var enabledTools = _toolManager.GetEnabledTools(AppMode.Agent);
 
         // Assert
         Assert.DoesNotContain(enabledTools, t => t.Name == "category_tool");
@@ -354,6 +356,7 @@ public class ToolManagerTests
             Name = "category_tool",
             Category = ToolCategory.ReadFiles,
             Enabled = true,
+            NativeTool = _nativeTool,
             ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true })
         };
         _builtInAgent.Tools = [tool];
@@ -365,7 +368,7 @@ public class ToolManagerTests
         };
 
         // Act
-        var enabledTools = _toolManager.GetEnabledTools();
+        var enabledTools = _toolManager.GetEnabledTools(AppMode.Agent);
 
         // Assert
         Assert.Contains(enabledTools, t => t.Name == "category_tool");
@@ -383,6 +386,7 @@ public class ToolManagerTests
         {
             Name = "exec_tool",
             Category = ToolCategory.Execution,
+            NativeTool = _nativeTool,
             ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true })
         };
         _builtInAgent.Tools = [tool];
@@ -417,76 +421,6 @@ public class ToolManagerTests
     #region GetToolUseSystemInstructions Mode Tests
 
     [Fact]
-    public void GetToolUseSystemInstructions_IncludesCurrentMode()
-    {
-        // Arrange
-        _toolManager.RegisterAllTools();
-
-        // Act
-        var instructions = _toolManager.GetToolUseSystemInstructions(AppMode.Agent, false);
-
-        // Assert
-        Assert.Contains("Your current mode:", instructions);
-        Assert.Contains("Agent", instructions);
-    }
-
-    [Fact]
-    public void GetToolUseSystemInstructions_IncludesOtherModes_WhenModeSwitchToolEnabled()
-    {
-        // Arrange - create ToolManager with switch_mode tool enabled
-        var modeSwitchTool = new Tool
-        {
-            Name = BasicEnum.SwitchMode,
-            Category = ToolCategory.ModeSwitch,
-            Enabled = true,
-            ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true })
-        };
-        var agent = new BuiltInAgent(_vsBridgeMock.Object, Mock.Of<ISkillService>(), Mock.Of<IInternalExecutor>()) { Tools = [modeSwitchTool] };
-
-        // Setup storage to return settings with ModeSwitch category enabled
-        var savedSettings = new ToolSettings();
-        savedSettings.CategoryStates[ToolCategory.ModeSwitch] = new ToolCategorySettings
-        {
-            IsEnabled = true,
-            ApprovalMode = ToolApprovalMode.Allow
-        };
-        _localStorageMock.Setup(ls => ls.TryGetItemAsync<ToolSettings>("ToolSettings"))
-            .ReturnsAsync(savedSettings);
-
-        var toolManager = new ToolManager(agent, _logger, _localStorageMock.Object, _mcpSettingsMock.Object, _vsBridgeMock.Object);
-        toolManager.RegisterAllTools();
-
-        // Act
-        var instructions = toolManager.GetToolUseSystemInstructions(AppMode.Agent, false);
-
-        // Assert
-        Assert.Contains("Other available modes:", instructions);
-        Assert.Contains("Chat", instructions);
-        Assert.Contains("Plan", instructions);
-    }
-
-    [Fact]
-    public void GetToolUseSystemInstructions_ExcludesOtherModes_WhenModeSwitchToolDisabled()
-    {
-        // Arrange - create ToolManager with switch_mode tool disabled
-        var modeSwitchTool = new Tool
-        {
-            Name = BasicEnum.SwitchMode,
-            Category = ToolCategory.ModeSwitch,
-            Enabled = false,
-            ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true })
-        };
-        var agent = new BuiltInAgent(_vsBridgeMock.Object, Mock.Of<ISkillService>(), Mock.Of<IInternalExecutor>()) { Tools = [modeSwitchTool] };
-        var toolManager = new ToolManager(agent, _logger, _localStorageMock.Object, _mcpSettingsMock.Object, _vsBridgeMock.Object);
-
-        // Act
-        var instructions = toolManager.GetToolUseSystemInstructions(AppMode.Agent, false);
-
-        // Assert
-        Assert.DoesNotContain("Other available modes:", instructions);
-    }
-
-    [Fact]
     public void GetToolUseSystemInstructions_PlanModeIncludesPlanningInstructions()
     {
         // Arrange
@@ -501,33 +435,6 @@ public class ToolManagerTests
     }
 
     [Fact]
-    public void GetToolUseSystemInstructions_ChatModeFiltersTools()
-    {
-        // Arrange
-        var readFileTool = new Tool
-        {
-            Name = "read_tool",
-            Category = ToolCategory.ReadFiles,
-            ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true })
-        };
-        var writeFileTool = new Tool
-        {
-            Name = "write_tool",
-            Category = ToolCategory.WriteFiles,
-            ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true })
-        };
-        _builtInAgent.Tools = [readFileTool, writeFileTool];
-        _toolManager.RegisterAllTools();
-
-        // Act
-        var instructions = _toolManager.GetToolUseSystemInstructions(AppMode.Chat, false);
-
-        // Assert
-        Assert.Contains("read_tool", instructions);
-        Assert.DoesNotContain("write_tool", instructions);
-    }
-
-    [Fact]
     public void GetToolUseSystemInstructions_FiltersReadSkillContentWhenNoSkills()
     {
         // Arrange
@@ -535,6 +442,7 @@ public class ToolManagerTests
         {
             Name = BasicEnum.ReadSkillContent,
             Category = ToolCategory.ReadFiles,
+            NativeTool = _nativeTool,
             ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true })
         };
         _builtInAgent.Tools = [skillTool];
@@ -545,26 +453,6 @@ public class ToolManagerTests
 
         // Assert
         Assert.DoesNotContain(BasicEnum.ReadSkillContent, instructions);
-    }
-
-    [Fact]
-    public void GetToolUseSystemInstructions_IncludesReadSkillContentWhenHasSkills()
-    {
-        // Arrange
-        var skillTool = new Tool
-        {
-            Name = BasicEnum.ReadSkillContent,
-            Category = ToolCategory.ReadFiles,
-            ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true })
-        };
-        _builtInAgent.Tools = [skillTool];
-        _toolManager.RegisterAllTools();
-
-        // Act
-        var instructions = _toolManager.GetToolUseSystemInstructions(AppMode.Chat, true);
-
-        // Assert
-        Assert.Contains(BasicEnum.ReadSkillContent, instructions);
     }
 
     #endregion
@@ -579,7 +467,7 @@ public class ToolManagerTests
         {
             Name = "test-server",
             Enabled = true,
-            Tools = [new McpToolConfig { Name = "test-tool", Description = "Test" }]
+            Tools = [new McpToolConfig { Name = "test-tool", Description = "Test", InputSchema = JsonSerializer.SerializeToElement("{}") }]
         };
         _mcpOptions.Servers.Add(server);
         _toolManager.RegisterAllTools();
@@ -589,7 +477,7 @@ public class ToolManagerTests
         Assert.Single(firstCallTools);
 
         // Add new tool to server
-        server.Tools.Add(new McpToolConfig { Name = "new-tool", Description = "New" });
+        server.Tools.Add(new McpToolConfig { Name = "new-tool", Description = "New", InputSchema = JsonSerializer.SerializeToElement("{}") });
 
         // Act - trigger OnSaved event
         _mcpSettingsMock.Raise(m => m.OnSaved += null);

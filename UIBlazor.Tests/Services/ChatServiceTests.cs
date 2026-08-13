@@ -17,7 +17,9 @@ public class ChatServiceTests
     public ChatServiceTests()
     {
         _profileManagerMock = new Mock<IProfileManager>();
+        _toolManagerMock = new Mock<IToolManager>();
         _localStorageMock = new Mock<ILocalStorageService>();
+        _skillServiceMock = new Mock<ISkillService>();
 
         // Setup default options
         var options = new ProfileOptions
@@ -50,7 +52,8 @@ public class ChatServiceTests
             _profileManagerMock.Object,
             Mock.Of<ISystemPromptBuilder>(),
             _localStorageMock.Object,
-            new LoggerMock<IChatService>());
+            new LoggerMock<IChatService>(),
+            _toolManagerMock.Object);
     }
 
     [Fact]
@@ -158,187 +161,6 @@ public class ChatServiceTests
     }
 
     [Fact]
-    public async Task GetCompletionsAsync_StreamsSseDeltas_WithParseSegments_ContentWithTags()
-    {
-        // Arrange - SSE format with delta array
-        var sseResponse = """
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"model":"Mini","choices":[{"index":0,"message":null,"delta":{"role":null,"content":" ///","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" <summary>\n","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" Hello! <","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"function","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" name","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"=\"asd\"","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"\">\n","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"</function","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"> \n","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"<function","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" name","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"=\"","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"apply","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"_diff","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"\">\n","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"Provider","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"Tests","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":".cs","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"\n","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"<<<<","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"<<<","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" SEARCH","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" :","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"222","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":":\n","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" ","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" private","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" sealed","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" class","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" Test","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"Git\n","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"====","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"===\n","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}	
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":">>>>","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":">>>","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":" RE","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"PLACE","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"\n","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":"</function","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: {"id":"c0d9bc65f6694706beee58cc9c2f3891","object":"chat.completion.chunk","created":1777394041,"choices":[{"index":0,"message":null,"delta":{"role":null,"content":">","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
-            data: [DONE]
-            """;
-
-
-        var server = WireMockServer.Start();
-        var httpClient = server.CreateClient();
-        server
-            .Given(Request.Create().WithPath("/v1/chat/completions").UsingPost())
-            .RespondWith(
-                Response.Create()
-                    .WithStatusCode(200)
-                    .WithHeader("Content-Type", "text/event-stream")
-                    .WithHeader("Cache-Control", "no-cache")
-                    .WithBody(sseResponse)
-            );
-
-        var chatService = CreateChatService(httpClient);
-        var parser = new MessageParser(Mock.Of<IToolManager>());
-        var message = new VisualChatMessage { Role = ChatMessageRole.Assistant };
-
-        // Act
-        var deltas = new List<ChatDelta>();
-        await foreach (var delta in chatService.GetCompletionsAsync(TestContext.Current.CancellationToken))
-        {
-            deltas.Add(delta);
-            parser.UpdateSegments(delta.Content, message);
-        }
-
-        // Assert
-        Assert.Equal(27, deltas.Count);
-        Assert.Equal(" ///", deltas[0].Content);
-        Assert.Equal(" <summary>\n", deltas[1].Content);
-        Assert.Equal(" Hello! ", deltas[2].Content);
-        Assert.Equal("<function name=\"asd\"\">\n", deltas[3].Content);
-
-        Assert.Equal(3, message.Segments.Count);
-        Assert.Equal(SegmentType.Markdown, message.Segments[0].Type);
-        Assert.Equal(" /// <summary>\n Hello! ", message.Segments[0].CurrentLine.ToString());
-        Assert.Equal(SegmentType.Markdown, message.Segments[1].Type);
-        Assert.Equal("<function name=\"asd\"\">\n</function> \n", message.Segments[1].CurrentLine.ToString());
-        Assert.Equal(SegmentType.Tool, message.Segments[2].Type);
-        Assert.Equal(2, message.Segments[2].ToolParams.Count);
-    }
-
-    [Fact]
-    public async Task GetCompletionsAsync_StreamsSseDeltas_ToolCallFragmented()
-    {
-        // Arrange
-        var sseResponse = """
-            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":"assistant","content":"<function name=\"m","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
-            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"cp__invaitm","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
-            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"cp__get_service","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
-            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"_info\">\nserviceName","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
-            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":" : \"wow","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
-            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"-service\"\n","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
-            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"num :","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
-            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":" 123\n","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
-            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"</function>","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":null}
-            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"","reasoning_content":null,"tool_calls":null},"finish_reason":"stop"}],"usage":null}
-            data: {"id":"d9d528e22108450d96716ce5f36fb2ea","object":"chat.completion.chunk","created":1773130988,"model":"zai-org/GLM-5","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"","reasoning_content":null,"tool_calls":null},"finish_reason":null}],"usage":{"prompt_tokens":9841,"completion_tokens":35,"total_tokens":9876}}
-            data: [DONE]
-            """;
-
-        var server = WireMockServer.Start();
-        var httpClient = server.CreateClient();
-        server
-            .Given(Request.Create().WithPath("/v1/chat/completions").UsingPost())
-            .RespondWith(
-                Response.Create()
-                    .WithStatusCode(200)
-                    .WithHeader("Content-Type", "text/event-stream")
-                    .WithHeader("Cache-Control", "no-cache")
-                    .WithBody(sseResponse)
-            );
-        var chatService = CreateChatService(httpClient);
-
-        // Act
-        var deltas = new List<ChatDelta>();
-        await foreach (var delta in chatService.GetCompletionsAsync(TestContext.Current.CancellationToken))
-        {
-            deltas.Add(delta);
-        }
-
-        // Assert
-        Assert.Equal(8, deltas.Count);
-        Assert.Equal("assistant", deltas[0].Role);
-        Assert.Equal("<function name=\"mcp__invaitmcp__get_service_info\">\nserviceName", deltas[0].Content);
-        Assert.Equal(" : \"wow", deltas[1].Content);
-        Assert.Equal("-service\"\n", deltas[2].Content);
-    }
-
-    [Fact]
-    public async Task GetCompletionsAsync_StreamsSseDeltas_ToolCallFragmentedBySymbol()
-    {
-        // Arrange
-        var content = """
-            <function name="someName">
-            /// <summary>
-            /// This is summary.
-            /// </summary>
-            </function>
-            """;
-        var sseResponse = content.Select(c => $"data: {{\"id\":\"123\",\"object\":\"chat.completion.chunk\",\"created\":555,\"model\":\"zai-org/GLM-5\",\"choices\":[{{\"index\":0,\"message\":null,\"delta\":{{\"role\":null,\"content\":\"{EscapeJsonChar(c)}\",\"reasoning_content\":null,\"tool_calls\":null}},\"finish_reason\":null}}],\"usage\":null}}").ToList();
-        sseResponse.Add("data: [DONE]");
-
-        var server = WireMockServer.Start();
-        var httpClient = server.CreateClient();
-        server
-            .Given(Request.Create().WithPath("/v1/chat/completions").UsingPost())
-            .RespondWith(
-                Response.Create()
-                    .WithStatusCode(200)
-                    .WithHeader("Content-Type", "text/event-stream")
-                    .WithHeader("Cache-Control", "no-cache")
-                    .WithBody(string.Join("\n", sseResponse))
-            );
-
-        var chatService = CreateChatService(httpClient);
-
-        // Act
-        var deltas = new List<ChatDelta>();
-        await foreach (var delta in chatService.GetCompletionsAsync(TestContext.Current.CancellationToken))
-        {
-            deltas.Add(delta);
-        }
-
-        // Assert
-        Assert.Equal(36, deltas.Count);
-        var ContentLines = deltas.Select(d => d.Content).ToList();
-        Assert.Equal("<function name=\"someName\">", deltas[0].Content);
-        Assert.Contains("</function>", ContentLines);
-        Assert.Contains("<summary>", ContentLines);
-        Assert.Contains("</summary>", ContentLines);
-        Assert.Equal(content, string.Join(null, ContentLines));
-    }
-
-    [Fact]
     public async Task GetCompletionsAsync_Error_ReturnError()
     {
         // Arrange
@@ -380,7 +202,7 @@ public class ChatServiceTests
         );
 
         // Act
-        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, TestContext.Current.CancellationToken);
+        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(message.Content);
@@ -398,7 +220,7 @@ public class ChatServiceTests
         );
 
         // Act
-        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, TestContext.Current.CancellationToken);
+        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal("Hello World", message.Content);
@@ -416,7 +238,7 @@ public class ChatServiceTests
         );
 
         // Act
-        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, TestContext.Current.CancellationToken);
+        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal("Response", message.Content);
@@ -433,7 +255,7 @@ public class ChatServiceTests
         );
 
         // Act
-        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, TestContext.Current.CancellationToken);
+        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, TestContext.Current.CancellationToken);
 
         // Assert - message.Model remains null when no provider is given
         Assert.Null(message.Model);
@@ -453,7 +275,7 @@ public class ChatServiceTests
         );
 
         // Act
-        await CreateChatService().ProcessStreamAsync(message, deltas, capturedContents.Add, null, TestContext.Current.CancellationToken);
+        await CreateChatService().ProcessStreamAsync(message, deltas, capturedContents.Add, null, null, TestContext.Current.CancellationToken);
 
         // Assert - onContentUpdate receives individual deltas for incremental parsing
         Assert.Equal(3, capturedContents.Count);
@@ -476,7 +298,7 @@ public class ChatServiceTests
         );
 
         // Act
-        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, TestContext.Current.CancellationToken);
+        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, TestContext.Current.CancellationToken);
 
         // Assert - message.Timings is initialized and updated during streaming
         Assert.NotNull(message.Timings);

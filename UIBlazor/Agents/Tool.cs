@@ -13,19 +13,9 @@ public class Tool
     public string DisplayName { get; init; } = string.Empty;
 
     /// <summary>
-    /// Description for LLM
-    /// </summary>
-    public string Description { get; init; } = string.Empty;
-
-    /// <summary>
     /// Used for native tools_calling
     /// </summary>
-    public NativeToolDefinition NativeTool { get; init; } = null!;
-
-    /// <summary>
-    /// Example in system message. Only form prompt tool calling.
-    /// </summary>
-    public string ExampleToSystemMessage { get; init; } = string.Empty;
+    public required NativeToolDefinition NativeTool { get; init; } = null!;
 
     /// <summary>
     /// Enabled for use
@@ -46,5 +36,5 @@ public class Tool
     /// Function to execute the tool
     /// </summary>
     [JsonIgnore]
-    public Func<IReadOnlyDictionary<string, object>, CancellationToken, Task<VsToolResult>> ExecuteAsync { get; init; } = null!;
+    public required Func<string?, CancellationToken, Task<VsToolResult>> ExecuteAsync { get; init; } = null!;
 }

@@ -6,7 +6,7 @@ public interface IToolManager : IBaseSettingsProvider
 
     void RegisterAllTools();
 
-    IEnumerable<Tool> GetEnabledTools();
+    IEnumerable<Tool> GetEnabledTools(AppMode mode);
 
     IEnumerable<Tool> GetAllTools();
 

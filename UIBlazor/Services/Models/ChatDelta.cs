@@ -35,10 +35,4 @@ public class ChatDelta
     /// </summary>
     [JsonPropertyName("tool_calls")]
     public IReadOnlyList<ToolCall>? ToolCalls { get; set; }
-
-    /// <summary>
-    /// Количество токенов в этой дельте
-    /// </summary>
-    [JsonIgnore]
-    public int Tokens { get; set; } = 0;
 }

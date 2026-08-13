@@ -13,7 +13,7 @@
                     @if (!_isOldHidden)
                     {
                         <td class="line-number @diffLine.Type.ToString().ToLower()" @onclick="Toggle">
-                            @(diffLine.Position?.ToString() ?? " ")
+                            @(diffLine.Position is null ? " " : PositionOffset + diffLine.Position)
                         </td>
                         <td class="line @diffLine.Type.ToString().ToLower()-line">
                             <span class="line-text">
@@ -22,7 +22,7 @@
                         </td>
                     }
                     <td class="line-number @diffLineNew.Type.ToString().ToLower()" @onclick="Toggle">
-                        @(diffLineNew.Position?.ToString() ?? " ")
+                        @(diffLineNew.Position is null ? " " : PositionOffset + diffLineNew.Position)
                     </td>
                     <td class="line @diffLineNew.Type.ToString().ToLower()-line" style="width: @(_isOldHidden ? "100%" : "50%")">
                         <span class="line-text">
@@ -37,6 +37,7 @@
 
 @code {
     [Parameter] public SideBySideDiffModel Model { get; set; } = null!;
+    [Parameter] public int PositionOffset { get; set; } = 0;
 
     private bool _isOldHidden;
     private void Toggle()

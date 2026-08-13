@@ -12,7 +12,6 @@ using EnvDTE;
 using EnvDTE80;
 using InvAit.Utils;
 using Microsoft.Build.Evaluation;
-using Microsoft.VisualStudio.ComponentModelHost;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
 using Shared.Contracts;
@@ -39,7 +38,7 @@ public class ToolExecutor : IAsyncDisposable
         {
             var response = vsRequest.Action switch
             {
-                BuiltInToolEnum.ReadFiles => await ReadFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.ReadFiles => await ReadFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload).GetObject<List<ReadFileParams>>("files")),
                 BuiltInToolEnum.ReadOpenFile => await ReadCurrentlyOpenFileAsync(),
                 BuiltInToolEnum.CreateFile => await CreateNewFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.DeleteFile => await DeleteFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
@@ -49,27 +48,27 @@ public class ToolExecutor : IAsyncDisposable
                 BuiltInToolEnum.FindDeclarations => await FindDeclarationsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.FindReferences => await FindReferencesAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.Dir => await ListDirectoryAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BuiltInToolEnum.ApplyDiff => await ApplyDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BuiltInToolEnum.Build => await BuildSolutionAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BuiltInToolEnum.RunTests => await RunTestsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.Edits => await EditsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.Build => await BuildSolutionAsync(),
+                BuiltInToolEnum.RunTests => await RunTestsAsync(),
                 BuiltInToolEnum.GetErrors => await GetErrorListAsync(),
                 BuiltInToolEnum.GetProjectInfo => await GetProjectInfoAsync(),
                 BuiltInToolEnum.GetSolutionStructure => await GetSolutionStructureAsync(),
                 BuiltInToolEnum.GitStatus => await GitStatusAsync(),
                 BuiltInToolEnum.GitLog => await GitLogAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GitDiff => await GitDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BasicEnum.OpenFile => await OpenFileInEditorAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BasicEnum.OpenFolder => await OpenFolderInExplorerAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BasicEnum.OpenFile => await OpenFileInEditorAsync(vsRequest.Payload),
+                BasicEnum.OpenFolder => await OpenFolderInExplorerAsync(vsRequest.Payload),
                 BasicEnum.GetSkillsMetadata => await GetSkillsMetadataAsync(),
                 BasicEnum.ReadSkillContent => await ReadSkillContentAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BasicEnum.GetRules => await GetRulesAsync(),
-                BasicEnum.GetAgents => await ReadFileBaseAsync(new List<ReadFileParams> { { new ReadFileParams { Name = "agents.md" } } }, onlyContent: true),
+                BasicEnum.GetAgents => await ReadFileAsync(new List<ReadFileParams> { { new ReadFileParams { Path = "agents.md" } } }, onlyContent: true),
                 // MCP
                 BasicEnum.McpGetTools => await McpGetToolsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BasicEnum.McpCallTool => await McpCallToolAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BasicEnum.McpStopAll => await StopAllMcpServersAsync(),
                 BasicEnum.ReadMcpSettingsFile => await ReadMcpSettingsAsync(),
-                BasicEnum.WriteMcpSettings => await WriteMcpSettingsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BasicEnum.WriteMcpSettings => await WriteMcpSettingsAsync(vsRequest.Payload),
                 BasicEnum.OpenMcpSettings => await OpenMcpSettingsAsync(),
                 _ => new VsResponse { Success = false, Error = "Unknown action" }
             };
@@ -100,32 +99,13 @@ public class ToolExecutor : IAsyncDisposable
                 Error = "No active document"
             };
 
-        return await ReadFileBaseAsync(new List<ReadFileParams>
+        return await ReadFileAsync(new List<ReadFileParams>
         {
-            { new ReadFileParams { Name = docView.Document.FilePath } }
+            { new ReadFileParams { Path = docView.Document.FilePath } }
         });
     }
 
-    private async Task<VsResponse> ReadFileAsync(IReadOnlyDictionary<string, object> args)
-    {
-        var solutionPath = await GetSolutionPathAsync();
-        var fileParamsList = new List<ReadFileParams>();
-
-        // Try to get structured parameters (file1, file2, ...)
-        var fileKeys = args.Keys.Where(k => k.StartsWith("file", StringComparison.OrdinalIgnoreCase)).ToList();
-        if (fileKeys.Count > 0)
-        {
-            foreach (var key in fileKeys.OrderBy(k => k))
-            {
-                var rp = args.GetObject<ReadFileParams>(key);
-                if (rp != null) fileParamsList.Add(rp);
-            }
-        }
-
-        return await ReadFileBaseAsync(fileParamsList);
-    }
-
-    private async Task<VsResponse> ReadFileBaseAsync(List<ReadFileParams> fileParamsList, bool onlyContent = false)
+    private async Task<VsResponse> ReadFileAsync(List<ReadFileParams> fileParamsList, bool onlyContent = false)
     {
         var solutionPath = await GetSolutionPathAsync();
 
@@ -141,11 +121,11 @@ public class ToolExecutor : IAsyncDisposable
         for (var i = 0; i < fileParamsList.Count; i++)
         {
             var rp = fileParamsList[i];
-            var absPath = GetAbsolutePath(rp.Name, solutionPath);
+            var absPath = GetAbsolutePath(rp.Path, solutionPath);
 
             if (!File.Exists(absPath))
             {
-                sb.AppendLine($"File \"{rp.Name}\" doesn't exist.");
+                sb.AppendLine($"File \"{rp.Path}\" doesn't exist.");
                 isSuccess = false;
                 continue;
             }
@@ -161,7 +141,7 @@ public class ToolExecutor : IAsyncDisposable
             {
                 if (!onlyContent)
                 {
-                    sb.AppendLine($"### {rp.Name}");
+                    sb.AppendLine($"### {rp.Path}");
                     sb.AppendLine("```");
                 }
                 var lines = File.ReadLines(absPath);
@@ -197,8 +177,8 @@ public class ToolExecutor : IAsyncDisposable
             }
             catch (Exception ex)
             {
-                await Logger.LogAsync($"Error reading file {rp.Name}: {ex.Message}", "ERROR");
-                sb.AppendLine($"Error reading file {rp.Name}: {ex.Message}");
+                await Logger.LogAsync($"Error reading file {rp.Path}: {ex.Message}", "ERROR");
+                sb.AppendLine($"Error reading file {rp.Path}: {ex.Message}");
                 isSuccess = false;
             }
         }
@@ -214,9 +194,9 @@ public class ToolExecutor : IAsyncDisposable
     private async Task<VsResponse> CreateNewFileAsync(IReadOnlyDictionary<string, object> args)
     {
         var solutionPath = await GetSolutionPathAsync();
-        var fileParam = args.GetString("param1");
+        var fileParam = args.GetString("filePath");
         var filepath = GetAbsolutePath(fileParam, solutionPath);
-        var contents = args.Values.Skip(1).Select(x => x.ToString());
+        var content = args.GetString("content");
 
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         try
@@ -227,7 +207,7 @@ public class ToolExecutor : IAsyncDisposable
                 Directory.CreateDirectory(directory);
             }
 
-            File.WriteAllLines(filepath, contents, Encoding.UTF8);
+            File.WriteAllText(filepath, content, Encoding.UTF8);
             return new VsResponse
             {
                 Payload = $"File {fileParam} created successfully."
@@ -247,10 +227,10 @@ public class ToolExecutor : IAsyncDisposable
     private async Task<VsResponse> DeleteFileAsync(IReadOnlyDictionary<string, object> args)
     {
         var solutionPath = await GetSolutionPathAsync();
-        var fileParam = args.GetString("param1");
+        var fileParam = args.GetString("path");
         var filepath = GetAbsolutePath(fileParam, solutionPath);
 
-        await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         try
         {
             if (File.Exists(filepath))
@@ -281,8 +261,7 @@ public class ToolExecutor : IAsyncDisposable
 
     private async Task<VsResponse> ExecAsync(IReadOnlyDictionary<string, object> args)
     {
-        var param = args.GetString("param1");
-
+        var param = args.GetString("command");
         var solutionPath = await GetSolutionPathAsync();
 
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -298,7 +277,8 @@ public class ToolExecutor : IAsyncDisposable
 
     private async Task<VsResponse> SearchFilesAsync(IReadOnlyDictionary<string, object> args)
     {
-        var pattern = args.GetString("param1");
+        var pattern = args.GetString("regex");
+        var maxMatches = args.GetInt("maxMatches", 50);
         if (string.IsNullOrEmpty(pattern))
         {
             return new VsResponse
@@ -336,16 +316,15 @@ public class ToolExecutor : IAsyncDisposable
         sb.AppendLine($"Found {matchedFiles.Count} files matching pattern:");
         sb.AppendLine();
 
-        foreach (var f in matchedFiles)
+        for (var i = 0; i < matchedFiles.Count; i++)
         {
-            var icon = f.Extension switch
+            if (i > maxMatches)
             {
-                ".csproj" => "📦",
-                ".sln" => "📦",
-                ".slnx" => "📦",
-                _ => "📄"
-            };
-            sb.AppendLine($"{icon} {f.Path} [{f.SizeKB:F1} KB]");
+                sb.AppendLine($"+{i - maxMatches} files. Limited to {maxMatches}");
+                break;
+            }
+            var file = matchedFiles[i];
+            sb.AppendLine($"{file.Path} [{file.SizeKB:F1} KB]");
         }
 
         return new VsResponse { Payload = sb.ToString() };
@@ -353,7 +332,7 @@ public class ToolExecutor : IAsyncDisposable
 
     private async Task<VsResponse> GrepSearchAsync(IReadOnlyDictionary<string, object> args)
     {
-        var query = args.GetString("param1");
+        var query = args.GetString("regex");
         var contextLines = args.GetInt("contextLines", 3);
         var maxMatches = args.GetInt("maxMatches", 50);
 
@@ -440,7 +419,7 @@ public class ToolExecutor : IAsyncDisposable
 
     private async Task<VsResponse> FindDeclarationsAsync(IReadOnlyDictionary<string, object> args)
     {
-        var symbolName = args.GetString("param1");
+        var symbolName = args.GetString("symbol");
 
         try
         {
@@ -466,7 +445,7 @@ public class ToolExecutor : IAsyncDisposable
 
     private async Task<VsResponse> FindReferencesAsync(IReadOnlyDictionary<string, object> args)
     {
-        var symbolName = args.GetString("param1");
+        var symbolName = args.GetString("symbol");
 
         try
         {
@@ -493,8 +472,8 @@ public class ToolExecutor : IAsyncDisposable
     private async Task<VsResponse> ListDirectoryAsync(IReadOnlyDictionary<string, object> args)
     {
         var solutionPath = await GetSolutionPathAsync();
-        var dirPath = GetAbsolutePath(args.GetString("param1"), solutionPath);
-        var recursive = args.GetBool("param2");
+        var dirPath = GetAbsolutePath(args.GetString("path"), solutionPath);
+        var recursive = args.GetBool("recursive");
 
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         if (!Directory.Exists(dirPath))
@@ -510,25 +489,18 @@ public class ToolExecutor : IAsyncDisposable
 
         return new VsResponse
         {
-            Payload = $"Listed directory {args.GetString("dirPath")}{Environment.NewLine}{items}"
+            Payload = items
         };
     }
 
-    private async Task<VsResponse> ApplyDiffAsync(IReadOnlyDictionary<string, object> args)
+    private async Task<VsResponse> EditsAsync(IReadOnlyDictionary<string, object> args)
     {
         var solutionPath = await GetSolutionPathAsync();
-        var inputFileName = args.GetString("param1");
+        var inputFileName = args.GetString("filePath");
+        var diffEdits = args.GetObject<List<DiffEdit>>("edits");
         var filepath = GetAbsolutePath(inputFileName, solutionPath);
-        var replacements = new List<DiffReplacement>();
-        foreach (var item in args)
-        {
-            if (item.Key.StartsWith("diff") && item.Value is JsonElement jsonElement)
-            {
-                replacements.Add(jsonElement.GetObject<DiffReplacement>());
-            }
-        }
 
-        if (replacements.Count == 0)
+        if (diffEdits.Count == 0)
             return new VsResponse { Success = false, Error = "Failed to get replacements" };
 
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -541,20 +513,22 @@ public class ToolExecutor : IAsyncDisposable
         var totalReplacements = 0;
         var appliedReplacements = new List<string>();
 
-        replacements = [.. replacements.OrderByDescending(r => r.StartLine)];
+        diffEdits = [.. diffEdits.OrderByDescending(r => r.ApproximateLine)];
 
-        foreach (var rep in replacements)
+        foreach (var rep in diffEdits)
         {
-            var actualStart = UniversalDiffParser.FindInFile(lines, rep.Search, rep.StartLine, 5);
+            var search = Regex.Replace(rep.OldStr, "\r", "").Split('\n').ToList();
+            var replace = Regex.Replace(rep.NewStr, "\r", "").Split('\n').ToList();
+            var actualStart = UniversalDiffParser.FindInFile(lines, search, rep.ApproximateLine ?? -1, 5);
             if (actualStart == -1)
             {
-                appliedReplacements.Add($"FAILED at line {rep.StartLine}");
+                appliedReplacements.Add($"FAILED at line {rep.ApproximateLine}");
                 continue;
             }
 
             // Replace from actualStart
-            lines.RemoveRange(actualStart, rep.Search.Count);
-            lines.InsertRange(actualStart, rep.Replace);
+            lines.RemoveRange(actualStart, search.Count);
+            lines.InsertRange(actualStart, replace);
 
             totalReplacements++;
         }
@@ -576,13 +550,14 @@ public class ToolExecutor : IAsyncDisposable
             await Logger.LogAsync(e.Message);
             return new VsResponse
             {
-                Payload = $"Changes to {inputFileName} is FAILED.\r\n{e.Message}"
+                Success = false,
+                Error = $"Changes to {inputFileName} is FAILED. {e.Message}"
             };
         }
 
         return new VsResponse
         {
-            Payload = $"Changes successfully applied to {inputFileName}.\nApplied {totalReplacements}/{replacements.Count} replacements."
+            Payload = $"Changes successfully applied to {inputFileName}. {totalReplacements}/{diffEdits.Count}."
         };
     }
 
@@ -613,15 +588,9 @@ public class ToolExecutor : IAsyncDisposable
         return -1; // Не нашли
     }
 
-    private async Task<VsResponse> BuildSolutionAsync(IReadOnlyDictionary<string, object> args)
+    private async Task<VsResponse> BuildSolutionAsync()
     {
-        var buildAction = args.GetString("param1")?.ToLower() switch
-        {
-            "clean" => Toolkit.BuildAction.Clean,
-            "rebuild" => Toolkit.BuildAction.Rebuild,
-            _ => Toolkit.BuildAction.Build,
-        };
-        var result = await VS.Build.BuildSolutionAsync(buildAction);
+        var result = await VS.Build.BuildSolutionAsync(Toolkit.BuildAction.Rebuild);
 
         if (!result)
         {
@@ -631,7 +600,7 @@ public class ToolExecutor : IAsyncDisposable
             {
                 Success = false,
                 Error = $"""
-                         {buildAction} is failed.
+                         Rebuild is failed.
                          ---
                          Errors:
                          {errorList}
@@ -641,7 +610,7 @@ public class ToolExecutor : IAsyncDisposable
 
         return new VsResponse
         {
-            Payload = $"{buildAction} is successful."
+            Payload = "Rebuild is successful."
         };
     }
 
@@ -728,10 +697,10 @@ public class ToolExecutor : IAsyncDisposable
     /// Через TestExplorer можно запустить, но не узнать о завершении и прочитать ошибки тоже нельзя
     /// </summary>
     /// <returns></returns>
-    private async Task<VsResponse> RunTestsAsync(IReadOnlyDictionary<string, object> args)
+    private async Task<VsResponse> RunTestsAsync()
     {
         // Для начала запуск билда
-        var build = await BuildSolutionAsync(new Dictionary<string, object>() { { "param1", "build" } });
+        var build = await BuildSolutionAsync();
         if (!build.Success)
         {
             return build;
@@ -740,14 +709,11 @@ public class ToolExecutor : IAsyncDisposable
         var solutionPath = await GetSolutionPathAsync();
         var (testDlls, testExe) = await GetTestAssembliesAsync();
         var allDlls = string.Join(" ", testDlls.Select(d => $"\"{d}\""));
-        var addArgs = string.Join(" ", args.Select(a => a.Value));
-
-        
 
         var startInfo = new ProcessStartInfo
         {
             FileName = "dotnet",
-            Arguments = $"test {allDlls} -v d {addArgs}",
+            Arguments = $"test {allDlls} -v d",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8,
@@ -760,13 +726,14 @@ public class ToolExecutor : IAsyncDisposable
         // xUnit - запуск исполняемых файлов вместо dotnet test
         if (testExe.Count > 0)
         {
+            // TODO может быть несколько exe
             startInfo.FileName = testExe[0];
-            startInfo.Arguments = addArgs;
-            Logger.Log($"Run xUnit exe {testExe[0]} {addArgs}");
+            startInfo.Arguments = "";
+            Logger.Log($"Run xUnit exe {testExe[0]}");
         }
         else
         {
-            Logger.Log($"Run dotnet test for {allDlls} {addArgs}");
+            Logger.Log($"Run dotnet test for {allDlls}");
         }
 
         startInfo.EnvironmentVariables["TERM"] = "dumb"; // терминал тупой - отключает интерактивность
@@ -838,16 +805,16 @@ public class ToolExecutor : IAsyncDisposable
     {
         return await ExecAsync(new Dictionary<string, object>()
         {
-            ["param1"] = "git status"
+            ["command"] = "git status"
         });
     }
 
     private async Task<VsResponse> GitLogAsync(IReadOnlyDictionary<string, object> args)
     {
-        var limit = args.GetString("param1") ?? "20";
+        var limit = args.GetString("number") ?? "20";
         return await ExecAsync(new Dictionary<string, object>()
         {
-            ["param1"] = $"git log -n {limit} --pretty=format:\"%h - %s | %ad\" --stat --date=short"
+            ["command"] = $"git log -n {limit} --pretty=format:\"%h - %s | %ad\" --stat --date=short"
         });
     }
 
@@ -856,7 +823,7 @@ public class ToolExecutor : IAsyncDisposable
         var revisions = args.GetString("revisions");
         return await ExecAsync(new Dictionary<string, object>()
         {
-            ["param1"] = $"git diff {revisions}"
+            ["command"] = $"git diff {revisions}"
         });
     }
 
@@ -908,9 +875,8 @@ public class ToolExecutor : IAsyncDisposable
         }
     }
 
-    private async Task<VsResponse> OpenFileInEditorAsync(IReadOnlyDictionary<string, object> args)
+    private async Task<VsResponse> OpenFileInEditorAsync(string relativePath)
     {
-        var relativePath = args.GetString("param1");
         if (string.IsNullOrEmpty(relativePath))
         {
             return new VsResponse { Success = false, Error = "File path is empty" };
@@ -965,9 +931,8 @@ public class ToolExecutor : IAsyncDisposable
         }
     }
 
-    private async Task<VsResponse> OpenFolderInExplorerAsync(IReadOnlyDictionary<string, object> args)
+    private async Task<VsResponse> OpenFolderInExplorerAsync(string relativePath)
     {
-        var relativePath = args.GetString("param1");
         var solutionPath = await GetSolutionPathAsync();
         var folderPath = string.IsNullOrEmpty(relativePath) ? solutionPath : GetAbsolutePath(relativePath, solutionPath);
 
@@ -1100,7 +1065,7 @@ public class ToolExecutor : IAsyncDisposable
     /// </summary>
     private async Task<VsResponse> ReadSkillContentAsync(IReadOnlyDictionary<string, object> args)
     {
-        var skillName = args.GetString("param1");
+        var skillName = args.GetString("skillName");
 
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         if (!_skillPathByName.TryGetValue(skillName, out var fullPath))
@@ -1316,11 +1281,10 @@ public class ToolExecutor : IAsyncDisposable
         }
     }
 
-    private async Task<VsResponse> WriteMcpSettingsAsync(IReadOnlyDictionary<string, object> args)
+    private async Task<VsResponse> WriteMcpSettingsAsync(string content)
     {
         try
         {
-            var content = args.GetString("param1");
             if (string.IsNullOrEmpty(content))
             {
                 return new VsResponse { Success = false, Error = "Content is empty" };
@@ -1475,9 +1439,10 @@ public class ToolExecutor : IAsyncDisposable
 
     private async Task<VsResponse> McpCallToolAsync(IReadOnlyDictionary<string, object> args)
     {
-        var serverId = args.GetString("param1") ?? args.GetString("serverId");
-        var toolName = args.GetString("param2") ?? args.GetString("toolName");
+        var serverId = args.GetString("serverId");
+        var toolName = args.GetString("toolName");
         var toolArgsRaw = args.GetValue("arguments");
+        var timeoutMs = args.GetInt("timeoutMs", 600_000);
         object? toolArgs = null;
 
         if (toolArgsRaw is string jsonStr && !string.IsNullOrEmpty(jsonStr))
@@ -1526,7 +1491,7 @@ public class ToolExecutor : IAsyncDisposable
                 Params = new { name = toolName, arguments = toolArgs ?? new { } }
             };
 
-            var result = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(request), 600_000);
+            var result = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(request), timeoutMs);
             return new VsResponse { Success = result.Success, Payload = result.Payload, Error = result.Error };
         }
         catch (Exception ex)

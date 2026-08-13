@@ -1,4 +1,3 @@
-@using System.Text
 @using DiffPlex
 @using DiffPlex.Chunkers
 @using DiffPlex.DiffBuilder
@@ -20,7 +19,7 @@
             {
                 <hr />
             }
-            <DiffViewSection Model="diffs[i]" />
+            <DiffViewSection Model="diffs[i]" PositionOffset="Edits[i].ApproximateLine - 1 ?? 0" />
         }
     </div>
 </div>
@@ -28,13 +27,11 @@
 @implements IDisposable
 
 @code {
-    [Parameter] public int LinesCount { get; set; } = 0;
-    [Parameter] public Dictionary<string, object> ToolParams { get; set; } = [];
-    [Parameter] public bool IsClosed { get; set; } = true;
+    [Parameter] public string FilePath { get; set; } = null!;
+    [Parameter] public DiffEdit[] Edits { get; set; } = [];
 
-    private string? FilePath { get; set; }
     private List<SideBySideDiffModel?> diffs = [null];
-    private int processedLines = 0;
+    private int processedChars = 0;
     private bool showDiffSeparator = false;
 
     private bool _changed = false;
@@ -89,24 +86,11 @@
 
     private void ParseDiff()
     {
-        if (LinesCount < 2)
-        {
-            return;
-        }
-
-        _changed = LinesCount > processedLines;
+        var sumChars = Edits.Sum(e => e.NewStr.Length + e.OldStr.Length);
+        _changed = sumChars > processedChars;
 
         if (!_changed)
         {
-            return;
-        }
-
-        FilePath ??= ToolParams["param1"].ToString();
-
-        if (ToolParams.ContainsKey("param2"))
-        {
-            // обычный параметр должен быть только один. Если это не так, то нечего рендерить.
-            FilePath = "Error: Corrupted tool input.";
             return;
         }
 
@@ -114,15 +98,15 @@
         // дополняться новыми строками может только последний DiffModel
         // то есть при каждом парсинге нужно пропускать модели, 
         // которые уже были сделаны кроме последней (она может дополняться строками)
-        for (var i = diffs.Count - 1; i < ToolParams.Count - 1; i++)
+        for (var i = diffs.Count - 1; i < Edits.Length; i++)
         {
-            var diffRepl = ToolParams[$"diff{i + 1}"] as DiffReplacement;
+            var diffRepl = Edits[i];
             if (diffRepl is not null)
             {
                 var diffBuiler = SideBySideDiffBuilder.Diff(
                     Differ.Instance,
-                    string.Join('\n', diffRepl.Search),
-                    string.Join('\n', diffRepl.Replace),
+                    diffRepl.OldStr,
+                    diffRepl.NewStr,
                     false,
                     false,
                     lineChunker: LineChunker.Instance,
@@ -140,7 +124,7 @@
             }
         }
 
-        processedLines = LinesCount;
+        processedChars = sumChars;
         showDiffSeparator = diffs.Count > 1;
     }
 }

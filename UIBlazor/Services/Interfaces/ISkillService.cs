@@ -10,7 +10,7 @@ public interface ISkillService
     /// <summary>
     /// Загрузить полное содержимое скилла (только при активации)
     /// </summary>
-    Task<VsToolResult> LoadSkillContentMarkDownAsync(IReadOnlyDictionary<string, object> args, CancellationToken cancellationToken);
+    Task<VsToolResult> LoadSkillContentMarkDownAsync(string args, CancellationToken cancellationToken);
 
     /// <summary>
     /// Форматировать метаданные скиллов для системного промпта

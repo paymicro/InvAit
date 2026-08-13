@@ -5,72 +5,116 @@ namespace UIBlazor.Services;
 public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
 {
     private readonly ConcurrentDictionary<string, ApprovalWaiter> _approvalWaiters = new();
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<string>> _askUserWaiters = new();
 
-    public async Task ProcessToolCallsAsync(
-        VisualChatMessage message,
-        List<ContentSegment> toolSegments,
-        CancellationToken cancellationToken)
+    public void PrepareToolsForApprovals(List<ToolCall> toolCalls)
     {
-        if (toolSegments.Count == 0)
-            return;
-
         CancelPendingApprovals();
 
         // Pre-register approval waiters for all pending segments
         // so users can approve tools in any order
-        foreach (var segment in toolSegments)
+        foreach (var toolCall in toolCalls)
         {
-            if (segment.ApprovalStatus == ToolApprovalStatus.Pending)
+            toolCall.IsReady = true;
+            toolCall.Function.Arguments = CleanJsonArguments(toolCall.Function.Arguments);
+
+            // AskUser always requires user interaction (wait for answer)
+            if (toolCall.Function.Name == BasicEnum.AskUser)
             {
-                _approvalWaiters[segment.Id] = new ApprovalWaiter(new (), segment);
+                toolCall.ApprovalStatus = ToolApprovalStatus.Pending;
+                _askUserWaiters[toolCall.Id] = new TaskCompletionSource<string>();
+                continue;
+            }
+
+            var approvalMode = toolManager.GetApprovalModeByToolName(toolCall.Function.Name);
+            switch (approvalMode)
+            {
+                case ToolApprovalMode.Ask:
+                    toolCall.ApprovalStatus = ToolApprovalStatus.Pending;
+                    _approvalWaiters[toolCall.Id] = new ApprovalWaiter(new(), toolCall);
+                    break;
+                case ToolApprovalMode.Deny:
+                    toolCall.ApprovalStatus = ToolApprovalStatus.Rejected;
+                    break;
+                case ToolApprovalMode.Allow:
+                default:
+                    toolCall.ApprovalStatus = ToolApprovalStatus.Approved;
+                    break;
             }
         }
+    }
 
-        foreach (var segment in toolSegments)
+    public async Task ProcessToolCallsAsync(
+        List<ToolCall> toolCalls,
+        CancellationToken cancellationToken)
+    {
+        foreach (var toolCall in toolCalls)
         {
             if (cancellationToken.IsCancellationRequested)
                 return;
 
-            var tool = toolManager.GetTool(segment.ToolName);
-            var vsToolResult = await ExecuteToolWithApprovalAsync(segment, tool, cancellationToken);
+            var tool = toolManager.GetTool(toolCall.Function.Name);
+            var vsToolResult = await ExecuteToolWithApprovalAsync(toolCall, tool, cancellationToken);
 
 #if DEBUG
             vsToolResult = HeadlessMocker.GetVsToolResult(vsToolResult);
 #endif
-
-            message.ToolResults.Add(ToolResult.Convert(vsToolResult, tool?.DisplayName ?? "", tool?.Name ?? ""));
+            
+            toolCall.Result = ToolResult.Convert(vsToolResult, tool?.DisplayName ?? "", tool?.Name ?? "");
         }
     }
 
     private async Task<VsToolResult> ExecuteToolWithApprovalAsync(
-        ContentSegment segment,
+        ToolCall toolCall,
         Tool? tool,
         CancellationToken cancellationToken)
     {
         if (tool == null)
         {
-            return VsToolResult.Failed(segment.ToolName, "Tool not found.");
+            return VsToolResult.Failed(toolCall.Function.Name, "Tool not found.");
         }
 
-        if (segment.ApprovalStatus == ToolApprovalStatus.Pending)
+        // AskUser: wait for user to select an option or type a custom answer
+        if (toolCall.Function.Name == BasicEnum.AskUser && _askUserWaiters.TryGetValue(toolCall.Id, out var askTcs))
         {
-            segment.ApprovalStatus = await WaitForApprovalAsync(segment, cancellationToken);
-
-            if (cancellationToken.IsCancellationRequested)
+            try
             {
-                return VsToolResult.Cancelled(segment.ToolName);
+                var answer = await askTcs.Task.WaitAsync(cancellationToken);
+                _askUserWaiters.TryRemove(toolCall.Id, out _);
+                toolCall.ApprovalStatus = ToolApprovalStatus.Approved;
+                return new VsToolResult
+                {
+                    Name = BasicEnum.AskUser,
+                    Success = true,
+                    Result = answer
+                };
+            }
+            catch (OperationCanceledException)
+            {
+                _askUserWaiters.TryRemove(toolCall.Id, out _);
+                return VsToolResult.Cancelled(toolCall.Function.Name);
             }
         }
 
-        return await ExecuteToolAsync(tool, segment, cancellationToken);
+        if (toolCall.ApprovalStatus == ToolApprovalStatus.Pending)
+        {
+            toolCall.ApprovalStatus = await WaitForApprovalAsync(toolCall, cancellationToken);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return VsToolResult.Cancelled(toolCall.Function.Name);
+            }
+        }
+
+        return await ExecuteToolAsync(tool, toolCall, cancellationToken);
     }
 
     private async Task<ToolApprovalStatus> WaitForApprovalAsync(
-        ContentSegment segment,
+        ToolCall toolCall,
         CancellationToken cancellationToken)
     {
         // Get the pre-registered TCS, or create one if not found (defensive)
-        var tcs = _approvalWaiters.GetOrAdd(segment.Id, _ => new ApprovalWaiter(new (), segment));
+        var tcs = _approvalWaiters.GetOrAdd(toolCall.Id, _ => new ApprovalWaiter(new (), toolCall));
 
         try
         {
@@ -83,35 +127,62 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
         }
         finally
         {
-            _approvalWaiters.TryRemove(segment.Id, out _);
+            _approvalWaiters.TryRemove(toolCall.Id, out _);
         }
+    }
+
+    private static string CleanJsonArguments(string rawArguments)
+    {
+        if (string.IsNullOrWhiteSpace(rawArguments))
+            return "{}";
+
+        var trimmed = rawArguments.Trim();
+
+        // Находим первый символ '{' и ПОСЛЕДНИЙ символ '}'
+        var firstBrace = trimmed.IndexOf('{');
+        var lastBrace = trimmed.LastIndexOf('}');
+
+        // Если скобки найдены и они расположены правильно
+        if (firstBrace != -1 && lastBrace > firstBrace)
+        {
+            // Вырезаем только то, что находится внутри объекта включительно
+            return trimmed.Substring(firstBrace, lastBrace - firstBrace + 1);
+        }
+
+        return "{}"; // Фолбэк, если структура вообще нарушена
     }
 
     private static async Task<VsToolResult> ExecuteToolAsync(
         Tool tool,
-        ContentSegment segment,
+        ToolCall toolCall,
         CancellationToken cancellationToken)
     {
-        if (segment.ApprovalStatus != ToolApprovalStatus.Approved)
+        if (toolCall.ApprovalStatus != ToolApprovalStatus.Approved)
         {
-            return VsToolResult.Denied(segment.ToolName);
+            return VsToolResult.Denied(toolCall.Function.Name);
         }
 
-        var args = segment.ToolName.StartsWith("mcp__")
-            ? JsonUtils.DeserializeParameters(string.Join('\n', segment.Lines))
-            : segment.ToolParams;
-
-        return await tool.ExecuteAsync(args, cancellationToken);
+        return await tool.ExecuteAsync(toolCall.Function.Arguments, cancellationToken);
     }
 
-    public Task HandleApprovalAsync(string segmentId, bool approved)
+    public Task HandleApprovalAsync(string toolCallId, bool approved)
     {
         var status = approved ? ToolApprovalStatus.Approved : ToolApprovalStatus.Rejected;
 
-        if (_approvalWaiters.TryGetValue(segmentId, out var aw))
+        if (_approvalWaiters.TryGetValue(toolCallId, out var aw))
         {
-            aw.Segment.ApprovalStatus = status;
+            aw.ToolCall.ApprovalStatus = status;
             aw.TaskSource.TrySetResult(status);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task HandleAskUserAnswerAsync(string toolCallId, string answer)
+    {
+        if (_askUserWaiters.TryGetValue(toolCallId, out var tcs))
+        {
+            tcs.TrySetResult(answer);
         }
 
         return Task.CompletedTask;
@@ -121,11 +192,17 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
     {
         foreach (var kvp in _approvalWaiters)
         {
-            kvp.Value.Segment.ApprovalStatus = ToolApprovalStatus.Rejected;
+            kvp.Value.ToolCall.ApprovalStatus = ToolApprovalStatus.Rejected;
             kvp.Value.TaskSource.TrySetCanceled();
         }
         _approvalWaiters.Clear();
+
+        foreach (var kvp in _askUserWaiters)
+        {
+            kvp.Value.TrySetCanceled();
+        }
+        _askUserWaiters.Clear();
     }
 }
 
-record ApprovalWaiter(TaskCompletionSource<ToolApprovalStatus> TaskSource, ContentSegment Segment);
+internal record ApprovalWaiter(TaskCompletionSource<ToolApprovalStatus> TaskSource, ToolCall ToolCall);
