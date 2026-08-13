@@ -1,4 +1,5 @@
 @inject IToolManager ToolManager
+@inject IToolCallHandler ToolCallHandler
 
 <div class="tool-call-block" data-tool="@ToolCall.Function.Name">
     <div class="tool-call-header @StatusClass">
@@ -37,11 +38,15 @@
             }
             else if (ToolCall.Function.Name == BasicEnum.AskUser)
             {
-                <ToolAskOptions Args="@ToolCall.Function.Arguments" />
+                <ToolAskOptions Args="@ToolCall.Function.Arguments"
+                                Answer="@ToolCall.Result?.Content"
+                                OnOptionSelectedCallback="@(async (answer) => await OnAskUserAnswer(answer))" />
             }
             else
             {
-                <pre>@ToolCall.Function.Arguments</pre>
+                <div class="diff-block">
+                    <pre>@ToolCall.Function.Arguments</pre>
+                </div>
             }
         </div>
     }
@@ -79,4 +84,9 @@
         ToolApprovalStatus.Rejected => "rejected",
         _ => "pending" // класс по умолчанию
     };
+
+    private async Task OnAskUserAnswer(string answer)
+    {
+        await ToolCallHandler.HandleAskUserAnswerAsync(ToolCall.Id, answer);
+    }
 }

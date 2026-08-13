@@ -50,7 +50,7 @@ public class ConversationSession : BaseOptions
         var message = Messages.FirstOrDefault(m => m.Id == id);
         if (message != null)
         {
-            TotalTokens -= message.Timings?.Tokens ?? 0 + message.ToolCalls?.Sum(t => t.Tokens) ?? 0;
+            TotalTokens -= (message.Timings?.Tokens ?? 0) + (message.ToolCalls?.Sum(t => t.Tokens) ?? 0);
             Messages.Remove(message);
             LastUpdated = DateTime.Now;
         }

@@ -176,31 +176,14 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.DeleteFile, args, c)
         },
 
-        // TODO
         // User interaction
-        //new()
-        //{
-        //    Name = BasicEnum.AskUser,
-        //    DisplayName = SharedResource.ToolAskUser,
-        //    Category = ToolCategory.ReadFiles,
-        //    Description = """
-        //                  Ask the user a question and present options for them to choose from.
-        //                  Use this when you need clarification or user input to proceed.
-        //                  The user can select one of the provided options or enter their own answer.
-        //                  Parameters:
-        //                  - question: The question to ask the user - first line
-        //                  - options: A list of options for the user to choose from (one per line)
-        //                  """,
-        //    ExampleToSystemMessage = $"""
-        //                             For example, to ask which file to open:
-        //                             <function name="{BasicEnum.AskUser}">
-        //                             Which file would you like me to open?
-        //                             src/main.cs
-        //                             src/utils.cs
-        //                             src/config.cs
-        //                             </function>
-        //                             """,
-        //    ExecuteAsync = (args, c) => internalExecutor.ExecuteToolAsync(BasicEnum.AskUser, args, c)
-        //}
+        new()
+        {
+            Name = BasicEnum.AskUser,
+            DisplayName = SharedResource.ToolAskUser,
+            Category = ToolCategory.ReadFiles,
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.AskUser)),
+            ExecuteAsync = (args, c) => internalExecutor.ExecuteToolAsync(BasicEnum.AskUser, args, c)
+        }
     ];
 }

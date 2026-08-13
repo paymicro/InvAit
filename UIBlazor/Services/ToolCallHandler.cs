@@ -5,6 +5,7 @@ namespace UIBlazor.Services;
 public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
 {
     private readonly ConcurrentDictionary<string, ApprovalWaiter> _approvalWaiters = new();
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<string>> _askUserWaiters = new();
 
     public void PrepareToolsForApprovals(List<ToolCall> toolCalls)
     {
@@ -16,6 +17,15 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
         {
             toolCall.IsReady = true;
             toolCall.Function.Arguments = CleanJsonArguments(toolCall.Function.Arguments);
+
+            // AskUser always requires user interaction (wait for answer)
+            if (toolCall.Function.Name == BasicEnum.AskUser)
+            {
+                toolCall.ApprovalStatus = ToolApprovalStatus.Pending;
+                _askUserWaiters[toolCall.Id] = new TaskCompletionSource<string>();
+                continue;
+            }
+
             var approvalMode = toolManager.GetApprovalModeByToolName(toolCall.Function.Name);
             switch (approvalMode)
             {
@@ -62,6 +72,28 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
         if (tool == null)
         {
             return VsToolResult.Failed(toolCall.Function.Name, "Tool not found.");
+        }
+
+        // AskUser: wait for user to select an option or type a custom answer
+        if (toolCall.Function.Name == BasicEnum.AskUser && _askUserWaiters.TryGetValue(toolCall.Id, out var askTcs))
+        {
+            try
+            {
+                var answer = await askTcs.Task.WaitAsync(cancellationToken);
+                _askUserWaiters.TryRemove(toolCall.Id, out _);
+                toolCall.ApprovalStatus = ToolApprovalStatus.Approved;
+                return new VsToolResult
+                {
+                    Name = BasicEnum.AskUser,
+                    Success = true,
+                    Result = answer
+                };
+            }
+            catch (OperationCanceledException)
+            {
+                _askUserWaiters.TryRemove(toolCall.Id, out _);
+                return VsToolResult.Cancelled(toolCall.Function.Name);
+            }
         }
 
         if (toolCall.ApprovalStatus == ToolApprovalStatus.Pending)
@@ -146,6 +178,16 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
         return Task.CompletedTask;
     }
 
+    public Task HandleAskUserAnswerAsync(string toolCallId, string answer)
+    {
+        if (_askUserWaiters.TryGetValue(toolCallId, out var tcs))
+        {
+            tcs.TrySetResult(answer);
+        }
+
+        return Task.CompletedTask;
+    }
+
     private void CancelPendingApprovals()
     {
         foreach (var kvp in _approvalWaiters)
@@ -154,6 +196,12 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
             kvp.Value.TaskSource.TrySetCanceled();
         }
         _approvalWaiters.Clear();
+
+        foreach (var kvp in _askUserWaiters)
+        {
+            kvp.Value.TrySetCanceled();
+        }
+        _askUserWaiters.Clear();
     }
 }
 

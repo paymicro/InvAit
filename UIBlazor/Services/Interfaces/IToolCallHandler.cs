@@ -13,4 +13,9 @@ public interface IToolCallHandler
     /// Handles approval response from user.
     /// </summary>
     Task HandleApprovalAsync(string segmentId, bool approved);
+
+    /// <summary>
+    /// Handles user answer for ask_user tool.
+    /// </summary>
+    Task HandleAskUserAnswerAsync(string toolCallId, string answer);
 }

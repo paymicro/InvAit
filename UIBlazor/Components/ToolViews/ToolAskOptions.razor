@@ -1,51 +1,98 @@
 <div class="tool-ask-options">
-<div class="tool-ask-question rz-mb-2">
+    <div class="tool-ask-question rz-mb-2">
        <strong>@Question</strong>
     </div>
-    
-    @if (Options.Count > 0)
+
+    @if (_isAnswered)
     {
-        <div class="tool-ask-buttons rz-d-flex rz-flex-wrap rz-gap-2">
-            @foreach (var option in Options)
-            {
-               <RadzenButton 
-                    Text="@option"
-                    ButtonStyle="ButtonStyle.Base"
-                    Size="ButtonSize.Small"
-                    Click="@(() => OnOptionSelected(option))" />
-            }
+        <div class="tool-ask-answer rz-mt-2">
+            @Answer
         </div>
     }
-    
-    <div class="tool-ask-custom rz-mt-2 rz-d-flex rz-gap-2">
-        <RadzenTextBox @bind-Value="_customOption" Placeholder="@SharedResource.YourOption" Style="flex: 1;" />
-        <RadzenButton 
-            Text="@SharedResource.SendMessage" 
-            ButtonStyle="ButtonStyle.Primary" 
-            Size="ButtonSize.Small"
-            Disabled="@string.IsNullOrWhiteSpace(_customOption)"
-            Click="@(() => OnOptionSelected(_customOption))" />
-    </div>
+    else
+    {
+        @if (Options.Count > 0)
+        {
+            <div class="tool-ask-buttons">
+                @foreach (var option in Options)
+                {
+                    <RadzenButton 
+                        Text="@option"
+                        ButtonStyle="ButtonStyle.Base"
+                        Size="ButtonSize.Medium"
+                        Disabled="@_answered"
+                        Click="@(() => OnOptionSelected(new FormModel { Value = option }))" />
+                }
+            </div>
+        }
+
+        <RadzenTemplateForm TItem="FormModel" class="tool-ask-custom" Data="@_formModel" Submit="@OnOptionSelected">
+            <RadzenTextBox @bind-Value="_formModel.Value"
+                           Placeholder="@SharedResource.YourOption"
+                           Disabled="@_answered" />
+            <RadzenButton Icon="send"
+                          ButtonType="ButtonType.Submit"
+                          Variant="Variant.Text"
+                          Size="ButtonSize.Medium"
+                          Disabled="@(_answered || string.IsNullOrWhiteSpace(_formModel.Value))" />
+        </RadzenTemplateForm>
+    }
 </div>
 
 @code {
     [Parameter] public string Args { get; set; } = string.Empty;
+    [Parameter] public string? Answer { get; set; }
     [Parameter] public EventCallback<string> OnOptionSelectedCallback { get; set; }
 
-    private string _customOption = string.Empty;
-
-    private string Question => string.Empty;
-
-    private List<string> Options => [];
-
-    private async Task OnOptionSelected(string selectedOption)
+    private class FormModel
     {
-        if (string.IsNullOrWhiteSpace(selectedOption))
+        public string Value { get; set; } = "";
+    }
+
+    private FormModel _formModel = new();
+
+    private string _customOption = string.Empty;
+    private bool _answered;
+
+    private string Question { get; set; } = string.Empty;
+    private List<string> Options { get; set; } = [];
+
+    private bool _isAnswered => !string.IsNullOrEmpty(Answer) || _answered;
+
+    protected override void OnParametersSet()
+    {
+        if (string.IsNullOrWhiteSpace(Args))
             return;
-            
+
+        try
+        {
+            var parsed = JsonUtils.DeserializePartialAnonymousType(Args, new
+            {
+                question = default(string),
+                options = default(string[])
+            });
+
+            Question = parsed.question ?? string.Empty;
+            Options = [.. (parsed.options ?? [])];
+        }
+        catch
+        {
+            Question = Args;
+            Options = [];
+        }
+    }
+
+    private async Task OnOptionSelected(FormModel selectedOption)
+    {
+        if (string.IsNullOrWhiteSpace(selectedOption.Value) || _answered)
+            return;
+
+        _answered = true;
+        Answer = selectedOption.Value;
+
         if (OnOptionSelectedCallback.HasDelegate)
         {
-            await OnOptionSelectedCallback.InvokeAsync(selectedOption);
+            await OnOptionSelectedCallback.InvokeAsync(selectedOption.Value);
         }
     }
 }

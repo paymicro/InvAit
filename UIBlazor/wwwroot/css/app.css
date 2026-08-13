@@ -371,6 +371,23 @@ code.hljs {
         word-break: break-all;
     }
 
+.tool-ask-buttons {
+    display: grid;
+}
+
+    .tool-ask-buttons button {
+        margin-bottom: 0.6rem;
+        text-align: left;
+    }
+
+.tool-ask-custom {
+    display: flex;
+}
+
+    .tool-ask-custom input {
+        flex-grow: 1;
+    }
+
 /* Tool Call Custom Rendering */
 .tool-file-header {
     background-color: var(--rz-base-900);

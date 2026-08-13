@@ -127,6 +127,15 @@ public static class BuiltInToolDefs
         [Description("Relative or absolute filepath")] string path)
     { }
 
+    [DisplayName(BasicEnum.AskUser)]
+    [Description("Ask the user a question and present options for them to choose from. " +
+                 "Use this when you need clarification or user input to proceed. " +
+                 "The user can select one of the provided options or enter their own answer.")]
+    public static void AskUser(
+        [Description("The question to ask the user")] string question,
+        [Description("A list of options for the user to choose from. Pass an empty array for a free-form question.")] string[] options)
+    { }
+
     public static NativeToolDefinition MapMethodToTool(string methodName)
         => MapMethodToTool(typeof(BuiltInToolDefs).GetMethod(methodName));
 

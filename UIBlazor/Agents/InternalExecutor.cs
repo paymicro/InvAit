@@ -43,7 +43,7 @@ public class InternalExecutor(IServiceProvider serviceProvider) : IInternalExecu
 
     /// <summary>
     /// Execute ask_user tool.
-    /// param1 = question, param2+ = options
+    /// Parses question and options from named JSON fields.
     /// Returns JSON with question and options for UI to render.
     /// </summary>
     private static VsToolResult ExecuteAskUserAsync(string argsJson)
@@ -54,30 +54,38 @@ public class InternalExecutor(IServiceProvider serviceProvider) : IInternalExecu
 
         if (args != null)
         {
-            // Get param keys
-            var paramKeys = args.Keys.ToList();
-
-            // First param is the question
-            if (paramKeys.Count > 0 && args.TryGetValue(paramKeys[0], out var questionObj))
+            if (args.TryGetValue("question", out var questionObj))
             {
                 question = questionObj?.ToString()?.Trim() ?? string.Empty;
             }
 
-            // Remaining params are options
-            for (var i = 1; i < paramKeys.Count; i++)
+            if (args.TryGetValue("options", out var optionsObj) && optionsObj is JsonElement optionsEl)
             {
-                if (args.TryGetValue(paramKeys[i], out var optionObj))
+                if (optionsEl.ValueKind == JsonValueKind.Array)
                 {
-                    var option = optionObj?.ToString()?.Trim();
-                    if (!string.IsNullOrEmpty(option))
+                    foreach (var item in optionsEl.EnumerateArray())
                     {
-                        options.Add(option);
+                        var option = item.ValueKind == JsonValueKind.String
+                            ? item.GetString()?.Trim()
+                            : item.ToString()?.Trim();
+                        if (!string.IsNullOrEmpty(option))
+                        {
+                            options.Add(option);
+                        }
                     }
+                }
+            }
+            else if (optionsObj != null)
+            {
+                // Fallback: if options is a single string, treat as one option
+                var option = optionsObj.ToString()?.Trim();
+                if (!string.IsNullOrEmpty(option))
+                {
+                    options.Add(option);
                 }
             }
         }
 
-        // Return result with question and options as JSON
         var resultJson = JsonSerializer.Serialize(new { question, options });
 
         return new VsToolResult
