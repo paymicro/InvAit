@@ -18,8 +18,6 @@ public interface IToolManager : IBaseSettingsProvider
 
     ToolApprovalMode GetApprovalModeByToolName(string name);
 
-    string GetToolUseSystemInstructions(AppMode mode, bool hasSkills);
-
     void UpdateCategorySettings(ToolCategory category, bool isEnabled, ToolApprovalMode approvalMode);
 
     void ToggleTool(string toolName, bool isEnabled);

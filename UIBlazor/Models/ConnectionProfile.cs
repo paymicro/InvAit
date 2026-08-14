@@ -45,6 +45,20 @@ public class ConnectionProfile : BaseOptions
 
     public bool SendCurrentDate { get; set => SetIfChanged(ref field, value); } = true;
 
+    public bool SendCurrentFile { get; set => SetIfChanged(ref field, value); } = true;
+
+    public bool SendSolutionStructure { get; set => SetIfChanged(ref field, value); } = true;
+
+    public bool UseMermaidDiagrams { get; set => SetIfChanged(ref field, value); } = true;
+
+    public bool SendRules { get; set => SetIfChanged(ref field, value); } = true;
+
+    public bool SendAgentsMd { get; set => SetIfChanged(ref field, value); } = true;
+
+    public bool SendSkills { get; set => SetIfChanged(ref field, value); } = true;
+
+    public bool SendModeInstructions { get; set => SetIfChanged(ref field, value); } = true;
+
     public string ExtraPayload { get; set => SetIfChanged(ref field, value); } = string.Empty;
 
     private static string PrepareEndpoint(string endpoint)

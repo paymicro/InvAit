@@ -121,20 +121,6 @@ public class ToolManagerTests
         Assert.Null(nonexistentTool);
     }
 
-    [Fact]
-    public void GetToolUseSystemInstructions_ReturnsNoInstructionsWhenNoEnabledTools()
-    {
-        // Arrange
-        _toolManager.RegisterAllTools();
-        _toolManager.GetTool("test_tool")!.Enabled = false;
-
-        // Act
-        var instructions = _toolManager.GetToolUseSystemInstructions(AppMode.Agent, false);
-
-        // Assert
-        Assert.DoesNotContain("Tool use instructions", instructions);
-    }
-
     #region UpdateCategorySettings Tests
 
     [Fact]
@@ -414,45 +400,6 @@ public class ToolManagerTests
 
         // Assert
         Assert.Equal(ToolApprovalMode.Allow, mode);
-    }
-
-    #endregion
-
-    #region GetToolUseSystemInstructions Mode Tests
-
-    [Fact]
-    public void GetToolUseSystemInstructions_PlanModeIncludesPlanningInstructions()
-    {
-        // Arrange
-        _toolManager.RegisterAllTools();
-
-        // Act
-        var instructions = _toolManager.GetToolUseSystemInstructions(AppMode.Plan, false);
-
-        // Assert
-        Assert.Contains("Planning Mode Instructions", instructions);
-        Assert.Contains("<plan>", instructions);
-    }
-
-    [Fact]
-    public void GetToolUseSystemInstructions_FiltersReadSkillContentWhenNoSkills()
-    {
-        // Arrange
-        var skillTool = new Tool
-        {
-            Name = BasicEnum.ReadSkillContent,
-            Category = ToolCategory.ReadFiles,
-            NativeTool = _nativeTool,
-            ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true })
-        };
-        _builtInAgent.Tools = [skillTool];
-        _toolManager.RegisterAllTools();
-
-        // Act
-        var instructions = _toolManager.GetToolUseSystemInstructions(AppMode.Chat, false);
-
-        // Assert
-        Assert.DoesNotContain(BasicEnum.ReadSkillContent, instructions);
     }
 
     #endregion

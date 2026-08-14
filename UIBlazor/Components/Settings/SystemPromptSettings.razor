@@ -1,0 +1,116 @@
+@inherits RadzenComponent
+
+<RadzenStack Gap="1rem">
+    <RadzenFormField Text="@SharedResource.CustomSystemPrompt" Variant="Variant.Outlined" AllowFloatingLabel="false">
+        <RadzenTextArea @bind-Value="@ProfileManager.ActiveProfile.SystemPrompt" Style="min-height: 120px" />
+    </RadzenFormField>
+
+    <RadzenStack Gap="0.3rem">
+        <RadzenLabel Text="@SharedResource.PromptSections" TextStyle="TextStyle.Subtitle1" />
+        <RadzenCheckBoxList Value="@selectedIndices" TValue="int" Change="@OnChange" Orientation="Orientation.Vertical">
+            <Items>
+                @for (var i = 0; i < promptFlags.Count; i++)
+                {
+                    var index = i;
+                    <RadzenCheckBoxListItem Text="@promptFlags[index].Label" Value="@index" />
+                }
+            </Items>
+        </RadzenCheckBoxList>
+    </RadzenStack>
+</RadzenStack>
+
+@code {
+    [Inject] IProfileManager ProfileManager { get; set; } = null!;
+
+    private record PromptFlag(string Key, string Label);
+
+    private readonly List<PromptFlag> promptFlags =
+    [
+        new("SendCurrentFile", SharedResource.PromptSectionActiveFile),
+        new("SendSolutionStructure", SharedResource.PromptSectionSolutionStructure),
+        new("SendCurrentDate", SharedResource.PromptSectionCurrentDate),
+        new("UseMermaidDiagrams", SharedResource.PromptSectionMermaid),
+        new("SendRules", SharedResource.PromptSectionRules),
+        new("SendAgentsMd", SharedResource.PromptSectionAgents),
+        new("SendSkills", SharedResource.PromptSectionSkills),
+        new("SendModeInstructions", SharedResource.PromptSectionModeInstructions),
+    ];
+
+    private IEnumerable<int> selectedIndices = [];
+
+    protected override void OnInitialized()
+    {
+        SyncSelectedFromProfile();
+        ProfileManager.ActiveProfile.PropertyChanged += OnProfilePropertyChanged;
+    }
+
+    private void OnProfilePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        // Re-sync if a property changed externally (e.g. from AiChatInput toggle buttons)
+        if (promptFlags.Any(f => f.Key == e.PropertyName))
+        {
+            SyncSelectedFromProfile();
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void SyncSelectedFromProfile()
+    {
+        var profile = ProfileManager.ActiveProfile;
+        selectedIndices = promptFlags
+            .Where(f => GetFlagValue(profile, f.Key))
+            .Select(f => promptFlags.IndexOf(f))
+            .ToList();
+    }
+
+    private void OnChange(IEnumerable<int>? args)
+    {
+        if (args is null)
+        {
+            return;
+        }
+
+        selectedIndices = args;
+        var profile = ProfileManager.ActiveProfile;
+        var selectedSet = args.ToHashSet();
+
+        for (var i = 0; i < promptFlags.Count; i++)
+        {
+            SetFlagValue(profile, promptFlags[i].Key, selectedSet.Contains(i));
+        }
+    }
+
+    private static bool GetFlagValue(ConnectionProfile profile, string key) => key switch
+    {
+        "SendCurrentFile" => profile.SendCurrentFile,
+        "SendSolutionStructure" => profile.SendSolutionStructure,
+        "SendCurrentDate" => profile.SendCurrentDate,
+        "UseMermaidDiagrams" => profile.UseMermaidDiagrams,
+        "SendRules" => profile.SendRules,
+        "SendAgentsMd" => profile.SendAgentsMd,
+        "SendSkills" => profile.SendSkills,
+        "SendModeInstructions" => profile.SendModeInstructions,
+        _ => false
+    };
+
+    private static void SetFlagValue(ConnectionProfile profile, string key, bool value)
+    {
+        switch (key)
+        {
+            case "SendCurrentFile": profile.SendCurrentFile = value; break;
+            case "SendSolutionStructure": profile.SendSolutionStructure = value; break;
+            case "SendCurrentDate": profile.SendCurrentDate = value; break;
+            case "UseMermaidDiagrams": profile.UseMermaidDiagrams = value; break;
+            case "SendRules": profile.SendRules = value; break;
+            case "SendAgentsMd": profile.SendAgentsMd = value; break;
+            case "SendSkills": profile.SendSkills = value; break;
+            case "SendModeInstructions": profile.SendModeInstructions = value; break;
+        }
+    }
+
+    public override void Dispose()
+    {
+        ProfileManager.ActiveProfile.PropertyChanged -= OnProfilePropertyChanged;
+        base.Dispose();
+    }
+}

@@ -420,4 +420,37 @@
   <data name="ExtraPayload" xml:space="preserve">
     <value>Extra payload</value>
   </data>
+  <data name="SystemPromptSettings" xml:space="preserve">
+    <value>Prompt</value>
+  </data>
+  <data name="PromptSections" xml:space="preserve">
+    <value>Prompt sections</value>
+  </data>
+  <data name="CustomSystemPrompt" xml:space="preserve">
+    <value>Custom system prompt</value>
+  </data>
+  <data name="PromptSectionActiveFile" xml:space="preserve">
+    <value>Active file</value>
+  </data>
+  <data name="PromptSectionSolutionStructure" xml:space="preserve">
+    <value>Solution structure</value>
+  </data>
+  <data name="PromptSectionCurrentDate" xml:space="preserve">
+    <value>Current date</value>
+  </data>
+  <data name="PromptSectionMermaid" xml:space="preserve">
+    <value>Mermaid diagrams</value>
+  </data>
+  <data name="PromptSectionRules" xml:space="preserve">
+    <value>Rules (rules.md)</value>
+  </data>
+  <data name="PromptSectionAgents" xml:space="preserve">
+    <value>Agents (agents.md)</value>
+  </data>
+  <data name="PromptSectionSkills" xml:space="preserve">
+    <value>Skills</value>
+  </data>
+  <data name="PromptSectionModeInstructions" xml:space="preserve">
+    <value>Mode instructions</value>
+  </data>
 </root>

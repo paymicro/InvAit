@@ -196,6 +196,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Custom system prompt.
+        /// </summary>
+        public static string CustomSystemPrompt {
+            get {
+                return ResourceManager.GetString("CustomSystemPrompt", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Delete Profile.
         /// </summary>
         public static string DeleteProfile {
@@ -484,6 +493,87 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Active file.
+        /// </summary>
+        public static string PromptSectionActiveFile {
+            get {
+                return ResourceManager.GetString("PromptSectionActiveFile", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Agents (agents.md).
+        /// </summary>
+        public static string PromptSectionAgents {
+            get {
+                return ResourceManager.GetString("PromptSectionAgents", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Current date.
+        /// </summary>
+        public static string PromptSectionCurrentDate {
+            get {
+                return ResourceManager.GetString("PromptSectionCurrentDate", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Mermaid diagrams.
+        /// </summary>
+        public static string PromptSectionMermaid {
+            get {
+                return ResourceManager.GetString("PromptSectionMermaid", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Mode instructions.
+        /// </summary>
+        public static string PromptSectionModeInstructions {
+            get {
+                return ResourceManager.GetString("PromptSectionModeInstructions", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Rules (rules.md).
+        /// </summary>
+        public static string PromptSectionRules {
+            get {
+                return ResourceManager.GetString("PromptSectionRules", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Prompt sections.
+        /// </summary>
+        public static string PromptSections {
+            get {
+                return ResourceManager.GetString("PromptSections", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Skills.
+        /// </summary>
+        public static string PromptSectionSkills {
+            get {
+                return ResourceManager.GetString("PromptSectionSkills", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Solution structure.
+        /// </summary>
+        public static string PromptSectionSolutionStructure {
+            get {
+                return ResourceManager.GetString("PromptSectionSolutionStructure", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Proposed Plan.
         /// </summary>
         public static string ProposedPlan {
@@ -669,6 +759,15 @@ namespace UIBlazor.Localization {
         public static string SystemPrompt {
             get {
                 return ResourceManager.GetString("SystemPrompt", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Prompt.
+        /// </summary>
+        public static string SystemPromptSettings {
+            get {
+                return ResourceManager.GetString("SystemPromptSettings", resourceCulture);
             }
         }
         

@@ -382,7 +382,6 @@ public class ToolExecutor : IAsyncDisposable
                 foreach (var lineIdx in fileMatches)
                 {
                     var lineNum = lineIdx + 1;
-                    sb.AppendLine($"Match at line {lineNum}:");
 
                     var start = Math.Max(0, lineIdx - contextLines);
                     var end = Math.Min(lines.Length - 1, lineIdx + contextLines);

@@ -77,11 +77,6 @@
                     </RadzenStack>
                 </RadzenStack>
 
-                <RadzenFormField Text="@SharedResource.SystemPrompt" Variant="Variant.Outlined" AllowFloatingLabel="false">
-                    <RadzenTextArea @bind-Value="@ProfileManager.ActiveProfile.SystemPrompt" Style="min-height: 96px" />
-                </RadzenFormField>
-
-                <CheckBox Text="@SharedResource.SendCurrentDate" @bind-Value=@ProfileManager.ActiveProfile.SendCurrentDate />
                     <RadzenFormField Text="@SharedResource.ExtraPayload" Variant="Variant.Outlined" AllowFloatingLabel="false">
                         <RadzenTextArea @bind-Value="@ProfileManager.ActiveProfile.ExtraPayload" Style="min-height: 96px" Placeholder="@_extraPayloadPlaceholder" />
                     </RadzenFormField>
@@ -90,6 +85,9 @@
 
                 <CheckBox Text="@SharedResource.SkipSSL" @bind-Value=@ProfileManager.ActiveProfile.SkipSSL />
             </RadzenStack>
+        </RadzenTabsItem>
+        <RadzenTabsItem Text="@SharedResource.SystemPromptSettings">
+            <SystemPromptSettings />
         </RadzenTabsItem>
         <RadzenTabsItem Text="@SharedResource.SettingsTools">
             <RadzenStack Gap="1rem">
@@ -147,8 +145,6 @@
         </RadzenTabsItem>
         <RadzenTabsItem Text="@SharedResource.SettingsMisc">
             <RadzenStack Gap="1rem">
-                <CheckBox Text="@SharedResource.SendCurrentFile" @bind-Value="@CommonSettingsProvider.Current.SendCurrentFile" />
-                <CheckBox Text="@SharedResource.SendSolutionsStricture" @bind-Value="@CommonSettingsProvider.Current.SendSolutionsStricture" />
                 
                 <RadzenStack Gap="0.2rem">
                     <RadzenLabel Text="@SharedResource.MaxRetries" />

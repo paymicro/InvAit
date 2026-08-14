@@ -233,45 +233,6 @@ public class ToolManager(
             : ToolApprovalMode.Allow;
     }
 
-    private string GetModeDesc(AppMode mode)
-        => mode switch
-        {
-            AppMode.Agent => $"{mode} (for taking actions and applying changes)",
-            AppMode.Plan => $"{mode} (for planning before taking actions)",
-            _ => $"{mode} (for discussion, reading and explanations)",
-        };
-
-    public string GetToolUseSystemInstructions(AppMode mode, bool hasSkills)
-    {
-        var sb = new StringBuilder();
-        // TODO опционально
-        sb.AppendLine("Use Mermaid diagrams for clarity in explanations. This will help you better visualize the answer formula. Don`t use \", {, }, (, ), [, ], in Mermaid node names.");
-        sb.AppendLine($"Your current mode: {GetModeDesc(mode)}");
-        if (mode == AppMode.Plan)
-        {
-            sb.AppendLine("""
-                          ## Planning Mode Instructions
-                          You are currently in **PLANNING MODE**. Your goal is to analyze the user's request, explore the codebase, and propose a detailed, step-by-step plan for implementation.
-                          
-                          1. **Analyze**: Use available tools to understand the current state of the project.
-                          2. **Propose**: Create a structured plan. The plan should be realistic and broken down into logical steps.
-                          3. **Format**: Wrap your final plan in `<plan>` tags. Each step should be clear and actionable.
-                          
-                          **Example:**
-                          <plan>
-                          1. Create a new service `StorageService`.
-                          2. Register it in `Program.cs`.
-                          3. Update `SettingsPage` to use the new service.
-                          </plan>
-
-                          In this mode, you should NOT make any changes to files. Your goal is to get user approval for the plan.
-                          Once the plan is approved, the mode will be switched to **Agent** for execution.
-                          """);
-        }
-
-        return sb.ToString();
-    }
-
     // Uses SchemaProcessor for recursive handling
     private static Dictionary<string, object> GetArgumentNamesFromSchema(JsonElement? schemaElement, IReadOnlyDictionary<string, object> args)
     {

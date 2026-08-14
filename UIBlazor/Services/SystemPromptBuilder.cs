@@ -1,7 +1,6 @@
 namespace UIBlazor.Services;
 
 public class SystemPromptBuilder(
-    ICommonSettingsProvider commonSettingsProvider,
     IProfileManager profileManager,
     IToolManager toolManager,
     ISkillService skillService,
@@ -12,16 +11,20 @@ public class SystemPromptBuilder(
 
     public async Task<string> PrepareSystemPromptAsync(AppMode mode, CancellationToken cancellationToken)
     {
+        var profile = profileManager.ActiveProfile;
+
         // Загружаем метаданные скиллов и добавляем в системный промпт
         var skillsMetadata = await skillService.GetSkillsMetadataAsync(cancellationToken);
-        var skillsSection = skillService.FormatSkillsForSystemPrompt(skillsMetadata);
+        var skillsSection = profile.SendSkills
+            ? skillService.FormatSkillsForSystemPrompt(skillsMetadata)
+            : string.Empty;
 
         var contextSection = new StringBuilder();
         var currentContext = vsCodeContextService.CurrentContext;
         if (currentContext != null)
         {
             var codeContext = new List<string>();
-            if (commonSettingsProvider.Current.SendSolutionsStricture && currentContext.SolutionFiles.Count > 0)
+            if (profile.SendSolutionStructure && currentContext.SolutionFiles.Count > 0)
             {
                 codeContext.Add($"""
                                 Solution structure:
@@ -30,7 +33,7 @@ public class SystemPromptBuilder(
                                 ```
                                 """);
             }
-            if (commonSettingsProvider.Current.SendCurrentFile && !string.IsNullOrEmpty(currentContext.ActiveFilePath))
+            if (profile.SendCurrentFile && !string.IsNullOrEmpty(currentContext.ActiveFilePath))
             {
                 codeContext.Add($"""
                                 ## Current (active) file
@@ -52,19 +55,71 @@ public class SystemPromptBuilder(
         }
 
         // Загружаем правила
-        var rules = await ruleService.GetRulesAsync(cancellationToken);
+        var rules = profile.SendRules
+            ? await ruleService.GetRulesAsync(cancellationToken)
+            : string.Empty;
         // файл agents.md
-        var agents = await ruleService.GetAgentsMdAsync(cancellationToken);
+        var agents = profile.SendAgentsMd
+            ? await ruleService.GetAgentsMdAsync(cancellationToken)
+            : string.Empty;
 
-        List<string?> systemPromptBlocks = [Options.SystemPrompt,
-            toolManager.GetToolUseSystemInstructions(mode, skillsMetadata.Count != 0),
+        // Mermaid instructions — independent of mode instructions
+        var mermaidSection = profile.UseMermaidDiagrams
+            ? "Use Mermaid diagrams for clarity in explanations. This will help you better visualize the answer formula. Don`t use \", {, }, (, ), [, ], in Mermaid node names."
+            : string.Empty;
+
+        // Mode instructions — independent of Mermaid
+        var modeInstructions = profile.SendModeInstructions
+            ? BuildModeInstructions(mode)
+            : string.Empty;
+
+        List<string?> systemPromptBlocks = [profile.SystemPrompt,
+            mermaidSection,
+            modeInstructions,
             skillsSection,
             contextSection.ToString(),
             rules,
             !string.IsNullOrEmpty(agents) ? string.Join("# Agents instructions\n", agents) : null,
-            profileManager.ActiveProfile.SendCurrentDate ? $"Current date: {DateTime.Now:dd-MM-yyyy}" : null];
+            profile.SendCurrentDate ? $"Current date: {DateTime.Now:dd-MM-yyyy}" : null];
 
         return string.Join(Environment.NewLine, systemPromptBlocks.Where(b => !string.IsNullOrEmpty(b)));
+    }
+
+    private static string BuildModeInstructions(AppMode mode)
+    {
+        var modeDesc = mode switch
+        {
+            AppMode.Agent => $"{mode} (for taking actions and applying changes)",
+            AppMode.Plan => $"{mode} (for planning before taking actions)",
+            _ => $"{mode} (for discussion, reading and explanations)",
+        };
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Your current mode: {modeDesc}");
+
+        if (mode == AppMode.Plan)
+        {
+            sb.AppendLine("""
+                          ## Planning Mode Instructions
+                          You are currently in **PLANNING MODE**. Your goal is to analyze the user's request, explore the codebase, and propose a detailed, step-by-step plan for implementation.
+                          
+                          1. **Analyze**: Use available tools to understand the current state of the project.
+                          2. **Propose**: Create a structured plan. The plan should be realistic and broken down into logical steps.
+                          3. **Format**: Wrap your final plan in `<plan>` tags. Each step should be clear and actionable.
+                          
+                          **Example:**
+                          <plan>
+                          1. Create a new service `StorageService`.
+                          2. Register it in `Program.cs`.
+                          3. Update `SettingsPage` to use the new service.
+                          </plan>
+
+                          In this mode, you should NOT make any changes to files. Your goal is to get user approval for the plan.
+                          Once the plan is approved, the mode will be switched to **Agent** for execution.
+                          """);
+        }
+
+        return sb.ToString();
     }
 
     public string BuildSolutionFiles(VsCodeContext currentContext, bool compress)

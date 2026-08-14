@@ -420,4 +420,37 @@
   <data name="ExtraPayload" xml:space="preserve">
     <value>Дополнительный payload</value>
   </data>
+  <data name="SystemPromptSettings" xml:space="preserve">
+    <value>Промпт</value>
+  </data>
+  <data name="PromptSections" xml:space="preserve">
+    <value>Секции промпта</value>
+  </data>
+  <data name="CustomSystemPrompt" xml:space="preserve">
+    <value>Пользовательский промпт</value>
+  </data>
+  <data name="PromptSectionActiveFile" xml:space="preserve">
+    <value>Активный файл</value>
+  </data>
+  <data name="PromptSectionSolutionStructure" xml:space="preserve">
+    <value>Структура решения</value>
+  </data>
+  <data name="PromptSectionCurrentDate" xml:space="preserve">
+    <value>Текущая дата</value>
+  </data>
+  <data name="PromptSectionMermaid" xml:space="preserve">
+    <value>Mermaid диаграммы</value>
+  </data>
+  <data name="PromptSectionRules" xml:space="preserve">
+    <value>Правила (rules.md)</value>
+  </data>
+  <data name="PromptSectionAgents" xml:space="preserve">
+    <value>Агенты (agents.md)</value>
+  </data>
+  <data name="PromptSectionSkills" xml:space="preserve">
+    <value>Скиллы</value>
+  </data>
+  <data name="PromptSectionModeInstructions" xml:space="preserve">
+    <value>Инструкции режима</value>
+  </data>
 </root>

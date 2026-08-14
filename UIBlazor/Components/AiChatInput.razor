@@ -28,18 +28,20 @@
             disabled="@IsLoading"/>
 
             <div class="misc">
-                <RadzenToggleButton @bind-Value="CommonSettingsProvider.Current.SendCurrentFile"
+                <RadzenToggleButton Value="_sendCurrentFile"
                 ButtonStyle="ButtonStyle.Base"
                 Size="ButtonSize.Small"
                 Variant="Variant.Flat"
-                title="@SharedResource.SendCurrentFile">
+                title="@SharedResource.PromptSectionActiveFile"
+                ValueChanged="@OnSendCurrentFileChanged">
                     <i class="fa-solid fa-file"></i>
                 </RadzenToggleButton>
-                <RadzenToggleButton @bind-Value="CommonSettingsProvider.Current.SendSolutionsStricture"
+                <RadzenToggleButton Value="_sendSolutionStructure"
                 ButtonStyle="ButtonStyle.Base"
                 Size="ButtonSize.Small"
                 Variant="Variant.Flat"
-                title="@SharedResource.SendSolutionsStricture">
+                title="@SharedResource.PromptSectionSolutionStructure"
+                ValueChanged="@OnSendSolutionStructureChanged">
                     <i class="fa-solid fa-folder-tree"></i>
                 </RadzenToggleButton>
             </div>
@@ -135,6 +137,7 @@
     [Inject] private IJSRuntime JsRuntime { get; set; } = null!;
     [Inject] private IVsBridge VsBridge { get; set; } = null!;
     [Inject] private ICommonSettingsProvider CommonSettingsProvider { get; set; } = null!;
+    [Inject] private IProfileManager ProfileManager { get; set; } = null!;
 
     private static readonly Dictionary<string, string> _availableCommands = new()
     {
@@ -148,6 +151,10 @@
     private List<string> _filteredCommands = [];
     private int _selectedIndex;
     private bool _shouldPreventDefault;
+
+    // Local mirrors of profile flags for reliable RadzenToggleButton rendering
+    private bool _sendCurrentFile;
+    private bool _sendSolutionStructure;
 
     private List<AppMode> AppModeValues { get; } = [.. Enum.GetValues<AppMode>()];
 
@@ -399,17 +406,37 @@
     protected override void OnInitialized()
     {
         base.OnInitialized();
+        SyncLocalFlags();
         ChatService.SessionChanged += HandlePropertyChanged;
-        CommonSettingsProvider.Current.PropertyChanged += HandlePropertyChanged;
+        ProfileManager.ActiveProfile.PropertyChanged += HandlePropertyChanged;
+    }
+
+    private void SyncLocalFlags()
+    {
+        _sendCurrentFile = ProfileManager.ActiveProfile.SendCurrentFile;
+        _sendSolutionStructure = ProfileManager.ActiveProfile.SendSolutionStructure;
+    }
+
+    private void OnSendCurrentFileChanged(bool value)
+    {
+        _sendCurrentFile = value;
+        ProfileManager.ActiveProfile.SendCurrentFile = value;
+    }
+
+    private void OnSendSolutionStructureChanged(bool value)
+    {
+        _sendSolutionStructure = value;
+        ProfileManager.ActiveProfile.SendSolutionStructure = value;
     }
 
     private void HandlePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(UIBlazor.Models.ConversationSession.Mode)
             or nameof(UIBlazor.Models.ConversationSession)
-            or nameof(CommonOptions.SendCurrentFile)
-            or nameof(CommonOptions.SendSolutionsStricture))
+            or nameof(ConnectionProfile.SendCurrentFile)
+            or nameof(ConnectionProfile.SendSolutionStructure))
         {
+            SyncLocalFlags();
             InvokeAsync(StateHasChanged);
         }
     }
@@ -427,7 +454,7 @@
     public void Dispose()
     {
         ChatService.SessionChanged -= HandlePropertyChanged;
-        CommonSettingsProvider.Current.PropertyChanged -= HandlePropertyChanged;
+        ProfileManager.ActiveProfile.PropertyChanged -= HandlePropertyChanged;
     }
 
     private void OnModeChanged()

@@ -12,9 +12,10 @@ public class AiChatInputTests : BunitContext
     private readonly Mock<IVsCodeContextService> _mockVsCodeContextService;
     private readonly Mock<IVsBridge> _mockVsBridge;
     private readonly Mock<ICommonSettingsProvider> _mockCommonSettings;
+    private readonly Mock<IProfileManager> _mockProfileManager;
     private readonly Mock<IJSRuntime> _mockJsRuntime;
     private readonly ConversationSession _session;
-    private readonly CommonOptions _commonOptions;
+    private readonly ConnectionProfile _profile;
     private readonly VsCodeContext _vsCodeContext;
 
     public AiChatInputTests()
@@ -23,6 +24,7 @@ public class AiChatInputTests : BunitContext
         _mockVsCodeContextService = new Mock<IVsCodeContextService>();
         _mockVsBridge = new Mock<IVsBridge>();
         _mockCommonSettings = new Mock<ICommonSettingsProvider>();
+        _mockProfileManager = new Mock<IProfileManager>();
         _mockJsRuntime = new Mock<IJSRuntime>();
 
         // Setup session
@@ -32,11 +34,11 @@ public class AiChatInputTests : BunitContext
             Mode = AppMode.Chat
         };
 
-        // Setup common options
-        _commonOptions = new CommonOptions
+        // Setup profile
+        _profile = new ConnectionProfile
         {
             SendCurrentFile = true,
-            SendSolutionsStricture = true
+            SendSolutionStructure = true
         };
 
         // Setup VS Code context with sample files
@@ -53,7 +55,8 @@ public class AiChatInputTests : BunitContext
 
         // Setup mock returns
         _mockChatService.Setup(x => x.Session).Returns(_session);
-        _mockCommonSettings.Setup(x => x.Current).Returns(_commonOptions);
+        _mockCommonSettings.Setup(x => x.Current).Returns(new CommonOptions());
+        _mockProfileManager.Setup(x => x.ActiveProfile).Returns(_profile);
         _mockVsCodeContextService.Setup(x => x.CurrentContext).Returns(_vsCodeContext);
 
         // Register services
@@ -61,6 +64,7 @@ public class AiChatInputTests : BunitContext
         Services.AddSingleton(_mockVsCodeContextService.Object);
         Services.AddSingleton(_mockVsBridge.Object);
         Services.AddSingleton(_mockCommonSettings.Object);
+        Services.AddSingleton(_mockProfileManager.Object);
         Services.AddSingleton(_mockJsRuntime.Object);
         Services.AddSingleton(new Mock<ILogger<AiChatInput>>().Object);
 
@@ -779,7 +783,7 @@ public class AiChatInputTests : BunitContext
         var cut = Render<AiChatInput>();
 
         // Assert - verify subscription by triggering event
-        _commonOptions.SendCurrentFile = false;
+        _profile.SendCurrentFile = false;
 
         // Component should still render without errors
         Assert.NotNull(cut.Find(".chat-input-wrapper"));

@@ -1,11 +1,10 @@
-namespace UIBlazor.Tests.Services;
+﻿namespace UIBlazor.Tests.Services;
 
 /// <summary>
 /// <seealso cref="SystemPromptBuilder"/>
 /// </summary>
 public class SystemPromptBuilderTests
 {
-    private readonly Mock<ICommonSettingsProvider> _commonSettingsMock;
     private readonly Mock<IProfileManager> _profileManagerMock;
     private readonly Mock<IToolManager> _toolManagerMock;
     private readonly Mock<ISkillService> _skillServiceMock;
@@ -14,31 +13,30 @@ public class SystemPromptBuilderTests
 
     public SystemPromptBuilderTests()
     {
-        _commonSettingsMock = new Mock<ICommonSettingsProvider>();
         _profileManagerMock = new Mock<IProfileManager>();
         _toolManagerMock = new Mock<IToolManager>();
         _skillServiceMock = new Mock<ISkillService>();
         _ruleServiceMock = new Mock<IRuleService>();
         _vsCodeContextServiceMock = new Mock<IVsCodeContextService>();
 
-        // Setup default profile
+        // Setup default profile with all prompt sections enabled
         _profileManagerMock.SetupGet(p => p.ActiveProfile).Returns(new ConnectionProfile
         {
-            SystemPrompt = "Test system prompt from profile"
-        });
-
-        // Setup default common settings
-        _commonSettingsMock.SetupGet(c => c.Current).Returns(new CommonOptions
-        {
-            SendSolutionsStricture = true,
-            SendCurrentFile = true
+            SystemPrompt = "Test system prompt from profile",
+            SendCurrentFile = true,
+            SendSolutionStructure = true,
+            SendCurrentDate = true,
+            UseMermaidDiagrams = true,
+            SendRules = true,
+            SendAgentsMd = true,
+            SendSkills = true,
+            SendModeInstructions = true
         });
     }
 
     private SystemPromptBuilder CreateBuilder()
     {
         return new SystemPromptBuilder(
-            _commonSettingsMock.Object,
             _profileManagerMock.Object,
             _toolManagerMock.Object,
             _skillServiceMock.Object,
@@ -87,10 +85,6 @@ public class SystemPromptBuilderTests
             .Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(agentsContent);
 
-        _toolManagerMock
-            .Setup(t => t.GetToolUseSystemInstructions(It.IsAny<AppMode>(), It.IsAny<bool>()))
-            .Returns("## Tool Usage Instructions\nUse tools wisely.");
-
         var builder = CreateBuilder();
 
         // Act
@@ -98,7 +92,8 @@ public class SystemPromptBuilderTests
 
         // Assert
         Assert.Contains("Test system prompt from profile", result);
-        Assert.Contains("## Tool Usage Instructions", result);
+        Assert.Contains("Use Mermaid diagrams", result);
+        Assert.Contains("Your current mode: Agent", result);
         Assert.Contains("## Available Skills", result);
         Assert.Contains("**TestSkill**: A test skill", result);
         Assert.Contains("# CURRENT CODE CONTEXT", result);
@@ -125,7 +120,6 @@ public class SystemPromptBuilderTests
         _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsCodeContext?)null);
         _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
         _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
-        _toolManagerMock.Setup(t => t.GetToolUseSystemInstructions(It.IsAny<AppMode>(), false)).Returns("Tool instructions");
 
         var builder = CreateBuilder();
 
@@ -134,7 +128,8 @@ public class SystemPromptBuilderTests
 
         // Assert
         Assert.Contains("Test system prompt from profile", result);
-        Assert.Contains("Tool instructions", result);
+        Assert.Contains("Your current mode: Chat", result);
+        Assert.Contains("Use Mermaid diagrams", result);
         Assert.DoesNotContain("## Available Skills", result);
         Assert.DoesNotContain("# CURRENT CODE CONTEXT", result);
         Assert.DoesNotContain("# Test Rules", result);
@@ -152,7 +147,6 @@ public class SystemPromptBuilderTests
         _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsCodeContext?)null);
         _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
         _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
-        _toolManagerMock.Setup(t => t.GetToolUseSystemInstructions(It.IsAny<AppMode>(), true)).Returns("Tool instructions");
 
         var builder = CreateBuilder();
 
@@ -161,19 +155,26 @@ public class SystemPromptBuilderTests
 
         // Assert
         Assert.Contains("Test system prompt from profile", result);
-        Assert.Contains("Tool instructions", result);
+        Assert.Contains("Your current mode: Agent", result);
         Assert.Contains("## Available Skills", result);
         Assert.DoesNotContain("# CURRENT CODE CONTEXT", result);
     }
 
     [Fact]
-    public async Task PrepareSystemPromptAsync_SendSolutionsStructureDisabled_StructureExcluded()
+    public async Task PrepareSystemPromptAsync_SendSolutionStructureDisabled_StructureExcluded()
     {
         // Arrange
-        _commonSettingsMock.SetupGet(c => c.Current).Returns(new CommonOptions
+        _profileManagerMock.SetupGet(p => p.ActiveProfile).Returns(new ConnectionProfile
         {
-            SendSolutionsStricture = false,
-            SendCurrentFile = true
+            SystemPrompt = "Test system prompt from profile",
+            SendCurrentFile = true,
+            SendSolutionStructure = false,
+            SendCurrentDate = true,
+            UseMermaidDiagrams = true,
+            SendRules = true,
+            SendAgentsMd = true,
+            SendSkills = true,
+            SendModeInstructions = true
         });
 
         var context = new VsCodeContext
@@ -191,7 +192,6 @@ public class SystemPromptBuilderTests
         _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>())).Returns(string.Empty);
         _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
         _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
-        _toolManagerMock.Setup(t => t.GetToolUseSystemInstructions(It.IsAny<AppMode>(), false)).Returns(string.Empty);
 
         var builder = CreateBuilder();
 
@@ -208,10 +208,17 @@ public class SystemPromptBuilderTests
     public async Task PrepareSystemPromptAsync_SendCurrentFileDisabled_FileExcluded()
     {
         // Arrange
-        _commonSettingsMock.SetupGet(c => c.Current).Returns(new CommonOptions
+        _profileManagerMock.SetupGet(p => p.ActiveProfile).Returns(new ConnectionProfile
         {
-            SendSolutionsStricture = true,
-            SendCurrentFile = false
+            SystemPrompt = "Test system prompt from profile",
+            SendCurrentFile = false,
+            SendSolutionStructure = true,
+            SendCurrentDate = true,
+            UseMermaidDiagrams = true,
+            SendRules = true,
+            SendAgentsMd = true,
+            SendSkills = true,
+            SendModeInstructions = true
         });
 
         var context = new VsCodeContext
@@ -229,7 +236,6 @@ public class SystemPromptBuilderTests
         _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>())).Returns(string.Empty);
         _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
         _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
-        _toolManagerMock.Setup(t => t.GetToolUseSystemInstructions(It.IsAny<AppMode>(), false)).Returns(string.Empty);
 
         var builder = CreateBuilder();
 
@@ -261,7 +267,6 @@ public class SystemPromptBuilderTests
         _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>())).Returns(string.Empty);
         _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
         _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
-        _toolManagerMock.Setup(t => t.GetToolUseSystemInstructions(It.IsAny<AppMode>(), false)).Returns(string.Empty);
 
         var builder = CreateBuilder();
 
@@ -281,7 +286,6 @@ public class SystemPromptBuilderTests
         _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsCodeContext?)null);
         _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
         _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
-        _toolManagerMock.Setup(t => t.GetToolUseSystemInstructions(It.IsAny<AppMode>(), false)).Returns(string.Empty);
 
         var builder = CreateBuilder();
 
@@ -291,6 +295,164 @@ public class SystemPromptBuilderTests
         // Assert
         Assert.DoesNotContain("Agent instructions", result);
         Assert.DoesNotContain("# Agents instructions", result);
+    }
+
+    [Fact]
+    public async Task PrepareSystemPromptAsync_SendRulesDisabled_RulesExcluded()
+    {
+        // Arrange
+        _profileManagerMock.SetupGet(p => p.ActiveProfile).Returns(new ConnectionProfile
+        {
+            SystemPrompt = "Test system prompt from profile",
+            SendCurrentFile = true,
+            SendSolutionStructure = true,
+            SendCurrentDate = true,
+            UseMermaidDiagrams = true,
+            SendRules = false,
+            SendAgentsMd = true,
+            SendSkills = true,
+            SendModeInstructions = true
+        });
+
+        _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>())).Returns(string.Empty);
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsCodeContext?)null);
+        _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync("# Test Rules\nThese are test rules.");
+        _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
+
+        var builder = CreateBuilder();
+
+        // Act
+        var result = await builder.PrepareSystemPromptAsync(AppMode.Chat, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.DoesNotContain("# Test Rules", result);
+    }
+
+    [Fact]
+    public async Task PrepareSystemPromptAsync_SendSkillsDisabled_SkillsSectionExcluded()
+    {
+        // Arrange
+        _profileManagerMock.SetupGet(p => p.ActiveProfile).Returns(new ConnectionProfile
+        {
+            SystemPrompt = "Test system prompt from profile",
+            SendCurrentFile = true,
+            SendSolutionStructure = true,
+            SendCurrentDate = true,
+            UseMermaidDiagrams = true,
+            SendRules = true,
+            SendAgentsMd = true,
+            SendSkills = false,
+            SendModeInstructions = true
+        });
+
+        var skillsMetadata = new List<SkillMetadata>
+        {
+            new() { Name = "TestSkill", Description = "A test skill" }
+        };
+        _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync(skillsMetadata);
+        _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(skillsMetadata)).Returns("## Available Skills\n**TestSkill**: A test skill");
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsCodeContext?)null);
+        _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
+        _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
+
+        var builder = CreateBuilder();
+
+        // Act
+        var result = await builder.PrepareSystemPromptAsync(AppMode.Chat, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.DoesNotContain("## Available Skills", result);
+    }
+
+    [Fact]
+    public async Task PrepareSystemPromptAsync_SendModeInstructionsDisabled_ModeInstructionsExcluded_MermaidStillPresent()
+    {
+        // Arrange
+        _profileManagerMock.SetupGet(p => p.ActiveProfile).Returns(new ConnectionProfile
+        {
+            SystemPrompt = "Test system prompt from profile",
+            SendCurrentFile = true,
+            SendSolutionStructure = true,
+            SendCurrentDate = true,
+            UseMermaidDiagrams = true,
+            SendRules = true,
+            SendAgentsMd = true,
+            SendSkills = true,
+            SendModeInstructions = false
+        });
+
+        _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>())).Returns(string.Empty);
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsCodeContext?)null);
+        _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
+        _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
+
+        var builder = CreateBuilder();
+
+        // Act
+        var result = await builder.PrepareSystemPromptAsync(AppMode.Agent, TestContext.Current.CancellationToken);
+
+        // Assert — mode instructions excluded
+        Assert.DoesNotContain("Your current mode:", result);
+        Assert.DoesNotContain("Planning Mode Instructions", result);
+        // Assert — Mermaid is still present (independent of mode instructions)
+        Assert.Contains("Use Mermaid diagrams", result);
+    }
+
+    [Fact]
+    public async Task PrepareSystemPromptAsync_UseMermaidDisabled_MermaidExcluded_ModeInstructionsStillPresent()
+    {
+        // Arrange
+        _profileManagerMock.SetupGet(p => p.ActiveProfile).Returns(new ConnectionProfile
+        {
+            SystemPrompt = "Test system prompt from profile",
+            SendCurrentFile = true,
+            SendSolutionStructure = true,
+            SendCurrentDate = true,
+            UseMermaidDiagrams = false,
+            SendRules = true,
+            SendAgentsMd = true,
+            SendSkills = true,
+            SendModeInstructions = true
+        });
+
+        _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>())).Returns(string.Empty);
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsCodeContext?)null);
+        _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
+        _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
+
+        var builder = CreateBuilder();
+
+        // Act
+        var result = await builder.PrepareSystemPromptAsync(AppMode.Agent, TestContext.Current.CancellationToken);
+
+        // Assert — Mermaid excluded
+        Assert.DoesNotContain("Use Mermaid diagrams", result);
+        // Assert — mode instructions still present (independent of Mermaid)
+        Assert.Contains("Your current mode: Agent", result);
+    }
+
+    [Fact]
+    public async Task PrepareSystemPromptAsync_PlanMode_IncludesPlanningInstructions()
+    {
+        // Arrange
+        _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>())).Returns(string.Empty);
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsCodeContext?)null);
+        _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
+        _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
+
+        var builder = CreateBuilder();
+
+        // Act
+        var result = await builder.PrepareSystemPromptAsync(AppMode.Plan, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Contains("Your current mode: Plan", result);
+        Assert.Contains("## Planning Mode Instructions", result);
+        Assert.Contains("<plan>", result);
     }
 
     [Fact]
