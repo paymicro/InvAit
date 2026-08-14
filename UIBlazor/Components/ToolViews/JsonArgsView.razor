@@ -1,0 +1,153 @@
+@if (_hasParsed)
+{
+    <div class="json-args-view">
+        @RenderDict(_parsedArgs)
+    </div>
+}
+
+@implements IDisposable
+
+@code {
+    [Parameter] public string Args { get; set; } = string.Empty;
+
+    private Dictionary<string, object> _parsedArgs = new();
+    private bool _hasParsed;
+    private bool _shouldRender = true;
+    private DateTime _lastRenderTime = DateTime.MinValue;
+    private CancellationTokenSource? _pendingCts;
+    private const int _renderIntervalMs = 500;
+
+    protected override bool ShouldRender()
+    {
+        if (_shouldRender)
+        {
+            _lastRenderTime = DateTime.Now;
+            _shouldRender = false;
+            return true;
+        }
+
+        // Троттлинг: если рендер был недавно, откладываем
+        var elapsed = (DateTime.Now - _lastRenderTime).TotalMilliseconds;
+        if (elapsed < _renderIntervalMs)
+        {
+            _pendingCts?.Cancel();
+            _pendingCts = new CancellationTokenSource();
+            _ = DelayedStateHasChanged(_pendingCts.Token);
+            return false;
+        }
+
+        _lastRenderTime = DateTime.Now;
+        return true;
+    }
+
+    private async Task DelayedStateHasChanged(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(_renderIntervalMs, ct);
+            _shouldRender = true;
+            StateHasChanged();
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (string.IsNullOrWhiteSpace(Args))
+        {
+            _hasParsed = false;
+            return;
+        }
+
+        _parsedArgs = JsonUtils.DeserializePartialAnonymousType(Args, new Dictionary<string, object>());
+        // Пустой объект {} или невалидный JSON — не рендерим ничего
+        _hasParsed = _parsedArgs.Count > 0;
+    }
+
+    public void Dispose()
+    {
+        _pendingCts?.Cancel();
+        _pendingCts?.Dispose();
+    }
+
+    private RenderFragment RenderDict(Dictionary<string, object> dict) => @<div class="json-args-nested">
+        @foreach (var kvp in dict)
+        {
+            <div class="json-args-row">
+                <span class="json-args-key">@kvp.Key</span>
+                <span class="json-args-value">@RenderValue(kvp.Value)</span>
+            </div>
+        }
+    </div>;
+
+    private RenderFragment RenderValue(object? value) => value switch
+    {
+        null => @<span class="json-args-null">null</span>,
+        bool b => @<span class="json-args-bool">@b.ToString().ToLowerInvariant()</span>,
+        long l => @<span class="json-args-number">@l</span>,
+        double d => @<span class="json-args-number">@d</span>,
+        int i => @<span class="json-args-number">@i</span>,
+        string s => RenderStringValue(s),
+        JsonElement je => RenderJsonElement(je),
+        Dictionary<string, object> d => RenderDict(d),
+        List<object> list => RenderList(list),
+        IList<object> ilist => RenderList(ilist),
+        _ => @<span class="json-args-value">@value.ToString()</span>
+    };
+
+    private RenderFragment RenderStringValue(string s)
+    {
+        if (s.Length > 200)
+        {
+            return @<div class="json-args-value--long">@s</div>;
+        }
+        return @<span class="json-args-value">@s</span>;
+    }
+
+    private RenderFragment RenderJsonElement(JsonElement je)
+    {
+        return je.ValueKind switch
+        {
+            JsonValueKind.String => RenderStringValue(je.GetString() ?? string.Empty),
+            JsonValueKind.Number => je.TryGetInt64(out var l)
+                ? @<span class="json-args-number">@l</span>
+                : @<span class="json-args-number">@je.GetDouble()</span>,
+            JsonValueKind.True => @<span class="json-args-bool">true</span>,
+            JsonValueKind.False => @<span class="json-args-bool">false</span>,
+            JsonValueKind.Null => @<span class="json-args-null">null</span>,
+            JsonValueKind.Object => RenderJsonElementAsObject(je),
+            JsonValueKind.Array => RenderJsonElementAsArray(je),
+            _ => @<span class="json-args-value">@je.GetRawText()</span>
+        };
+    }
+
+    private RenderFragment RenderJsonElementAsObject(JsonElement je) => @<div class="json-args-nested">
+        @foreach (var prop in je.EnumerateObject())
+        {
+            <div class="json-args-row">
+                <span class="json-args-key">@prop.Name</span>
+                <span class="json-args-value">@RenderValue(prop.Value)</span>
+            </div>
+        }
+    </div>;
+
+    private RenderFragment RenderJsonElementAsArray(JsonElement je) => @<div class="json-args-array">
+        @foreach (var item in je.EnumerateArray())
+        {
+            <div class="json-args-array-item">
+                <span class="json-args-array-marker">•</span>
+                @RenderValue(item)
+            </div>
+        }
+    </div>;
+
+    private RenderFragment RenderList(IList<object> list) => @<div class="json-args-array">
+        @foreach (var item in list)
+        {
+            <div class="json-args-array-item">
+                <span class="json-args-array-marker">•</span>
+                @RenderValue(item)
+            </div>
+        }
+    </div>;
+}

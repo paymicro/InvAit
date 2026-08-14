@@ -371,6 +371,118 @@ code.hljs {
         word-break: break-all;
     }
 
+/* JsonArgsView - readable key-value display for tool arguments */
+.json-args-view {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.json-args-nested {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    margin-left: 0.8rem;
+    padding-left: 0.6rem;
+    border-left: 2px solid var(--rz-base-600);
+}
+
+.json-args-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    line-height: 1.5;
+}
+
+.json-args-key {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 0.82rem;
+    color: var(--rz-info-light);
+    min-width: 5rem;
+    flex-shrink: 0;
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.json-args-value {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 0.82rem;
+    color: var(--rz-base-400);
+    word-break: break-all;
+    white-space: pre-wrap;
+}
+
+.json-args-value--long {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 0.82rem;
+    color: var(--rz-base-400);
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 120px;
+    overflow-y: auto;
+    background: var(--rz-base-900);
+    border-radius: 4px;
+    padding: 0.3rem 0.5rem;
+    width: 100%;
+}
+
+.json-args-bool {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 0.82rem;
+    color: var(--rz-warning-light);
+    font-weight: 600;
+}
+
+.json-args-number {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 0.82rem;
+    color: var(--rz-success-light);
+    font-weight: 600;
+}
+
+.json-args-null {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 0.82rem;
+    color: var(--rz-base-500);
+    font-style: italic;
+}
+
+.json-args-array {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    margin-left: 0.4rem;
+}
+
+.json-args-array-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.35rem;
+    line-height: 1.5;
+}
+
+.json-args-array-marker {
+    color: var(--rz-base-500);
+    flex-shrink: 0;
+    font-size: 0.82rem;
+}
+
+.json-args-raw {
+    margin: 0.5rem 0;
+    border-radius: 4px;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+    .json-args-raw pre {
+        margin: 0;
+        font-size: 0.85rem;
+        color: var(--rz-base-400);
+        padding: 0;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+
 .tool-ask-buttons {
     display: grid;
 }

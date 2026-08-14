@@ -44,14 +44,12 @@
             }
             else
             {
-                <div class="diff-block">
-                    <pre>@ToolCall.Function.Arguments</pre>
-                </div>
+                <JsonArgsView Args="@ToolCall.Function.Arguments" />
             }
         </div>
     }
 
-    @if (ToolCall.IsReady)
+    @if (ToolCall.IsReady && ToolCall.Function.Name != BasicEnum.AskUser)
     {
         <div class="tool-approval-footer @StatusClass">
             @if (ToolCall.ApprovalStatus == ToolApprovalStatus.Pending)
