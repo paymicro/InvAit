@@ -238,8 +238,15 @@ public class ChatService(
     /// <returns></returns>
     public async Task SaveSessionAsync()
     {
-        await localStorage.SetItemAsync(Session.Id, Session);
-        UpdateSessionCache(Session);
+        try
+        {
+            await localStorage.SetItemAsync(Session.Id, Session);
+            UpdateSessionCache(Session);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning("Failed to save session {id}: {message}", Session.Id, ex.Message);
+        }
     }
 
     private void UpdateSessionCache(ConversationSession session)

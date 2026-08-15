@@ -105,6 +105,12 @@ public class ToolExecutor : IAsyncDisposable
         });
     }
 
+    /// <summary>
+    /// Максимальное количество строк для чтения одного файла без явного указания LineCount.
+    /// Предотвращает возврат слишком больших файлов в контекст LLM и localStorage.
+    /// </summary>
+    private const int MaxFileLines = 2_000;
+
     private async Task<VsResponse> ReadFileAsync(List<ReadFileParams> fileParamsList, bool onlyContent = false)
     {
         var solutionPath = await GetSolutionPathAsync();
@@ -144,26 +150,42 @@ public class ToolExecutor : IAsyncDisposable
                     sb.AppendLine($"### {rp.Path}");
                     sb.AppendLine("```");
                 }
-                var lines = File.ReadLines(absPath);
-                var currentLine = 0;
 
-                if (rp.StartLine > 0)
+                var allLines = File.ReadLines(absPath);
+                var totalLineCount = 0;
+
+                // Подсчитываем общее количество строк для определения необходимости обрезки
+                // (делаем это лениво — только если LineCount не задан явно)
+                var needsLimit = rp.LineCount <= 0;
+                List<string> materializedLines = null;
+                if (needsLimit)
                 {
-                    var skipCount = Math.Max(0, rp.StartLine - 1);
-                    lines = lines.Skip(skipCount);
-                    currentLine = skipCount;
+                    materializedLines = allLines.ToList();
+                    totalLineCount = materializedLines.Count;
                 }
 
-                if (rp.LineCount > 0)
+                var skipCount = rp.StartLine > 0 ? Math.Max(0, rp.StartLine - 1) : 0;
+                var takeCount = rp.LineCount > 0 ? rp.LineCount : (needsLimit ? MaxFileLines : int.MaxValue);
+
+                IEnumerable<string> lines;
+                if (materializedLines != null)
                 {
-                    lines = lines.Take(rp.LineCount);
+                    lines = materializedLines.Skip(skipCount).Take(takeCount);
                 }
+                else
+                {
+                    lines = allLines.Skip(skipCount).Take(takeCount);
+                }
+
+                var currentLine = skipCount;
+                var renderedLines = 0;
 
                 if (!onlyContent)
                 {
                     foreach (var line in lines)
                     {
                         sb.AppendLine($"{++currentLine} | {line}");
+                        renderedLines++;
                     }
                     sb.AppendLine("```");
                 }
@@ -172,7 +194,15 @@ public class ToolExecutor : IAsyncDisposable
                     foreach (var line in lines)
                     {
                         sb.AppendLine(line);
+                        renderedLines++;
                     }
+                }
+
+                // Если файл был обрезан — сообщаем LLM, чтобы он мог запросить следующую часть
+                if (needsLimit && totalLineCount > MaxFileLines && skipCount + renderedLines < totalLineCount)
+                {
+                    var nextLine = skipCount + renderedLines + 1;
+                    sb.AppendLine($"[... File has {totalLineCount} lines total. Showing lines {skipCount + 1}-{skipCount + renderedLines}. Use startLine={nextLine} to read the rest ...]");
                 }
             }
             catch (Exception ex)
@@ -264,15 +294,28 @@ public class ToolExecutor : IAsyncDisposable
         var param = args.GetString("command");
         var solutionPath = await GetSolutionPathAsync();
 
-        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-
+        // Не переключаемся на главный поток — запуск процесса не требует UI-потока,
+        // а блокировка UI-потока на время выполнения недопустима
         var result = await _processExecutor.ExecuteBashAsync(param, solutionPath, 120_000);
         return new VsResponse
         {
             Success = result.Success,
-            Payload = result.Success ? $"Command executed successfully: {result.Output}" : $"Error: {result.Error}",
-            Error = result.Error
+            Payload = result.Success ? $"Command executed successfully: {TruncateOutput(result.Output)}" : $"Error: {TruncateOutput(result.Error)}",
+            Error = TruncateOutput(result.Error)
         };
+    }
+
+    /// <summary>
+    /// Обрезает вывод команды до разумного лимита, сохраняя конец (там обычно ошибки/результаты).
+    /// </summary>
+    private const int MaxOutputLength = 30_000; // ~30 KB
+    private static string TruncateOutput(string output)
+    {
+        if (string.IsNullOrEmpty(output) || output.Length <= MaxOutputLength)
+            return output;
+
+        var truncated = output.Length - MaxOutputLength;
+        return $"[... {truncated:N0} characters truncated from the beginning ...]\n{output.Substring(output.Length - MaxOutputLength)}";
     }
 
     private async Task<VsResponse> SearchFilesAsync(IReadOnlyDictionary<string, object> args)
@@ -676,16 +719,17 @@ public class ToolExecutor : IAsyncDisposable
                              ?? new Microsoft.Build.Evaluation.Project(project.FullPath);
 
             var fullDllPath = msbuildProject.GetPropertyValue("TargetPath");
-
-            if (File.Exists(fullDllPath))
-            {
-                dllPaths.Add(fullDllPath);
-            }
-
             var exe = Path.ChangeExtension(fullDllPath, "exe");
+
+            // Если есть EXE (например xUnit v3) — запускаем через него,
+            // DLL не добавляем, чтобы избежать дублирования запуска тестов
             if (File.Exists(exe))
             {
                 exePaths.Add(exe);
+            }
+            else if (File.Exists(fullDllPath))
+            {
+                dllPaths.Add(fullDllPath);
             }
         }
         return (dllPaths, exePaths);
@@ -706,70 +750,87 @@ public class ToolExecutor : IAsyncDisposable
         }
 
         var solutionPath = await GetSolutionPathAsync();
-        var (testDlls, testExe) = await GetTestAssembliesAsync();
-        var allDlls = string.Join(" ", testDlls.Select(d => $"\"{d}\""));
+        var (testDlls, testExes) = await GetTestAssembliesAsync();
 
+        if (testDlls.Count == 0 && testExes.Count == 0)
+        {
+            return new VsResponse
+            {
+                Success = false,
+                Error = "No test assemblies found."
+            };
+        }
+
+        var allOutput = new StringBuilder();
+        var hasFailures = false;
+
+        // Запуск dotnet test для всех DLL
+        if (testDlls.Count > 0)
+        {
+            var allDlls = string.Join(" ", testDlls.Select(d => $"\"{d}\""));
+            Logger.Log($"Run dotnet test for {allDlls}");
+
+            var (success, stdout, stderr) = await RunTestProcessAsync("dotnet", $"test {allDlls} --nologo --logger \"console;verbosity=normal\"", solutionPath);
+            allOutput.AppendLine("=== dotnet test ===");
+            allOutput.AppendLine(stdout);
+            if (!success)
+            {
+                hasFailures = true;
+                allOutput.AppendLine(stderr);
+            }
+        }
+
+        // Запуск каждого EXE индивидуально (xUnit и подобные)
+        foreach (var exe in testExes)
+        {
+            Logger.Log($"Run xUnit exe {exe}");
+            var (success, stdout, stderr) = await RunTestProcessAsync(exe, "", solutionPath);
+            allOutput.AppendLine($"=== {Path.GetFileName(exe)} ===");
+            allOutput.AppendLine(stdout);
+            if (!success)
+            {
+                hasFailures = true;
+                allOutput.AppendLine(stderr);
+            }
+        }
+
+        return hasFailures
+            ? new VsResponse { Success = false, Error = TruncateOutput(allOutput.ToString()) }
+            : new VsResponse { Payload = TruncateOutput(allOutput.ToString()) };
+    }
+
+    /// <summary>
+    /// Запуск процесса тестирования и сбор его вывода.
+    /// </summary>
+    private async Task<(bool Success, string Stdout, string Stderr)> RunTestProcessAsync(
+        string fileName, string arguments, string workingDirectory)
+    {
         var startInfo = new ProcessStartInfo
         {
-            FileName = "dotnet",
-            Arguments = $"test {allDlls} -v d",
+            FileName = fileName,
+            Arguments = arguments,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
             UseShellExecute = false,
             CreateNoWindow = true,
-            WorkingDirectory = solutionPath
+            WorkingDirectory = workingDirectory
         };
 
-        // xUnit - запуск исполняемых файлов вместо dotnet test
-        if (testExe.Count > 0)
-        {
-            // TODO может быть несколько exe
-            startInfo.FileName = testExe[0];
-            startInfo.Arguments = "";
-            Logger.Log($"Run xUnit exe {testExe[0]}");
-        }
-        else
-        {
-            Logger.Log($"Run dotnet test for {allDlls}");
-        }
-
-        startInfo.EnvironmentVariables["TERM"] = "dumb"; // терминал тупой - отключает интерактивность
-        startInfo.EnvironmentVariables["NO_COLOR"] = "1";
+        // Полный набор переменных для неинтерактивного режима
+        ProcessExecutor.ConfigureNonInteractiveEnvironment(startInfo);
 
         using var process = Process.Start(startInfo);
         if (process == null)
-            return new VsResponse
-            {
-                Success = false,
-                Error = "Failed to start process"
-            };
+            return (false, "", "Failed to start process");
 
         var outputTask = process.StandardOutput.ReadToEndAsync();
         var errorTask = process.StandardError.ReadToEndAsync();
 
         await process.WaitForExitAsync();
 
-        var stdout = await outputTask;
-        var stderr = await errorTask;
-
-        // Теперь можно один раз считать ошибки
-        if (process.ExitCode != 0)
-        {
-            return new VsResponse
-            {
-                Success = false,
-                Error = $"{stdout}\n\n{stderr}"
-            };
-        }
-        else
-        {
-            return new VsResponse
-            {
-                Payload = stdout
-            };
-        }
+        return (process.ExitCode == 0, await outputTask, await errorTask);
     }
 
     private async Task<VsResponse> GetSolutionStructureAsync()

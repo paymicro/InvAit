@@ -4,30 +4,45 @@ using System.Text;
 namespace ToolCore;
 
 /// <summary>
-/// Result of process execution
-/// </summary>
-public class ProcessResult
-{
-    public bool Success { get; set; }
-    public string Output { get; set; } = string.Empty;
-    public string Error { get; set; } = string.Empty;
-    public int ExitCode { get; set; }
-}
-
-/// <summary>
 /// Executor for running external processes (git, dotnet, cmd, etc.)
 /// </summary>
-public class ProcessExecutor
+public class ProcessExecutor(ILogger logger)
 {
-    private readonly ILogger _logger;
+    private readonly ILogger _logger = logger ?? new NullLogger();
 
     public ProcessExecutor() : this(new NullLogger())
     {
     }
 
-    public ProcessExecutor(ILogger logger)
+    /// <summary>
+    /// Переменные окружения для полностью неинтерактивного режима.
+    /// Отключают ANSI-цвета, terminal logger, телеметрию, пейджеры и интерактивные промпты.
+    /// </summary>
+    private static readonly Dictionary<string, string> NonInteractiveEnv = new()
     {
-        _logger = logger ?? new NullLogger();
+        ["TERM"] = "dumb",                       // тупая консоль - никакого интерактива
+        ["NO_COLOR"] = "1",                      // отключает ANSI-цвета
+        ["GIT_PAGER"] = "cat",                   // git без пейджера
+        ["GIT_CONFIG_PARAMETERS"] = "'color.ui=false'",
+        ["GIT_TERMINAL_PROMPT"] = "0",           // запрещает Git запрашивать пароль
+        ["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1",   // убирает телеметрию dotnet
+        ["DOTNET_CLI_UI_LANGUAGE"] = "en-US",    // английский вывод dotnet
+        ["DOTNET_NOLOGO"] = "true",              // убирает приветствие dotnet
+        ["DOTNET_TERMINAL_LOGGER"] = "0",        // отключает terminal logger (перерисовку строк)
+        ["LANG"] = "en_US.UTF-8",                // UTF-8 для утилит
+        ["LC_ALL"] = "en_US.UTF-8",
+    };
+
+    /// <summary>
+    /// Применяет неинтерактивные переменные окружения к ProcessStartInfo.
+    /// Использовать для всех процессов, вывод которых перенаправляется.
+    /// </summary>
+    public static void ConfigureNonInteractiveEnvironment(ProcessStartInfo startInfo)
+    {
+        foreach (var kvp in NonInteractiveEnv)
+        {
+            startInfo.Environment[kvp.Key] = kvp.Value;
+        }
     }
 
     public static string? FindGitSh()
@@ -145,25 +160,7 @@ public class ProcessExecutor
             WorkingDirectory = workingDirectory ?? Environment.CurrentDirectory
         };
 
-        var env = new Dictionary<string, string>
-        {
-            ["TERM"] = "dumb",                      // тупая консоль - никакого интерактива
-            ["GIT_PAGER"] = "cat",
-            ["GIT_CONFIG_PARAMETERS"] = "'color.ui=false'",
-            ["NO_COLOR"] = "1",
-            ["GIT_TERMINAL_PROMPT"] = "0",          // Запрещает Git запрашивать пароль (просто упадет с ошибкой)
-            ["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1",  // Немного ускорит dotnet и уберет лишний инфо-текст
-            ["DOTNET_CLI_UI_LANGUAGE"] = "en-US",   // dotnet лучше на английском
-            ["DOTNET_NOLOGO"] = "true",             // Убирает приветствие dotnet
-            ["LANG"] = "en_US.UTF-8",               // UTF-8 для ультилит
-            ["LC_ALL"] = "en_US.UTF-8",
-        };
-
-        // Set environment variables
-        foreach (var kvp in env)
-        {
-            startInfo.Environment[kvp.Key] = kvp.Value;
-        }
+        ConfigureNonInteractiveEnvironment(startInfo);
 
         try
         {
@@ -179,8 +176,11 @@ public class ProcessExecutor
 
             var outputTask = process.StandardOutput.ReadToEndAsync();
             var errorTask = process.StandardError.ReadToEndAsync();
-            var isTimedOut = !process.WaitForExit(timeoutMs);
-            
+
+            // Асинхронное ожидание с таймаутом — не блокирует вызывающий поток
+            // netstandard2.0 не имеет WaitForExitAsync, поэтому используем Task.Run
+            var isTimedOut = !await Task.Run(() => process.WaitForExit(timeoutMs));
+
             if (isTimedOut)
             {
                 try { process.Kill(); } catch { /* Игнорируем, если уже умер */ }
