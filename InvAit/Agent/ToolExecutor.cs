@@ -302,7 +302,7 @@ public class ToolExecutor : IAsyncDisposable
         return new VsResponse
         {
             Success = result.Success,
-            Payload = result.Success ? $"Command executed successfully: {TruncateOutput(result.Output)}" : $"Error: {TruncateOutput(result.Error)}",
+            Payload = TruncateOutput(result.Output),
             Error = TruncateOutput(result.Error)
         };
     }
