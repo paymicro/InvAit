@@ -28,7 +28,7 @@ public class ToolCall
     public ToolCallFunction Function { get; set; } = new();
 
     [JsonIgnore]
-    public int Tokens => (int)(8 + (Function.Arguments.Length + Result?.Content.Length ?? 0) / 3.5);
+    public int Tokens => (int)(8 + (Result?.Content.Length ?? 0) / 3.5);
 
     [JsonIgnore]
     public bool IsReady { get; set; } = true;

@@ -9,13 +9,13 @@ namespace UIBlazor.Agents;
 public static class BuiltInToolDefs
 {
     [DisplayName(BuiltInToolEnum.ReadFiles)]
-    [Description("Request to read the contents of one or more files")]
+    [Description("Read the contents of one or more files")]
     public static void ReadFiles(
         [Description("File information")] ReadFileParams[] files)
     { }
 
     [DisplayName(BuiltInToolEnum.ReadOpenFile)]
-    [Description("Read open file")]
+    [Description("Read active file")]
     public static void ReadOpenFile()
     { }
 

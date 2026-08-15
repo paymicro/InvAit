@@ -120,6 +120,8 @@ public class ToolExecutor : IAsyncDisposable
             return new VsResponse { Success = false, Error = "No files specified." };
         }
 
+        fileParamsList = [.. fileParamsList.GroupBy(x => x.Path).Select(g => g.First())]; // DistinctBy
+
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         var sb = new StringBuilder();
         var isSuccess = true;
