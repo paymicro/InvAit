@@ -485,12 +485,17 @@ code.hljs {
 
 .tool-ask-buttons {
     display: grid;
+    white-space: normal;
 }
 
     .tool-ask-buttons button {
         margin-bottom: 0.6rem;
         text-align: left;
     }
+
+.tool-ask-options {
+    white-space: normal;
+}
 
 .tool-ask-custom {
     display: flex;

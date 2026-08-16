@@ -134,7 +134,7 @@
                     <RadzenLabel Text="@SharedResource.ToolRequestTimeoutSec" />
                     <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
                         <RadzenSlider @bind-Value="@CommonSettingsProvider.Current.ToolTimeoutMs" Min="20000" Max="1800000" Step="1000" Style="width: 100%; height: 20px;" />
-                        <RadzenLabel Text="@($"{CommonSettingsProvider.Current.ToolTimeoutMs / 1000} s")" Style="text-align: right; width: 50px;" />
+                        <RadzenLabel Text="@FormatTimeout(CommonSettingsProvider.Current.ToolTimeoutMs)" Style="text-align: right; width: 80px;" />
                     </RadzenStack>
                 </RadzenStack>
             </RadzenStack>
@@ -254,6 +254,16 @@
     {
         ToolManager.UpdateCategorySettings(category, state.IsEnabled, state.ApprovalMode);
         await Task.CompletedTask;
+    }
+
+    private static string FormatTimeout(int ms)
+    {
+        var totalSeconds = ms / 1000;
+        if (totalSeconds < 60)
+            return $"{totalSeconds} sec";
+        var minutes = totalSeconds / 60;
+        var seconds = totalSeconds % 60;
+        return $"{minutes} m {seconds:D2} s";
     }
 
     private async Task OnToolSettingChanged(Tool tool)
