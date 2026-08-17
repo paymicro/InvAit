@@ -30,12 +30,17 @@ jobs:
           dotnet restore UIBlazor.Tests/UIBlazor.Tests.csproj
 
       - name: Test & Collect Coverage
-        run: dotnet -c Release --coverlet --coverlet-output-format cobertura --coverlet-exclude "[*.Tests]*,[Shared.Contracts]*,[*.Models]*"
+        run: |
+          dotnet test UIBlazor.Tests/UIBlazor.Tests.csproj -c Release \
+            --results-directory TestResults -- \
+            --coverlet \
+            --coverlet-output-format cobertura \
+            --coverlet-exclude "[*.Tests]*,[Shared.Contracts]*,[*.Models]*"
 
       - name: Generate Report
         uses: danielpalme/ReportGenerator-GitHub-Action@5.5.2
         with:
-          reports: 'TestResults/**/coverage.cobertura.xml'
+          reports: 'TestResults/**/coverage.cobertura.*.xml'
           targetdir: 'coveragereport'
           reporttypes: 'HtmlInline;Badges'
 
