@@ -85,7 +85,6 @@
 
 @code {
     [Parameter] public ToolCall ToolCall { get; set; } = null!;
-    [Parameter] public VisualChatMessage? Message { get; set; }
     [Parameter] public EventCallback<(string SegmentId, bool Approved)> OnApproval { get; set; }
     /// <summary>
     /// When set (e.g. by SubAgentView), overrides the DI-injected ToolCallHandler.

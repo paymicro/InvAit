@@ -109,7 +109,6 @@
                                         @foreach (var tc in msg.ToolCalls)
                                         {
                                             <ToolCallBlock ToolCall="@tc"
-                                                           Message="@msg"
                                                            ToolCallHandlerOverride="@SubAgent.ToolCallHandler"
                                                            OnApproval="@HandleSubAgentApproval" />
                                         }
