@@ -1,3 +1,4 @@
+global using System.Collections;
 global using System.Text;
 global using System.Text.Json;
 global using System.Text.Json.Serialization;
@@ -11,6 +12,7 @@ global using UIBlazor.Models;
 global using UIBlazor.Options;
 global using UIBlazor.Processors;
 global using UIBlazor.Processors.Models;
+global using UIBlazor.Services;
 global using UIBlazor.Services.Interfaces;
 global using UIBlazor.Services.Models;
 global using UIBlazor.Services.Settings;

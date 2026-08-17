@@ -146,8 +146,9 @@ public class ChatServiceTests
         var chatService = CreateChatService(httpClient);
 
         // Act
+        var result = new CompletionsResult();
         var deltas = new List<ChatDelta>();
-        await foreach (var delta in chatService.GetCompletionsAsync(TestContext.Current.CancellationToken))
+        await foreach (var delta in chatService.GetCompletionsAsync(result, TestContext.Current.CancellationToken))
         {
             deltas.Add(delta);
         }
@@ -180,15 +181,16 @@ public class ChatServiceTests
         var chatService = CreateChatService(httpClient);
 
         // Act
+        var result = new CompletionsResult();
         var deltas = new List<ChatDelta>();
-        await foreach (var delta in chatService.GetCompletionsAsync(TestContext.Current.CancellationToken))
+        await foreach (var delta in chatService.GetCompletionsAsync(result, TestContext.Current.CancellationToken))
         {
             deltas.Add(delta);
         }
 
         // Assert
         Assert.Empty(deltas);
-        Assert.Equal(sseResponse[6..], chatService.LastError);
+        Assert.Equal(sseResponse[6..], result.Error);
     }
 
     [Fact]
@@ -202,7 +204,7 @@ public class ChatServiceTests
         );
 
         // Act
-        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, TestContext.Current.CancellationToken);
+        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, new CompletionsResult(), TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(message.Content);
@@ -220,7 +222,7 @@ public class ChatServiceTests
         );
 
         // Act
-        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, TestContext.Current.CancellationToken);
+        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, new CompletionsResult(), TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal("Hello World", message.Content);
@@ -238,7 +240,7 @@ public class ChatServiceTests
         );
 
         // Act
-        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, TestContext.Current.CancellationToken);
+        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, new CompletionsResult(), TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal("Response", message.Content);
@@ -255,7 +257,7 @@ public class ChatServiceTests
         );
 
         // Act
-        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, TestContext.Current.CancellationToken);
+        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, new CompletionsResult(), TestContext.Current.CancellationToken);
 
         // Assert - message.Model remains null when no provider is given
         Assert.Null(message.Model);
@@ -275,7 +277,7 @@ public class ChatServiceTests
         );
 
         // Act
-        await CreateChatService().ProcessStreamAsync(message, deltas, capturedContents.Add, null, null, TestContext.Current.CancellationToken);
+        await CreateChatService().ProcessStreamAsync(message, deltas, capturedContents.Add, null, null, new CompletionsResult(), TestContext.Current.CancellationToken);
 
         // Assert - onContentUpdate receives individual deltas for incremental parsing
         Assert.Equal(3, capturedContents.Count);
@@ -298,7 +300,7 @@ public class ChatServiceTests
         );
 
         // Act
-        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, TestContext.Current.CancellationToken);
+        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, new CompletionsResult(), TestContext.Current.CancellationToken);
 
         // Assert - message.Timings is initialized and updated during streaming
         Assert.NotNull(message.Timings);

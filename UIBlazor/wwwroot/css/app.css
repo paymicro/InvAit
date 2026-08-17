@@ -329,6 +329,23 @@ code.hljs {
     margin: 0.8rem 0;
     overflow: hidden;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transition: box-shadow 0.3s, border-color 0.3s;
+}
+
+/* Highlight animation when a tool call needs user action */
+.tool-call-highlight {
+    border-color: var(--rz-warning) !important;
+    box-shadow: 0 0 0 3px rgba(var(--rz-warning-rgb), 0.3), 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+    animation: tool-call-flash 0.8s ease-in-out 3;
+}
+
+@keyframes tool-call-flash {
+    0%, 100% {
+        background-color: var(--rz-base-800);
+    }
+    50% {
+        background-color: rgba(var(--rz-warning-rgb), 0.15);
+    }
 }
 
 .tool-call-header {

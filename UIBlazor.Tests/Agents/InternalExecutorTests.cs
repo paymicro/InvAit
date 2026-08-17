@@ -135,6 +135,69 @@ public class InternalExecutorTests
     }
 
     [Fact]
+    public async Task ExecuteToolAsync_DelegateTask_WithNullToolCall_ReturnsFailure()
+    {
+        // Arrange
+        var args = JsonSerializer.Serialize(new { task = "Test", systemPrompt = "Prompt" });
+
+        // Act
+        var result = await _executor.ExecuteToolAsync(BuiltInToolEnum.DelegateTask, args, (ToolCall?)null, CancellationToken.None);
+
+        // Assert
+        Assert.False(result.Success);
+        Assert.Contains("tool call", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_DelegateTask_WithToolCall_RoutesToSubAgentExecutor()
+    {
+        // Arrange
+        var args = JsonSerializer.Serialize(new { task = "Test", systemPrompt = "Prompt" });
+        var toolCall = new ToolCall();
+
+        var subAgentExecutorMock = new Mock<ISubAgentExecutor>();
+        subAgentExecutorMock
+            .Setup(x => x.ExecuteAsync(args, toolCall, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new VsToolResult { Success = true, Result = "Sub-agent result" });
+
+        _serviceProviderMock
+            .Setup(x => x.GetService(typeof(ISubAgentExecutor)))
+            .Returns(subAgentExecutorMock.Object);
+
+        // Act
+        var result = await _executor.ExecuteToolAsync(BuiltInToolEnum.DelegateTask, args, toolCall, CancellationToken.None);
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.Equal("Sub-agent result", result.Result);
+        subAgentExecutorMock.Verify(x => x.ExecuteAsync(args, toolCall, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_DelegateTask_WithoutOverload_RoutesToSubAgentExecutorWithNullToolCall()
+    {
+        // Arrange
+        var args = JsonSerializer.Serialize(new { task = "Test", systemPrompt = "Prompt" });
+
+        var subAgentExecutorMock = new Mock<ISubAgentExecutor>();
+        subAgentExecutorMock
+            .Setup(x => x.ExecuteAsync(args, null!, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new VsToolResult { Success = false, ErrorMessage = "No tool call" });
+
+        _serviceProviderMock
+            .Setup(x => x.GetService(typeof(ISubAgentExecutor)))
+            .Returns(subAgentExecutorMock.Object);
+
+        // Act - use the overload without toolCall (should pass null)
+        var result = await _executor.ExecuteToolAsync(BuiltInToolEnum.DelegateTask, args, CancellationToken.None);
+
+        // Assert
+        Assert.False(result.Success);
+        // The InternalExecutor checks for null toolCall before routing
+        Assert.Contains("tool call", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ExecuteToolAsync_WithUnsupportedTool_ReturnsFailure()
     {
         // Arrange

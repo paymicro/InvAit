@@ -9,6 +9,7 @@ public class ToolSettings : BaseOptions
         = new() {
             { ToolCategory.Execution, new ToolCategorySettings { ApprovalMode = ToolApprovalMode.Ask } }, // кроме выполнения
             { ToolCategory.DeleteFiles, new ToolCategorySettings { ApprovalMode = ToolApprovalMode.Ask } }, // и удаления
+            { ToolCategory.SubAgent, new ToolCategorySettings { ApprovalMode = ToolApprovalMode.Ask } }, // и делегирования sub-agent
         };
 
     /// <summary>

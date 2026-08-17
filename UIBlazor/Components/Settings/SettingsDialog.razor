@@ -176,7 +176,8 @@
         ToolCategory.WriteFiles,
         ToolCategory.DeleteFiles,
         ToolCategory.ModeSwitch,
-        ToolCategory.Execution
+        ToolCategory.Execution,
+        ToolCategory.SubAgent
     ];
     private readonly string[] _providers = ["OpenAI Compatible"];
     private bool _isModelUpdating;
@@ -246,6 +247,7 @@
             ToolCategory.DeleteFiles => SharedResource.CategoryDeleteFiles,
             ToolCategory.ModeSwitch => SharedResource.CategoryModeSwitch,
             ToolCategory.Execution => SharedResource.CategoryExecution,
+            ToolCategory.SubAgent => SharedResource.CategorySubAgent,
             _ => category.ToString()
         };
     }

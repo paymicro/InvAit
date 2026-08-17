@@ -386,4 +386,120 @@ public class BuiltInToolDefsTests
     }
 
     #endregion
+
+    #region DelegateTask Schema Tests
+
+    [Fact]
+    public void MapMethodToTool_DelegateTask_HasCorrectName()
+    {
+        // Act
+        var result = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.DelegateTask));
+
+        // Assert
+        Assert.Equal(BuiltInToolEnum.DelegateTask, result.Function.Name);
+    }
+
+    [Fact]
+    public void MapMethodToTool_DelegateTask_HasDescription()
+    {
+        // Act
+        var result = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.DelegateTask));
+
+        // Assert
+        Assert.NotEmpty(result.Function.Description);
+        Assert.Contains("sub-agent", result.Function.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("delegate", result.Function.Description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void MapMethodToTool_DelegateTask_HasAllParameters()
+    {
+        // Act
+        var result = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.DelegateTask));
+
+        // Assert
+        var props = result.Function.Parameters.Properties;
+        Assert.Equal(4, props.Count);
+        Assert.True(props.ContainsKey("task"));
+        Assert.True(props.ContainsKey("systemPrompt"));
+        Assert.True(props.ContainsKey("allowedTools"));
+        Assert.True(props.ContainsKey("deniedTools"));
+    }
+
+    [Fact]
+    public void MapMethodToTool_DelegateTask_TaskAndSystemPrompt_AreString()
+    {
+        // Act
+        var result = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.DelegateTask));
+
+        // Assert
+        var props = result.Function.Parameters.Properties;
+        Assert.Equal("string", props["task"].Type);
+        Assert.Equal("string", props["systemPrompt"].Type);
+    }
+
+    [Fact]
+    public void MapMethodToTool_DelegateTask_AllowedAndDeniedTools_AreArraysOfString()
+    {
+        // Act
+        var result = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.DelegateTask));
+
+        // Assert
+        var props = result.Function.Parameters.Properties;
+        Assert.Equal("array", props["allowedTools"].Type);
+        Assert.Equal("array", props["deniedTools"].Type);
+        // Items should be string type (Items is object, actual type is NativePropertyDefinition)
+        Assert.NotNull(props["allowedTools"].Items);
+        var allowedItems = Assert.IsType<NativePropertyDefinition>(props["allowedTools"].Items);
+        Assert.Equal("string", allowedItems.Type);
+        Assert.NotNull(props["deniedTools"].Items);
+        var deniedItems = Assert.IsType<NativePropertyDefinition>(props["deniedTools"].Items);
+        Assert.Equal("string", deniedItems.Type);
+    }
+
+    [Fact]
+    public void MapMethodToTool_DelegateTask_AllParametersInRequired()
+    {
+        // Act
+        var result = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.DelegateTask));
+
+        // Assert - In Strict Mode all parameters are required
+        Assert.Equal(4, result.Function.Parameters.Required.Count);
+        Assert.Contains("task", result.Function.Parameters.Required);
+        Assert.Contains("systemPrompt", result.Function.Parameters.Required);
+        Assert.Contains("allowedTools", result.Function.Parameters.Required);
+        Assert.Contains("deniedTools", result.Function.Parameters.Required);
+    }
+
+    [Fact]
+    public void MapMethodToTool_DelegateTask_ArrayParams_AreArrayType()
+    {
+        // Act
+        var result = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.DelegateTask));
+
+        // Assert - allowedTools and deniedTools are string[]? (nullable reference arrays)
+        // They don't have default values, so they're treated as required in strict mode
+        // The type is "array" (not union with null, since no default value)
+        var props = result.Function.Parameters.Properties;
+        Assert.Equal("array", props["allowedTools"].Type);
+        Assert.Equal("array", props["deniedTools"].Type);
+    }
+
+    [Fact]
+    public void MapMethodToTool_DelegateTask_GeneratesValidJsonSchema()
+    {
+        // Act
+        var result = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.DelegateTask));
+        var json = JsonUtils.SerializeCompact(result);
+
+        // Assert - verify it's valid JSON and has expected structure
+        Assert.Contains("\"name\":\"delegate_task\"", json);
+        Assert.Contains("\"task\"", json);
+        Assert.Contains("\"systemPrompt\"", json);
+        Assert.Contains("\"allowedTools\"", json);
+        Assert.Contains("\"deniedTools\"", json);
+        Assert.Contains("\"strict\":true", json);
+    }
+
+    #endregion
 }

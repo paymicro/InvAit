@@ -37,4 +37,12 @@ public class Tool
     /// </summary>
     [JsonIgnore]
     public required Func<string?, CancellationToken, Task<VsToolResult>> ExecuteAsync { get; init; } = null!;
+
+    /// <summary>
+    /// Optional function to execute the tool with tool call context.
+    /// Used by delegate_task to attach sub-agent data to the specific tool call.
+    /// If null, <see cref="ExecuteAsync"/> is used instead.
+    /// </summary>
+    [JsonIgnore]
+    public Func<string?, ToolCall, CancellationToken, Task<VsToolResult>>? ExecuteWithContextAsync { get; init; }
 }

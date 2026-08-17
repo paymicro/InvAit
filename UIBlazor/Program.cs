@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Radzen;
 using UIBlazor;
-using UIBlazor.Services;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
@@ -22,6 +21,7 @@ builder.Services
     .AddScoped<IVsCodeContextService, VsCodeContextService>()
     .AddScoped<IMessageParser, MessageParser>()
     .AddScoped<IInternalExecutor, InternalExecutor>()
+    .AddScoped<ISubAgentExecutor, SubAgentExecutor>()
     .AddScoped<BuiltInAgent>()
     .AddScoped<IToolManager, ToolManager>()
     .AddScoped<ISystemPromptBuilder, SystemPromptBuilder>()

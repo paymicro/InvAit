@@ -1,0 +1,210 @@
+<div class="subagent-block @StatusClass" data-subagent-id="@SubAgent.Id">
+    <div class="subagent-header" @onclick="Toggle">
+        <div class="subagent-header-left">
+            <i class="fa-solid fa-robot" style="color: @IconColor"></i>
+            <span class="subagent-title">@SharedResource.SubAgent</span>
+            <span class="subagent-task">@TruncateTask</span>
+        </div>
+        <div class="subagent-header-right">
+            @if (SubAgent.Status == SubAgentStatus.Running)
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Info" Variant="Variant.Text">
+                    <i class="fa-regular fa-hourglass fa-spin"></i> @SharedResource.SubAgentRunning
+                </RadzenBadge>
+            }
+            else if (SubAgent.Status == SubAgentStatus.Completed)
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Success" Variant="Variant.Text">
+                    <i class="fa-solid fa-check"></i> @SharedResource.SubAgentCompleted
+                </RadzenBadge>
+            }
+            else if (SubAgent.Status == SubAgentStatus.Failed)
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Danger" Variant="Variant.Text">
+                    <i class="fa-solid fa-xmark"></i> @SharedResource.SubAgentFailed
+                </RadzenBadge>
+            }
+            else if (SubAgent.Status == SubAgentStatus.Cancelled)
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Warning" Variant="Variant.Text">
+                    <i class="fa-solid fa-ban"></i> @SharedResource.SubAgentCancelled
+                </RadzenBadge>
+            }
+            @if (SubAgent.TotalTokens > 0)
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Light" Variant="Variant.Text" title="@SharedResource.Tokens">
+                    <i class="fa-solid fa-microchip"></i> @SubAgent.TotalTokens
+                </RadzenBadge>
+            }
+            <span class="subagent-arrow @(SubAgent.IsExpanded ? "expanded" : "")">▼</span>
+        </div>
+    </div>
+
+    @if (SubAgent.IsExpanded)
+    {
+        <div class="subagent-body">
+            @* Task and system prompt summary *@
+            <div class="subagent-info">
+                <div class="subagent-info-row">
+                    <span class="subagent-info-label">@SharedResource.SubAgentTask</span>
+                    <span class="subagent-info-value">@SubAgent.Task</span>
+                </div>
+                @if (!string.IsNullOrEmpty(SubAgent.SystemPrompt))
+                {
+                    <div class="subagent-info-row">
+                        <span class="subagent-info-label">@SharedResource.SubAgentSystemPrompt</span>
+                        <span class="subagent-info-value subagent-info-value--long">@SubAgent.SystemPrompt</span>
+                    </div>
+                }
+                @if (SubAgent.AllowedTools is { Length: > 0 })
+                {
+                    <div class="subagent-info-row">
+                        <span class="subagent-info-label">@SharedResource.SubAgentAllowedTools</span>
+                        <div class="subagent-tools-list">
+                            @foreach (var tool in SubAgent.AllowedTools)
+                            {
+                                <RadzenBadge BadgeStyle="BadgeStyle.Success" Variant="Variant.Text" class="rz-mr-1">@tool</RadzenBadge>
+                            }
+                        </div>
+                    </div>
+                }
+                @if (SubAgent.DeniedTools is { Length: > 0 })
+                {
+                    <div class="subagent-info-row">
+                        <span class="subagent-info-label">@SharedResource.SubAgentDeniedTools</span>
+                        <div class="subagent-tools-list">
+                            @foreach (var tool in SubAgent.DeniedTools)
+                            {
+                                <RadzenBadge BadgeStyle="BadgeStyle.Danger" Variant="Variant.Text" class="rz-mr-1">@tool</RadzenBadge>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @* Sub-agent conversation messages *@
+            <div class="subagent-conversation">
+                @foreach (var msg in SubAgent.Messages)
+                {
+                    <div class="subagent-message subagent-message-@msg.Role">
+                        @if (msg.Role == ChatMessageRole.Assistant)
+                        {
+                            <div class="subagent-message-role">
+                                <i class="fa-solid fa-robot"></i>
+                            </div>
+                            <div class="subagent-message-content">
+                                @if (!string.IsNullOrEmpty(msg.ReasoningContent))
+                                {
+                                    <Details Text="@SharedResource.Thinking" Icon="fa-solid fa-lightbulb" class="reasoning-details">
+                                        <MarkdownBlock Content="@msg.ReasoningContent" />
+                                    </Details>
+                                }
+                                @if (!string.IsNullOrEmpty(msg.Content))
+                                {
+                                    <MarkdownBlock Content="@msg.Content" />
+                                }
+                                @if (msg.ToolCalls is { Count: > 0 })
+                                {
+                                    <div class="subagent-toolcalls">
+                                        @foreach (var tc in msg.ToolCalls)
+                                        {
+                                            <ToolCallBlock ToolCall="@tc"
+                                                           Message="@msg"
+                                                           ToolCallHandlerOverride="@SubAgent.ToolCallHandler"
+                                                           OnApproval="@HandleSubAgentApproval" />
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+                <div class="subagent-anchor" />
+            </div>
+
+            @if (SubAgent.Status == SubAgentStatus.Failed && !string.IsNullOrEmpty(SubAgent.ErrorMessage))
+            {
+                <div class="subagent-result subagent-result-error">
+                    <div class="subagent-result-header">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                        <span>@SharedResource.Error</span>
+                    </div>
+                    <div class="subagent-result-content">
+                        <pre>@SubAgent.ErrorMessage</pre>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Inject] private IJSRuntime JsRuntime { get; set; } = null!;
+    [Parameter] public SubAgentMessage SubAgent { get; set; } = null!;
+
+    private string StatusClass => SubAgent.Status switch
+    {
+        SubAgentStatus.Running => "status-running",
+        SubAgentStatus.Completed => "status-completed",
+        SubAgentStatus.Failed => "status-failed",
+        SubAgentStatus.Cancelled => "status-cancelled",
+        _ => "status-pending"
+    };
+
+    private string IconColor => SubAgent.Status switch
+    {
+        SubAgentStatus.Completed => "var(--rz-success)",
+        SubAgentStatus.Failed => "var(--rz-danger)",
+        SubAgentStatus.Cancelled => "var(--rz-warning)",
+        SubAgentStatus.Running => "",
+        _ => "var(--rz-base-500)"
+    };
+
+    private string TruncateTask => SubAgent.Task.Length > 80
+        ? SubAgent.Task[..80] + "..."
+        : SubAgent.Task;
+
+    private int _oldMessageCount;
+    private SubAgentStatus _oldStatus;
+    private bool _oldIsExpanded;
+
+    protected override bool ShouldRender()
+    {
+        // Re-render when messages are added, status changes, or expansion toggles
+        var changed = SubAgent.Messages.Count != _oldMessageCount ||
+                      SubAgent.Status != _oldStatus ||
+                      SubAgent.IsExpanded != _oldIsExpanded ||
+                      SubAgent.Messages.Any(m => m.IsShouldRender || m.IsStreaming);
+        return changed;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        _oldMessageCount = SubAgent.Messages.Count;
+        _oldStatus = SubAgent.Status;
+        _oldIsExpanded = SubAgent.IsExpanded;
+
+        // Auto-scroll sub-agent conversation to bottom while running
+        if (SubAgent.IsExpanded && SubAgent.Status == SubAgentStatus.Running)
+        {
+            await JsRuntime.InvokeVoidAsync("scrollSubAgentToBottom", SubAgent.Id);
+        }
+    }
+
+    private void Toggle()
+    {
+        SubAgent.IsExpanded = !SubAgent.IsExpanded;
+        SubAgent.NotifyStateChanged();
+    }
+
+    /// <summary>
+    /// Handles approval for tool calls inside the sub-agent conversation.
+    /// Routes to the sub-agent's own ToolCallHandler (isolated from the main agent's handler).
+    /// </summary>
+    private async Task HandleSubAgentApproval((string SegmentId, bool Approved) args)
+    {
+        var handler = SubAgent.ToolCallHandler;
+        if (handler is not null)
+            await handler.HandleApprovalAsync(args.SegmentId, args.Approved);
+    }
+}

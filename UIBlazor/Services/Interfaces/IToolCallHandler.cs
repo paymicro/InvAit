@@ -2,6 +2,12 @@ namespace UIBlazor.Services.Interfaces;
 
 public interface IToolCallHandler
 {
+    /// <summary>
+    /// Raised when one or more tool calls require user approval or ask_user interaction.
+    /// Parameter is the tool call ID that needs attention.
+    /// </summary>
+    event Action<string>? ApprovalRequired;
+
     void PrepareToolsForApprovals(List<ToolCall> toolCalls);
 
     /// <summary>

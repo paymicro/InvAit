@@ -97,6 +97,7 @@ public class ChatService(
         Action<string>? onContentUpdate,
         Action<List<ToolCall>>? onToolCallsUpdate,
         Action? onStateChange,
+        CompletionsResult resultCapture,
         CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
@@ -130,7 +131,7 @@ public class ChatService(
                 onContentUpdate?.Invoke(delta.Content);
             }
 
-            if (delta.ToolCalls is { Count: > 0 } && AccumulatedToolCalls is not null)
+            if (delta.ToolCalls is { Count: > 0 } && resultCapture.AccumulatedToolCalls is not null)
             {
                 if (firstContentTokenMs == 0)
                 {
@@ -138,10 +139,10 @@ public class ChatService(
                     message.Timings.Reasoning = TimeSpan.FromMilliseconds(firstContentTokenMs - firstTokenMs);
                 }
 
-                onToolCallsUpdate?.Invoke(AccumulatedToolCalls);
+                onToolCallsUpdate?.Invoke(resultCapture.AccumulatedToolCalls);
             }
 
-            CalcTimings(message, sw, firstTokenMs);
+            CalcTimings(message, sw, firstTokenMs, resultCapture.Usage);
 
             if (firstContentTokenMs > 0)
             {
@@ -151,27 +152,27 @@ public class ChatService(
             onStateChange?.Invoke();
         }
 
-        CalcTimings(message, sw, firstTokenMs);
+        CalcTimings(message, sw, firstTokenMs, resultCapture.Usage);
         message.IsStreaming = false;
     }
 
-    private void CalcTimings(VisualChatMessage message, Stopwatch sw, double firstTokenMs)
+    private static void CalcTimings(VisualChatMessage message, Stopwatch sw, double firstTokenMs, UsageInfo? usage)
     {
         var elapsedMs = sw.ElapsedMilliseconds;
-        message.Timings.Tokens = LastUsage?.CompletionTokens ?? 1 + message.Timings.Tokens;
+        message.Timings.Tokens = usage?.CompletionTokens ?? 1 + message.Timings.Tokens;
         var secForTokens = Math.Max(1, (elapsedMs - firstTokenMs) / 1000.0);
         message.Timings.TokensInSec = (float)(message.Timings.Tokens / secForTokens);
         message.Timings.Total = TimeSpan.FromMilliseconds(elapsedMs);
         message.Timings.FirstToken = TimeSpan.FromMilliseconds(firstTokenMs);
     }
 
-    public async IAsyncEnumerable<ChatDelta> CompressSessionAsync([EnumeratorCancellation] CancellationToken cancellationToken)
+    public async IAsyncEnumerable<ChatDelta> CompressSessionAsync(CompletionsResult resultCapture, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var (Messages, LastUserMessage) = Session.GetFormattedMessagesForCompress();
 
         // Получаем сжатый текст от LLM
         var contentSb = new StringBuilder();
-        await foreach (var chatDelta in GetCompletionsAsync(Messages, false, cancellationToken))
+        await foreach (var chatDelta in GetCompletionsAsync(Messages, false, resultCapture, cancellationToken))
         {
             if (chatDelta.Content is not null)
             {
@@ -273,34 +274,33 @@ public class ChatService(
         }
     }
 
-    /// <summary>
-    /// Модель, которая последняя отвечала
-    /// </summary>
-    public string? LastCompletionsModel { get; private set; }
-
-    /// <summary>
-    /// Текст ошибки
-    /// </summary>
-    public string? LastError { get; private set; }
-
-    /// <summary>
-    /// Последнее использование токенов
-    /// </summary>
-    public UsageInfo? LastUsage { get; private set; }
-
-    public string? FinishReason { get; private set; }
-
-    /// <summary>
-    /// Accumulated native tool_calls from the last streaming response.
-    /// </summary>
-    public List<ToolCall>? AccumulatedToolCalls { get; private set; }
-
-    private async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(IEnumerable<object> messages, bool withTools, [EnumeratorCancellation] CancellationToken cancellationToken)
+    private async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(
+        IEnumerable<object> messages,
+        bool withTools,
+        CompletionsResult resultCapture,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        LastCompletionsModel = null;
-        LastUsage = null;
-        LastError = null;
-        FinishReason = null;
+        await foreach (var delta in GetCompletionsAsync(messages, withTools, Session, null, resultCapture, cancellationToken))
+        {
+            yield return delta;
+        }
+    }
+
+    /// <summary>
+    /// Internal completions method that supports a custom session (for sub-agents).
+    /// All LLM call state (model, usage, tool_calls, finish_reason, error) is written
+    /// exclusively to <paramref name="resultCapture"/>, never to instance properties.
+    /// This ensures isolation between main agent and sub-agent calls.
+    /// </summary>
+    private async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(
+        IEnumerable<object> messages,
+        bool withTools,
+        ConversationSession targetSession,
+        IEnumerable<Tool>? customTools,
+        CompletionsResult resultCapture,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        resultCapture.Reset();
 
         // Use runtime parameters or fall back to configured options
         var url = $"{Options.Endpoint}{_complitions}";
@@ -343,7 +343,9 @@ public class ChatService(
         // Add native tool definitions
         if (withTools)
         {
-            var enabledTools = toolManager.GetEnabledTools(Session.Mode).Select(t => t.NativeTool).ToList();
+            var enabledTools = (customTools ?? (targetSession == Session
+                ? toolManager.GetEnabledTools(Session.Mode)
+                : toolManager.GetEnabledTools(AppMode.Agent))).Select(t => t.NativeTool).ToList();
             if (enabledTools.Count > 0)
             {
                 payload["tools"] = enabledTools;
@@ -388,23 +390,23 @@ public class ChatService(
         if (!Options.Stream)
         {
             // Reset accumulated tool calls
-            AccumulatedToolCalls = null;
+            resultCapture.AccumulatedToolCalls = null;
 
             var chunk = await response.Content.ReadFromJsonAsync<StreamChunk>(cancellationToken);
             var message = chunk?.Choice?.Message;
 
-            LastCompletionsModel ??= chunk?.Model;
+            resultCapture.Model ??= chunk?.Model;
             if (chunk?.Usage != null)
             {
-                LastUsage = chunk.Usage;
-                Session.TotalTokens = chunk.Usage.TotalTokens;
+                resultCapture.Usage = chunk.Usage;
+                targetSession.TotalTokens = chunk.Usage.TotalTokens;
             }
 
             if (message?.ToolCalls is { Count: > 0 })
             {
                 // Native tool calls in non-streaming response
-                AccumulatedToolCalls = [.. message.ToolCalls];
-                FinishReason = chunk?.Choice?.FinishReason ?? "tool_calls";
+                resultCapture.AccumulatedToolCalls = [.. message.ToolCalls];
+                resultCapture.FinishReason = chunk?.Choice?.FinishReason ?? "tool_calls";
                 yield return message;
                 yield break;
             }
@@ -425,7 +427,7 @@ public class ChatService(
 
         // стрим
         // Reset accumulated tool calls for this response
-        AccumulatedToolCalls = null;
+        resultCapture.AccumulatedToolCalls = null;
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);
@@ -449,13 +451,13 @@ public class ChatService(
 
             if (json == "[DONE]")
             {
-                FinishReason = lastChoise?.FinishReason;
+                resultCapture.FinishReason = lastChoise?.FinishReason;
                 break;
             }
 
             if (json.StartsWith("{\"error\""))
             {
-                LastError = json;
+                resultCapture.Error = json;
                 continue;
             }
 
@@ -467,16 +469,16 @@ public class ChatService(
 
             if (chunk.Usage != null)
             {
-                LastUsage = chunk.Usage;
-                Session.TotalTokens = chunk.Usage.TotalTokens;
+                resultCapture.Usage = chunk.Usage;
+                targetSession.TotalTokens = chunk.Usage.TotalTokens;
             }
             else
             {
                 // Динамический подсчёт токенов во время стрима (приблизительный)
-                Session.TotalTokens++;
+                targetSession.TotalTokens++;
             }
 
-            LastCompletionsModel ??= chunk.Model;
+            resultCapture.Model ??= chunk.Model;
 
             if (chunk.Choices.Count != 1 || chunk.Choices[0].Delta == null)
             {
@@ -554,7 +556,7 @@ public class ChatService(
                     if (!string.IsNullOrEmpty(tc.Function?.Arguments))
                         existing.Function.Arguments += tc.Function.Arguments;
                 }
-                AccumulatedToolCalls = [.. toolCallAcc.Values];
+                resultCapture.AccumulatedToolCalls = [.. toolCallAcc.Values];
             }
 
             yield return delta;
@@ -578,12 +580,33 @@ public class ChatService(
     /// completion. The stream completes when the response is fully received.
     /// </returns>
     /// <exception cref="Exception">Thrown if the chat completion request fails or the server returns an unsuccessful response.</exception>
-    public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync([EnumeratorCancellation] CancellationToken cancellationToken)
+    public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(CompletionsResult resultCapture, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // Get formatted messages including conversation history
         var messages = Session.GetFormattedMessages(await systemPromptBuilder.PrepareSystemPromptAsync(Session.Mode, cancellationToken)) ?? [];
         
-        await foreach (var chatDelta in GetCompletionsAsync(messages, true, cancellationToken))
+        await foreach (var chatDelta in GetCompletionsAsync(messages, true, resultCapture, cancellationToken))
+        {
+            yield return chatDelta;
+        }
+    }
+
+    /// <summary>
+    /// Получение ответа для sub-agent с произвольным системным промптом и набором инструментов.
+    /// Использует переданную сессию вместо основной.
+    /// Состояние (AccumulatedToolCalls, Usage и т.д.) записывается в <paramref name="resultCapture"/>,
+    /// а не в общие свойства экземпляра, чтобы избежать конфликтов с главным агентом.
+    /// </summary>
+    public async IAsyncEnumerable<ChatDelta> GetCompletionsForSubAgentAsync(
+        ConversationSession session,
+        string systemPrompt,
+        IEnumerable<Tool> enabledTools,
+        CompletionsResult resultCapture,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var messages = session.GetFormattedMessages(systemPrompt);
+
+        await foreach (var chatDelta in GetCompletionsAsync(messages, true, session, enabledTools, resultCapture, cancellationToken))
         {
             yield return chatDelta;
         }

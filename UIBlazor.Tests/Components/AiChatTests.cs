@@ -75,6 +75,7 @@ public class AiChatTests : BunitContext
 
         Services.AddSingleton<IRetryHandler>(new RetryHandler());
         Services.AddSingleton<IToolCallHandler>(new ToolCallHandler(_mockToolManager.Object));
+        Services.AddSingleton(new Mock<ISubAgentExecutor>().Object);
 
         // Add Radzen components
         Services.AddRadzenComponents();
@@ -283,7 +284,7 @@ public class AiChatTests : BunitContext
     {
         // Arrange
         var content = "Test message";
-        _mockChatService.Setup(x => x.GetCompletionsAsync(It.IsAny<CancellationToken>()))
+        _mockChatService.Setup(x => x.GetCompletionsAsync(It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
             .Returns(AsyncEnumerable.Empty<ChatDelta>);
         _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
 

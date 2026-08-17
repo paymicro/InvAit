@@ -1,0 +1,243 @@
+/* SubAgent Block */
+.subagent-block {
+    border: 1px solid var(--rz-base-600);
+    border-radius: 8px;
+    margin-top: 0.5rem;
+    overflow: hidden;
+    background: var(--rz-base-900);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+    .subagent-block.status-running {
+        border-left: 4px solid var(--rz-info);
+        animation: pulse-glow 2s infinite;
+    }
+
+    .subagent-block.status-completed {
+        border-left: 4px solid var(--rz-success);
+    }
+
+    .subagent-block.status-failed {
+        border-left: 4px solid var(--rz-danger);
+    }
+
+    .subagent-block.status-cancelled {
+        border-left: 4px solid var(--rz-warning);
+    }
+
+    .subagent-block.status-pending {
+        border-left: 4px solid var(--rz-base-500);
+    }
+
+/* Header */
+.subagent-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.8rem;
+    cursor: pointer;
+    user-select: none;
+    background: var(--rz-base-800);
+    transition: background 0.2s;
+}
+
+    .subagent-header:hover {
+        background: var(--rz-base-700);
+    }
+
+.subagent-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    flex: 1;
+}
+
+    .subagent-header-left i {
+        font-size: 1rem;
+        flex-shrink: 0;
+    }
+
+.subagent-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--rz-info-light);
+    flex-shrink: 0;
+}
+
+.subagent-task {
+    font-size: 0.82rem;
+    color: var(--rz-base-400);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.subagent-header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+}
+
+.subagent-arrow {
+    transition: transform 0.3s;
+    color: var(--rz-base-500);
+    font-size: 0.7rem;
+}
+
+    .subagent-arrow.expanded {
+        transform: rotate(180deg);
+    }
+
+/* Body */
+.subagent-body {
+    padding: 0.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+/* Info section */
+.subagent-info {
+    background: var(--rz-base-800);
+    border-radius: 6px;
+    padding: 0.5rem 0.7rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.subagent-info-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+.subagent-info-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--rz-info-light);
+    min-width: 7rem;
+    flex-shrink: 0;
+}
+
+.subagent-info-value {
+    font-size: 0.78rem;
+    color: var(--rz-base-400);
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+
+.subagent-info-value--long {
+    max-height: 100px;
+    overflow-y: auto;
+    background: var(--rz-base-900);
+    border-radius: 4px;
+    padding: 0.3rem 0.5rem;
+    font-family: Consolas, "Courier New", monospace;
+}
+
+.subagent-tools-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+/* Conversation */
+.subagent-conversation {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.3rem 0;
+    scroll-behavior: smooth;
+}
+
+.subagent-anchor {
+    overflow-anchor: auto;
+    height: 1px;
+    width: 100%;
+    flex-shrink: 0;
+}
+
+.subagent-message {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+}
+
+.subagent-message-role {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--rz-base-700);
+    color: var(--rz-base-400);
+    font-size: 0.7rem;
+}
+
+.subagent-message-user .subagent-message-role {
+    background: var(--rz-primary-dark);
+    color: var(--rz-on-primary-dark);
+}
+
+.subagent-message-assistant .subagent-message-role {
+    background: var(--rz-info-dark);
+    color: var(--rz-on-info-dark);
+}
+
+.subagent-message-content {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.82rem;
+    color: var(--rz-base-300);
+    line-height: 1.5;
+}
+
+    .subagent-message-content .markdown-content {
+        font-size: 0.82rem;
+    }
+
+/* Reasoning block inside sub-agent */
+.subagent-reasoning {
+    font-size: 0.78rem;
+    margin-bottom: 0.3rem;
+}
+
+    .subagent-reasoning .header {
+        padding: 0.3rem 0.5rem;
+        font-size: 0.75rem;
+    }
+
+    .subagent-reasoning .markdown-content {
+        padding: 0.3rem 0.5rem;
+        font-size: 0.78rem;
+    }
+
+/* Tool calls inside sub-agent (container only — individual tool calls rendered via ToolCallBlock) */
+.subagent-toolcalls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-top: 0.3rem;
+}
+
+@keyframes pulse-glow {
+    0% {
+        box-shadow: 0 0 0 0 rgba(var(--rz-info-rgb), 0.3);
+    }
+
+    70% {
+        box-shadow: 0 0 0 6px rgba(var(--rz-info-rgb), 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(var(--rz-info-rgb), 0);
+    }
+}
