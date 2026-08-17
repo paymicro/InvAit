@@ -33,10 +33,19 @@ public interface IChatService : IDisposable
     Task NewSessionAsync();
 
     /// <summary>
-    /// Сжатие контекста. Остается 2 сообщения + сжатое сообщение.
+    /// Сжатие контекста основной сессии. Остается 2 сообщения + сжатое сообщение.
     /// Состояние LLM-вызова записывается в <paramref name="resultCapture"/>.
     /// </summary>
     IAsyncEnumerable<ChatDelta> CompressSessionAsync(CompletionsResult resultCapture, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Сжатие контекста для произвольной сессии (например, sub-agent).
+    /// Работает аналогично <see cref="CompressSessionAsync"/>, но с переданной сессией.
+    /// </summary>
+    IAsyncEnumerable<ChatDelta> CompressSessionAsync(
+        ConversationSession session,
+        CompletionsResult resultCapture,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Получение стандартного ответа.

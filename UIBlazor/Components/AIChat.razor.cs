@@ -445,7 +445,17 @@ public partial class AiChat : RadzenComponent
         {
             var toolCallId = subAgent.PendingToolCallId;
             subAgent.PendingToolCallId = null; // Clear to avoid duplicate notifications
-            _ = HandleApprovalRequiredAsync(toolCallId, isSubAgent: true);
+            _ = InvokeAsync(async () =>
+            {
+                try
+                {
+                    await HandleApprovalRequiredAsync(toolCallId, isSubAgent: true);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "Error handling sub-agent approval notification");
+                }
+            });
         }
 
         InvokeAsync(StateHasChanged);
@@ -456,7 +466,17 @@ public partial class AiChat : RadzenComponent
     /// </summary>
     private void OnApprovalRequired(string toolCallId)
     {
-        _ = HandleApprovalRequiredAsync(toolCallId, isSubAgent: false);
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await HandleApprovalRequiredAsync(toolCallId, isSubAgent: false);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error handling approval notification");
+            }
+        });
     }
 
     /// <summary>

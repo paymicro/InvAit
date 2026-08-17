@@ -93,6 +93,18 @@ public class InternalExecutor(IServiceProvider serviceProvider) : IInternalExecu
                     }
                 }
             }
+            else if (optionsObj is IList list)
+            {
+                // DeserializeParameters converts JSON arrays to List<object>
+                foreach (var item in list)
+                {
+                    var option = item?.ToString()?.Trim();
+                    if (!string.IsNullOrEmpty(option))
+                    {
+                        options.Add(option);
+                    }
+                }
+            }
             else if (optionsObj != null)
             {
                 // Fallback: if options is a single string, treat as one option

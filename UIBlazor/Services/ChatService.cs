@@ -168,11 +168,25 @@ public class ChatService(
 
     public async IAsyncEnumerable<ChatDelta> CompressSessionAsync(CompletionsResult resultCapture, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var (Messages, LastUserMessage) = Session.GetFormattedMessagesForCompress();
+        await foreach (var delta in CompressSessionAsync(Session, resultCapture, cancellationToken))
+        {
+            yield return delta;
+        }
+    }
+
+    /// <summary>
+    /// Сжатие контекста для произвольной сессии (например, sub-agent).
+    /// </summary>
+    public async IAsyncEnumerable<ChatDelta> CompressSessionAsync(
+        ConversationSession session,
+        CompletionsResult resultCapture,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var (Messages, LastUserMessage) = session.GetFormattedMessagesForCompress();
 
         // Получаем сжатый текст от LLM
         var contentSb = new StringBuilder();
-        await foreach (var chatDelta in GetCompletionsAsync(Messages, false, resultCapture, cancellationToken))
+        await foreach (var chatDelta in GetCompletionsAsync(Messages, false, session, null, resultCapture, cancellationToken))
         {
             if (chatDelta.Content is not null)
             {
@@ -192,7 +206,7 @@ public class ChatService(
             IsExpanded = true
         };
 
-        var totalCount = Session.Messages.Count;
+        var totalCount = session.Messages.Count;
         var windowSize = totalCount < 6 ? 2 : 3;
 
         var topMessages = new List<VisualChatMessage>();
@@ -200,7 +214,7 @@ public class ChatService(
 
         for (var i = 0; i < totalCount - 1; i++)
         {
-            var msg = Session.Messages[i];
+            var msg = session.Messages[i];
 
             if (msg.Id == LastUserMessage?.Id)
                 continue;
@@ -230,7 +244,7 @@ public class ChatService(
         }
 
         // Перезаписываем историю
-        Session.Messages = keptMessages;
+        session.Messages = keptMessages;
     }
 
     /// <summary>

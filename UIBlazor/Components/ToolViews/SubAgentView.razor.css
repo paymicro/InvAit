@@ -97,7 +97,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
-    max-height: 600px;
+    max-height: 50vh;
     overflow-y: auto;
 }
 
@@ -156,6 +156,19 @@
     scroll-behavior: smooth;
 }
 
+/*
+ * CSS Scroll Anchoring: keep sub-agent conversation pinned to bottom.
+ * Same pattern as the main chat (.rz-chat-messages / .anchor):
+ * - Scroll container (.subagent-body) has overflow-anchor: auto (default, but explicit for clarity)
+ * - All message elements have overflow-anchor: none so they are NOT anchor candidates
+ * - Only .subagent-anchor is an anchor candidate (overflow-anchor: auto)
+ * This ensures the browser adjusts scroll to keep .subagent-anchor visible
+ * when content above it grows (e.g. streaming tokens, new messages).
+ */
+.subagent-body {
+    overflow-anchor: auto;
+}
+
 .subagent-anchor {
     overflow-anchor: auto;
     height: 1px;
@@ -164,6 +177,7 @@
 }
 
 .subagent-message {
+    overflow-anchor: none;
     display: flex;
     gap: 0.5rem;
     align-items: flex-start;
@@ -193,6 +207,7 @@
 }
 
 .subagent-message-content {
+    overflow-anchor: none;
     flex: 1;
     min-width: 0;
     font-size: 0.82rem;
@@ -204,21 +219,31 @@
         font-size: 0.82rem;
     }
 
-/* Reasoning block inside sub-agent */
-.subagent-reasoning {
-    font-size: 0.78rem;
+/* Error result display */
+.subagent-result-error {
+    border: 1px solid var(--rz-danger);
+    border-radius: 6px;
+    background: rgba(var(--rz-danger-rgb), 0.1);
+    padding: 0.5rem 0.7rem;
+}
+
+.subagent-result-header {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--rz-danger-light);
+    font-size: 0.82rem;
+    font-weight: 600;
     margin-bottom: 0.3rem;
 }
 
-    .subagent-reasoning .header {
-        padding: 0.3rem 0.5rem;
-        font-size: 0.75rem;
-    }
-
-    .subagent-reasoning .markdown-content {
-        padding: 0.3rem 0.5rem;
-        font-size: 0.78rem;
-    }
+.subagent-result-content pre {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--rz-base-400);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
 
 /* Tool calls inside sub-agent (container only — individual tool calls rendered via ToolCallBlock) */
 .subagent-toolcalls {
@@ -230,14 +255,14 @@
 
 @keyframes pulse-glow {
     0% {
-        box-shadow: 0 0 0 0 rgba(var(--rz-info-rgb), 0.3);
+        box-shadow: 0 0 0 0 rgba(33, 150, 243, 0.3);
     }
 
     70% {
-        box-shadow: 0 0 0 6px rgba(var(--rz-info-rgb), 0);
+        box-shadow: 0 0 0 6px rgba(33, 150, 243, 0);
     }
 
     100% {
-        box-shadow: 0 0 0 0 rgba(var(--rz-info-rgb), 0);
+        box-shadow: 0 0 0 0 rgba(33, 150, 243, 0);
     }
 }

@@ -40,11 +40,6 @@ public class SubAgentMessage
     public string[]? AllowedTools { get; set; }
 
     /// <summary>
-    /// List of tool names explicitly denied to the sub-agent.
-    /// </summary>
-    public string[]? DeniedTools { get; set; }
-
-    /// <summary>
     /// The conversation messages of the sub-agent (for UI display).
     /// </summary>
     [JsonIgnore]
@@ -87,6 +82,13 @@ public class SubAgentMessage
     public bool IsExpanded { get; set; }
 
     /// <summary>
+    /// Whether the sub-agent context is currently being compressed.
+    /// Used by UI to show a compression indicator badge.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsCompressing { get; set; }
+
+    /// <summary>
     /// The sub-agent's own ToolCallHandler for processing tool call approvals.
     /// Isolated from the main agent's ToolCallHandler to prevent approval waiter conflicts.
     /// UI components use this to route approval responses for sub-agent tool calls.
@@ -106,11 +108,14 @@ public class SubAgentMessage
     /// <summary>
     /// Event raised when the sub-agent state changes (status, messages, etc.)
     /// UI components subscribe to this to trigger re-rendering.
+    /// Thread-safe: uses Volatile.Read to prevent NullReferenceException
+    /// when invoked from parallel streaming threads.
     /// </summary>
     public event Action? StateChanged;
 
     /// <summary>
     /// Raises the StateChanged event to notify UI subscribers.
+    /// Thread-safe invocation via Volatile.Read pattern.
     /// </summary>
-    public void NotifyStateChanged() => StateChanged?.Invoke();
+    public void NotifyStateChanged() => Volatile.Read(ref StateChanged)?.Invoke();
 }

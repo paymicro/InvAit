@@ -483,10 +483,10 @@
   <data name="SubAgentAllowedTools" xml:space="preserve">
     <value>Allowed tools</value>
   </data>
-  <data name="SubAgentDeniedTools" xml:space="preserve">
-    <value>Denied tools</value>
-  </data>
   <data name="SubAgentResult" xml:space="preserve">
     <value>Result</value>
+  </data>
+  <data name="Compressing" xml:space="preserve">
+    <value>Compressing...</value>
   </data>
 </root>

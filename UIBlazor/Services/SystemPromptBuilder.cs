@@ -69,8 +69,11 @@ public class SystemPromptBuilder(
             : string.Empty;
 
         // Mode instructions — independent of Mermaid
+        // Delegation instructions are only included if delegate_task is actually available
+        var canDelegate = profile.SendModeInstructions &&
+            toolManager.GetEnabledTools(mode).Any(t => t.Name == BuiltInToolEnum.DelegateTask);
         var modeInstructions = profile.SendModeInstructions
-            ? BuildModeInstructions(mode)
+            ? BuildModeInstructions(mode, canDelegate)
             : string.Empty;
 
         List<string?> systemPromptBlocks = [profile.SystemPrompt,
@@ -127,9 +130,10 @@ public class SystemPromptBuilder(
             ? await ruleService.GetAgentsMdAsync(cancellationToken)
             : string.Empty;
 
-        // Mode instructions — always Agent mode for sub-agents
+        // Mode instructions — always Agent mode for sub-agents.
+        // delegate_task is excluded from sub-agent tools by SubAgentExecutor, so sub-agents can never delegate.
         var modeInstructions = profile.SendModeInstructions
-            ? BuildModeInstructions(AppMode.Agent)
+            ? BuildModeInstructions(AppMode.Agent, canDelegate: false)
             : string.Empty;
 
         List<string?> systemPromptBlocks =
@@ -148,7 +152,7 @@ public class SystemPromptBuilder(
         return string.Join(Environment.NewLine, systemPromptBlocks.Where(b => !string.IsNullOrEmpty(b)));
     }
 
-    private static string BuildModeInstructions(AppMode mode)
+    private static string BuildModeInstructions(AppMode mode, bool canDelegate = false)
     {
         var modeDesc = mode switch
         {
@@ -182,7 +186,7 @@ public class SystemPromptBuilder(
                           """);
         }
 
-        if (mode == AppMode.Agent)
+        if (mode == AppMode.Agent && canDelegate)
         {
             sb.AppendLine("""
                           ## Sub-Agent Delegation
@@ -190,6 +194,7 @@ public class SystemPromptBuilder(
                           
                           - Use sub-agents for complex subtasks that benefit from focused attention and a specialized prompt.
                           - The sub-agent's final answer is returned to you as the tool result.
+                          - Sub-agents cannot delegate further (no recursion).
                           """);
         }
 

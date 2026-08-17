@@ -100,9 +100,11 @@ window.scrollSubAgentToBottom = function(subAgentId) {
     const block = document.querySelector(`[data-subagent-id="${subAgentId}"]`);
     if (!block) return;
 
-    const conversation = block.querySelector('.subagent-conversation');
-    if (conversation) {
-        conversation.scrollTop = conversation.scrollHeight;
+    // .subagent-body is the scroll container (has max-height + overflow-y: auto)
+    // .subagent-conversation is not a scroll container itself
+    const body = block.querySelector('.subagent-body');
+    if (body) {
+        body.scrollTop = body.scrollHeight;
     }
 };
 

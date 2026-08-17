@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Tests.Models;
+namespace UIBlazor.Tests.Models;
 
 public class SubAgentMessageTests
 {
@@ -16,7 +16,6 @@ public class SubAgentMessageTests
         Assert.Empty(msg.Result);
         Assert.Empty(msg.Messages);
         Assert.Null(msg.AllowedTools);
-        Assert.Null(msg.DeniedTools);
         Assert.Null(msg.ErrorMessage);
         Assert.Null(msg.CompletedAt);
         Assert.Equal(0, msg.TotalTokens);
@@ -84,7 +83,6 @@ public class SubAgentMessageTests
             Task = "Analyze code",
             SystemPrompt = "You are a code analyzer.",
             AllowedTools = ["read_files", "grep"],
-            DeniedTools = ["bash"],
             Status = SubAgentStatus.Running,
             IsExpanded = true,
             Result = "Analysis complete",
@@ -96,7 +94,6 @@ public class SubAgentMessageTests
         Assert.Equal("Analyze code", msg.Task);
         Assert.Equal("You are a code analyzer.", msg.SystemPrompt);
         Assert.Equal(["read_files", "grep"], msg.AllowedTools);
-        Assert.Equal(["bash"], msg.DeniedTools);
         Assert.Equal(SubAgentStatus.Running, msg.Status);
         Assert.True(msg.IsExpanded);
         Assert.Equal("Analysis complete", msg.Result);

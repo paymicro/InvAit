@@ -92,6 +92,7 @@
     /// </summary>
     [Parameter] public IToolCallHandler? ToolCallHandlerOverride { get; set; }
 
+    private bool _disposed;
     private SubAgentMessage? _subAgent;
 
     private string DisplayName => ToolManager.GetTool(ToolCall.Function.Name)?.DisplayName ?? ToolCall.Function.Name;
@@ -139,6 +140,8 @@
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         if (_subAgent is not null)
             _subAgent.StateChanged -= OnSubAgentStateChanged;
     }

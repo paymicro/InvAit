@@ -1,3 +1,5 @@
+@implements IDisposable
+
 <div class="subagent-block @StatusClass" data-subagent-id="@SubAgent.Id">
     <div class="subagent-header" @onclick="Toggle">
         <div class="subagent-header-left">
@@ -36,6 +38,12 @@
                     <i class="fa-solid fa-microchip"></i> @SubAgent.TotalTokens
                 </RadzenBadge>
             }
+            @if (SubAgent.IsCompressing)
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Warning" Variant="Variant.Text">
+                    <i class="fa-solid fa-compress fa-spin"></i> @SharedResource.Compressing
+                </RadzenBadge>
+            }
             <span class="subagent-arrow @(SubAgent.IsExpanded ? "expanded" : "")">▼</span>
         </div>
     </div>
@@ -68,54 +76,46 @@
                         </div>
                     </div>
                 }
-                @if (SubAgent.DeniedTools is { Length: > 0 })
-                {
-                    <div class="subagent-info-row">
-                        <span class="subagent-info-label">@SharedResource.SubAgentDeniedTools</span>
-                        <div class="subagent-tools-list">
-                            @foreach (var tool in SubAgent.DeniedTools)
-                            {
-                                <RadzenBadge BadgeStyle="BadgeStyle.Danger" Variant="Variant.Text" class="rz-mr-1">@tool</RadzenBadge>
-                            }
-                        </div>
-                    </div>
-                }
+
             </div>
 
             @* Sub-agent conversation messages *@
             <div class="subagent-conversation">
                 @foreach (var msg in SubAgent.Messages)
                 {
+                    @if (msg.Role is not ChatMessageRole.Assistant)
+                    {
+                        continue;
+                        // Роль User специально пропущена. В нем дублируется задача для суб-агента
+                    }
                     <div class="subagent-message subagent-message-@msg.Role">
-                        @if (msg.Role == ChatMessageRole.Assistant)
-                        {
-                            <div class="subagent-message-role">
-                                <i class="fa-solid fa-robot"></i>
-                            </div>
-                            <div class="subagent-message-content">
-                                @if (!string.IsNullOrEmpty(msg.ReasoningContent))
-                                {
-                                    <Details Text="@SharedResource.Thinking" Icon="fa-solid fa-lightbulb" class="reasoning-details">
-                                        <MarkdownBlock Content="@msg.ReasoningContent" />
-                                    </Details>
-                                }
-                                @if (!string.IsNullOrEmpty(msg.Content))
-                                {
-                                    <MarkdownBlock Content="@msg.Content" />
-                                }
-                                @if (msg.ToolCalls is { Count: > 0 })
-                                {
-                                    <div class="subagent-toolcalls">
-                                        @foreach (var tc in msg.ToolCalls)
-                                        {
-                                            <ToolCallBlock ToolCall="@tc"
-                                                           ToolCallHandlerOverride="@SubAgent.ToolCallHandler"
-                                                           OnApproval="@HandleSubAgentApproval" />
-                                        }
-                                    </div>
-                                }
-                            </div>
-                        }
+                        
+                        <div class="subagent-message-role">
+                            <i class="fa-solid fa-robot"></i>
+                        </div>
+                        <div class="subagent-message-content">
+                            @if (!string.IsNullOrEmpty(msg.ReasoningContent))
+                            {
+                                <Details Text="@SharedResource.Thinking" Icon="fa-solid fa-lightbulb" class="reasoning-details">
+                                    <MarkdownBlock Content="@msg.ReasoningContent" />
+                                </Details>
+                            }
+                            @if (!string.IsNullOrEmpty(msg.Content))
+                            {
+                                <MarkdownBlock Content="@msg.Content" />
+                            }
+                            @if (msg.ToolCalls is { Count: > 0 })
+                            {
+                                <div class="subagent-toolcalls">
+                                    @foreach (var tc in msg.ToolCalls)
+                                    {
+                                        <ToolCallBlock ToolCall="@tc"
+                                                        ToolCallHandlerOverride="@SubAgent.ToolCallHandler"
+                                                        OnApproval="@HandleSubAgentApproval" />
+                                    }
+                                </div>
+                            }
+                        </div>
                     </div>
                 }
                 <div class="subagent-anchor" />
@@ -141,6 +141,12 @@
     [Inject] private IJSRuntime JsRuntime { get; set; } = null!;
     [Parameter] public SubAgentMessage SubAgent { get; set; } = null!;
 
+    private bool _disposed;
+    // Throttle content-streaming re-renders to ~10fps (100ms).
+    // Structural changes (status, message count, expansion) bypass the throttle.
+    // Pattern matches DiffViewSection.razor.
+    private readonly Throttler _contentThrottler = new(100);
+
     private string StatusClass => SubAgent.Status switch
     {
         SubAgentStatus.Running => "status-running",
@@ -159,32 +165,66 @@
         _ => "var(--rz-base-500)"
     };
 
-    private string TruncateTask => SubAgent.Task.Length > 80
-        ? SubAgent.Task[..80] + "..."
-        : SubAgent.Task;
+    private string TruncateTask => (SubAgent.Task?.Length ?? 0) > 80
+        ? SubAgent.Task![..80] + "..."
+        : (SubAgent.Task ?? string.Empty);
 
     private int _oldMessageCount;
     private SubAgentStatus _oldStatus;
     private bool _oldIsExpanded;
+    private bool _oldAnyStreaming;
 
     protected override bool ShouldRender()
     {
-        // Re-render when messages are added, status changes, or expansion toggles
-        var changed = SubAgent.Messages.Count != _oldMessageCount ||
-                      SubAgent.Status != _oldStatus ||
-                      SubAgent.IsExpanded != _oldIsExpanded ||
-                      SubAgent.Messages.Any(m => m.IsShouldRender || m.IsStreaming);
-        return changed;
+        // Detect streaming→idle transition for any message.
+        // This is critical: when a message finishes streaming, the throttler may have
+        // skipped the last few tokens. We must render immediately to show final content.
+        var anyStreaming = SubAgent.Messages.Any(m => m.IsStreaming);
+        var streamingStopped = _oldAnyStreaming && !anyStreaming;
+
+        // Structural changes always render immediately (rare events).
+        // streamingStopped is included here to guarantee the final render after streaming.
+        var structuralChanged = SubAgent.Messages.Count != _oldMessageCount ||
+                                SubAgent.Status != _oldStatus ||
+                                SubAgent.IsExpanded != _oldIsExpanded ||
+                                streamingStopped;
+        if (structuralChanged)
+            return true;
+
+        // Content streaming (token-by-token) goes through throttler.
+        // This prevents re-rendering on every single token — only ~10fps.
+        // The throttler schedules a tail render via InvokeAsync(StateHasChanged)
+        // so the final state is always rendered.
+        var hasContentUpdate = SubAgent.Messages.Any(m => m.IsShouldRender || m.IsStreaming);
+        if (hasContentUpdate)
+            return _contentThrottler.ShouldRender(() => InvokeAsync(StateHasChanged));
+
+        return false;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // Capture whether message count changed BEFORE updating old state.
+        // This is needed for the auto-scroll condition below.
+        var messageCountChanged = SubAgent.Messages.Count != _oldMessageCount;
+
         _oldMessageCount = SubAgent.Messages.Count;
         _oldStatus = SubAgent.Status;
         _oldIsExpanded = SubAgent.IsExpanded;
+        _oldAnyStreaming = SubAgent.Messages.Any(m => m.IsStreaming);
 
-        // Auto-scroll sub-agent conversation to bottom while running
-        if (SubAgent.IsExpanded && SubAgent.Status == SubAgentStatus.Running)
+        // Reset IsShouldRender on all sub-agent messages after render.
+        // This ensures ShouldRender() returns false for content updates
+        // until a new token arrives and sets IsShouldRender = true again.
+        // Without this, hasContentUpdate would always be true after the first token.
+        foreach (var msg in SubAgent.Messages)
+            msg.IsShouldRender = false;
+
+        // Auto-scroll sub-agent conversation to bottom when new messages are added
+        // (not on every throttled content render — that would cause scroll jitter).
+        // CSS scroll anchoring (.subagent-anchor) handles keeping the view pinned
+        // to the bottom during streaming; this JS scroll is only for new messages.
+        if (SubAgent.IsExpanded && SubAgent.Status == SubAgentStatus.Running && messageCountChanged)
         {
             await JsRuntime.InvokeVoidAsync("scrollSubAgentToBottom", SubAgent.Id);
         }
@@ -205,5 +245,12 @@
         var handler = SubAgent.ToolCallHandler;
         if (handler is not null)
             await handler.HandleApprovalAsync(args.SegmentId, args.Approved);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _contentThrottler.Dispose();
     }
 }

@@ -14,7 +14,7 @@ public interface ISubAgentExecutor
     /// <summary>
     /// Executes a sub-agent task with the given parameters.
     /// </summary>
-    /// <param name="argsJson">JSON arguments containing task, systemPrompt, allowedTools, deniedTools.</param>
+    /// <param name="argsJson">JSON arguments containing task, systemPrompt, allowedTools.</param>
     /// <param name="toolCall">The tool call to attach the sub-agent data to (for UI display).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The sub-agent's final result.</returns>

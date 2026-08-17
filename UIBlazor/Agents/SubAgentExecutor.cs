@@ -11,10 +11,18 @@ public class SubAgentExecutor(
     IChatService chatService,
     IToolManager toolManager,
     ISystemPromptBuilder systemPromptBuilder,
+    IProfileManager profileManager,
     ILogger<SubAgentExecutor> logger) : ISubAgentExecutor
 {
     // TODO: Вынести в CommonOptions или ConnectionProfile
     private const int MaxIterations = 20;
+
+    // TODO: Token budget for sub-agents.
+    // Currently a sub-agent can consume unlimited tokens (up to MaxIterations × max response size).
+    // To implement: add a MaxTokens option (e.g. in ConnectionProfile or as a delegate_task parameter),
+    // then check session.TotalTokens against it at the top of the loop in RunSubAgentLoopAsync.
+    // If exceeded — break and return a "token budget exceeded" message.
+    // This prevents unexpected API costs from runaway sub-agent loops.
 
     /// <inheritdoc />
     public event Action<SubAgentMessage>? SubAgentStateChanged;
@@ -57,12 +65,11 @@ public class SubAgentExecutor(
         var fullSystemPrompt = await systemPromptBuilder.PrepareSubAgentSystemPromptAsync(
             systemPrompt, cancellationToken);
 
-        // Parse allowed/denied tools
+        // Parse allowed tools
         var allowedTools = ParseStringArray(args, "allowedTools");
-        var deniedTools = ParseStringArray(args, "deniedTools");
 
         // Build filtered tool set for the sub-agent
-        var subAgentTools = BuildSubAgentTools(allowedTools, deniedTools);
+        var subAgentTools = BuildSubAgentTools(allowedTools);
 
         // Create a dedicated ToolCallHandler for the sub-agent.
         // This isolates approval waiters from the main agent's ToolCallHandler,
@@ -75,7 +82,6 @@ public class SubAgentExecutor(
             Task = task,
             SystemPrompt = systemPrompt,
             AllowedTools = allowedTools,
-            DeniedTools = deniedTools,
             Status = SubAgentStatus.Running,
             StartedAt = DateTime.Now,
             IsExpanded = true, // Auto-expand while running so user can see progress
@@ -92,27 +98,29 @@ public class SubAgentExecutor(
             // Ensure sub-agent is expanded so the user can see the tool requiring approval
             subAgent.IsExpanded = true;
             subAgent.NotifyStateChanged();
+            // Explicitly notify AiChat — this is a structural event that needs user attention
+            Volatile.Read(ref SubAgentStateChanged)?.Invoke(subAgent);
         };
 
         toolCall.SubAgent = subAgent;
 
-        // Wire sub-agent state changes to the executor-level event so AiChat
-        // can trigger Blazor re-rendering during sub-agent execution.
-        // Without this, the ToolCallBlock component never re-renders during
-        // sub-agent work because it hasn't subscribed yet (SubAgent was null
-        // when OnParametersSet first ran).
-        subAgent.StateChanged += () =>
-        {
-            SubAgentStateChanged?.Invoke(subAgent);
-        };
+        // NOTE: We intentionally do NOT relay subAgent.StateChanged to SubAgentStateChanged.
+        // StateChanged fires on every streaming token (high frequency), and relaying it
+        // would cause AiChat to re-render the ENTIRE chat tree on every token.
+        // Instead, SubAgentStateChanged is invoked explicitly only for structural events:
+        // - Initial notification (below)
+        // - Approval required (in ApprovalRequired handler above)
+        // - Status changes: completed/cancelled/failed (in try/catch below)
+        // SubAgentView handles its own throttled re-rendering for content updates.
 
         // Initial notification so AiChat re-renders and ToolCallBlock subscribes
-        SubAgentStateChanged?.Invoke(subAgent);
+        Volatile.Read(ref SubAgentStateChanged)?.Invoke(subAgent);
 
         // Create a temporary session for the sub-agent (not saved to localStorage)
+        // GUID suffix ensures uniqueness even when multiple sub-agents start in the same second
         var session = new ConversationSession
         {
-            Id = $"subagent_{DateTime.Now:s}",
+            Id = $"subagent_{DateTime.Now:s}_{Guid.NewGuid():N}",
             Mode = AppMode.Agent // Sub-agent is always in Agent mode
         };
 
@@ -139,6 +147,8 @@ public class SubAgentExecutor(
             subAgent.TotalTokens = session.TotalTokens;
             subAgent.IsExpanded = false; // Collapse when done
             subAgent.NotifyStateChanged();
+            // Notify AiChat that sub-agent is done (structural change)
+            Volatile.Read(ref SubAgentStateChanged)?.Invoke(subAgent);
 
             logger.LogInformation("Sub-agent completed. Tokens: {Tokens}", session.TotalTokens);
 
@@ -156,6 +166,8 @@ public class SubAgentExecutor(
             subAgent.ErrorMessage = "Cancelled by user.";
             subAgent.IsExpanded = false; // Collapse when done
             subAgent.NotifyStateChanged();
+            // Notify AiChat that sub-agent was cancelled (structural change)
+            Volatile.Read(ref SubAgentStateChanged)?.Invoke(subAgent);
 
             logger.LogInformation("Sub-agent cancelled.");
 
@@ -168,6 +180,8 @@ public class SubAgentExecutor(
             subAgent.ErrorMessage = ex.Message;
             subAgent.IsExpanded = false; // Collapse when done
             subAgent.NotifyStateChanged();
+            // Notify AiChat that sub-agent failed (structural change)
+            Volatile.Read(ref SubAgentStateChanged)?.Invoke(subAgent);
 
             logger.LogError(ex, "Sub-agent failed.");
 
@@ -178,12 +192,101 @@ public class SubAgentExecutor(
                 ErrorMessage = $"Sub-agent failed: {ex.Message}"
             };
         }
+        finally
+        {
+            // Clean up any pending approval waiters on the sub-agent's handler.
+            // This prevents dangling TCSes if the sub-agent exits mid-approval.
+            subAgentToolCallHandler.CancelPendingApprovals();
+        }
+    }
+
+    /// <summary>
+    /// Checks if the sub-agent session needs context compression.
+    /// Uses the same TokensToCompress threshold as the main agent.
+    /// </summary>
+    private bool NeedCompression(ConversationSession session)
+        => profileManager.ActiveProfile.TokensToCompress > 0
+           && session.TotalTokens > profileManager.ActiveProfile.TokensToCompress;
+
+    /// <summary>
+    /// Compresses the sub-agent session context.
+    /// No retries — if compression fails, the sub-agent continues with the current context.
+    /// Updates subAgent.TotalTokens and notifies UI.
+    /// </summary>
+    private async Task CompressSubAgentSessionAsync(
+        ConversationSession session,
+        SubAgentMessage subAgent,
+        CancellationToken cancellationToken)
+    {
+        logger.LogInformation("Sub-agent context compression started. Tokens: {Tokens}", session.TotalTokens);
+
+        subAgent.IsCompressing = true;
+        subAgent.NotifyStateChanged();
+
+        var compressResult = new CompletionsResult();
+        var compressMessage = new VisualChatMessage
+        {
+            Role = ChatMessageRole.Assistant,
+            IsStreaming = true,
+            IsExpanded = true,
+            Content = "## ♻ Context compression...\n\n"
+        };
+        session.AddMessage(compressMessage);
+        subAgent.Messages.Add(compressMessage);
+        subAgent.NotifyStateChanged();
+
+        try
+        {
+            await chatService.ProcessStreamAsync(
+                compressMessage,
+                chatService.CompressSessionAsync(session, compressResult, cancellationToken),
+                onContentUpdate: _ =>
+                {
+                    compressMessage.IsShouldRender = true;
+                    subAgent.TotalTokens = session.TotalTokens;
+                    subAgent.NotifyStateChanged();
+                },
+                onToolCallsUpdate: _ => { },
+                onStateChange: () =>
+                {
+                    compressMessage.Model ??= compressResult.Model;
+                    subAgent.TotalTokens = session.TotalTokens;
+                    subAgent.NotifyStateChanged();
+                },
+                compressResult,
+                cancellationToken);
+
+            logger.LogInformation("Sub-agent context compression completed. Tokens after: {Tokens}", session.TotalTokens);
+        }
+        catch (OperationCanceledException)
+        {
+            // Compression cancelled — remove the compression message and let the outer handler deal with cancellation
+            session.Messages.Remove(compressMessage);
+            subAgent.Messages.Remove(compressMessage);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Compression failed — remove the compression message and continue without compression
+            logger.LogWarning(ex, "Sub-agent context compression failed. Continuing with current context.");
+            session.Messages.Remove(compressMessage);
+            subAgent.Messages.Remove(compressMessage);
+        }
+        finally
+        {
+            compressMessage.IsStreaming = false;
+            subAgent.IsCompressing = false;
+            subAgent.TotalTokens = session.TotalTokens;
+            subAgent.NotifyStateChanged();
+        }
     }
 
     /// <summary>
     /// Main execution loop: stream LLM response → process tool calls → repeat until done.
     /// Uses CompletionsResult to capture LLM state instead of reading shared ChatService properties.
     /// Uses a dedicated ToolCallHandler to isolate approval waiters from the main agent.
+    /// Includes dynamic token counting (updates subAgent.TotalTokens during streaming)
+    /// and automatic context compression when token threshold is exceeded.
     /// </summary>
     private async Task<string> RunSubAgentLoopAsync(
         ConversationSession session,
@@ -198,6 +301,14 @@ public class SubAgentExecutor(
         while (iteration < MaxIterations && !cancellationToken.IsCancellationRequested)
         {
             iteration++;
+
+            // Check if context compression is needed before the next LLM call
+            if (NeedCompression(session))
+            {
+                await CompressSubAgentSessionAsync(session, subAgent, cancellationToken);
+                if (cancellationToken.IsCancellationRequested)
+                    break;
+            }
 
             // Create assistant message for streaming
             var assistantMessage = new VisualChatMessage
@@ -217,32 +328,48 @@ public class SubAgentExecutor(
             // ProcessStreamAsync already accumulates content into assistantMessage.Content
             // (via internal StringBuilder) and calls onContentUpdate with the DELTA (single token).
             // We must NOT overwrite assistantMessage.Content — just trigger UI re-render.
+            // Dynamic token counter: update subAgent.TotalTokens from session.TotalTokens on every chunk.
             await chatService.ProcessStreamAsync(
                 assistantMessage,
                 chatService.GetCompletionsForSubAgentAsync(session, systemPrompt, subAgentTools, resultCapture, cancellationToken),
                 onContentUpdate: _ =>
                 {
                     assistantMessage.IsShouldRender = true;
+                    subAgent.TotalTokens = session.TotalTokens;
                     subAgent.NotifyStateChanged();
                 },
                 onToolCallsUpdate: toolCalls =>
                 {
                     assistantMessage.ToolCalls = toolCalls;
                     assistantMessage.IsShouldRender = true;
+                    subAgent.TotalTokens = session.TotalTokens;
                     subAgent.NotifyStateChanged();
                 },
                 onStateChange: () =>
                 {
+                    // Model is set once, then this is a no-op.
                     assistantMessage.Model ??= resultCapture.Model;
-                    subAgent.NotifyStateChanged();
+                    subAgent.TotalTokens = session.TotalTokens;
                 },
                 resultCapture,
                 cancellationToken);
 
+            // Check for API-level errors captured during streaming
+            if (!string.IsNullOrEmpty(resultCapture.Error))
+            {
+                throw new Exception($"LLM API error: {resultCapture.Error}");
+            }
+
             // Read captured state (not shared ChatService properties)
             assistantMessage.ToolCalls = resultCapture.AccumulatedToolCalls;
             assistantMessage.IsStreaming = false;
+            // Update token counter after streaming completes (usage data may have arrived in final chunk)
+            subAgent.TotalTokens = session.TotalTokens;
             subAgent.NotifyStateChanged();
+
+            // Check cancellation before processing tool calls
+            if (cancellationToken.IsCancellationRequested)
+                break;
 
             if (assistantMessage.ToolCalls is { Count: > 0 })
             {
@@ -256,7 +383,10 @@ public class SubAgentExecutor(
                     assistantMessage.ToolCalls,
                     cancellationToken);
 
-                session.TotalTokens += assistantMessage.ToolCalls?.Sum(t => t.Tokens) ?? 0;
+                // Note: session.TotalTokens is already updated by ChatService.GetCompletionsAsync
+                // from the API's usage data. Do NOT add tool call token estimates here —
+                // that would double-count tokens.
+                subAgent.TotalTokens = session.TotalTokens;
                 subAgent.NotifyStateChanged();
 
                 // Continue the loop to get the next LLM response
@@ -316,9 +446,10 @@ public class SubAgentExecutor(
     /// <summary>
     /// Builds the filtered tool set for the sub-agent.
     /// Excludes tools by category (SubAgent, ModeSwitch) and by name (delegate_task, switch_mode).
-    /// Applies allowedTools (whitelist) and deniedTools (blacklist) if specified.
+    /// If allowedTools is specified, only those tools are included; all others are denied.
+    /// If allowedTools is null/empty, all tools are available.
     /// </summary>
-    private IEnumerable<Tool> BuildSubAgentTools(string[]? allowedTools, string[]? deniedTools)
+    private IEnumerable<Tool> BuildSubAgentTools(string[]? allowedTools)
     {
         var allTools = toolManager.GetEnabledTools(AppMode.Agent);
 
@@ -330,10 +461,6 @@ public class SubAgentExecutor(
 
             // If allowedTools is specified, only include tools in the whitelist
             if (allowedTools is { Length: > 0 } && !allowedTools.Contains(tool.Name))
-                continue;
-
-            // If deniedTools is specified, exclude tools in the blacklist
-            if (deniedTools is { Length: > 0 } && deniedTools.Contains(tool.Name))
                 continue;
 
             yield return tool;

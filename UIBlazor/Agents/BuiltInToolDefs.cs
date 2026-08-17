@@ -142,8 +142,7 @@ public static class BuiltInToolDefs
     public static void DelegateTask(
         [Description("Clear task description for the sub-agent")] string task,
         [Description("System prompt defining the sub-agent's role and expertise")] string systemPrompt,
-        [Description("List of tool names the sub-agent is allowed to use. If null or empty, all tools are available.")] string[]? allowedTools,
-        [Description("List of tool names explicitly denied to the sub-agent")] string[]? deniedTools)
+        [Description("List of tool names the sub-agent is allowed to use. If null or empty, all tools are available. Only these tools will be accessible; all others are denied.")] string[]? allowedTools)
     { }
 
     public static NativeToolDefinition MapMethodToTool(string methodName)
