@@ -31,11 +31,7 @@ jobs:
 
       - name: Test & Collect Coverage
         run: |
-          dotnet test UIBlazor.Tests/UIBlazor.Tests.csproj -c Release \
-            --results-directory TestResults -- \
-            --coverlet \
-            --coverlet-output-format cobertura \
-            --coverlet-exclude "[*.Tests]*,[Shared.Contracts]*,[*.Models]*"
+          dotnet test --project UIBlazor.Tests/UIBlazor.Tests.csproj -c Release --results-directory TestResults --coverlet --coverlet-output-format cobertura --coverlet-exclude "[*.Tests]*,[Shared.Contracts]*,[*.Models]*"
 
       - name: Generate Report
         uses: danielpalme/ReportGenerator-GitHub-Action@5.5.2
