@@ -14,6 +14,7 @@ using InvAit.Utils;
 using Microsoft.Build.Evaluation;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
+using Newtonsoft.Json.Linq;
 using Shared.Contracts;
 using ToolCore;
 using IAsyncDisposable = Microsoft.VisualStudio.Threading.IAsyncDisposable;
@@ -311,6 +312,7 @@ public class ToolExecutor : IAsyncDisposable
     /// Обрезает вывод команды до разумного лимита, сохраняя конец (там обычно ошибки/результаты).
     /// </summary>
     private const int MaxOutputLength = 30_000; // ~30 KB
+
     private static string TruncateOutput(string output)
     {
         if (string.IsNullOrEmpty(output) || output.Length <= MaxOutputLength)
@@ -318,6 +320,14 @@ public class ToolExecutor : IAsyncDisposable
 
         var truncated = output.Length - MaxOutputLength;
         return $"[... {truncated:N0} characters truncated from the beginning ...]\n{output.Substring(output.Length - MaxOutputLength)}";
+    }
+
+    private static string TruncateLine(string value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value))
+            return value;
+
+        return value.Length <= maxLength ? value : value.Substring(0, maxLength-3) + "...";
     }
 
     private async Task<VsResponse> SearchFilesAsync(IReadOnlyDictionary<string, object> args)
@@ -435,7 +445,7 @@ public class ToolExecutor : IAsyncDisposable
                     {
                         var marker = i == lineIdx ? ">" : " ";
                         var num = (i + 1).ToString().PadLeft(4);
-                        sb.AppendLine($"{marker} {num} | {lines[i]}");
+                        sb.AppendLine($"{marker} {num} | {TruncateLine(lines[i], maxLength: 200)}");
                     }
 
                     sb.AppendLine("---");
@@ -458,7 +468,7 @@ public class ToolExecutor : IAsyncDisposable
             ? $"Found {totalMatches}+ matches (limited to {maxMatches}):\n\n"
             : $"Found {totalMatches} matches:\n\n";
 
-        return new VsResponse { Payload = header + sb.ToString() };
+        return new VsResponse { Payload = TruncateOutput(header + sb.ToString()) };
     }
 
     private async Task<VsResponse> FindDeclarationsAsync(IReadOnlyDictionary<string, object> args)

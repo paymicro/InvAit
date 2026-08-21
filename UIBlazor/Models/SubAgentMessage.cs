@@ -40,10 +40,100 @@ public class SubAgentMessage
     public string[]? AllowedTools { get; set; }
 
     /// <summary>
-    /// The conversation messages of the sub-agent (for UI display).
+    /// Internal storage for sub-agent conversation messages.
+    /// Access is guarded by <see cref="_messagesLock"/> to prevent data races
+    /// between streaming threads (writers) and Blazor render thread (reader).
     /// </summary>
     [JsonIgnore]
-    public List<VisualChatMessage> Messages { get; set; } = [];
+    private readonly List<VisualChatMessage> _messages = [];
+
+    /// <summary>
+    /// Lock object protecting <see cref="_messages"/> from concurrent access.
+    /// </summary>
+    [JsonIgnore]
+    private readonly object _messagesLock = new();
+
+    /// <summary>
+    /// The conversation messages of the sub-agent (for UI display).
+    /// Thread-safe: all operations (Add, Remove, Count, iteration) are guarded by a lock.
+    /// Use the instance methods (AddMessage, RemoveMessage, GetMessageCount, GetMessages)
+    /// instead of accessing the property directly for mutations and reads.
+    /// The property getter returns a snapshot copy for safe iteration.
+    /// </summary>
+    [JsonIgnore]
+    public List<VisualChatMessage> Messages
+    {
+        get
+        {
+            lock (_messagesLock)
+                return [.._messages];
+        }
+        set
+        {
+            lock (_messagesLock)
+            {
+                _messages.Clear();
+                _messages.AddRange(value);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Thread-safe: adds a message to the sub-agent conversation.
+    /// </summary>
+    public void AddMessage(VisualChatMessage message)
+    {
+        lock (_messagesLock)
+            _messages.Add(message);
+    }
+
+    /// <summary>
+    /// Thread-safe: removes a message from the sub-agent conversation.
+    /// </summary>
+    public void RemoveMessage(VisualChatMessage message)
+    {
+        lock (_messagesLock)
+            _messages.Remove(message);
+    }
+
+    /// <summary>
+    /// Thread-safe: returns the number of messages in the sub-agent conversation.
+    /// </summary>
+    public int GetMessageCount()
+    {
+        lock (_messagesLock)
+            return _messages.Count;
+    }
+
+    /// <summary>
+    /// Thread-safe: returns a snapshot copy of the messages for safe iteration.
+    /// </summary>
+    public List<VisualChatMessage> GetMessages()
+    {
+        lock (_messagesLock)
+            return [.._messages];
+    }
+
+    /// <summary>
+    /// Thread-safe: returns true if any message matches the predicate.
+    /// </summary>
+    public bool AnyMessage(Func<VisualChatMessage, bool> predicate)
+    {
+        lock (_messagesLock)
+            return _messages.Any(predicate);
+    }
+
+    /// <summary>
+    /// Thread-safe: performs an action on each message.
+    /// </summary>
+    public void ForEachMessage(Action<VisualChatMessage> action)
+    {
+        lock (_messagesLock)
+        {
+            foreach (var msg in _messages)
+                action(msg);
+        }
+    }
 
     /// <summary>
     /// The final result returned by the sub-agent to the main agent.

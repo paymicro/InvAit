@@ -8,6 +8,7 @@ public partial class SubAgentExecutorTests
     private readonly Mock<IToolManager> _toolManagerMock;
     private readonly Mock<ISystemPromptBuilder> _systemPromptBuilderMock;
     private readonly Mock<IProfileManager> _profileManagerMock;
+    private readonly Mock<IRetryHandler> _retryHandlerMock;
     private readonly Mock<ILogger<SubAgentExecutor>> _loggerMock;
     private readonly SubAgentExecutor _executor;
 
@@ -17,6 +18,7 @@ public partial class SubAgentExecutorTests
         _toolManagerMock = new Mock<IToolManager>();
         _systemPromptBuilderMock = new Mock<ISystemPromptBuilder>();
         _profileManagerMock = new Mock<IProfileManager>();
+        _retryHandlerMock = new Mock<IRetryHandler>();
         _loggerMock = new Mock<ILogger<SubAgentExecutor>>();
 
         // SystemPromptBuilder returns the custom prompt as-is (no context in tests)
@@ -31,11 +33,17 @@ public partial class SubAgentExecutorTests
             .Setup(x => x.ActiveProfile)
             .Returns(new ConnectionProfile { TokensToCompress = 0 });
 
+        // RetryHandler returns 0 delay so tests don't wait
+        _retryHandlerMock
+            .Setup(x => x.GetRetryDelay(It.IsAny<int>()))
+            .Returns(0);
+
         _executor = new SubAgentExecutor(
             _chatServiceMock.Object,
             _toolManagerMock.Object,
             _systemPromptBuilderMock.Object,
             _profileManagerMock.Object,
+            _retryHandlerMock.Object,
             _loggerMock.Object);
     }
 

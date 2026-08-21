@@ -489,4 +489,10 @@
   <data name="Compressing" xml:space="preserve">
     <value>Сжатие...</value>
   </data>
+  <data name="MaxTokensPerSubAgent" xml:space="preserve">
+    <value>Контекст для субагента</value>
+  </data>
+  <data name="MaxIterationsPerSubAgent" xml:space="preserve">
+    <value>Максимум итераций для субагента</value>
+  </data>
 </root>

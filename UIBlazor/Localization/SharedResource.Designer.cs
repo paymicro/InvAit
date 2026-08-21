@@ -403,6 +403,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Max iterations per sub-agent.
+        /// </summary>
+        public static string MaxIterationsPerSubAgent {
+            get {
+                return ResourceManager.GetString("MaxIterationsPerSubAgent", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Max Error Retries.
         /// </summary>
         public static string MaxRetries {
@@ -417,6 +426,15 @@ namespace UIBlazor.Localization {
         public static string MaxTokens {
             get {
                 return ResourceManager.GetString("MaxTokens", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Max context per sub-agent.
+        /// </summary>
+        public static string MaxTokensPerSubAgent {
+            get {
+                return ResourceManager.GetString("MaxTokensPerSubAgent", resourceCulture);
             }
         }
         

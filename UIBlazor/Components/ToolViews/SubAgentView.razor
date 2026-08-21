@@ -81,7 +81,7 @@
 
             @* Sub-agent conversation messages *@
             <div class="subagent-conversation">
-                @foreach (var msg in SubAgent.Messages)
+                @foreach (var msg in SubAgent.GetMessages())
                 {
                     @if (msg.Role is not ChatMessageRole.Assistant)
                     {
@@ -179,12 +179,12 @@
         // Detect streaming→idle transition for any message.
         // This is critical: when a message finishes streaming, the throttler may have
         // skipped the last few tokens. We must render immediately to show final content.
-        var anyStreaming = SubAgent.Messages.Any(m => m.IsStreaming);
+        var anyStreaming = SubAgent.AnyMessage(m => m.IsStreaming);
         var streamingStopped = _oldAnyStreaming && !anyStreaming;
 
         // Structural changes always render immediately (rare events).
         // streamingStopped is included here to guarantee the final render after streaming.
-        var structuralChanged = SubAgent.Messages.Count != _oldMessageCount ||
+        var structuralChanged = SubAgent.GetMessageCount() != _oldMessageCount ||
                                 SubAgent.Status != _oldStatus ||
                                 SubAgent.IsExpanded != _oldIsExpanded ||
                                 streamingStopped;
@@ -195,7 +195,7 @@
         // This prevents re-rendering on every single token — only ~10fps.
         // The throttler schedules a tail render via InvokeAsync(StateHasChanged)
         // so the final state is always rendered.
-        var hasContentUpdate = SubAgent.Messages.Any(m => m.IsShouldRender || m.IsStreaming);
+        var hasContentUpdate = SubAgent.AnyMessage(m => m.IsShouldRender || m.IsStreaming);
         if (hasContentUpdate)
             return _contentThrottler.ShouldRender(() => InvokeAsync(StateHasChanged));
 
@@ -206,19 +206,18 @@
     {
         // Capture whether message count changed BEFORE updating old state.
         // This is needed for the auto-scroll condition below.
-        var messageCountChanged = SubAgent.Messages.Count != _oldMessageCount;
+        var messageCountChanged = SubAgent.GetMessageCount() != _oldMessageCount;
 
-        _oldMessageCount = SubAgent.Messages.Count;
+        _oldMessageCount = SubAgent.GetMessageCount();
         _oldStatus = SubAgent.Status;
         _oldIsExpanded = SubAgent.IsExpanded;
-        _oldAnyStreaming = SubAgent.Messages.Any(m => m.IsStreaming);
+        _oldAnyStreaming = SubAgent.AnyMessage(m => m.IsStreaming);
 
         // Reset IsShouldRender on all sub-agent messages after render.
         // This ensures ShouldRender() returns false for content updates
         // until a new token arrives and sets IsShouldRender = true again.
         // Without this, hasContentUpdate would always be true after the first token.
-        foreach (var msg in SubAgent.Messages)
-            msg.IsShouldRender = false;
+        SubAgent.ForEachMessage(msg => msg.IsShouldRender = false);
 
         // Auto-scroll sub-agent conversation to bottom when new messages are added
         // (not on every throttled content render — that would cause scroll jitter).

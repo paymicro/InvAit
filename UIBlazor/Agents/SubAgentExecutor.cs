@@ -12,17 +12,14 @@ public class SubAgentExecutor(
     IToolManager toolManager,
     ISystemPromptBuilder systemPromptBuilder,
     IProfileManager profileManager,
+    IRetryHandler retryHandler,
     ILogger<SubAgentExecutor> logger) : ISubAgentExecutor
 {
-    // TODO: Вынести в CommonOptions или ConnectionProfile
-    private const int MaxIterations = 20;
-
-    // TODO: Token budget for sub-agents.
-    // Currently a sub-agent can consume unlimited tokens (up to MaxIterations × max response size).
-    // To implement: add a MaxTokens option (e.g. in ConnectionProfile or as a delegate_task parameter),
-    // then check session.TotalTokens against it at the top of the loop in RunSubAgentLoopAsync.
-    // If exceeded — break and return a "token budget exceeded" message.
-    // This prevents unexpected API costs from runaway sub-agent loops.
+    /// <summary>
+    /// Maximum number of retry attempts for transient LLM API/network errors.
+    /// Total attempts = 1 original + MaxRetries.
+    /// </summary>
+    private const int MaxRetries = 2;
 
     /// <inheritdoc />
     public event Action<SubAgentMessage>? SubAgentStateChanged;
@@ -132,7 +129,7 @@ public class SubAgentExecutor(
             IsExpanded = true
         };
         session.AddMessage(userMessage);
-        subAgent.Messages.Add(userMessage);
+        subAgent.AddMessage(userMessage);
         subAgent.NotifyStateChanged();
 
         logger.LogInformation("Sub-agent started. Task: {Task}", task);
@@ -232,7 +229,7 @@ public class SubAgentExecutor(
             Content = "## ♻ Context compression...\n\n"
         };
         session.AddMessage(compressMessage);
-        subAgent.Messages.Add(compressMessage);
+        subAgent.AddMessage(compressMessage);
         subAgent.NotifyStateChanged();
 
         try
@@ -256,13 +253,19 @@ public class SubAgentExecutor(
                 compressResult,
                 cancellationToken);
 
+            // CompressSessionAsync replaces session.Messages with a new list (keptMessages).
+            // subAgent.Messages still holds the old uncompressed history + compressMessage.
+            // Synchronize subAgent.Messages with the compressed session.Messages so the UI
+            // displays the correct (compressed) conversation history.
+            subAgent.Messages = new List<VisualChatMessage>(session.Messages);
+
             logger.LogInformation("Sub-agent context compression completed. Tokens after: {Tokens}", session.TotalTokens);
         }
         catch (OperationCanceledException)
         {
             // Compression cancelled — remove the compression message and let the outer handler deal with cancellation
             session.Messages.Remove(compressMessage);
-            subAgent.Messages.Remove(compressMessage);
+            subAgent.RemoveMessage(compressMessage);
             throw;
         }
         catch (Exception ex)
@@ -270,7 +273,7 @@ public class SubAgentExecutor(
             // Compression failed — remove the compression message and continue without compression
             logger.LogWarning(ex, "Sub-agent context compression failed. Continuing with current context.");
             session.Messages.Remove(compressMessage);
-            subAgent.Messages.Remove(compressMessage);
+            subAgent.RemoveMessage(compressMessage);
         }
         finally
         {
@@ -297,9 +300,26 @@ public class SubAgentExecutor(
         CancellationToken cancellationToken)
     {
         var iteration = 0;
+        var maxTokens = profileManager.ActiveProfile.MaxTokensPerSubAgent;
+        var maxIterations = profileManager.ActiveProfile.MaxIterationsPerSubAgent;
 
-        while (iteration < MaxIterations && !cancellationToken.IsCancellationRequested)
+        while (iteration < maxIterations && !cancellationToken.IsCancellationRequested)
         {
+            // Check token budget before starting a new iteration.
+            // If MaxTokensPerSubAgent <= 0, the limit is disabled.
+            if (maxTokens > 0 && session.TotalTokens > maxTokens)
+            {
+                var lastContent = session.Messages
+                    .LastOrDefault(m => m.Role == ChatMessageRole.Assistant)?.Content ?? "(no response)";
+
+                logger.LogInformation(
+                    "Sub-agent exceeded token budget: {Tokens} / {MaxTokens} tokens.",
+                    session.TotalTokens, maxTokens);
+
+                return $"Sub-agent exceeded token budget ({session.TotalTokens} / {maxTokens} tokens). " +
+                       $"Last response: {lastContent}";
+            }
+
             iteration++;
 
             // Check if context compression is needed before the next LLM call
@@ -310,54 +330,94 @@ public class SubAgentExecutor(
                     break;
             }
 
-            // Create assistant message for streaming
-            var assistantMessage = new VisualChatMessage
+            // --- LLM call with retry logic for transient errors ---
+            // Up to MaxRetries+1 attempts (1 original + MaxRetries retries).
+            // Only HttpRequestException, TimeoutException, and API-level errors (resultCapture.Error) are retried.
+            // OperationCanceledException is never retried — it propagates immediately.
+            VisualChatMessage? assistantMessage = null;
+            CompletionsResult? resultCapture = null;
+
+            for (var attempt = 0; ; attempt++)
             {
-                Role = ChatMessageRole.Assistant,
-                IsStreaming = true,
-                IsExpanded = true
-            };
-            session.AddMessage(assistantMessage);
-            subAgent.Messages.Add(assistantMessage);
-            subAgent.NotifyStateChanged();
-
-            // Capture LLM state in a dedicated CompletionsResult (not shared with main agent)
-            var resultCapture = new CompletionsResult();
-
-            // Stream the LLM response.
-            // ProcessStreamAsync already accumulates content into assistantMessage.Content
-            // (via internal StringBuilder) and calls onContentUpdate with the DELTA (single token).
-            // We must NOT overwrite assistantMessage.Content — just trigger UI re-render.
-            // Dynamic token counter: update subAgent.TotalTokens from session.TotalTokens on every chunk.
-            await chatService.ProcessStreamAsync(
-                assistantMessage,
-                chatService.GetCompletionsForSubAgentAsync(session, systemPrompt, subAgentTools, resultCapture, cancellationToken),
-                onContentUpdate: _ =>
+                // Create a fresh assistant message and result capture for each attempt.
+                // Previous (partially filled) message must be removed from session and sub-agent.
+                if (assistantMessage is not null)
                 {
-                    assistantMessage.IsShouldRender = true;
-                    subAgent.TotalTokens = session.TotalTokens;
-                    subAgent.NotifyStateChanged();
-                },
-                onToolCallsUpdate: toolCalls =>
-                {
-                    assistantMessage.ToolCalls = toolCalls;
-                    assistantMessage.IsShouldRender = true;
-                    subAgent.TotalTokens = session.TotalTokens;
-                    subAgent.NotifyStateChanged();
-                },
-                onStateChange: () =>
-                {
-                    // Model is set once, then this is a no-op.
-                    assistantMessage.Model ??= resultCapture.Model;
-                    subAgent.TotalTokens = session.TotalTokens;
-                },
-                resultCapture,
-                cancellationToken);
+                    session.Messages.Remove(assistantMessage);
+                    subAgent.RemoveMessage(assistantMessage);
+                }
 
-            // Check for API-level errors captured during streaming
-            if (!string.IsNullOrEmpty(resultCapture.Error))
-            {
-                throw new Exception($"LLM API error: {resultCapture.Error}");
+                assistantMessage = new VisualChatMessage
+                {
+                    Role = ChatMessageRole.Assistant,
+                    IsStreaming = true,
+                    IsExpanded = true
+                };
+                session.AddMessage(assistantMessage);
+                subAgent.AddMessage(assistantMessage);
+                subAgent.NotifyStateChanged();
+
+                // Capture LLM state in a dedicated CompletionsResult (not shared with main agent)
+                resultCapture = new CompletionsResult();
+
+                try
+                {
+                    // Stream the LLM response.
+                    // ProcessStreamAsync already accumulates content into assistantMessage.Content
+                    // (via internal StringBuilder) and calls onContentUpdate with the DELTA (single token).
+                    // We must NOT overwrite assistantMessage.Content — just trigger UI re-render.
+                    // Dynamic token counter: update subAgent.TotalTokens from session.TotalTokens on every chunk.
+                    await chatService.ProcessStreamAsync(
+                        assistantMessage,
+                        chatService.GetCompletionsForSubAgentAsync(session, systemPrompt, subAgentTools, resultCapture, cancellationToken),
+                        onContentUpdate: _ =>
+                        {
+                            assistantMessage.IsShouldRender = true;
+                            subAgent.TotalTokens = session.TotalTokens;
+                            subAgent.NotifyStateChanged();
+                        },
+                        onToolCallsUpdate: toolCalls =>
+                        {
+                            assistantMessage.ToolCalls = toolCalls;
+                            assistantMessage.IsShouldRender = true;
+                            subAgent.TotalTokens = session.TotalTokens;
+                            subAgent.NotifyStateChanged();
+                        },
+                        onStateChange: () =>
+                        {
+                            // Model is set once, then this is a no-op.
+                            assistantMessage.Model ??= resultCapture.Model;
+                            subAgent.TotalTokens = session.TotalTokens;
+                        },
+                        resultCapture,
+                        cancellationToken);
+
+                    // Check for API-level errors captured during streaming
+                    if (!string.IsNullOrEmpty(resultCapture.Error))
+                    {
+                        throw new Exception($"LLM API error: {resultCapture.Error}");
+                    }
+
+                    // Success — break out of the retry loop
+                    break;
+                }
+                catch (OperationCanceledException)
+                {
+                    // Cancellation must never be retried — propagate immediately
+                    assistantMessage.IsStreaming = false;
+                    throw;
+                }
+                catch (Exception ex) when (IsTransientError(ex) && attempt < MaxRetries)
+                {
+                    // Transient error (HttpRequestException, TimeoutException, or API error wrapper) — retry
+                    var delaySeconds = retryHandler.GetRetryDelay(attempt + 1);
+                    logger.LogWarning(ex,
+                        "Sub-agent LLM call failed (attempt {Attempt}/{Total}). Retrying in {Delay}s.",
+                        attempt + 1, MaxRetries + 1, delaySeconds);
+
+                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds), cancellationToken);
+                    // Loop continues — new assistantMessage and resultCapture will be created
+                }
             }
 
             // Read captured state (not shared ChatService properties)
@@ -404,13 +464,151 @@ public class SubAgentExecutor(
             return content;
         }
 
-        if (iteration >= MaxIterations)
+        if (iteration >= maxIterations)
         {
-            return $"Sub-agent reached the maximum number of iterations ({MaxIterations}) without completing. " +
-                   "Last response: " + session.Messages.LastOrDefault(m => m.Role == ChatMessageRole.Assistant)?.Content;
+            // The sub-agent exhausted all iterations without finishing.
+            // Give it one final chance to produce a meaningful summary instead of
+            // returning the raw last response.
+            return await RequestFinalSummaryAsync(session, subAgent, systemPrompt, subAgentTools, cancellationToken);
         }
 
         return "Sub-agent was cancelled.";
+    }
+
+    /// <summary>
+    /// Performs a final LLM call asking the sub-agent to summarize its work when the
+    /// iteration limit has been reached. This gives the main agent a meaningful summary
+    /// instead of the raw last response.
+    /// No tool calls are expected — the LLM should respond with text only.
+    /// No retry logic: if this call fails, the raw last response is returned as fallback.
+    /// </summary>
+    private async Task<string> RequestFinalSummaryAsync(
+        ConversationSession session,
+        SubAgentMessage subAgent,
+        string systemPrompt,
+        IEnumerable<Tool> subAgentTools,
+        CancellationToken cancellationToken)
+    {
+        logger.LogInformation(
+            "Sub-agent reached max iterations ({MaxIterations}). Requesting final summary.",
+            profileManager.ActiveProfile.MaxIterationsPerSubAgent);
+
+        const string summaryInstruction =
+            "You are about to reach your iteration limit. " +
+            "Provide a comprehensive summary of what you have accomplished so far, " +
+            "what remains to be done, and any important findings or decisions. " +
+            "This is your final response.";
+
+        // Add the summary instruction as a user message
+        var summaryRequestMessage = new VisualChatMessage
+        {
+            Content = summaryInstruction,
+            Role = ChatMessageRole.User,
+            IsExpanded = true
+        };
+        session.AddMessage(summaryRequestMessage);
+        subAgent.AddMessage(summaryRequestMessage);
+        subAgent.NotifyStateChanged();
+
+        // Create assistant message for the summary response
+        var summaryMessage = new VisualChatMessage
+        {
+            Role = ChatMessageRole.Assistant,
+            IsStreaming = true,
+            IsExpanded = true
+        };
+        session.AddMessage(summaryMessage);
+        subAgent.AddMessage(summaryMessage);
+        subAgent.NotifyStateChanged();
+
+        var resultCapture = new CompletionsResult();
+
+        try
+        {
+            await chatService.ProcessStreamAsync(
+                summaryMessage,
+                chatService.GetCompletionsForSubAgentAsync(session, systemPrompt, subAgentTools, resultCapture, cancellationToken),
+                onContentUpdate: _ =>
+                {
+                    summaryMessage.IsShouldRender = true;
+                    subAgent.TotalTokens = session.TotalTokens;
+                    subAgent.NotifyStateChanged();
+                },
+                onToolCallsUpdate: toolCalls =>
+                {
+                    summaryMessage.ToolCalls = toolCalls;
+                    summaryMessage.IsShouldRender = true;
+                    subAgent.TotalTokens = session.TotalTokens;
+                    subAgent.NotifyStateChanged();
+                },
+                onStateChange: () =>
+                {
+                    summaryMessage.Model ??= resultCapture.Model;
+                    subAgent.TotalTokens = session.TotalTokens;
+                },
+                resultCapture,
+                cancellationToken);
+
+            summaryMessage.ToolCalls = resultCapture.AccumulatedToolCalls;
+            summaryMessage.IsStreaming = false;
+            subAgent.TotalTokens = session.TotalTokens;
+            subAgent.NotifyStateChanged();
+
+            var content = summaryMessage.Content;
+            if (string.IsNullOrEmpty(content))
+            {
+                // Fallback: LLM returned empty content
+                content = $"Sub-agent reached the maximum number of iterations ({profileManager.ActiveProfile.MaxIterationsPerSubAgent}) without completing. " +
+                          "Last response: " + session.Messages
+                              .LastOrDefault(m => m.Role == ChatMessageRole.Assistant && m != summaryMessage)?.Content;
+            }
+
+            logger.LogInformation("Sub-agent final summary received.");
+            return content;
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation — clean up and rethrow so the outer handler sets Cancelled status
+            summaryMessage.IsStreaming = false;
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Summary call failed — fall back to the raw last response
+            logger.LogWarning(ex, "Sub-agent final summary call failed. Falling back to last response.");
+
+            // Remove the summary messages so they don't clutter the UI
+            session.Messages.Remove(summaryMessage);
+            subAgent.RemoveMessage(summaryMessage);
+            session.Messages.Remove(summaryRequestMessage);
+            subAgent.RemoveMessage(summaryRequestMessage);
+
+            return $"Sub-agent reached the maximum number of iterations ({profileManager.ActiveProfile.MaxIterationsPerSubAgent}) without completing. " +
+                   "Last response: " + session.Messages.LastOrDefault(m => m.Role == ChatMessageRole.Assistant)?.Content;
+        }
+    }
+
+    /// <summary>
+    /// Determines whether an exception represents a transient (retryable) error.
+    /// Retried: HttpRequestException (network/API), TimeoutException, and Exception wrapping an API error.
+    /// NOT retried: OperationCanceledException (handled separately), non-transient exceptions.
+    /// </summary>
+    private static bool IsTransientError(Exception ex)
+    {
+        // HttpRequestException covers network failures and HTTP 5xx responses
+        if (ex is HttpRequestException)
+            return true;
+
+        // TimeoutException covers request timeouts
+        if (ex is TimeoutException)
+            return true;
+
+        // API-level errors are thrown as generic Exception with "LLM API error:" prefix
+        // (from the resultCapture.Error check above)
+        if (ex is not null && ex.Message.StartsWith("LLM API error:", StringComparison.Ordinal))
+            return true;
+
+        return false;
     }
 
     /// <summary>
@@ -427,17 +625,15 @@ public class SubAgentExecutor(
 
         if (obj is JsonElement el && el.ValueKind == JsonValueKind.Array)
         {
-            result = el.EnumerateArray()
+            result = [.. el.EnumerateArray()
                 .Select(e => e.GetString()?.Trim())
-                .Where(s => !string.IsNullOrEmpty(s))
-                .ToArray();
+                .Where(s => !string.IsNullOrEmpty(s))];
         }
         else if (obj is IList list)
         {
-            result = list.OfType<object>()
+            result = [.. list.OfType<object>()
                 .Select(o => o?.ToString()?.Trim())
-                .Where(s => !string.IsNullOrEmpty(s))
-                .ToArray();
+                .Where(s => !string.IsNullOrEmpty(s))];
         }
 
         return result is { Length: > 0 } ? result : null;

@@ -33,6 +33,18 @@ public class ConnectionProfile : BaseOptions
     public int TokensToCompress { get; set => SetIfChanged(ref field, value); } = 0;
 
     /// <summary>
+    /// Максимальный бюджет токенов для одного субагента (delegate_task).
+    /// 0 — ограничение отключено (субагент ограничен только MaxIterations).
+    /// </summary>
+    public int MaxTokensPerSubAgent { get; set => SetIfChanged(ref field, value); } = 0;
+
+    /// <summary>
+    /// Максимальное количество итараций(вызовов) для одного субагента (delegate_task).
+    /// 0 — ограничение отключено.
+    /// </summary>
+    public int MaxIterationsPerSubAgent { get; set => SetIfChanged(ref field, value); } = 20;
+
+    /// <summary>
     /// Контекстное окно = все промпты + <see cref="MaxTokens"/>
     /// </summary>
     public int ContextWindow { get; set => SetIfChanged(ref field, value); } = 128_000;

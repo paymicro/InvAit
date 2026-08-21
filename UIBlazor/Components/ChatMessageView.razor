@@ -161,7 +161,7 @@
         var subAgentChanged = _subAgents.Count != _oldSubAgentCount ||
             _subAgents.Any(sa =>
                 sa.Status != _oldSubAgentStatus ||
-                sa.Messages.Count != _oldSubAgentMessageCount ||
+                sa.GetMessageCount() != _oldSubAgentMessageCount ||
                 sa.IsExpanded != _oldSubAgentIsExpanded ||
                 (sa.Result ?? string.Empty) != _oldSubAgentResult);
 
@@ -192,7 +192,7 @@
         // (individual sub-agent changes are handled by ToolCallBlock's own ShouldRender)
         var firstSubAgent = _subAgents.FirstOrDefault();
         _oldSubAgentStatus = firstSubAgent?.Status;
-        _oldSubAgentMessageCount = firstSubAgent?.Messages.Count ?? 0;
+        _oldSubAgentMessageCount = firstSubAgent?.GetMessageCount() ?? 0;
         _oldSubAgentIsExpanded = firstSubAgent?.IsExpanded ?? false;
         _oldSubAgentResult = firstSubAgent?.Result ?? string.Empty;
         Message.IsShouldRender = false;

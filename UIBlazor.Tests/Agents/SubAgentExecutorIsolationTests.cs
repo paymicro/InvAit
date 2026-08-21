@@ -81,6 +81,7 @@ public partial class SubAgentExecutorTests
             _toolManagerMock.Object,
             _systemPromptBuilderMock.Object,
             _profileManagerMock.Object,
+            _retryHandlerMock.Object,
             _loggerMock.Object);
 
         var toolCall1 = new ToolCall();
