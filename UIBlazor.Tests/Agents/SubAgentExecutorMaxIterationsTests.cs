@@ -256,4 +256,93 @@ public partial class SubAgentExecutorTests
         // 20 iterations + 1 final summary call
         Assert.Equal(1050, toolCall.SubAgent!.TotalTokens);
     }
+
+    [Fact]
+    public async Task ExecuteAsync_CancelledAtIterationLimit_DoesNotRequestFinalSummary()
+    {
+        // Arrange
+        var toolCall = new ToolCall();
+        var args = JsonSerializer.Serialize(new { task = "Test", systemPrompt = "Prompt" });
+
+        var cts = new CancellationTokenSource();
+        var completionsCallCount = 0;
+        var toolExecutions = 0;
+
+        // Small iteration limit so the test finishes fast
+        _profileManagerMock.Setup(x => x.ActiveProfile).Returns(new ConnectionProfile
+        {
+            TokensToCompress = 0,
+            MaxIterationsPerSubAgent = 2
+        });
+
+        _chatServiceMock
+            .Setup(x => x.GetCompletionsForSubAgentAsync(
+                It.IsAny<ConversationSession>(),
+                It.IsAny<string>(),
+                It.IsAny<IEnumerable<Tool>>(),
+                It.IsAny<CompletionsResult>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<ConversationSession, string, IEnumerable<Tool>, CompletionsResult, CancellationToken>(
+                (_, _, _, resultCapture, _) =>
+                {
+                    completionsCallCount++;
+                    resultCapture.Model = "test-model";
+                    // Always return tool_calls so the loop never terminates naturally
+                    resultCapture.AccumulatedToolCalls =
+                    [
+                        new ToolCall { Id = $"tc{completionsCallCount}", Function = new ToolCallFunction { Name = "read_files", Arguments = "{}" } }
+                    ];
+                })
+            .Returns(CreateEmptyDeltaStream());
+
+        _chatServiceMock
+            .Setup(x => x.ProcessStreamAsync(
+                It.IsAny<VisualChatMessage>(),
+                It.IsAny<IAsyncEnumerable<ChatDelta>>(),
+                It.IsAny<Action<string>?>(),
+                It.IsAny<Action<List<ToolCall>>>(),
+                It.IsAny<Action?>(),
+                It.IsAny<CompletionsResult>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<VisualChatMessage, IAsyncEnumerable<ChatDelta>, Action<string>?, Action<List<ToolCall>>, Action?, CompletionsResult, CancellationToken>(
+                (msg, _, onContent, _, _, _, _) =>
+                {
+                    msg.Content = "working";
+                    onContent?.Invoke("working");
+                })
+            .Returns(Task.CompletedTask);
+
+        // The tool cancels the sub-agent during its execution on the LAST
+        // iteration (execution #2 == MaxIterationsPerSubAgent).
+        var baseTool = CreateTool(BuiltInToolEnum.ReadFiles);
+        var cancelTool = new Tool
+        {
+            Name = baseTool.Name,
+            DisplayName = baseTool.DisplayName,
+            Category = baseTool.Category,
+            NativeTool = baseTool.NativeTool,
+            ExecuteAsync = (_, _) =>
+            {
+                toolExecutions++;
+                if (toolExecutions >= 2)
+                    cts.Cancel();
+                return Task.FromResult(new VsToolResult { Success = true, Result = "ok" });
+            }
+        };
+
+        _toolManagerMock.Setup(x => x.GetEnabledTools(AppMode.Agent)).Returns(new List<Tool> { cancelTool });
+        _toolManagerMock.Setup(x => x.GetApprovalModeByToolName(It.IsAny<string>())).Returns(ToolApprovalMode.Allow);
+        _toolManagerMock.Setup(x => x.GetTool(BuiltInToolEnum.ReadFiles)).Returns(cancelTool);
+
+        // Act
+        var result = await _executor.ExecuteAsync(args, toolCall, cts.Token);
+
+        // Assert - cancellation at the limit boundary wins over the final summary:
+        // no extra LLM call must be made after cancellation.
+        Assert.Equal(SubAgentStatus.Cancelled, toolCall.SubAgent!.Status);
+        Assert.False(result.Success);
+        // Exactly 2 completions calls — one per iteration, NO third call for the summary
+        Assert.Equal(2, completionsCallCount);
+        Assert.Equal(2, toolExecutions);
+    }
 }

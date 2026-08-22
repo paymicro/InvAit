@@ -533,15 +533,16 @@ public class SubAgentExecutor(
             return content;
         }
 
-        if (iteration >= maxIterations)
-        {
-            // The sub-agent exhausted all iterations without finishing.
-            // Give it one final chance to produce a meaningful summary instead of
-            // returning the raw last response.
-            return await RequestFinalSummaryAsync(session, subAgent, systemPrompt, subAgentTools, cancellationToken);
-        }
+        // Cancellation takes priority over the iteration limit: if the sub-agent
+        // was cancelled at the same moment the limit was reached, report Cancelled
+        // instead of making another LLM call for the final summary.
+        if (cancellationToken.IsCancellationRequested)
+            throw new OperationCanceledException("Sub-agent was cancelled.");
 
-        throw new OperationCanceledException("Sub-agent was cancelled.");
+        // The loop can only be exited here by exhausting maxIterations.
+        // Give the sub-agent one final chance to produce a meaningful summary instead of
+        // returning the raw last response.
+        return await RequestFinalSummaryAsync(session, subAgent, systemPrompt, subAgentTools, cancellationToken);
     }
 
     /// <summary>
