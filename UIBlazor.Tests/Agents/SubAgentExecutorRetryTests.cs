@@ -699,4 +699,82 @@ public partial class SubAgentExecutorTests
             Times.Exactly(2));
         _retryHandlerMock.Verify(x => x.GetRetryDelay(1), Times.Once);
     }
+
+    // ───────────────────────────────────────────────────────────────────────
+    //  Test 15: Token rollback on retry does not double-deduct tokens.
+    //           A fully-streamed failed attempt has Timings.Tokens recorded;
+    //           RemoveMessage subtracts them, then TotalTokens is restored
+    //           to the pre-attempt snapshot. Net effect: exactly the snapshot.
+    // ───────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ExecuteAsync_Retry_TotalTokensRestoredToPreAttemptSnapshot()
+    {
+        // Arrange
+        var toolCall = new ToolCall();
+        var args = JsonSerializer.Serialize(new { task = "Test task", systemPrompt = "Prompt" });
+
+        var completionsCallCount = 0;
+        var processStreamCallCount = 0;
+        var tokensSeenOnSecondCall = int.MinValue;
+        ConversationSession? capturedSession = null;
+
+        _chatServiceMock
+            .Setup(x => x.GetCompletionsForSubAgentAsync(
+                It.IsAny<ConversationSession>(),
+                It.IsAny<string>(),
+                It.IsAny<IEnumerable<Tool>>(),
+                It.IsAny<CompletionsResult>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<ConversationSession, string, IEnumerable<Tool>, CompletionsResult, CancellationToken>(
+                (session, _, _, resultCapture, _) =>
+                {
+                    completionsCallCount++;
+                    capturedSession ??= session;
+                    resultCapture.Model = "test-model";
+                    resultCapture.AccumulatedToolCalls = null;
+                    if (completionsCallCount == 2)
+                        tokensSeenOnSecondCall = session.TotalTokens;
+                })
+            .Returns(CreateEmptyDeltaStream());
+
+        _chatServiceMock
+            .Setup(x => x.ProcessStreamAsync(
+                It.IsAny<VisualChatMessage>(),
+                It.IsAny<IAsyncEnumerable<ChatDelta>>(),
+                It.IsAny<Action<string>?>(),
+                It.IsAny<Action<List<ToolCall>>>(),
+                It.IsAny<Action?>(),
+                It.IsAny<CompletionsResult>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<VisualChatMessage, IAsyncEnumerable<ChatDelta>, Action<string>?, Action<List<ToolCall>>, Action?, CompletionsResult, CancellationToken>(
+                (msg, _, onContent, _, _, _, _) =>
+                {
+                    processStreamCallCount++;
+                    if (processStreamCallCount == 1)
+                    {
+                        // Simulate a fully-streamed attempt: usage arrived, CalcTimings
+                        // recorded completion tokens, session counter was incremented —
+                        // and only then a transient error was thrown.
+                        msg.Timings = new MessageTimings { Tokens = 50 };
+                        capturedSession!.TotalTokens += 50;
+                        throw new HttpRequestException("Connection dropped after usage");
+                    }
+                    msg.Content = "Success after token rollback";
+                    onContent?.Invoke("Success after token rollback");
+                })
+            .Returns(Task.CompletedTask);
+
+        _toolManagerMock.Setup(x => x.GetEnabledTools(AppMode.Agent)).Returns(new List<Tool>());
+
+        // Act
+        var result = await _executor.ExecuteAsync(args, toolCall, CancellationToken.None);
+
+        // Assert
+        Assert.True(result.Success);
+        // Baseline before the failed attempt was 0. The failed attempt added 50
+        // (usage-based). After rollback the counter must be exactly 0 again —
+        // NOT -50 (double deduction: RemoveMessage subtracting from a restored value).
+        Assert.Equal(0, tokensSeenOnSecondCall);
+    }
 }

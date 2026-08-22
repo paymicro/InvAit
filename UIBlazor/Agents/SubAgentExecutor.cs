@@ -370,10 +370,16 @@ public class SubAgentExecutor(
                 // Previous (partially filled) message must be removed from session and sub-agent.
                 if (assistantMessage is not null)
                 {
-                    // Roll back TotalTokens to the snapshot taken before the first attempt.
-                    // This correctly handles both dynamic per-chunk counting and usage-based updates.
-                    session.TotalTokens = tokensBeforeAttempt;
+                    // Remove the failed attempt's message FIRST: RemoveMessage subtracts
+                    // its token contribution (Timings.Tokens + tool call tokens) from TotalTokens.
                     subAgent.RemoveMessage(assistantMessage);
+
+                    // Then roll back TotalTokens to the snapshot taken before the first attempt.
+                    // This absolute assignment correctly handles both dynamic per-chunk counting
+                    // and usage-based updates. Doing it AFTER RemoveMessage prevents double
+                    // deduction (otherwise tokens of a fully-streamed failed attempt would be
+                    // subtracted from an already-restored value, dropping below the snapshot).
+                    session.TotalTokens = tokensBeforeAttempt;
                 }
 
                 assistantMessage = new VisualChatMessage
