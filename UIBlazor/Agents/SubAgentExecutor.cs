@@ -351,7 +351,8 @@ public class SubAgentExecutor(
 
             // --- LLM call with retry logic for transient errors ---
             // Up to MaxRetries+1 attempts (1 original + MaxRetries retries).
-            // Only HttpRequestException, TimeoutException, and API-level errors (resultCapture.Error) are retried.
+            // Only HttpRequestException, TimeoutException, and LlmApiException
+            // (HTTP status errors and API-level errors from resultCapture.Error) are retried.
             // OperationCanceledException is never retried — it propagates immediately.
             VisualChatMessage? assistantMessage = null;
             CompletionsResult? resultCapture = null;
@@ -422,7 +423,7 @@ public class SubAgentExecutor(
                     // Check for API-level errors captured during streaming
                     if (!string.IsNullOrEmpty(resultCapture.Error))
                     {
-                        throw new Exception($"LLM API error: {resultCapture.Error}");
+                        throw new LlmApiException($"LLM API error: {resultCapture.Error}");
                     }
 
                     // Success — break out of the retry loop
@@ -647,7 +648,8 @@ public class SubAgentExecutor(
 
     /// <summary>
     /// Determines whether an exception represents a transient (retryable) error.
-    /// Retried: HttpRequestException (network/API), TimeoutException, and Exception wrapping an API error.
+    /// Retried: HttpRequestException (network/API), TimeoutException, and LlmApiException
+    /// (non-success HTTP status codes and API-level errors from the response stream).
     /// NOT retried: OperationCanceledException (handled separately), non-transient exceptions.
     /// </summary>
     private static bool IsTransientError(Exception ex)
@@ -660,9 +662,10 @@ public class SubAgentExecutor(
         if (ex is TimeoutException)
             return true;
 
-        // API-level errors are thrown as generic Exception with "LLM API error:" prefix
-        // (from the resultCapture.Error check above)
-        if (ex is not null && ex.Message.StartsWith("LLM API error:", StringComparison.Ordinal))
+        // LlmApiException covers:
+        // - non-success HTTP status codes (429/5xx etc.) thrown by ChatService
+        // - API-level errors from the SSE stream (resultCapture.Error check)
+        if (ex is LlmApiException)
             return true;
 
         return false;

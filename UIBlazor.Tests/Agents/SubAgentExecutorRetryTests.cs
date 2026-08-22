@@ -6,7 +6,8 @@ public partial class SubAgentExecutorTests
     //  Retry logic tests for SubAgentExecutor.RunSubAgentLoopAsync
     //
     //  MaxRetries = 2  →  total attempts = 1 original + 2 retries = 3
-    //  Retried: HttpRequestException, TimeoutException, "LLM API error:" prefix
+    //  Retried: HttpRequestException, TimeoutException, LlmApiException
+    //           (HTTP status errors + API-level errors from resultCapture.Error)
     //  NOT retried: OperationCanceledException, non-transient exceptions
     // ═══════════════════════════════════════════════════════════════════════
 
@@ -61,7 +62,7 @@ public partial class SubAgentExecutorTests
 
     /// <summary>
     /// Helper: sets up ChatService so that ProcessStreamAsync sets
-    /// resultCapture.Error on the first N calls (triggering "LLM API error:" throw
+    /// resultCapture.Error on the first N calls (triggering LlmApiException
     /// inside RunSubAgentLoopAsync) and succeeds on the (N+1)-th call.
     /// </summary>
     private void SetupChatServiceApiErrorThenSucceed(string apiError, int errorCount, string successContent)
@@ -81,7 +82,7 @@ public partial class SubAgentExecutorTests
                     processStreamCallCount++;
                     resultCapture.Model = "test-model";
                     resultCapture.AccumulatedToolCalls = null;
-                    // First N calls: set API error → SubAgentExecutor throws "LLM API error: ..."
+                    // First N calls: set API error → SubAgentExecutor throws LlmApiException
                     if (processStreamCallCount <= errorCount)
                     {
                         resultCapture.Error = apiError;
@@ -409,8 +410,8 @@ public partial class SubAgentExecutorTests
         var toolCall = new ToolCall();
         var args = JsonSerializer.Serialize(new { task = "Test task", systemPrompt = "Prompt" });
         // First call sets resultCapture.Error = "rate_limit_exceeded"
-        // SubAgentExecutor detects this and throws "LLM API error: rate_limit_exceeded"
-        // IsTransientError recognizes the "LLM API error:" prefix → retry
+        // SubAgentExecutor detects this and throws LlmApiException("LLM API error: rate_limit_exceeded")
+        // IsTransientError recognizes LlmApiException → retry
         // Second call succeeds
         SetupChatServiceApiErrorThenSucceed("rate_limit_exceeded", 1, "Success after API error retry");
 
@@ -661,5 +662,41 @@ public partial class SubAgentExecutorTests
         Assert.Equal(SubAgentStatus.Cancelled, toolCall.SubAgent!.Status);
         // Only 1 call to ChatService (the initial failed attempt)
         Assert.Equal(1, processStreamCallCount);
+    }
+
+    // ───────────────────────────────────────────────────────────────────────
+    //  Test 14: Non-success HTTP status (LlmApiException from ChatService)
+    //           is treated as transient → retry → success
+    // ───────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ExecuteAsync_HttpStatusCodeError_RetriesAndSucceeds()
+    {
+        // Arrange
+        var toolCall = new ToolCall();
+        var args = JsonSerializer.Serialize(new { task = "Test task", systemPrompt = "Prompt" });
+        // ChatService throws LlmApiException("HttpCode: ...") for non-2xx responses
+        // (e.g. 429 rate limit). It must be retried just like SSE-level API errors.
+        SetupChatServiceThrowThenSucceed(
+            new LlmApiException("HttpCode: 429 | server failed: rate_limit_exceeded"), 1,
+            "Success after HTTP status retry");
+
+        // Act
+        var result = await _executor.ExecuteAsync(args, toolCall, CancellationToken.None);
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.Equal("Success after HTTP status retry", result.Result);
+        Assert.Equal(SubAgentStatus.Completed, toolCall.SubAgent!.Status);
+        // ChatService called twice: 1 failed + 1 successful
+        _chatServiceMock.Verify(
+            x => x.GetCompletionsForSubAgentAsync(
+                It.IsAny<ConversationSession>(),
+                It.IsAny<string>(),
+                It.IsAny<IEnumerable<Tool>>(),
+                It.IsAny<CompletionsResult>(),
+                It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+        _retryHandlerMock.Verify(x => x.GetRetryDelay(1), Times.Once);
     }
 }

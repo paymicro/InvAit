@@ -398,7 +398,9 @@ public class ChatService(
         if (!response.IsSuccessStatusCode)
         {
             var result = $"HttpCode: {response.StatusCode} | server failed: {await response.Content.ReadAsStringAsync(cancellationToken)}";
-            throw new Exception(result);
+            // Typed exception: SubAgentExecutor (and other callers) use it to
+            // classify HTTP status errors (429/5xx) as transient and retry them.
+            throw new LlmApiException(result);
         }
 
         // если не стрим, то возвращаем как один чанк
