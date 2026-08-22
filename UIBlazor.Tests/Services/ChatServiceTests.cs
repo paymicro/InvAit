@@ -85,7 +85,8 @@ public partial class ChatServiceTests
     {
         // Arrange
         var sessionId = "session_2024-01-01T12:00:00";
-        var existingSession = new ConversationSession { Id = sessionId, Messages = [new() { Content = "Hi" }] };
+var existingSession = new ConversationSession { Id = sessionId };
+        existingSession.SetMessages([new() { Content = "Hi" }]);
         _localStorageMock.Setup(ls => ls.GetAllKeysAsync())
             .ReturnsAsync([sessionId]);
         _localStorageMock.Setup(ls => ls.TryGetItemAsync<ConversationSession>(sessionId))
@@ -98,7 +99,7 @@ public partial class ChatServiceTests
 
         // Assert
         Assert.Equal(sessionId, chatService.Session.Id);
-        Assert.Single(chatService.Session.Messages);
+        Assert.Single(chatService.Session.GetMessagesSnapshot());
     }
 
     [Fact]
@@ -116,7 +117,7 @@ public partial class ChatServiceTests
         // Assert
         Assert.NotNull(chatService.Session);
         Assert.StartsWith("session_", chatService.Session.Id);
-        Assert.Empty(chatService.Session.Messages);
+        Assert.Empty(chatService.Session.GetMessagesSnapshot());
     }
 
     [Fact]

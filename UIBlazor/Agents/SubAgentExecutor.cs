@@ -129,6 +129,11 @@ public class SubAgentExecutor(
             Mode = AppMode.Agent // Sub-agent is always in Agent mode
         };
 
+        // Establish SubAgentMessage as the single source of truth.
+        // All subsequent subAgent.AddMessage/RemoveMessage/SetMessages calls will
+        // automatically propagate to the session, eliminating dual-list synchronization.
+        subAgent.AttachSession(session);
+
         // Add the task as the initial user message
         var userMessage = new VisualChatMessage
         {
@@ -136,7 +141,6 @@ public class SubAgentExecutor(
             Role = ChatMessageRole.User,
             IsExpanded = true
         };
-        session.AddMessage(userMessage);
         subAgent.AddMessage(userMessage);
         subAgent.NotifyStateChanged();
 
@@ -210,9 +214,6 @@ public class SubAgentExecutor(
             // ToolCalls is preserved so the user can still expand and review the
             // sub-agent's reasoning chain in the UI.
             subAgent.ReleaseMemory();
-
-            // Dispose the linked CancellationTokenSource.
-            linkedCts.Dispose();
         }
     }
 
@@ -247,7 +248,6 @@ public class SubAgentExecutor(
             IsExpanded = true,
             Content = "## ♻ Context compression...\n\n"
         };
-        session.AddMessage(compressMessage);
         subAgent.AddMessage(compressMessage);
         subAgent.NotifyStateChanged();
 
@@ -272,18 +272,17 @@ public class SubAgentExecutor(
                 compressResult,
                 cancellationToken);
 
-            // CompressSessionAsync replaces session.Messages with a new list (keptMessages).
-            // subAgent.Messages still holds the old uncompressed history + compressMessage.
-            // Synchronize subAgent.Messages with the compressed session.Messages so the UI
+            // CompressSessionAsync replaces session messages with a new list (keptMessages).
+            // subAgent messages still holds the old uncompressed history + compressMessage.
+            // Synchronize sub-agent messages with the compressed session so the UI
             // displays the correct (compressed) conversation history.
-            subAgent.Messages = new List<VisualChatMessage>(session.Messages);
+            subAgent.SetMessages(session.GetMessagesSnapshot());
 
             logger.LogInformation("Sub-agent context compression completed. Tokens after: {Tokens}", session.TotalTokens);
         }
         catch (OperationCanceledException)
         {
             // Compression cancelled — remove the compression message and let the outer handler deal with cancellation
-            session.Messages.Remove(compressMessage);
             subAgent.RemoveMessage(compressMessage);
             throw;
         }
@@ -291,7 +290,6 @@ public class SubAgentExecutor(
         {
             // Compression failed — remove the compression message and continue without compression
             logger.LogWarning(ex, "Sub-agent context compression failed. Continuing with current context.");
-            session.Messages.Remove(compressMessage);
             subAgent.RemoveMessage(compressMessage);
         }
         finally
@@ -331,8 +329,7 @@ public class SubAgentExecutor(
             // If MaxTokensPerSubAgent <= 0, the limit is disabled.
             if (maxTokens > 0 && session.TotalTokens > maxTokens)
             {
-                var lastContent = session.Messages
-                    .LastOrDefault(m => m.Role == ChatMessageRole.Assistant)?.Content ?? "(no response)";
+                var lastContent = session.GetLastOrDefaultMessage(m => m.Role == ChatMessageRole.Assistant)?.Content ?? "(no response)";
 
                 logger.LogInformation(
                     "Sub-agent exceeded token budget: {Tokens} / {MaxTokens} tokens.",
@@ -375,7 +372,6 @@ public class SubAgentExecutor(
                     // Roll back TotalTokens to the snapshot taken before the first attempt.
                     // This correctly handles both dynamic per-chunk counting and usage-based updates.
                     session.TotalTokens = tokensBeforeAttempt;
-                    session.Messages.Remove(assistantMessage);
                     subAgent.RemoveMessage(assistantMessage);
                 }
 
@@ -385,7 +381,6 @@ public class SubAgentExecutor(
                     IsStreaming = true,
                     IsExpanded = true
                 };
-                session.AddMessage(assistantMessage);
                 subAgent.AddMessage(assistantMessage);
                 subAgent.NotifyStateChanged();
 
@@ -447,13 +442,19 @@ public class SubAgentExecutor(
                         "Sub-agent LLM call failed (attempt {Attempt}/{Total}). Retrying in {Delay}s.",
                         attempt + 1, MaxRetries + 1, delaySeconds);
 
-                    // Set retry indicators on the sub-agent for UI display
+                    // Set retry indicators on the sub-agent for UI display.
+                    // Notify once when retry starts so the UI shows the retry badge.
                     subAgent.IsRetrying = true;
                     subAgent.RetryAttempt = attempt + 1;
                     subAgent.RetryDelaySeconds = delaySeconds;
+                    subAgent.RetryCountdown = delaySeconds;
                     subAgent.NotifyStateChanged();
 
-                    // Countdown loop: update RetryCountdown every second for UI.
+                    // Countdown loop: update RetryCountdown every second.
+                    // We do NOT call NotifyStateChanged per-second — SubAgentView's HasChanges()
+                    // already checks RetryCountdown on its throttled render schedule, and
+                    // ToolCallBlock re-renders on every NotifyStateChanged (unthrottled),
+                    // so per-second notifications would cause excessive renders.
                     // Use Task.Delay with the cancellation token so that cancellation
                     // during the retry delay propagates as OperationCanceledException.
                     try
@@ -461,7 +462,6 @@ public class SubAgentExecutor(
                         for (var i = delaySeconds; i > 0; i--)
                         {
                             subAgent.RetryCountdown = i;
-                            subAgent.NotifyStateChanged();
                             await Task.Delay(1000, cancellationToken);
                         }
                         subAgent.RetryCountdown = 0;
@@ -568,7 +568,6 @@ public class SubAgentExecutor(
             Role = ChatMessageRole.User,
             IsExpanded = true
         };
-        session.AddMessage(summaryRequestMessage);
         subAgent.AddMessage(summaryRequestMessage);
         subAgent.NotifyStateChanged();
 
@@ -579,7 +578,6 @@ public class SubAgentExecutor(
             IsStreaming = true,
             IsExpanded = true
         };
-        session.AddMessage(summaryMessage);
         subAgent.AddMessage(summaryMessage);
         subAgent.NotifyStateChanged();
 
@@ -621,8 +619,7 @@ public class SubAgentExecutor(
             {
                 // Fallback: LLM returned empty content
                 content = $"Sub-agent reached the maximum number of iterations ({profileManager.ActiveProfile.MaxIterationsPerSubAgent}) without completing. " +
-                          "Last response: " + session.Messages
-                              .LastOrDefault(m => m.Role == ChatMessageRole.Assistant && m != summaryMessage)?.Content;
+                          "Last response: " + session.GetLastOrDefaultMessage(m => m.Role == ChatMessageRole.Assistant && m != summaryMessage)?.Content;
             }
 
             logger.LogInformation("Sub-agent final summary received.");
@@ -640,13 +637,11 @@ public class SubAgentExecutor(
             logger.LogWarning(ex, "Sub-agent final summary call failed. Falling back to last response.");
 
             // Remove the summary messages so they don't clutter the UI
-            session.Messages.Remove(summaryMessage);
             subAgent.RemoveMessage(summaryMessage);
-            session.Messages.Remove(summaryRequestMessage);
             subAgent.RemoveMessage(summaryRequestMessage);
 
             return $"Sub-agent reached the maximum number of iterations ({profileManager.ActiveProfile.MaxIterationsPerSubAgent}) without completing. " +
-                   "Last response: " + session.Messages.LastOrDefault(m => m.Role == ChatMessageRole.Assistant)?.Content;
+                   "Last response: " + session.GetLastOrDefaultMessage(m => m.Role == ChatMessageRole.Assistant)?.Content;
         }
     }
 

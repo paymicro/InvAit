@@ -54,6 +54,24 @@ public class SubAgentMessage
     private readonly object _messagesLock = new();
 
     /// <summary>
+    /// The <see cref="ConversationSession"/> that mirrors this sub-agent's messages
+    /// for LLM API calls (via <see cref="ConversationSession.GetFormattedMessages"/>).
+    /// When attached, all message mutations (Add/Remove/Set) automatically propagate
+    /// to the session, eliminating the need for callers to manually synchronize both lists.
+    /// </summary>
+    [JsonIgnore]
+    private ConversationSession? _session;
+
+    /// <summary>
+    /// Attaches a <see cref="ConversationSession"/> so that message mutations on this
+    /// <see cref="SubAgentMessage"/> automatically propagate to the session.
+    /// This establishes <see cref="SubAgentMessage"/> as the single source of truth;
+    /// the session becomes an automatically-synced mirror used only for LLM API calls.
+    /// </summary>
+    /// <param name="session">The session to attach. Must not be null.</param>
+    public void AttachSession(ConversationSession session) => _session = session;
+
+    /// <summary>
     /// The conversation messages of the sub-agent (for UI display).
     /// Thread-safe: all operations (Add, Remove, Count, iteration) are guarded by a lock.
     /// Use the instance methods (AddMessage, RemoveMessage, GetMessageCount, GetMessages)
@@ -80,20 +98,42 @@ public class SubAgentMessage
 
     /// <summary>
     /// Thread-safe: adds a message to the sub-agent conversation.
+    /// Automatically propagates to the attached <see cref="ConversationSession"/> (if any).
     /// </summary>
     public void AddMessage(VisualChatMessage message)
     {
         lock (_messagesLock)
+        {
             _messages.Add(message);
+            _session?.AddMessage(message);
+        }
     }
 
     /// <summary>
     /// Thread-safe: removes a message from the sub-agent conversation.
+    /// Automatically propagates to the attached <see cref="ConversationSession"/> (if any).
     /// </summary>
     public void RemoveMessage(VisualChatMessage message)
     {
         lock (_messagesLock)
+        {
             _messages.Remove(message);
+            _session?.RemoveMessage(message);
+        }
+    }
+
+    /// <summary>
+    /// Thread-safe: replaces all messages with the provided list.
+    /// Automatically propagates to the attached <see cref="ConversationSession"/> (if any).
+    /// </summary>
+    public void SetMessages(List<VisualChatMessage> messages)
+    {
+        lock (_messagesLock)
+        {
+            _messages.Clear();
+            _messages.AddRange(messages);
+            _session?.SetMessages(messages);
+        }
     }
 
     /// <summary>

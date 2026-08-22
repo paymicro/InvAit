@@ -67,16 +67,9 @@
             <div class="subagent-conversation">
                 @foreach (var msg in SubAgent.GetMessages())
                 {
-                    @if (msg.Role is not ChatMessageRole.Assistant)
+                    @if (msg.Role is ChatMessageRole.Assistant)
                     {
-                        continue;
                         // Роль User специально пропущена. В нем дублируется задача для суб-агента
-                    }
-                    <div class="subagent-message subagent-message-@msg.Role">
-                        
-                        <div class="subagent-message-role">
-                            <i class="fa-solid fa-robot"></i>
-                        </div>
                         <div class="subagent-message-content">
                             @if (!string.IsNullOrEmpty(msg.ReasoningContent))
                             {
@@ -100,7 +93,7 @@
                                 </div>
                             }
                         </div>
-                    </div>
+                    }
                 }
                 <div class="subagent-anchor" />
             </div>

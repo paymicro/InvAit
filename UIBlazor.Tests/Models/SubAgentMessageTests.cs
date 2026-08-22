@@ -14,7 +14,7 @@ public class SubAgentMessageTests
         Assert.Empty(msg.Task);
         Assert.Empty(msg.SystemPrompt);
         Assert.Empty(msg.Result);
-        Assert.Empty(msg.Messages);
+        Assert.Empty(msg.GetMessages());
         Assert.Null(msg.AllowedTools);
         Assert.Null(msg.ErrorMessage);
         Assert.Null(msg.CompletedAt);

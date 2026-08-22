@@ -2,7 +2,6 @@ using System.ComponentModel;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Radzen;
-using UIBlazor.Services;
 using ConversationSession = UIBlazor.Models.ConversationSession;
 
 namespace UIBlazor.Components;
@@ -13,8 +12,6 @@ public partial class AiChat : RadzenComponent
         @"<plan>(?<plan>.*?)</plan>",
         RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.NonBacktracking,
         TimeSpan.FromMilliseconds(200));
-
-    private List<VisualChatMessage> Messages => ChatService.Session.Messages;
 
     private bool IsLoading { get; set; }
 
@@ -134,7 +131,8 @@ public partial class AiChat : RadzenComponent
                  completions,
                  cancellationToken);
             // обновление потерянных сегментов
-            foreach (var message in ChatService.Session.Messages.Where(m => m.Segments.Count == 0))
+            var messages = ChatService.Session.GetMessagesSnapshot().Where(m => m.Segments.Count == 0).ToList();
+            foreach (var message in messages)
             {
                 MessageParser.UpdateSegments(message.Content, message);
             }
@@ -381,7 +379,8 @@ public partial class AiChat : RadzenComponent
 
     private void LoadMessagesFromSession()
     {
-        foreach (var chatMessage in Messages)
+        var messages = ChatService.Session.GetMessagesSnapshot().ToList();
+        foreach (var chatMessage in messages)
         {
             if (chatMessage.Role == ChatMessageRole.Assistant)
             {
@@ -565,7 +564,7 @@ public partial class AiChat : RadzenComponent
 
     private async Task OnRegenerateLastAsync()
     {
-        var lastAssistantMessage = Messages.LastOrDefault(m => m.Role == ChatMessageRole.Assistant);
+        var lastAssistantMessage = ChatService.Session.GetLastOrDefaultMessage(m => m.Role == ChatMessageRole.Assistant);
         if (lastAssistantMessage != null)
         {
             ChatService.Session.RemoveMessage(lastAssistantMessage.Id);

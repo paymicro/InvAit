@@ -144,8 +144,6 @@ public class ChatService(
                 onToolCallsUpdate?.Invoke(resultCapture.AccumulatedToolCalls);
             }
 
-            CalcTimings(message, sw, firstTokenMs, resultCapture.Usage);
-
             if (firstContentTokenMs > 0)
             {
                 message.Timings.Content = TimeSpan.FromMilliseconds(sw.ElapsedMilliseconds - firstContentTokenMs);
@@ -208,7 +206,8 @@ public class ChatService(
             IsExpanded = true
         };
 
-        var totalCount = session.Messages.Count;
+        var snapshot = session.GetMessagesSnapshot();
+        var totalCount = snapshot.Count;
         var windowSize = totalCount < 6 ? 2 : 3;
 
         var topMessages = new List<VisualChatMessage>();
@@ -216,7 +215,7 @@ public class ChatService(
 
         for (var i = 0; i < totalCount - 1; i++)
         {
-            var msg = session.Messages[i];
+            var msg = snapshot[i];
 
             if (msg.Id == LastUserMessage?.Id)
                 continue;
@@ -246,7 +245,7 @@ public class ChatService(
         }
 
         // Перезаписываем историю
-        session.Messages = keptMessages;
+        session.SetMessages(keptMessages);
     }
 
     /// <summary>
@@ -271,7 +270,7 @@ public class ChatService(
         if (_recentSessionsCache == null) return;
 
         var existing = _recentSessionsCache.FirstOrDefault(s => s.Id == session.Id);
-        var firstMessage = session.Messages.FirstOrDefault(m => m.Role == ChatMessageRole.User)?.Content ?? string.Empty;
+        var firstMessage = session.GetMessagesSnapshot().FirstOrDefault(m => m.Role == ChatMessageRole.User)?.Content ?? string.Empty;
         var preview = firstMessage is { Length: > 40 } ? firstMessage[..40] + "..." : firstMessage;
 
         if (existing != null)
@@ -394,7 +393,7 @@ public class ChatService(
             request.Headers.TryAddWithoutValidation(header.Name, header.Value);
         }
 
-        var response = await httpClient.SendAsync(request, Options.Stream ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead, cancellationToken);
+        using var response = await httpClient.SendAsync(request, Options.Stream ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead, cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -652,7 +651,7 @@ public class ChatService(
         foreach (var id in sessionIds)
         {
             var session = await localStorage.TryGetItemAsync<ConversationSession>(id);
-            var firstMessage = session?.Messages.FirstOrDefault(m => m.Role == ChatMessageRole.User)?.Content;
+            var firstMessage = session?.GetMessagesSnapshot().FirstOrDefault(m => m.Role == ChatMessageRole.User)?.Content;
             if (session != null && firstMessage != null)
             {
                 var preview = firstMessage.Length > 40 ? firstMessage[..40] + "..." : firstMessage;
@@ -679,7 +678,7 @@ public class ChatService(
     public async Task NewSessionAsync()
     {
         // Save current session if it has messages
-        if (Session?.Messages.Count > 0)
+        if (Session?.GetMessageCount() > 0)
         {
             await SaveSessionAsync();
         }

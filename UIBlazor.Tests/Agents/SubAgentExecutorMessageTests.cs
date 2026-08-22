@@ -89,10 +89,11 @@ public partial class SubAgentExecutorTests
 
         // Assert
         var subAgent = toolCall.SubAgent!;
-        Assert.NotEmpty(subAgent.Messages);
+        var subAgentMessages = subAgent.GetMessages();
+        Assert.NotEmpty(subAgentMessages);
         // Should have at least: 1 user message (task) + 1 assistant message (final answer)
-        Assert.Contains(subAgent.Messages, m => m.Role == ChatMessageRole.User && m.Content == "Test task");
-        Assert.Contains(subAgent.Messages, m => m.Role == ChatMessageRole.Assistant);
+        Assert.Contains(subAgentMessages, m => m.Role == ChatMessageRole.User && m.Content == "Test task");
+        Assert.Contains(subAgentMessages, m => m.Role == ChatMessageRole.Assistant);
     }
 
     [Fact]

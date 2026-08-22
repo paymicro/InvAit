@@ -157,8 +157,8 @@ public class AiChatTests : BunitContext
             Role = ChatMessageRole.Assistant,
             Content = "Hello! How can I help you today?"
         };
-        _session.Messages.Add(userMessage);
-        _session.Messages.Add(assistantMessage);
+        _session.AddMessage(userMessage);
+        _session.AddMessage(assistantMessage);
 
         // Act
         var cut = Render<AiChat>();
@@ -294,10 +294,11 @@ public class AiChatTests : BunitContext
         await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync(content));
 
         // Assert - SendMessageAsync adds user message and then GetAiResponseAsync adds assistant placeholder
-        Assert.Equal(2, _session.Messages.Count);
-        Assert.Equal(content, _session.Messages[0].Content);
-        Assert.Equal(ChatMessageRole.User, _session.Messages[0].Role);
-        Assert.Equal(ChatMessageRole.Assistant, _session.Messages[1].Role);
+        Assert.Equal(2, _session.GetMessageCount());
+        var sessionMessages = _session.GetMessagesSnapshot();
+        Assert.Equal(content, sessionMessages[0].Content);
+        Assert.Equal(ChatMessageRole.User, sessionMessages[0].Role);
+        Assert.Equal(ChatMessageRole.Assistant, sessionMessages[1].Role);
     }
 
     [Fact]
@@ -310,7 +311,7 @@ public class AiChatTests : BunitContext
         await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync(""));
 
         // Assert
-        Assert.Empty(_session.Messages);
+        Assert.Empty(_session.GetMessagesSnapshot());
     }
 
     [Fact]
@@ -323,7 +324,7 @@ public class AiChatTests : BunitContext
         await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("   "));
 
         // Assert
-        Assert.Empty(_session.Messages);
+        Assert.Empty(_session.GetMessagesSnapshot());
     }
 
     [Fact]
@@ -346,7 +347,7 @@ public class AiChatTests : BunitContext
 
         // Assert - verify event subscription by triggering it
         var message = new VisualChatMessage { Content = "Test", Role = ChatMessageRole.User };
-        _session.Messages.Add(message);
+        _session.AddMessage(message);
 
         // Trigger SessionChanged event
         _mockChatService.Raise(x => x.SessionChanged += null,
@@ -380,8 +381,8 @@ public class AiChatTests : BunitContext
         // Arrange
         var message1 = new VisualChatMessage { Content = "Message 1", Role = ChatMessageRole.User };
         var message2 = new VisualChatMessage { Content = "Message 2", Role = ChatMessageRole.Assistant };
-        _session.Messages.Add(message1);
-        _session.Messages.Add(message2);
+        _session.AddMessage(message1);
+        _session.AddMessage(message2);
 
         // Act
         var cut = Render<AiChat>();

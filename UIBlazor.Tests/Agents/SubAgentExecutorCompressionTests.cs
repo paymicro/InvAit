@@ -466,7 +466,7 @@ public partial class SubAgentExecutorTests
                     if (processStreamCallCount == 2)
                     {
                         // This is the compression stream — cancel during compression
-                        messagesBeforeCancellation = toolCall.SubAgent!.Messages.Count;
+                        messagesBeforeCancellation = toolCall.SubAgent!.GetMessageCount();
                         cts.Cancel();
                         throw new OperationCanceledException(ct);
                     }
@@ -494,7 +494,7 @@ public partial class SubAgentExecutorTests
         Assert.False(result.Success);
         Assert.Equal(SubAgentStatus.Cancelled, toolCall.SubAgent!.Status);
         // The compression message should have been removed
-        Assert.True(toolCall.SubAgent!.Messages.Count < messagesBeforeCancellation + 1,
+        Assert.True(toolCall.SubAgent!.GetMessageCount() < messagesBeforeCancellation + 1,
             "Compression message should be removed after cancellation");
     }
 

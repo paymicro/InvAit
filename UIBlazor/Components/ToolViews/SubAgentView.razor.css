@@ -1,8 +1,5 @@
 /* SubAgent Block */
 .subagent-block {
-    border: 1px solid var(--rz-base-600);
-    border-radius: 8px;
-    margin-top: 0.5rem;
     overflow: hidden;
     background: var(--rz-base-900);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);

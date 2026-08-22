@@ -17,12 +17,16 @@ public class ConversationSession : BaseOptions
 
     /// <summary>
     /// Gets or sets the list of messages in the conversation.
-    /// The getter/setter are for serialization compatibility. For thread-safe
-    /// mutation prefer <see cref="AddMessage"/> / <see cref="RemoveMessage"/>.
-    /// Direct get returns the backing list (callers should treat as read-only
-    /// or snapshot under lock if iterating from a background thread).
+    /// The getter/setter are for JSON serialization compatibility only.
+    /// For thread-safe access from application code, use the dedicated methods:
+    /// <see cref="AddMessage"/>, <see cref="RemoveMessage"/>,
+    /// <see cref="GetMessagesSnapshot"/>, <see cref="GetMessageCount"/>,
+    /// <see cref="GetLastMessage"/>, <see cref="SetMessages"/>.
+    /// The getter returns the backing list directly (for serialization);
+    /// callers must NOT use it for concurrent reads — use <see cref="GetMessagesSnapshot"/>.
     /// </summary>
-    public List<VisualChatMessage> Messages { get; set; } = [];
+    [JsonInclude]
+    private List<VisualChatMessage> Messages { get; set; } = [];
 
     /// <summary>
     /// Gets or sets the timestamp when the conversation was created.
@@ -73,6 +77,75 @@ public class ConversationSession : BaseOptions
                 LastUpdated = DateTime.Now;
             }
         }
+    }
+
+    /// <summary>
+    /// Removes the specified message object from the conversation.
+    /// Thread-safe.
+    /// </summary>
+    public void RemoveMessage(VisualChatMessage message)
+    {
+        lock (_messagesLock)
+        {
+            if (Messages.Remove(message))
+            {
+                TotalTokens -= (message.Timings?.Tokens ?? 0) + (message.ToolCalls?.Sum(t => t.Tokens) ?? 0);
+                LastUpdated = DateTime.Now;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns a snapshot copy of the messages list for safe iteration.
+    /// Thread-safe.
+    /// </summary>
+    public List<VisualChatMessage> GetMessagesSnapshot()
+    {
+        lock (_messagesLock)
+            return [.. Messages];
+    }
+
+    /// <summary>
+    /// Returns the number of messages in the conversation.
+    /// Thread-safe.
+    /// </summary>
+    public int GetMessageCount()
+    {
+        lock (_messagesLock)
+            return Messages.Count;
+    }
+
+    /// <summary>
+    /// Returns the last message in the conversation, or null if empty.
+    /// Thread-safe.
+    /// </summary>
+    public VisualChatMessage? GetLastMessage()
+    {
+        lock (_messagesLock)
+            return Messages.Count > 0 ? Messages[^1] : null;
+    }
+
+    /// <summary>
+    /// Replaces all messages with the provided list.
+    /// Thread-safe.
+    /// </summary>
+    public void SetMessages(List<VisualChatMessage> messages)
+    {
+        lock (_messagesLock)
+        {
+            Messages = messages;
+            LastUpdated = DateTime.Now;
+        }
+    }
+
+    /// <summary>
+    /// Returns the last message matching the predicate, or null if none found.
+    /// Thread-safe.
+    /// </summary>
+    public VisualChatMessage? GetLastOrDefaultMessage(Func<VisualChatMessage, bool> predicate)
+    {
+        lock (_messagesLock)
+            return Messages.LastOrDefault(predicate);
     }
 
     /// <summary>

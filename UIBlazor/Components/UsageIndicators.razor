@@ -26,8 +26,6 @@
     [Inject] IProfileManager ProfileManager { get; set; } = null!;
     [Inject] IChatService ChatService { get; set; } = null!;
 
-    [Parameter] public List<VisualChatMessage> Messages { get; set; } = [];
-
     private int MessageProgress => ProfileManager.ActiveProfile.TokensToCompress > 0
         ? Math.Min(100, ChatService.Session.TotalTokens * 100 / ProfileManager.ActiveProfile.TokensToCompress)
         : 0;

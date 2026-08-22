@@ -81,6 +81,9 @@
         else if (ToolCall.Result is not null)
         {
             <Details Text="@ToolCall.Result.DisplayName">
+                @* Intentionally using <pre> instead of <MarkdownBlock> here.
+                   Tool results are typically plain text (file contents, command output, JSON),
+                   not markdown. Rendering as markdown would misformat raw text. *@
                 <pre class="rz-p-2 rz-background-color-base-900 rz-color-white">@ToolCall.Result.Content</pre>
             </Details>
         }

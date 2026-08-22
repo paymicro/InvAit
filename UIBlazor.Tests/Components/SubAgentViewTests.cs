@@ -381,7 +381,7 @@ public class SubAgentViewTests : BunitContext
             .Add(p => p.SubAgent, subAgent));
 
         // Assert
-        var messages = cut.FindAll(".subagent-message");
+        var messages = cut.FindAll(".subagent-message-content");
         Assert.Equal(2, messages.Count);
         Assert.Contains("I will analyze the code", cut.Markup);
         Assert.Contains("Found 3 issues to fix", cut.Markup);
@@ -404,7 +404,7 @@ public class SubAgentViewTests : BunitContext
             .Add(p => p.SubAgent, subAgent));
 
         // Assert - only assistant message should be rendered
-        var messages = cut.FindAll(".subagent-message");
+        var messages = cut.FindAll(".subagent-message-content");
         Assert.Single(messages);
         Assert.DoesNotContain("User task message", cut.Markup);
     }
@@ -422,7 +422,7 @@ public class SubAgentViewTests : BunitContext
         // Assert - body should render with conversation container but no messages
         Assert.NotNull(cut.Find(".subagent-body"));
         Assert.NotNull(cut.Find(".subagent-conversation"));
-        Assert.Empty(cut.FindAll(".subagent-message"));
+        Assert.Empty(cut.FindAll(".subagent-message-content"));
     }
 
     [Fact]

@@ -262,9 +262,9 @@ public partial class SubAgentExecutorTests
 
         // Assert
         Assert.NotNull(capturedSession);
-        Assert.NotEmpty(capturedSession!.Messages);
+        Assert.NotEmpty(capturedSession!.GetMessagesSnapshot());
         // First message should be the user task
-        var firstMessage = capturedSession.Messages[0];
+        var firstMessage = capturedSession.GetMessagesSnapshot()[0];
         Assert.Equal(ChatMessageRole.User, firstMessage.Role);
         Assert.Equal("Do something specific", firstMessage.Content);
     }
@@ -339,7 +339,7 @@ public partial class SubAgentExecutorTests
             Mode = AppMode.Chat,
             TotalTokens = 500
         };
-        mainSession.Messages.Add(new VisualChatMessage { Content = "Main session message", Role = ChatMessageRole.User });
+        mainSession.AddMessage(new VisualChatMessage { Content = "Main session message", Role = ChatMessageRole.User });
         _chatServiceMock.SetupGet(x => x.Session).Returns(mainSession);
 
         ConversationSession? capturedSession = null;
@@ -386,7 +386,7 @@ public partial class SubAgentExecutorTests
         Assert.NotSame(mainSession, capturedSession);
         Assert.NotEqual("main-session-id", capturedSession!.Id);
         Assert.NotEqual(mainSession.TotalTokens, capturedSession.TotalTokens);
-        Assert.NotEqual(mainSession.Messages.Count, capturedSession.Messages.Count);
+        Assert.NotEqual(mainSession.GetMessageCount(), capturedSession.GetMessageCount());
         Assert.Equal(AppMode.Agent, capturedSession.Mode);
         Assert.NotEqual(AppMode.Chat, capturedSession.Mode);
     }
