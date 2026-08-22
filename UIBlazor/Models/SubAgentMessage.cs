@@ -66,7 +66,7 @@ public class SubAgentMessage
         get
         {
             lock (_messagesLock)
-                return [.._messages];
+                return [.. _messages];
         }
         set
         {
@@ -111,7 +111,7 @@ public class SubAgentMessage
     public List<VisualChatMessage> GetMessages()
     {
         lock (_messagesLock)
-            return [.._messages];
+            return [.. _messages];
     }
 
     /// <summary>
@@ -182,6 +182,8 @@ public class SubAgentMessage
     /// The sub-agent's own ToolCallHandler for processing tool call approvals.
     /// Isolated from the main agent's ToolCallHandler to prevent approval waiter conflicts.
     /// UI components use this to route approval responses for sub-agent tool calls.
+    /// Set to null by <see cref="ReleaseMemory"/> after the sub-agent finishes —
+    /// all waiters are already cancelled, no new approvals can arrive.
     /// </summary>
     [JsonIgnore]
     public IToolCallHandler? ToolCallHandler { get; set; }
@@ -208,4 +210,61 @@ public class SubAgentMessage
     /// Thread-safe invocation via Volatile.Read pattern.
     /// </summary>
     public void NotifyStateChanged() => Volatile.Read(ref StateChanged)?.Invoke();
+
+    /// <summary>
+    /// Releases heavy runtime resources that are no longer needed after the sub-agent
+    /// has finished (Completed / Cancelled / Failed).
+    ///
+    /// This method is called by <c>SubAgentExecutor</c> in its <c>finally</c> block,
+    /// AFTER <c>CancelPendingApprovals</c> has already cancelled all waiters.
+    ///
+    /// What is cleaned up:
+    /// <list type="bullet">
+    /// <item><b>ToolCallHandler</b> — all approval waiters are already cancelled;
+    ///   no new approvals can arrive after the sub-agent loop exits.
+    ///   The handler also holds a reference to <c>IToolManager</c> which we can release.</item>
+    /// <item><b>PendingToolCallId</b> — only relevant while the sub-agent is running.</item>
+    /// <item><b>Segments</b> in each message — <c>ContentSegment</c> objects contain
+    ///   <c>StringBuilder</c>, <c>Dictionary</c>, and <c>List&lt;string&gt;</c> used only
+    ///   during streaming. <c>SubAgentView</c> renders via <c>msg.Content</c> directly,
+    ///   not via <c>Segments</c>.</item>
+    /// <item><b>Transient flags</b> (<c>IsShouldRender</c>, <c>IsStreaming</c>,
+    ///   <c>TempContent</c>, <c>DisplayContent</c>) — no longer needed after completion.</item>
+    /// </list>
+    ///
+    /// What is PRESERVED (needed for UI display when user expands the sub-agent):
+    /// <list type="bullet">
+    /// <item><b>Messages list</b> — the full conversation is kept so the user can
+    ///   expand and review the sub-agent's reasoning chain.</item>
+    /// <item><b>Content</b> and <b>ReasoningContent</b> in each message —
+    ///   displayed by <c>SubAgentView</c> via <c>MarkdownBlock</c>.</item>
+    /// <item><b>ToolCalls</b> and their <b>Result</b> — displayed by <c>ToolCallBlock</c>.</item>
+    /// <item><b>Status, Result, TotalTokens, ErrorMessage</b> — shown in the header.</item>
+    /// </list>
+    /// </summary>
+    public void ReleaseMemory()
+    {
+        // Release the ToolCallHandler — all waiters are already cancelled by the
+        // finally block in SubAgentExecutor. No new approvals can arrive.
+        // ToolCallBlock checks `SubAgent.ToolCallHandler` for the override; when null,
+        // it falls back to the DI-injected handler, but since all approvals are
+        // already Resolved/Rejected, the approval buttons won't be shown anyway.
+        ToolCallHandler = null;
+
+        // Clear the pending tool call ID — only relevant during execution.
+        PendingToolCallId = null;
+
+        // Clean up heavy per-message transient data.
+        // Segments are used only by MessageContent.razor (main chat), not by SubAgentView.
+        // SubAgentView renders Content/ReasoningContent/ToolCalls directly.
+        ForEachMessage(msg =>
+        {
+            msg.Segments.Clear();
+            msg.IsShouldRender = false;
+            msg.IsStreaming = false;
+            msg.TempContent = string.Empty;
+            msg.DisplayContent = null;
+            msg.PlanContent = null;
+        });
+    }
 }

@@ -49,6 +49,10 @@
                                 Answer="@ToolCall.Result?.Content"
                                 OnOptionSelectedCallback="@(async (answer) => await OnAskUserAnswer(answer))" />
             }
+            else if (ToolCall.Function.Name == BuiltInToolEnum.DelegateTask)
+            {
+                <DelegateTaskView Args="@ToolCall.Function.Arguments" />
+            }
             else
             {
                 <JsonArgsView Args="@ToolCall.Function.Arguments" />

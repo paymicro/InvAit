@@ -44,7 +44,7 @@ public class SolutionStructure
                 if (fileIndex++ < _maxFilesInFolder)
                 {
                     result.Add($"{indentString}{VsCodeContext.FilePrefix} {(fullPath ? item.FullPath : item.Text)}");
-                    
+
                     // в файлах могут быть вложенные файлы
                     // xaml => xaml.cs
                     // razor => razor.cs + razor.css

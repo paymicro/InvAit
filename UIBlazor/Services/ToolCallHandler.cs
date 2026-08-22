@@ -106,7 +106,7 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
 #if DEBUG
             vsToolResult = HeadlessMocker.GetVsToolResult(vsToolResult);
 #endif
-            
+
             toolCall.Result = ToolResult.Convert(vsToolResult, tool?.DisplayName ?? "", tool?.Name ?? "");
         }
     }
@@ -161,7 +161,7 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
         CancellationToken cancellationToken)
     {
         // Get the pre-registered TCS, or create one if not found (defensive)
-        var tcs = _approvalWaiters.GetOrAdd(toolCall.Id, _ => new ApprovalWaiter(new (), toolCall));
+        var tcs = _approvalWaiters.GetOrAdd(toolCall.Id, _ => new ApprovalWaiter(new(), toolCall));
 
         try
         {

@@ -56,6 +56,7 @@ public partial class SubAgentExecutorTests
         var toolCall = new ToolCall();
         var args = JsonSerializer.Serialize(new { task = "Test", systemPrompt = "Prompt" });
         var cts = new CancellationTokenSource();
+        cts.Cancel();
         SetupChatServiceToThrowCancellation(cts.Token);
 
         var statuses = new List<SubAgentStatus>();

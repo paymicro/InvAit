@@ -101,52 +101,6 @@
     overflow-y: auto;
 }
 
-/* Info section */
-.subagent-info {
-    background: var(--rz-base-800);
-    border-radius: 6px;
-    padding: 0.5rem 0.7rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-}
-
-.subagent-info-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-}
-
-.subagent-info-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--rz-info-light);
-    min-width: 7rem;
-    flex-shrink: 0;
-}
-
-.subagent-info-value {
-    font-size: 0.78rem;
-    color: var(--rz-base-400);
-    word-break: break-word;
-    white-space: pre-wrap;
-}
-
-.subagent-info-value--long {
-    max-height: 100px;
-    overflow-y: auto;
-    background: var(--rz-base-900);
-    border-radius: 4px;
-    padding: 0.3rem 0.5rem;
-    font-family: Consolas, "Courier New", monospace;
-}
-
-.subagent-tools-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-}
-
 /* Conversation */
 .subagent-conversation {
     display: flex;

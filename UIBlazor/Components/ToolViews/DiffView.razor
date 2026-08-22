@@ -1,3 +1,4 @@
+@inherits ThrottledComponentBase
 @using DiffPlex
 @using DiffPlex.Chunkers
 @using DiffPlex.DiffBuilder
@@ -24,8 +25,6 @@
     </div>
 </div>
 
-@implements IDisposable
-
 @code {
     [Parameter] public string FilePath { get; set; } = null!;
     [Parameter] public DiffEdit[] Edits { get; set; } = [];
@@ -35,49 +34,9 @@
     private bool showDiffSeparator = false;
 
     private bool _changed = false;
-    private DateTime _lastRenderTime = DateTime.MinValue;
-    private readonly int _interval = 500; // рендерить не чаще
-    private double elapsed => (DateTime.Now - _lastRenderTime).TotalMilliseconds;
-    private CancellationTokenSource? _pendingRenderCts;
 
-    protected override bool ShouldRender()
-    {
-        if (!_changed) return false;
-
-        if (elapsed >= _interval)
-        {
-            _lastRenderTime = DateTime.Now;
-            _changed = false;
-            return true;
-        }
-
-        // Отменяем предыдущую отложенную задачу
-        _pendingRenderCts?.Cancel();
-        _pendingRenderCts = new CancellationTokenSource();
-        // Запускаем отложенную проверку для "последнего вызова"
-        _ = DelayRender(_pendingRenderCts.Token);
-        return false;
-    }
-
-    private async Task DelayRender(CancellationToken cancellationToken)
-    {
-        try
-        {
-            await Task.Delay(_interval, cancellationToken);
-            _changed = true; // Гарантируем рендер
-            StateHasChanged();
-        }
-        catch (TaskCanceledException)
-        {
-            // Игнорируем отмену
-        }
-    }
-
-    public void Dispose()
-    {
-        _pendingRenderCts?.Cancel();
-        _pendingRenderCts?.Dispose();
-    }
+    protected override bool HasChanges() => _changed;
+    protected override void OnRendered() => _changed = false;
 
     protected override void OnParametersSet()
     {

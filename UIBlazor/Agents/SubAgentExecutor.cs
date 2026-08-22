@@ -156,7 +156,7 @@ public class SubAgentExecutor(
                 Result = result
             };
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             subAgent.Status = SubAgentStatus.Cancelled;
             subAgent.CompletedAt = DateTime.Now;
@@ -194,6 +194,14 @@ public class SubAgentExecutor(
             // Clean up any pending approval waiters on the sub-agent's handler.
             // This prevents dangling TCSes if the sub-agent exits mid-approval.
             subAgentToolCallHandler.CancelPendingApprovals();
+
+            // Release heavy runtime resources that are no longer needed after
+            // the sub-agent has finished. This clears ToolCallHandler (all waiters
+            // already cancelled above), Segments in messages (not used by SubAgentView),
+            // and transient flags. The full Messages list with Content/ReasoningContent/
+            // ToolCalls is preserved so the user can still expand and review the
+            // sub-agent's reasoning chain in the UI.
+            subAgent.ReleaseMemory();
         }
     }
 
@@ -300,8 +308,11 @@ public class SubAgentExecutor(
         CancellationToken cancellationToken)
     {
         var iteration = 0;
-        var maxTokens = profileManager.ActiveProfile.MaxTokensPerSubAgent;
-        var maxIterations = profileManager.ActiveProfile.MaxIterationsPerSubAgent;
+        var profile = profileManager.ActiveProfile;
+        var maxTokens = profile.MaxTokensPerSubAgent;
+        var maxIterations = profile.MaxIterationsPerSubAgent > 0
+            ? profile.MaxIterationsPerSubAgent
+            : int.MaxValue; // If MaxIterationsPerSubAgent <= 0, the limit is disabled.
 
         while (iteration < maxIterations && !cancellationToken.IsCancellationRequested)
         {
@@ -337,12 +348,22 @@ public class SubAgentExecutor(
             VisualChatMessage? assistantMessage = null;
             CompletionsResult? resultCapture = null;
 
+            // Snapshot TotalTokens before the first attempt.
+            // ChatService.GetCompletionsAsync increments session.TotalTokens during streaming
+            // (either dynamically per-chunk or via usage data in the final chunk).
+            // On retry we must roll back to this snapshot so that tokens from the failed
+            // attempt are not counted — session.Messages.Remove() alone does NOT update TotalTokens.
+            var tokensBeforeAttempt = session.TotalTokens;
+
             for (var attempt = 0; ; attempt++)
             {
                 // Create a fresh assistant message and result capture for each attempt.
                 // Previous (partially filled) message must be removed from session and sub-agent.
                 if (assistantMessage is not null)
                 {
+                    // Roll back TotalTokens to the snapshot taken before the first attempt.
+                    // This correctly handles both dynamic per-chunk counting and usage-based updates.
+                    session.TotalTokens = tokensBeforeAttempt;
                     session.Messages.Remove(assistantMessage);
                     subAgent.RemoveMessage(assistantMessage);
                 }
@@ -472,7 +493,7 @@ public class SubAgentExecutor(
             return await RequestFinalSummaryAsync(session, subAgent, systemPrompt, subAgentTools, cancellationToken);
         }
 
-        return "Sub-agent was cancelled.";
+        throw new OperationCanceledException("Sub-agent was cancelled.");
     }
 
     /// <summary>
@@ -527,7 +548,7 @@ public class SubAgentExecutor(
         {
             await chatService.ProcessStreamAsync(
                 summaryMessage,
-                chatService.GetCompletionsForSubAgentAsync(session, systemPrompt, subAgentTools, resultCapture, cancellationToken),
+                chatService.GetCompletionsForSubAgentAsync(session, systemPrompt, [], resultCapture, cancellationToken),
                 onContentUpdate: _ =>
                 {
                     summaryMessage.IsShouldRender = true;

@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Tests.Agents;
+namespace UIBlazor.Tests.Agents;
 
 public partial class SubAgentExecutorTests
 {

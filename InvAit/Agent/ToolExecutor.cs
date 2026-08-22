@@ -327,7 +327,7 @@ public class ToolExecutor : IAsyncDisposable
         if (string.IsNullOrEmpty(value))
             return value;
 
-        return value.Length <= maxLength ? value : value.Substring(0, maxLength-3) + "...";
+        return value.Length <= maxLength ? value : value.Substring(0, maxLength - 3) + "...";
     }
 
     private async Task<VsResponse> SearchFilesAsync(IReadOnlyDictionary<string, object> args)
@@ -483,7 +483,7 @@ public class ToolExecutor : IAsyncDisposable
         }
         catch (FileNotFoundException ex)
         {
-            Logger.Log($"Roslyn compatibility error: {ex.Message}", "ERROR");
+            await Logger.LogAsync($"Roslyn compatibility error: {ex.Message}", "ERROR");
             return new VsResponse
             {
                 Success = false,
@@ -492,7 +492,7 @@ public class ToolExecutor : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            Logger.Log(ex.Message, "ERROR");
+            await Logger.LogAsync(ex.Message, "ERROR");
             return new VsResponse { Success = false, Error = $"Critical error: {ex.Message}" };
         }
     }
@@ -508,7 +508,7 @@ public class ToolExecutor : IAsyncDisposable
         }
         catch (FileNotFoundException ex)
         {
-            Logger.Log($"Roslyn compatibility error: {ex.Message}", "ERROR");
+            await Logger.LogAsync($"Roslyn compatibility error: {ex.Message}", "ERROR");
             // Перехватываем критическую ошибку несовместимости сборок Roslyn в VS 2022 и 2026
             return new VsResponse
             {
@@ -518,7 +518,7 @@ public class ToolExecutor : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            Logger.Log(ex.Message, "ERROR");
+            await Logger.LogAsync(ex.Message, "ERROR");
             return new VsResponse { Success = false, Error = $"Critical error: {ex.Message}" };
         }
     }
@@ -780,7 +780,7 @@ public class ToolExecutor : IAsyncDisposable
         if (testDlls.Count > 0)
         {
             var allDlls = string.Join(" ", testDlls.Select(d => $"\"{d}\""));
-            Logger.Log($"Run dotnet test for {allDlls}");
+            await Logger.LogAsync($"Run dotnet test for {allDlls}");
 
             var (success, stdout, stderr) = await RunTestProcessAsync("dotnet", $"test {allDlls} --nologo --logger \"console;verbosity=normal\"", solutionPath);
             allOutput.AppendLine("=== dotnet test ===");
@@ -795,7 +795,7 @@ public class ToolExecutor : IAsyncDisposable
         // Запуск каждого EXE индивидуально (xUnit и подобные)
         foreach (var exe in testExes)
         {
-            Logger.Log($"Run xUnit exe {exe}");
+            await Logger.LogAsync($"Run xUnit exe {exe}");
             var (success, stdout, stderr) = await RunTestProcessAsync(exe, "", solutionPath);
             allOutput.AppendLine($"=== {Path.GetFileName(exe)} ===");
             allOutput.AppendLine(stdout);

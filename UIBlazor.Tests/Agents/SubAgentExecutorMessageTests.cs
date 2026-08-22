@@ -43,6 +43,7 @@ public partial class SubAgentExecutorTests
         var toolCall = new ToolCall();
         var args = JsonSerializer.Serialize(new { task = "Test", systemPrompt = "Prompt" });
         var cts = new CancellationTokenSource();
+        cts.Cancel();
 
         // Cancel during ProcessStreamAsync execution (not before)
         SetupChatServiceToThrowCancellation(cts.Token);

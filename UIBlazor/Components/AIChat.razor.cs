@@ -121,7 +121,8 @@ public partial class AiChat : RadzenComponent
                  assistantMessage,
                  ChatService.CompressSessionAsync(completions, cancellationToken),
                  onContentUpdate: content => MessageParser.UpdateSegments(content, assistantMessage),
-                 onToolCallsUpdate: toolCalls => {
+                 onToolCallsUpdate: toolCalls =>
+                 {
                      assistantMessage.ToolCalls = toolCalls;
                      assistantMessage.IsShouldRender = true;
                  },
@@ -139,7 +140,7 @@ public partial class AiChat : RadzenComponent
             }
             result = true;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             HandleCancellation(assistantMessage);
         }
@@ -188,7 +189,8 @@ public partial class AiChat : RadzenComponent
                 assistantMessage,
                 ChatService.GetCompletionsAsync(completions, cancellationToken),
                 onContentUpdate: content => MessageParser.UpdateSegments(content, assistantMessage),
-                onToolCallsUpdate: toolCalls => {
+                onToolCallsUpdate: toolCalls =>
+                {
                     assistantMessage.ToolCalls = toolCalls;
                     assistantMessage.IsShouldRender = true;
                 },
@@ -201,7 +203,7 @@ public partial class AiChat : RadzenComponent
                 cancellationToken);
             await HandleStreamCompletionAsync(assistantMessage, completions, cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             HandleCancellation(assistantMessage);
         }
@@ -334,7 +336,7 @@ public partial class AiChat : RadzenComponent
         {
             message.RetryCountdown = 0;
         }
-        
+
         ChatService.Session.RemoveMessage(message.Id);
         await retryAction.Invoke();
     }

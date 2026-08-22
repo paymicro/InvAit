@@ -808,6 +808,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to All tools.
+        /// </summary>
+        public static string SubAgentAllTools {
+            get {
+                return ResourceManager.GetString("SubAgentAllTools", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Cancelled.
         /// </summary>
         public static string SubAgentCancelled {

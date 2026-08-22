@@ -1,0 +1,75 @@
+@inherits ThrottledComponentBase
+@inject IToolManager ToolManager
+
+<div class="subagent-info">
+    <div class="subagent-info-row">
+        <span class="subagent-info-label">@SharedResource.SubAgentTask</span>
+        <span class="subagent-info-value">@Task</span>
+    </div>
+    @if (!string.IsNullOrEmpty(SystemPrompt))
+    {
+        <div class="subagent-info-row">
+            <span class="subagent-info-label">@SharedResource.SubAgentSystemPrompt</span>
+            <span class="subagent-info-value subagent-info-value--long">@SystemPrompt</span>
+        </div>
+    }
+    <div class="subagent-info-row">
+        <span class="subagent-info-label">@SharedResource.SubAgentAllowedTools</span>
+        @if (AllowedTools is { Length: > 0 })
+        {
+            <div class="subagent-tools-list">
+                @foreach (var tool in AllowedTools)
+                {
+                    var toolName = ToolManager.GetTool(tool)?.DisplayName ?? tool;
+                    <RadzenBadge BadgeStyle="BadgeStyle.Success" Variant="Variant.Outlined" class="rz-mr-1">@toolName</RadzenBadge>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="subagent-tools-list">
+                <RadzenBadge BadgeStyle="BadgeStyle.Light" Variant="Variant.Text">@SharedResource.SubAgentAllTools</RadzenBadge>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Args { get; set; } = string.Empty;
+
+    private string Task { get; set; } = string.Empty;
+    private string? SystemPrompt { get; set; }
+    private string[]? AllowedTools { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (string.IsNullOrWhiteSpace(Args))
+        {
+            Task = string.Empty;
+            SystemPrompt = null;
+            AllowedTools = null;
+            return;
+        }
+
+        try
+        {
+            var parsed = JsonUtils.DeserializePartialAnonymousType(Args, new
+            {
+                task = default(string),
+                systemPrompt = default(string),
+                allowedTools = default(string[]?)
+            });
+
+            Task = parsed.task ?? string.Empty;
+            SystemPrompt = parsed.systemPrompt;
+            AllowedTools = parsed.allowedTools;
+        }
+        catch
+        {
+            // If JSON parsing fails, show empty values to avoid UI crash
+            Task = string.Empty;
+            SystemPrompt = null;
+            AllowedTools = null;
+        }
+    }
+}

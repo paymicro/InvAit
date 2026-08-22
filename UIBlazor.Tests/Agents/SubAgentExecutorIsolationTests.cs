@@ -13,10 +13,12 @@ public partial class SubAgentExecutorTests
         // Act
         await _executor.ExecuteAsync(args, toolCall, CancellationToken.None);
 
-        // Assert
-        Assert.NotNull(toolCall.SubAgent!.ToolCallHandler);
-        // The sub-agent's handler should be a ToolCallHandler instance (not null)
-        Assert.IsType<ToolCallHandler>(toolCall.SubAgent!.ToolCallHandler);
+        // Assert — ToolCallHandler is released by ReleaseMemory() in the finally block
+        // after the sub-agent finishes. It was set during execution and then cleared.
+        Assert.Null(toolCall.SubAgent!.ToolCallHandler);
+        // The sub-agent should have completed successfully with messages preserved
+        Assert.Equal(SubAgentStatus.Completed, toolCall.SubAgent!.Status);
+        Assert.NotEmpty(toolCall.SubAgent!.GetMessages());
     }
 
     [Fact]
@@ -33,10 +35,10 @@ public partial class SubAgentExecutorTests
         // Act
         await _executor.ExecuteAsync(args, toolCall, CancellationToken.None);
 
-        var subAgentHandler = toolCall.SubAgent!.ToolCallHandler!;
-
-        // Assert - they are different instances
-        Assert.NotSame(mainHandler, subAgentHandler);
+        // Assert — after completion, the sub-agent's ToolCallHandler is released (set to null)
+        // by ReleaseMemory() in the finally block. The main handler is unaffected.
+        Assert.Null(toolCall.SubAgent!.ToolCallHandler);
+        Assert.NotNull(mainHandler); // Main handler is still alive
     }
 
     [Fact]
@@ -94,10 +96,11 @@ public partial class SubAgentExecutorTests
         await _executor.ExecuteAsync(args, toolCall1, CancellationToken.None);
         await executor2.ExecuteAsync(args, toolCall2, CancellationToken.None);
 
-        // Assert - each sub-agent should have its own handler, and they should be different instances
-        Assert.NotNull(toolCall1.SubAgent!.ToolCallHandler);
-        Assert.NotNull(toolCall2.SubAgent!.ToolCallHandler);
-        Assert.NotSame(toolCall1.SubAgent!.ToolCallHandler, toolCall2.SubAgent!.ToolCallHandler);
+        // Assert — after completion, both sub-agents have their ToolCallHandler released
+        // (set to null by ReleaseMemory()). Each sub-agent still has its own messages.
+        Assert.Null(toolCall1.SubAgent!.ToolCallHandler);
+        Assert.Null(toolCall2.SubAgent!.ToolCallHandler);
+        Assert.NotSame(toolCall1.SubAgent, toolCall2.SubAgent);
     }
 
     [Fact]
@@ -384,5 +387,45 @@ public partial class SubAgentExecutorTests
         Assert.NotEqual(mainSession.Messages.Count, capturedSession.Messages.Count);
         Assert.Equal(AppMode.Agent, capturedSession.Mode);
         Assert.NotEqual(AppMode.Chat, capturedSession.Mode);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ReleaseMemory_PreservesMessagesAndContent()
+    {
+        // Arrange
+        var toolCall = new ToolCall();
+        var args = JsonSerializer.Serialize(new { task = "Test task", systemPrompt = "Prompt" });
+        SetupChatServiceToReturnContent("Done!");
+
+        // Act
+        await _executor.ExecuteAsync(args, toolCall, CancellationToken.None);
+
+        // Assert — ReleaseMemory() was called in the finally block:
+        // 1. ToolCallHandler is released (null)
+        Assert.Null(toolCall.SubAgent!.ToolCallHandler);
+
+        // 2. PendingToolCallId is cleared
+        Assert.Null(toolCall.SubAgent!.PendingToolCallId);
+
+        // 3. Messages are PRESERVED (not deleted)
+        var messages = toolCall.SubAgent!.GetMessages();
+        Assert.NotEmpty(messages);
+
+        // 4. Content and ReasoningContent are PRESERVED in messages
+        //    (SubAgentView displays these via MarkdownBlock)
+        var assistantMsg = messages.FirstOrDefault(m => m.Role == ChatMessageRole.Assistant);
+        Assert.NotNull(assistantMsg);
+        Assert.Equal("Done!", assistantMsg!.Content);
+
+        // 5. Segments are cleared (not used by SubAgentView — only by MessageContent.razor)
+        Assert.All(messages, m => Assert.Empty(m.Segments));
+
+        // 6. Transient flags are reset
+        Assert.All(messages, m => Assert.False(m.IsStreaming));
+        Assert.All(messages, m => Assert.False(m.IsShouldRender));
+
+        // 7. Status and Result are preserved
+        Assert.Equal(SubAgentStatus.Completed, toolCall.SubAgent!.Status);
+        Assert.Equal("Done!", toolCall.SubAgent!.Result);
     }
 }

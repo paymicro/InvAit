@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Tests.Services;
+namespace UIBlazor.Tests.Services;
 
 /// <summary>
 /// ProcessStreamAsync tests for <seealso cref="ChatService"/>.

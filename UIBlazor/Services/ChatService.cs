@@ -17,10 +17,12 @@ public class ChatService(
     IToolManager toolManager
     ) : IChatService
 {
+    #pragma warning disable format
     private const string _thinkStart    = "<think>";
     private const string _thinkEnd      = "</think>";
     private const string _complitions   = "/v1/chat/completions";
     private const string _models        = "/v1/models";
+    #pragma warning restore format
 
     public ConnectionProfile Options => profileManager.ActiveProfile;
 
@@ -197,7 +199,7 @@ public class ChatService(
 
         if (cancellationToken.IsCancellationRequested)
             yield break;
-        
+
         // Создаем новый объект сообщения со сжатым контекстом
         var compressedMessage = new VisualChatMessage
         {
@@ -488,8 +490,18 @@ public class ChatService(
             }
             else
             {
-                // Динамический подсчёт токенов во время стрима (приблизительный)
-                targetSession.TotalTokens++;
+                // Приблизительная оценка токенов во время стрима до получения usage data.
+                // Стандартная эвристика: ~4 символа на токен.
+                // Используется только до финального чанка с usage, который перезапишет
+                // TotalTokens точным значением. Это предотвращает сильное завышение
+                // счётчика (раньше каждый chunk добавлял +1) и преждевременный триггер
+                // token budget limit в субагентах и компрессии контекста.
+                var estDelta = chunk.Choices.Count == 1 ? chunk.Choices[0].Delta : null;
+                var estimatedChars = (estDelta?.Content?.Length ?? 0)
+                                   + (estDelta?.ReasoningContent?.Length ?? 0)
+                                   + (estDelta?.Reasoning?.Length ?? 0);
+                if (estimatedChars > 0)
+                    targetSession.TotalTokens += Math.Max(1, estimatedChars / 4);
             }
 
             resultCapture.Model ??= chunk.Model;
@@ -500,7 +512,7 @@ public class ChatService(
             }
 
             var delta = chunk.Choices[0].Delta!;
-            var content = delta.Content;            
+            var content = delta.Content;
             role ??= delta?.Role;
 
             // Размышляющие модели по разному отдают размышления
@@ -598,7 +610,7 @@ public class ChatService(
     {
         // Get formatted messages including conversation history
         var messages = Session.GetFormattedMessages(await systemPromptBuilder.PrepareSystemPromptAsync(Session.Mode, cancellationToken)) ?? [];
-        
+
         await foreach (var chatDelta in GetCompletionsAsync(messages, true, resultCapture, cancellationToken))
         {
             yield return chatDelta;
