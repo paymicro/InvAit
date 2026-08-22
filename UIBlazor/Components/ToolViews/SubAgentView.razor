@@ -1,4 +1,5 @@
 @inherits ThrottledComponentBase
+@inject DialogService DialogService
 
 <div class="subagent-block @StatusClass" data-subagent-id="@SubAgent.Id">
     <div class="subagent-header" @onclick="Toggle">
@@ -32,6 +33,12 @@
                     <i class="fa-solid fa-ban"></i> @SharedResource.SubAgentCancelled
                 </RadzenBadge>
             }
+            @if (SubAgent.IsRetrying)
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Warning" Variant="Variant.Text">
+                    <i class="fa-solid fa-rotate-right fa-spin"></i> @SharedResource.RetryIn @SubAgent.RetryCountdown... (@SubAgent.RetryAttempt / @SubAgent.MaxRetryAttempts)
+                </RadzenBadge>
+            }
             @if (SubAgent.TotalTokens > 0)
             {
                 <RadzenBadge BadgeStyle="BadgeStyle.Light" Variant="Variant.Text" title="@SharedResource.Tokens">
@@ -43,6 +50,11 @@
                 <RadzenBadge BadgeStyle="BadgeStyle.Warning" Variant="Variant.Text">
                     <i class="fa-solid fa-compress fa-spin"></i> @SharedResource.Compressing
                 </RadzenBadge>
+            }
+            @if (SubAgent.CanCancel)
+            {
+                <RadzenButton Icon="stop_circle" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text" Size="ButtonSize.ExtraSmall"
+                              Click="@CancelSubAgentAsync" @onclick:stopPropagation="true" Title="@SharedResource.Cancel" />
             }
             <span class="subagent-arrow @(SubAgent.IsExpanded ? "expanded" : "")">▼</span>
         </div>
@@ -146,6 +158,9 @@
     private SubAgentStatus _oldStatus;
     private bool _oldIsExpanded;
     private bool _oldAnyStreaming;
+    private bool _oldIsRetrying;
+    private int _oldRetryCountdown;
+    private bool _oldIsCompressing;
     private bool _structuralChanged = true;
     private bool _needsScroll;
 
@@ -169,7 +184,10 @@
         var structuralChanged = messageCountChanged ||
                                 SubAgent.Status != _oldStatus ||
                                 SubAgent.IsExpanded != _oldIsExpanded ||
-                                streamingStopped;
+                                streamingStopped ||
+                                SubAgent.IsRetrying != _oldIsRetrying ||
+                                SubAgent.RetryCountdown != _oldRetryCountdown ||
+                                SubAgent.IsCompressing != _oldIsCompressing;
         if (structuralChanged)
         {
             _structuralChanged = true;
@@ -182,6 +200,10 @@
         // If a structural change was detected previously but base class throttled it,
         // keep returning true until it's rendered and OnRendered resets the flag.
         if (_structuralChanged)
+            return true;
+
+        // Retry countdown changes every second — render immediately (not throttled).
+        if (SubAgent.RetryCountdown != _oldRetryCountdown)
             return true;
 
         // Content streaming (token-by-token) — return true, base class throttles.
@@ -198,6 +220,9 @@
         _oldStatus = SubAgent.Status;
         _oldIsExpanded = SubAgent.IsExpanded;
         _oldAnyStreaming = SubAgent.AnyMessage(m => m.IsStreaming);
+        _oldIsRetrying = SubAgent.IsRetrying;
+        _oldRetryCountdown = SubAgent.RetryCountdown;
+        _oldIsCompressing = SubAgent.IsCompressing;
         _structuralChanged = false;
 
         // Reset IsShouldRender on all sub-agent messages after render.
@@ -223,6 +248,19 @@
     {
         SubAgent.IsExpanded = !SubAgent.IsExpanded;
         SubAgent.NotifyStateChanged();
+    }
+
+    /// <summary>
+    /// Cancels the sub-agent independently after user confirmation.
+    /// Uses the same DialogService.Confirm pattern as session deletion.
+    /// </summary>
+    private async Task CancelSubAgentAsync()
+    {
+        var result = await DialogService.Confirm(SharedResource.ConfirmQuestion, SharedResource.Cancel);
+        if (result == true)
+        {
+            SubAgent.Cancel();
+        }
     }
 
     /// <summary>

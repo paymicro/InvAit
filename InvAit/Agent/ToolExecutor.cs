@@ -14,7 +14,6 @@ using InvAit.Utils;
 using Microsoft.Build.Evaluation;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
-using Newtonsoft.Json.Linq;
 using Shared.Contracts;
 using ToolCore;
 using IAsyncDisposable = Microsoft.VisualStudio.Threading.IAsyncDisposable;

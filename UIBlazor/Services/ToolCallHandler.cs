@@ -241,11 +241,7 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Cancels all pending approval and ask_user waiters.
-    /// Called internally by PrepareToolsForApprovals before setting up new waiters,
-    /// and externally by SubAgentExecutor in a finally block for cleanup.
-    /// </summary>
+    /// <inheritdoc />
     public void CancelPendingApprovals()
     {
         foreach (var kvp in _approvalWaiters)

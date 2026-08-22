@@ -161,7 +161,7 @@ public class ChatService(
     private static void CalcTimings(VisualChatMessage message, Stopwatch sw, double firstTokenMs, UsageInfo? usage)
     {
         var elapsedMs = sw.ElapsedMilliseconds;
-        message.Timings.Tokens = usage?.CompletionTokens ?? 1 + message.Timings.Tokens;
+        message.Timings.Tokens = (usage?.CompletionTokens ?? 0) + message.Timings.Tokens;
         var secForTokens = Math.Max(1, (elapsedMs - firstTokenMs) / 1000.0);
         message.Timings.TokensInSec = (float)(message.Timings.Tokens / secForTokens);
         message.Timings.Total = TimeSpan.FromMilliseconds(elapsedMs);
@@ -369,7 +369,7 @@ public class ChatService(
             }
         }
 
-        var request = new HttpRequestMessage(HttpMethod.Post, url)
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
         {
             Content = new StringContent(
                 JsonSerializer.Serialize(payload),

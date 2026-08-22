@@ -518,10 +518,10 @@ code.hljs {
 .subagent-info {
     background: var(--rz-base-800);
     border-radius: 6px;
-    padding: 0.5rem 0.7rem;
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
+    overflow-y: auto;
 }
 
 .subagent-info-row {

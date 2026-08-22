@@ -24,4 +24,11 @@ public interface IToolCallHandler
     /// Handles user answer for ask_user tool.
     /// </summary>
     Task HandleAskUserAnswerAsync(string toolCallId, string answer);
+
+    /// <summary>
+    /// Cancels all pending approval and ask_user waiters.
+    /// Called internally by PrepareToolsForApprovals before setting up new waiters,
+    /// and externally for cleanup (e.g. SubAgentMessage.ReleaseMemory).
+    /// </summary>
+    void CancelPendingApprovals();
 }

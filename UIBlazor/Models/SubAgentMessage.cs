@@ -179,11 +179,72 @@ public class SubAgentMessage
     public bool IsCompressing { get; set; }
 
     /// <summary>
+    /// Whether the sub-agent is currently retrying an LLM call after a transient error.
+    /// Used by UI to show a retry indicator badge.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsRetrying { get; set; }
+
+    /// <summary>
+    /// The current retry attempt number (1-based) when <see cref="IsRetrying"/> is true.
+    /// </summary>
+    [JsonIgnore]
+    public int RetryAttempt { get; set; }
+
+    /// <summary>
+    /// The delay in seconds before the next retry attempt.
+    /// Used by UI to show a countdown.
+    /// </summary>
+    [JsonIgnore]
+    public int RetryDelaySeconds { get; set; }
+
+    /// <summary>
+    /// Maximum number of retry attempts for LLM calls.
+    /// Used by UI to show "attempt / max" in the retry indicator.
+    /// </summary>
+    [JsonIgnore]
+    public int MaxRetryAttempts { get; set; }
+
+    /// <summary>
+    /// Countdown value (in seconds) for the current retry delay.
+    /// Updated every second by the retry countdown loop.
+    /// When 0, no countdown is active.
+    /// </summary>
+    [JsonIgnore]
+    public int RetryCountdown { get; set; }
+
+    /// <summary>
+    /// CancellationTokenSource linked to the parent token, allowing independent
+    /// cancellation of this sub-agent without cancelling the entire chat.
+    /// Set by <c>SubAgentExecutor</c> via <see cref="SetCancellationTokenSource"/>.
+    /// </summary>
+    [JsonIgnore]
+    private CancellationTokenSource? _cancelSource;
+
+    /// <summary>
+    /// Sets the linked CancellationTokenSource so the sub-agent can be cancelled independently.
+    /// Called by <c>SubAgentExecutor</c> after creating the linked token.
+    /// </summary>
+    public void SetCancellationTokenSource(CancellationTokenSource cts) => _cancelSource = cts;
+
+    /// <summary>
+    /// Cancels the sub-agent independently (without cancelling the parent chat).
+    /// Safe to call multiple times — does nothing if already cancelled or not started.
+    /// </summary>
+    public void Cancel() => _cancelSource?.Cancel();
+
+    /// <summary>
+    /// Whether the sub-agent can currently be cancelled (i.e. it is still running).
+    /// </summary>
+    [JsonIgnore]
+    public bool CanCancel => Status == SubAgentStatus.Running;
+
+    /// <summary>
     /// The sub-agent's own ToolCallHandler for processing tool call approvals.
     /// Isolated from the main agent's ToolCallHandler to prevent approval waiter conflicts.
     /// UI components use this to route approval responses for sub-agent tool calls.
-    /// Set to null by <see cref="ReleaseMemory"/> after the sub-agent finishes —
-    /// all waiters are already cancelled, no new approvals can arrive.
+    /// <see cref="ReleaseMemory"/> cancels all pending approvals on it but keeps the reference
+    /// to prevent late-arriving approvals from routing to the wrong (parent) handler.
     /// </summary>
     [JsonIgnore]
     public IToolCallHandler? ToolCallHandler { get; set; }
@@ -244,15 +305,20 @@ public class SubAgentMessage
     /// </summary>
     public void ReleaseMemory()
     {
-        // Release the ToolCallHandler — all waiters are already cancelled by the
-        // finally block in SubAgentExecutor. No new approvals can arrive.
-        // ToolCallBlock checks `SubAgent.ToolCallHandler` for the override; when null,
-        // it falls back to the DI-injected handler, but since all approvals are
-        // already Resolved/Rejected, the approval buttons won't be shown anyway.
-        ToolCallHandler = null;
+        // Cancel any pending approval waiters on the sub-agent's handler.
+        // This prevents a race condition where a tool call with ApprovalStatus.Pending
+        // could route its approval to the wrong (parent) handler after the sub-agent
+        // finishes. We keep the ToolCallHandler reference (do NOT null it) so that
+        // any late-arriving approval response is handled by the correct sub-agent
+        // handler rather than falling back to the parent's DI-injected handler.
+        ToolCallHandler?.CancelPendingApprovals();
 
         // Clear the pending tool call ID — only relevant during execution.
         PendingToolCallId = null;
+
+        // Dispose the CancellationTokenSource — no longer needed after execution.
+        _cancelSource?.Dispose();
+        _cancelSource = null;
 
         // Clean up heavy per-message transient data.
         // Segments are used only by MessageContent.razor (main chat), not by SubAgentView.

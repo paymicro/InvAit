@@ -13,9 +13,10 @@ public partial class SubAgentExecutorTests
         // Act
         await _executor.ExecuteAsync(args, toolCall, CancellationToken.None);
 
-        // Assert — ToolCallHandler is released by ReleaseMemory() in the finally block
-        // after the sub-agent finishes. It was set during execution and then cleared.
-        Assert.Null(toolCall.SubAgent!.ToolCallHandler);
+        // Assert — ToolCallHandler is kept (not nulled) by ReleaseMemory() in the finally block.
+        // Pending approvals are cancelled on it, but the reference is preserved to prevent
+        // late-arriving approvals from routing to the wrong (parent) handler.
+        Assert.NotNull(toolCall.SubAgent!.ToolCallHandler);
         // The sub-agent should have completed successfully with messages preserved
         Assert.Equal(SubAgentStatus.Completed, toolCall.SubAgent!.Status);
         Assert.NotEmpty(toolCall.SubAgent!.GetMessages());
@@ -35,9 +36,9 @@ public partial class SubAgentExecutorTests
         // Act
         await _executor.ExecuteAsync(args, toolCall, CancellationToken.None);
 
-        // Assert — after completion, the sub-agent's ToolCallHandler is released (set to null)
-        // by ReleaseMemory() in the finally block. The main handler is unaffected.
-        Assert.Null(toolCall.SubAgent!.ToolCallHandler);
+        // Assert — after completion, the sub-agent's ToolCallHandler is kept (not nulled)
+        // by ReleaseMemory(); pending approvals are cancelled on it. The main handler is unaffected.
+        Assert.NotNull(toolCall.SubAgent!.ToolCallHandler);
         Assert.NotNull(mainHandler); // Main handler is still alive
     }
 
@@ -96,10 +97,11 @@ public partial class SubAgentExecutorTests
         await _executor.ExecuteAsync(args, toolCall1, CancellationToken.None);
         await executor2.ExecuteAsync(args, toolCall2, CancellationToken.None);
 
-        // Assert — after completion, both sub-agents have their ToolCallHandler released
-        // (set to null by ReleaseMemory()). Each sub-agent still has its own messages.
-        Assert.Null(toolCall1.SubAgent!.ToolCallHandler);
-        Assert.Null(toolCall2.SubAgent!.ToolCallHandler);
+        // Assert — after completion, both sub-agents keep their ToolCallHandler reference
+        // (ReleaseMemory cancels pending approvals but does NOT null the handler).
+        // Each sub-agent still has its own messages.
+        Assert.NotNull(toolCall1.SubAgent!.ToolCallHandler);
+        Assert.NotNull(toolCall2.SubAgent!.ToolCallHandler);
         Assert.NotSame(toolCall1.SubAgent, toolCall2.SubAgent);
     }
 
@@ -401,8 +403,8 @@ public partial class SubAgentExecutorTests
         await _executor.ExecuteAsync(args, toolCall, CancellationToken.None);
 
         // Assert — ReleaseMemory() was called in the finally block:
-        // 1. ToolCallHandler is released (null)
-        Assert.Null(toolCall.SubAgent!.ToolCallHandler);
+        // 1. ToolCallHandler is kept (not nulled); pending approvals cancelled on it
+        Assert.NotNull(toolCall.SubAgent!.ToolCallHandler);
 
         // 2. PendingToolCallId is cleared
         Assert.Null(toolCall.SubAgent!.PendingToolCallId);

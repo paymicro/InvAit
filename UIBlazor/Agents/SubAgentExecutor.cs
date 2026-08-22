@@ -101,6 +101,14 @@ public class SubAgentExecutor(
 
         toolCall.SubAgent = subAgent;
 
+        // Create a linked CancellationTokenSource so the sub-agent can be cancelled
+        // independently (via SubAgentMessage.Cancel()) without cancelling the entire chat.
+        // The linked CTS is disposed in the finally block below.
+        var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        subAgent.SetCancellationTokenSource(linkedCts);
+        // Set MaxRetryAttempts for UI display
+        subAgent.MaxRetryAttempts = MaxRetries + 1;
+
         // NOTE: We intentionally do NOT relay subAgent.StateChanged to SubAgentStateChanged.
         // StateChanged fires on every streaming token (high frequency), and relaying it
         // would cause AiChat to re-render the ENTIRE chat tree on every token.
@@ -136,7 +144,7 @@ public class SubAgentExecutor(
 
         try
         {
-            var result = await RunSubAgentLoopAsync(session, subAgent, fullSystemPrompt, subAgentTools, subAgentToolCallHandler, cancellationToken);
+            var result = await RunSubAgentLoopAsync(session, subAgent, fullSystemPrompt, subAgentTools, subAgentToolCallHandler, linkedCts.Token);
 
             subAgent.Status = SubAgentStatus.Completed;
             subAgent.CompletedAt = DateTime.Now;
@@ -156,7 +164,7 @@ public class SubAgentExecutor(
                 Result = result
             };
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (linkedCts.Token.IsCancellationRequested)
         {
             subAgent.Status = SubAgentStatus.Cancelled;
             subAgent.CompletedAt = DateTime.Now;
@@ -202,6 +210,9 @@ public class SubAgentExecutor(
             // ToolCalls is preserved so the user can still expand and review the
             // sub-agent's reasoning chain in the UI.
             subAgent.ReleaseMemory();
+
+            // Dispose the linked CancellationTokenSource.
+            linkedCts.Dispose();
         }
     }
 
@@ -436,7 +447,37 @@ public class SubAgentExecutor(
                         "Sub-agent LLM call failed (attempt {Attempt}/{Total}). Retrying in {Delay}s.",
                         attempt + 1, MaxRetries + 1, delaySeconds);
 
-                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds), cancellationToken);
+                    // Set retry indicators on the sub-agent for UI display
+                    subAgent.IsRetrying = true;
+                    subAgent.RetryAttempt = attempt + 1;
+                    subAgent.RetryDelaySeconds = delaySeconds;
+                    subAgent.NotifyStateChanged();
+
+                    // Countdown loop: update RetryCountdown every second for UI.
+                    // Use Task.Delay with the cancellation token so that cancellation
+                    // during the retry delay propagates as OperationCanceledException.
+                    try
+                    {
+                        for (var i = delaySeconds; i > 0; i--)
+                        {
+                            subAgent.RetryCountdown = i;
+                            subAgent.NotifyStateChanged();
+                            await Task.Delay(1000, cancellationToken);
+                        }
+                        subAgent.RetryCountdown = 0;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        subAgent.IsRetrying = false;
+                        subAgent.RetryCountdown = 0;
+                        subAgent.NotifyStateChanged();
+                        throw;
+                    }
+
+                    // Clear retry indicators before the next attempt
+                    subAgent.IsRetrying = false;
+                    subAgent.RetryCountdown = 0;
+                    subAgent.NotifyStateChanged();
                     // Loop continues — new assistantMessage and resultCapture will be created
                 }
             }
@@ -677,7 +718,7 @@ public class SubAgentExecutor(
                 continue;
 
             // If allowedTools is specified, only include tools in the whitelist
-            if (allowedTools is { Length: > 0 } && !allowedTools.Contains(tool.Name))
+            if (allowedTools is { Length: > 0 } && !allowedTools.Contains(tool.Name, StringComparer.OrdinalIgnoreCase))
                 continue;
 
             yield return tool;
