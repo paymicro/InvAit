@@ -125,6 +125,25 @@
                                         </Items>
                                     </RadzenAccordion>
                                 }
+
+                                if (category is ToolCategory.SubAgent)
+                                {
+                                    <RadzenStack Gap="0.2rem">
+                                        <RadzenLabel Text="@SharedResource.MaxTokensPerSubAgent" />
+                                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                                            <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.MaxTokensPerSubAgent" Min=0 Max=256000 Step="1000" Style="width: 100%; height: 20px;" />
+                                            <RadzenLabel Text="@(ProfileManager.ActiveProfile.MaxTokensPerSubAgent > 0 ? $"{ProfileManager.ActiveProfile.MaxTokensPerSubAgent / 1000}K" : "∞")" Style="text-align: right; width: 50px;" />
+                                        </RadzenStack>
+                                    </RadzenStack>
+
+                                    <RadzenStack Gap="0.2rem">
+                                        <RadzenLabel Text="@SharedResource.MaxIterationsPerSubAgent" />
+                                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                                            <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.MaxIterationsPerSubAgent" Min=0 Max=100 Step="1" Style="width: 100%; height: 20px;" />
+                                            <RadzenLabel Text="@(ProfileManager.ActiveProfile.MaxIterationsPerSubAgent > 0 ? ProfileManager.ActiveProfile.MaxIterationsPerSubAgent.ToString() : "∞")" Style="text-align: right; width: 50px;" />
+                                        </RadzenStack>
+                                    </RadzenStack>
+                                }
                             }
                         </div>
                     </RadzenStack>
@@ -176,7 +195,8 @@
         ToolCategory.WriteFiles,
         ToolCategory.DeleteFiles,
         ToolCategory.ModeSwitch,
-        ToolCategory.Execution
+        ToolCategory.Execution,
+        ToolCategory.SubAgent
     ];
     private readonly string[] _providers = ["OpenAI Compatible"];
     private bool _isModelUpdating;
@@ -246,6 +266,7 @@
             ToolCategory.DeleteFiles => SharedResource.CategoryDeleteFiles,
             ToolCategory.ModeSwitch => SharedResource.CategoryModeSwitch,
             ToolCategory.Execution => SharedResource.CategoryExecution,
+            ToolCategory.SubAgent => SharedResource.CategorySubAgent,
             _ => category.ToString()
         };
     }

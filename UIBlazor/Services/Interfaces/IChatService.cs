@@ -32,25 +32,39 @@ public interface IChatService : IDisposable
 
     Task NewSessionAsync();
 
-    string? LastCompletionsModel { get; }
-
-    string? FinishReason { get; }
-
-    List<ToolCall>? AccumulatedToolCalls { get; }
-
-    public string? LastError { get; }
-
-    public UsageInfo? LastUsage { get; }
+    /// <summary>
+    /// Сжатие контекста основной сессии. Остается 2 сообщения + сжатое сообщение.
+    /// Состояние LLM-вызова записывается в <paramref name="resultCapture"/>.
+    /// </summary>
+    IAsyncEnumerable<ChatDelta> CompressSessionAsync(CompletionsResult resultCapture, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Сжатие контекста. Остается 2 сообщения + сжатое сообщение
+    /// Сжатие контекста для произвольной сессии (например, sub-agent).
+    /// Работает аналогично <see cref="CompressSessionAsync"/>, но с переданной сессией.
     /// </summary>
-    IAsyncEnumerable<ChatDelta> CompressSessionAsync(CancellationToken cancellationToken);
+    IAsyncEnumerable<ChatDelta> CompressSessionAsync(
+        ConversationSession session,
+        CompletionsResult resultCapture,
+        CancellationToken cancellationToken);
 
     /// <summary>
-    /// Получение стандартного ответа
+    /// Получение стандартного ответа.
+    /// Состояние LLM-вызова (model, usage, tool_calls, finish_reason, error)
+    /// записывается в  <paramref name="resultCapture"/>.
     /// </summary>
-    IAsyncEnumerable<ChatDelta> GetCompletionsAsync(CancellationToken cancellationToken);
+    IAsyncEnumerable<ChatDelta> GetCompletionsAsync(CompletionsResult resultCapture, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Получение ответа для sub-agent с произвольным системным промптом и набором инструментов.
+    /// Использует переданную сессию вместо основной.
+    /// Состояние записывается в <paramref name="resultCapture"/>.
+    /// </summary>
+    IAsyncEnumerable<ChatDelta> GetCompletionsForSubAgentAsync(
+        ConversationSession session,
+        string systemPrompt,
+        IEnumerable<Tool> enabledTools,
+        CompletionsResult resultCapture,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Получение списка моделей по API
@@ -68,11 +82,13 @@ public interface IChatService : IDisposable
     /// <param name="deltas">Функция получения <seealso cref="ChatDelta"/></param>
     /// <param name="onContentUpdate">Обновление <see cref="VisualChatMessage.Content"/></param>
     /// <param name="onStateChange">Внесены изменения в <see cref="VisualChatMessage"/></param>
+    /// <param name="resultCapture">Контейнер для состояния LLM-вызова (accumulated tool calls, usage и т.д.)</param>
     Task ProcessStreamAsync(
         VisualChatMessage message,
         IAsyncEnumerable<ChatDelta> deltas,
         Action<string>? onContentUpdate,
         Action<List<ToolCall>> onToolCallsUpdate,
         Action? onStateChange,
+        CompletionsResult resultCapture,
         CancellationToken cancellationToken);
 }

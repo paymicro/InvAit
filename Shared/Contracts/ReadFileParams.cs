@@ -9,7 +9,7 @@ public class ReadFileParams
     [JsonPropertyName("path")]
     public string Path { get; set; } = null!;
 
-    [Description("Start line. 1-based. Default: 1")]
+    [Description("Start line. 1-based")]
     [DefaultValue(-1)]
     [JsonPropertyName("startLine")]
     public int StartLine { get; set; } = -1;

@@ -1,0 +1,222 @@
+/* SubAgent Block */
+.subagent-block {
+    border: 1px solid var(--rz-base-600);
+    border-radius: 8px;
+    margin-top: 0.5rem;
+    overflow: hidden;
+    background: var(--rz-base-900);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+    .subagent-block.status-running {
+        border-left: 4px solid var(--rz-info);
+        animation: pulse-glow 2s infinite;
+    }
+
+    .subagent-block.status-completed {
+        border-left: 4px solid var(--rz-success);
+    }
+
+    .subagent-block.status-failed {
+        border-left: 4px solid var(--rz-danger);
+    }
+
+    .subagent-block.status-cancelled {
+        border-left: 4px solid var(--rz-warning);
+    }
+
+    .subagent-block.status-pending {
+        border-left: 4px solid var(--rz-base-500);
+    }
+
+/* Header */
+.subagent-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.8rem;
+    cursor: pointer;
+    user-select: none;
+    background: var(--rz-base-800);
+    transition: background 0.2s;
+}
+
+    .subagent-header:hover {
+        background: var(--rz-base-700);
+    }
+
+.subagent-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    flex: 1;
+}
+
+    .subagent-header-left i {
+        font-size: 1rem;
+        flex-shrink: 0;
+    }
+
+.subagent-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--rz-info-light);
+    flex-shrink: 0;
+}
+
+.subagent-task {
+    font-size: 0.82rem;
+    color: var(--rz-base-400);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.subagent-header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+}
+
+.subagent-arrow {
+    transition: transform 0.3s;
+    color: var(--rz-base-500);
+    font-size: 0.7rem;
+}
+
+    .subagent-arrow.expanded {
+        transform: rotate(180deg);
+    }
+
+/* Body */
+.subagent-body {
+    padding: 0.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    max-height: 50vh;
+    overflow-y: auto;
+}
+
+/* Conversation */
+.subagent-conversation {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.3rem 0;
+    scroll-behavior: smooth;
+}
+
+/*
+ * CSS Scroll Anchoring: keep sub-agent conversation pinned to bottom.
+ * Same pattern as the main chat (.rz-chat-messages / .anchor):
+ * - Scroll container (.subagent-body) has overflow-anchor: auto (default, but explicit for clarity)
+ * - All message elements have overflow-anchor: none so they are NOT anchor candidates
+ * - Only .subagent-anchor is an anchor candidate (overflow-anchor: auto)
+ * This ensures the browser adjusts scroll to keep .subagent-anchor visible
+ * when content above it grows (e.g. streaming tokens, new messages).
+ */
+.subagent-body {
+    overflow-anchor: auto;
+}
+
+.subagent-anchor {
+    overflow-anchor: auto;
+    height: 1px;
+    width: 100%;
+    flex-shrink: 0;
+}
+
+.subagent-message {
+    overflow-anchor: none;
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+}
+
+.subagent-message-role {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--rz-base-700);
+    color: var(--rz-base-400);
+    font-size: 0.7rem;
+}
+
+.subagent-message-user .subagent-message-role {
+    background: var(--rz-primary-dark);
+    color: var(--rz-on-primary-dark);
+}
+
+.subagent-message-assistant .subagent-message-role {
+    background: var(--rz-info-dark);
+    color: var(--rz-on-info-dark);
+}
+
+.subagent-message-content {
+    overflow-anchor: none;
+    flex: 1;
+    min-width: 0;
+    font-size: 0.82rem;
+    color: var(--rz-base-300);
+    line-height: 1.5;
+}
+
+    .subagent-message-content .markdown-content {
+        font-size: 0.82rem;
+    }
+
+/* Error result display */
+.subagent-result-error {
+    border: 1px solid var(--rz-danger);
+    border-radius: 6px;
+    background: rgba(var(--rz-danger-rgb), 0.1);
+    padding: 0.5rem 0.7rem;
+}
+
+.subagent-result-header {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--rz-danger-light);
+    font-size: 0.82rem;
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+}
+
+.subagent-result-content pre {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--rz-base-400);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* Tool calls inside sub-agent (container only — individual tool calls rendered via ToolCallBlock) */
+.subagent-toolcalls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-top: 0.3rem;
+}
+
+@keyframes pulse-glow {
+    0% {
+        box-shadow: 0 0 0 0 rgba(33, 150, 243, 0.3);
+    }
+
+    70% {
+        box-shadow: 0 0 0 6px rgba(33, 150, 243, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(33, 150, 243, 0);
+    }
+}

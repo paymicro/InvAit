@@ -68,6 +68,46 @@ window.scrollToAnchor = function() {
     }
 };
 
+// скролл к инструменту, требующему действия пользователя (апрув или ask_user)
+// подсветка цветом + уведомление
+window.scrollToToolCall = function(toolCallId) {
+    const el = document.querySelector(`[data-toolcall-id="${toolCallId}"]`);
+    if (!el) return;
+
+    // Сначала разворачиваем родительский sub-agent блок, если он свёрнут
+    const subAgentBlock = el.closest('.subagent-block');
+    if (subAgentBlock) {
+        const body = subAgentBlock.querySelector('.subagent-body');
+        if (!body) {
+            // Sub-agent свёрнут — разворачиваем через клик по заголовку
+            const header = subAgentBlock.querySelector('.subagent-header');
+            if (header) header.click();
+        }
+    }
+
+    // Небольшая задержка, чтобы DOM успел обновиться после разворачивания
+    setTimeout(() => {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        // Подсветка
+        el.classList.add('tool-call-highlight');
+        setTimeout(() => el.classList.remove('tool-call-highlight'), 4000);
+    }, subAgentBlock ? 150 : 0);
+};
+
+// скролл диалога сабагента к последнему сообщению
+window.scrollSubAgentToBottom = function(subAgentId) {
+    const block = document.querySelector(`[data-subagent-id="${subAgentId}"]`);
+    if (!block) return;
+
+    // .subagent-body is the scroll container (has max-height + overflow-y: auto)
+    // .subagent-conversation is not a scroll container itself
+    const body = block.querySelector('.subagent-body');
+    if (body) {
+        body.scrollTop = body.scrollHeight;
+    }
+};
+
 let chatHandler;
 window.setChatHandler = function (dotNetRef) {
     chatHandler = dotNetRef;

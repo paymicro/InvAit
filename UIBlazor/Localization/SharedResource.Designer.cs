@@ -151,6 +151,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Sub-agent.
+        /// </summary>
+        public static string CategorySubAgent {
+            get {
+                return ResourceManager.GetString("CategorySubAgent", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Write files.
         /// </summary>
         public static string CategoryWriteFiles {
@@ -165,6 +174,15 @@ namespace UIBlazor.Localization {
         public static string CommandCompact {
             get {
                 return ResourceManager.GetString("CommandCompact", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Compressing....
+        /// </summary>
+        public static string Compressing {
+            get {
+                return ResourceManager.GetString("Compressing", resourceCulture);
             }
         }
         
@@ -385,6 +403,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Max iterations per sub-agent.
+        /// </summary>
+        public static string MaxIterationsPerSubAgent {
+            get {
+                return ResourceManager.GetString("MaxIterationsPerSubAgent", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Max Error Retries.
         /// </summary>
         public static string MaxRetries {
@@ -399,6 +426,15 @@ namespace UIBlazor.Localization {
         public static string MaxTokens {
             get {
                 return ResourceManager.GetString("MaxTokens", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Max context per sub-agent.
+        /// </summary>
+        public static string MaxTokensPerSubAgent {
+            get {
+                return ResourceManager.GetString("MaxTokensPerSubAgent", resourceCulture);
             }
         }
         
@@ -754,6 +790,96 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Sub-agent.
+        /// </summary>
+        public static string SubAgent {
+            get {
+                return ResourceManager.GetString("SubAgent", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Allowed tools.
+        /// </summary>
+        public static string SubAgentAllowedTools {
+            get {
+                return ResourceManager.GetString("SubAgentAllowedTools", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to All tools.
+        /// </summary>
+        public static string SubAgentAllTools {
+            get {
+                return ResourceManager.GetString("SubAgentAllTools", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Cancelled.
+        /// </summary>
+        public static string SubAgentCancelled {
+            get {
+                return ResourceManager.GetString("SubAgentCancelled", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Completed.
+        /// </summary>
+        public static string SubAgentCompleted {
+            get {
+                return ResourceManager.GetString("SubAgentCompleted", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Failed.
+        /// </summary>
+        public static string SubAgentFailed {
+            get {
+                return ResourceManager.GetString("SubAgentFailed", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Result.
+        /// </summary>
+        public static string SubAgentResult {
+            get {
+                return ResourceManager.GetString("SubAgentResult", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Running....
+        /// </summary>
+        public static string SubAgentRunning {
+            get {
+                return ResourceManager.GetString("SubAgentRunning", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to System prompt.
+        /// </summary>
+        public static string SubAgentSystemPrompt {
+            get {
+                return ResourceManager.GetString("SubAgentSystemPrompt", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Task.
+        /// </summary>
+        public static string SubAgentTask {
+            get {
+                return ResourceManager.GetString("SubAgentTask", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to System Prompt.
         /// </summary>
         public static string SystemPrompt {
@@ -831,6 +957,15 @@ namespace UIBlazor.Localization {
         public static string ToolCreateFile {
             get {
                 return ResourceManager.GetString("ToolCreateFile", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Delegate task.
+        /// </summary>
+        public static string ToolDelegateTask {
+            get {
+                return ResourceManager.GetString("ToolDelegateTask", resourceCulture);
             }
         }
         

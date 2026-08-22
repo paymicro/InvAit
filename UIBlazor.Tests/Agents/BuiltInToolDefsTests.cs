@@ -1,8 +1,7 @@
 namespace UIBlazor.Tests.Agents;
 
-public class BuiltInToolDefsTests
+public partial class BuiltInToolDefsTests
 {
-    #region Test Helper Methods
     // Метод без параметров
     public void MethodWithoutParameters() { }
 
@@ -61,10 +60,6 @@ public class BuiltInToolDefsTests
     // Метод с enum
     public void MethodWithEnum(TestEnum enumParam) { }
 
-    #endregion
-
-    #region Test Classes
-
     public class TestComplexObject
     {
         [Description("Name property")]
@@ -82,10 +77,6 @@ public class BuiltInToolDefsTests
         Value2,
         Value3
     }
-
-    #endregion
-
-    #region Tests
 
     [Fact]
     public void MapMethodToTool_MethodWithoutParameters_ReturnsEmptyProperties()
@@ -384,6 +375,4 @@ public class BuiltInToolDefsTests
         Assert.Contains("intParam", result.Function.Parameters.Properties.Keys);
         Assert.Contains("dateTimeParam", result.Function.Parameters.Properties.Keys);
     }
-
-    #endregion
 }

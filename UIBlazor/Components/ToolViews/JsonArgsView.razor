@@ -1,3 +1,6 @@
+@inherits ThrottledComponentBase
+@inject IToolManager ToolManager
+
 @if (_hasParsed)
 {
     <div class="json-args-view">
@@ -5,51 +8,11 @@
     </div>
 }
 
-@implements IDisposable
-
 @code {
     [Parameter] public string Args { get; set; } = string.Empty;
 
     private Dictionary<string, object> _parsedArgs = new();
     private bool _hasParsed;
-    private bool _shouldRender = true;
-    private DateTime _lastRenderTime = DateTime.MinValue;
-    private CancellationTokenSource? _pendingCts;
-    private const int _renderIntervalMs = 500;
-
-    protected override bool ShouldRender()
-    {
-        if (_shouldRender)
-        {
-            _lastRenderTime = DateTime.Now;
-            _shouldRender = false;
-            return true;
-        }
-
-        // Троттлинг: если рендер был недавно, откладываем
-        var elapsed = (DateTime.Now - _lastRenderTime).TotalMilliseconds;
-        if (elapsed < _renderIntervalMs)
-        {
-            _pendingCts?.Cancel();
-            _pendingCts = new CancellationTokenSource();
-            _ = DelayedStateHasChanged(_pendingCts.Token);
-            return false;
-        }
-
-        _lastRenderTime = DateTime.Now;
-        return true;
-    }
-
-    private async Task DelayedStateHasChanged(CancellationToken ct)
-    {
-        try
-        {
-            await Task.Delay(_renderIntervalMs, ct);
-            _shouldRender = true;
-            StateHasChanged();
-        }
-        catch (TaskCanceledException) { }
-    }
 
     protected override void OnParametersSet()
     {
@@ -62,12 +25,6 @@
         _parsedArgs = JsonUtils.DeserializePartialAnonymousType(Args, new Dictionary<string, object>());
         // Пустой объект {} или невалидный JSON — не рендерим ничего
         _hasParsed = _parsedArgs.Count > 0;
-    }
-
-    public void Dispose()
-    {
-        _pendingCts?.Cancel();
-        _pendingCts?.Dispose();
     }
 
     private RenderFragment RenderDict(Dictionary<string, object> dict) => @<div class="json-args-nested">

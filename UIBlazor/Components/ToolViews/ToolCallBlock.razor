@@ -1,7 +1,14 @@
 @inject IToolManager ToolManager
 @inject IToolCallHandler ToolCallHandler
+@implements IDisposable
 
-<div class="tool-call-block" data-tool="@ToolCall.Function.Name">
+@*
+    ToolCallBlock renders a single tool call: arguments, approval buttons, result.
+    When ToolCallHandlerOverride is set (e.g. by SubAgentView), ask_user answers
+    and approvals are routed to that handler instead of the DI-injected one.
+*@
+
+<div class="tool-call-block" data-tool="@ToolCall.Function.Name" data-toolcall-id="@ToolCall.Id">
     <div class="tool-call-header @StatusClass">
         @if (!ToolCall.IsReady)
         {
@@ -42,6 +49,10 @@
                                 Answer="@ToolCall.Result?.Content"
                                 OnOptionSelectedCallback="@(async (answer) => await OnAskUserAnswer(answer))" />
             }
+            else if (ToolCall.Function.Name == BuiltInToolEnum.DelegateTask)
+            {
+                <DelegateTaskView Args="@ToolCall.Function.Arguments" />
+            }
             else
             {
                 <JsonArgsView Args="@ToolCall.Function.Arguments" />
@@ -61,7 +72,13 @@
                 </div>
             }
         </div>
-        @if (ToolCall.Result is not null)
+
+        @* Sub-agent view: show expanded conversation when delegate_task has a SubAgent attached *@
+        @if (ToolCall.Function.Name == BuiltInToolEnum.DelegateTask && SubAgent is not null)
+        {
+            <SubAgentView SubAgent="@SubAgent" />
+        }
+        else if (ToolCall.Result is not null)
         {
             <Details Text="@ToolCall.Result.DisplayName">
                 <pre class="rz-p-2 rz-background-color-base-900 rz-color-white">@ToolCall.Result.Content</pre>
@@ -73,8 +90,21 @@
 @code {
     [Parameter] public ToolCall ToolCall { get; set; } = null!;
     [Parameter] public EventCallback<(string SegmentId, bool Approved)> OnApproval { get; set; }
+    /// <summary>
+    /// When set (e.g. by SubAgentView), overrides the DI-injected ToolCallHandler.
+    /// ask_user answers are routed to this handler.
+    /// </summary>
+    [Parameter] public IToolCallHandler? ToolCallHandlerOverride { get; set; }
+
+    private bool _disposed;
+    private SubAgentMessage? _subAgent;
 
     private string DisplayName => ToolManager.GetTool(ToolCall.Function.Name)?.DisplayName ?? ToolCall.Function.Name;
+
+    /// <summary>
+    /// Sub-agent's handler when inside SubAgentView, otherwise the main DI-injected handler.
+    /// </summary>
+    private IToolCallHandler EffectiveHandler => ToolCallHandlerOverride ?? ToolCallHandler;
 
     private string StatusClass => ToolCall.ApprovalStatus switch
     {
@@ -83,8 +113,40 @@
         _ => "pending" // класс по умолчанию
     };
 
+    /// <summary>
+    /// Sub-agent data attached to this specific tool call, if it is a delegate_task.
+    /// </summary>
+    private SubAgentMessage? SubAgent => ToolCall.SubAgent;
+
+    protected override void OnParametersSet()
+    {
+        // Subscribe to sub-agent state changes for live UI updates
+        var current = SubAgent;
+        if (current != _subAgent)
+        {
+            if (_subAgent is not null)
+                _subAgent.StateChanged -= OnSubAgentStateChanged;
+            _subAgent = current;
+            if (_subAgent is not null)
+                _subAgent.StateChanged += OnSubAgentStateChanged;
+        }
+    }
+
+    private void OnSubAgentStateChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
     private async Task OnAskUserAnswer(string answer)
     {
-        await ToolCallHandler.HandleAskUserAnswerAsync(ToolCall.Id, answer);
+        await EffectiveHandler.HandleAskUserAnswerAsync(ToolCall.Id, answer);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        if (_subAgent is not null)
+            _subAgent.StateChanged -= OnSubAgentStateChanged;
     }
 }

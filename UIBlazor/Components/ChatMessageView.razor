@@ -138,11 +138,32 @@
     private bool _oldIsExpanded;
     private int _oldRetryCountdown;
     private string _oldContent = string.Empty;
+    private int _oldSubAgentCount;
+    private SubAgentStatus? _oldSubAgentStatus;
+    private int _oldSubAgentMessageCount;
+    private bool _oldSubAgentIsExpanded;
+    private string _oldSubAgentResult = string.Empty;
+    private List<SubAgentMessage> _subAgents = [];
 
     protected override bool ShouldRender()
     {
         // Проверяем, изменилось ли состояние загрузки конкретно для последнего (или только что переставшего быть последним) сообщения
         var isLoadingChangedForLast = (IsLast || _oldIsLast) && (_oldIsLoading != IsLoading);
+
+        // Sub-agent state changes should trigger re-render.
+        // Check all tool calls for sub-agent data (multiple delegate_task calls
+        // can exist in one message, each with its own sub-agent).
+        _subAgents = Message.ToolCalls?
+            .Where(tc => tc.SubAgent is not null)
+            .Select(tc => tc.SubAgent!)
+            .ToList() ?? [];
+
+        var subAgentChanged = _subAgents.Count != _oldSubAgentCount ||
+            _subAgents.Any(sa =>
+                sa.Status != _oldSubAgentStatus ||
+                sa.GetMessageCount() != _oldSubAgentMessageCount ||
+                sa.IsExpanded != _oldSubAgentIsExpanded ||
+                (sa.Result ?? string.Empty) != _oldSubAgentResult);
 
         return Message.IsShouldRender ||
                Message.IsStreaming || _oldIsStreaming ||
@@ -151,7 +172,8 @@
                _oldIsLast != IsLast ||
                isLoadingChangedForLast ||
                Message.IsExpanded != _oldIsExpanded ||
-               Message.Content != _oldContent;
+               Message.Content != _oldContent ||
+               subAgentChanged;
     }
 
     protected override void OnAfterRender(bool firstRender)
@@ -165,6 +187,14 @@
         _oldIsEditing = Message.IsEditing;
         _oldIsExpanded = Message.IsExpanded;
         _oldContent = Message.Content;
+        _oldSubAgentCount = _subAgents.Count;
+        // Track the first sub-agent's state for change detection
+        // (individual sub-agent changes are handled by ToolCallBlock's own ShouldRender)
+        var firstSubAgent = _subAgents.FirstOrDefault();
+        _oldSubAgentStatus = firstSubAgent?.Status;
+        _oldSubAgentMessageCount = firstSubAgent?.GetMessageCount() ?? 0;
+        _oldSubAgentIsExpanded = firstSubAgent?.IsExpanded ?? false;
+        _oldSubAgentResult = firstSubAgent?.Result ?? string.Empty;
         Message.IsShouldRender = false;
     }
 }

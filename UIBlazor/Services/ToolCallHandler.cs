@@ -7,9 +7,14 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
     private readonly ConcurrentDictionary<string, ApprovalWaiter> _approvalWaiters = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<string>> _askUserWaiters = new();
 
+    /// <inheritdoc />
+    public event Action<string>? ApprovalRequired;
+
     public void PrepareToolsForApprovals(List<ToolCall> toolCalls)
     {
         CancelPendingApprovals();
+
+        string? firstPendingId = null;
 
         // Pre-register approval waiters for all pending segments
         // so users can approve tools in any order
@@ -23,6 +28,7 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
             {
                 toolCall.ApprovalStatus = ToolApprovalStatus.Pending;
                 _askUserWaiters[toolCall.Id] = new TaskCompletionSource<string>();
+                firstPendingId ??= toolCall.Id;
                 continue;
             }
 
@@ -32,6 +38,7 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
                 case ToolApprovalMode.Ask:
                     toolCall.ApprovalStatus = ToolApprovalStatus.Pending;
                     _approvalWaiters[toolCall.Id] = new ApprovalWaiter(new(), toolCall);
+                    firstPendingId ??= toolCall.Id;
                     break;
                 case ToolApprovalMode.Deny:
                     toolCall.ApprovalStatus = ToolApprovalStatus.Rejected;
@@ -42,24 +49,64 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
                     break;
             }
         }
+
+        // Notify subscribers that user action is required
+        if (firstPendingId is not null)
+        {
+            ApprovalRequired?.Invoke(firstPendingId);
+        }
     }
 
     public async Task ProcessToolCallsAsync(
         List<ToolCall> toolCalls,
         CancellationToken cancellationToken)
     {
+        // Separate delegate_task calls (can run in parallel) from other tool calls (sequential).
+        // Each sub-agent has its own ToolCallHandler, so approvals are isolated.
+        // Non-delegate tools must remain sequential because they share the same approval waiters.
+        var delegateTasks = new List<(ToolCall toolCall, Tool? tool)>();
+        var sequentialTasks = new List<(ToolCall toolCall, Tool? tool)>();
+
         foreach (var toolCall in toolCalls)
         {
             if (cancellationToken.IsCancellationRequested)
                 return;
 
             var tool = toolManager.GetTool(toolCall.Function.Name);
+
+            if (toolCall.Function.Name == BuiltInToolEnum.DelegateTask)
+                delegateTasks.Add((toolCall, tool));
+            else
+                sequentialTasks.Add((toolCall, tool));
+        }
+
+        // Run delegate_task calls in parallel
+        if (delegateTasks.Count > 0)
+        {
+            var parallelTasks = delegateTasks.Select(async item =>
+            {
+                var vsToolResult = await ExecuteToolWithApprovalAsync(item.toolCall, item.tool, cancellationToken);
+#if DEBUG
+                vsToolResult = HeadlessMocker.GetVsToolResult(vsToolResult);
+#endif
+                item.toolCall.Result = ToolResult.Convert(vsToolResult, item.tool?.DisplayName ?? "", item.tool?.Name ?? "");
+            });
+
+            await Task.WhenAll(parallelTasks);
+        }
+
+        // Run other tool calls sequentially
+        foreach (var (toolCall, tool) in sequentialTasks)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                return;
+
             var vsToolResult = await ExecuteToolWithApprovalAsync(toolCall, tool, cancellationToken);
 
 #if DEBUG
             vsToolResult = HeadlessMocker.GetVsToolResult(vsToolResult);
 #endif
-            
+
             toolCall.Result = ToolResult.Convert(vsToolResult, tool?.DisplayName ?? "", tool?.Name ?? "");
         }
     }
@@ -114,7 +161,7 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
         CancellationToken cancellationToken)
     {
         // Get the pre-registered TCS, or create one if not found (defensive)
-        var tcs = _approvalWaiters.GetOrAdd(toolCall.Id, _ => new ApprovalWaiter(new (), toolCall));
+        var tcs = _approvalWaiters.GetOrAdd(toolCall.Id, _ => new ApprovalWaiter(new(), toolCall));
 
         try
         {
@@ -162,6 +209,12 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
             return VsToolResult.Denied(toolCall.Function.Name);
         }
 
+        // Use context-aware execution if available (for delegate_task)
+        if (tool.ExecuteWithContextAsync is not null)
+        {
+            return await tool.ExecuteWithContextAsync(toolCall.Function.Arguments, toolCall, cancellationToken);
+        }
+
         return await tool.ExecuteAsync(toolCall.Function.Arguments, cancellationToken);
     }
 
@@ -188,7 +241,8 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
         return Task.CompletedTask;
     }
 
-    private void CancelPendingApprovals()
+    /// <inheritdoc />
+    public void CancelPendingApprovals()
     {
         foreach (var kvp in _approvalWaiters)
         {

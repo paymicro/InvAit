@@ -453,4 +453,49 @@
   <data name="PromptSectionModeInstructions" xml:space="preserve">
     <value>Mode instructions</value>
   </data>
+  <data name="ToolDelegateTask" xml:space="preserve">
+    <value>Delegate task</value>
+  </data>
+  <data name="CategorySubAgent" xml:space="preserve">
+    <value>Sub-agent</value>
+  </data>
+  <data name="SubAgent" xml:space="preserve">
+    <value>Sub-agent</value>
+  </data>
+  <data name="SubAgentRunning" xml:space="preserve">
+    <value>Running...</value>
+  </data>
+  <data name="SubAgentCompleted" xml:space="preserve">
+    <value>Completed</value>
+  </data>
+  <data name="SubAgentFailed" xml:space="preserve">
+    <value>Failed</value>
+  </data>
+  <data name="SubAgentCancelled" xml:space="preserve">
+    <value>Cancelled</value>
+  </data>
+  <data name="SubAgentTask" xml:space="preserve">
+    <value>Task</value>
+  </data>
+  <data name="SubAgentSystemPrompt" xml:space="preserve">
+    <value>System prompt</value>
+  </data>
+  <data name="SubAgentAllowedTools" xml:space="preserve">
+    <value>Allowed tools</value>
+  </data>
+  <data name="SubAgentResult" xml:space="preserve">
+    <value>Result</value>
+  </data>
+  <data name="Compressing" xml:space="preserve">
+    <value>Compressing...</value>
+  </data>
+  <data name="MaxTokensPerSubAgent" xml:space="preserve">
+    <value>Max context per sub-agent</value>
+  </data>
+  <data name="MaxIterationsPerSubAgent" xml:space="preserve">
+    <value>Max iterations per sub-agent</value>
+  </data>
+  <data name="SubAgentAllTools" xml:space="preserve">
+    <value>All tools</value>
+  </data>
 </root>

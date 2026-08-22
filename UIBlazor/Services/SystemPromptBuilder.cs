@@ -69,8 +69,11 @@ public class SystemPromptBuilder(
             : string.Empty;
 
         // Mode instructions — independent of Mermaid
+        // Delegation instructions are only included if delegate_task is actually available
+        var canDelegate = profile.SendModeInstructions &&
+            toolManager.GetEnabledTools(mode).Any(t => t.Name == BuiltInToolEnum.DelegateTask);
         var modeInstructions = profile.SendModeInstructions
-            ? BuildModeInstructions(mode)
+            ? BuildModeInstructions(mode, canDelegate)
             : string.Empty;
 
         List<string?> systemPromptBlocks = [profile.SystemPrompt,
@@ -85,7 +88,71 @@ public class SystemPromptBuilder(
         return string.Join(Environment.NewLine, systemPromptBlocks.Where(b => !string.IsNullOrEmpty(b)));
     }
 
-    private static string BuildModeInstructions(AppMode mode)
+    /// <summary>
+    /// Builds a system prompt for a sub-agent.
+    /// Uses the LLM-provided <paramref name="customPrompt"/> as the base, then appends context sections
+    /// from the active profile (rules, skills, solution structure, mode instructions, etc.).
+    /// Exceptions vs main agent prompt:
+    /// - Active file content is never included (sub-agent can use read_files tool).
+    /// - Mermaid diagram instructions are never included (sub-agent returns text result to main agent).
+    /// </summary>
+    public async Task<string> PrepareSubAgentSystemPromptAsync(string customPrompt, CancellationToken cancellationToken)
+    {
+        var profile = profileManager.ActiveProfile;
+
+        // Skills metadata
+        var skillsMetadata = await skillService.GetSkillsMetadataAsync(cancellationToken);
+        var skillsSection = profile.SendSkills
+            ? skillService.FormatSkillsForSystemPrompt(skillsMetadata)
+            : string.Empty;
+
+        // Code context — solution structure only, never active file
+        var contextSection = new StringBuilder();
+        var currentContext = vsCodeContextService.CurrentContext;
+        if (currentContext != null && profile.SendSolutionStructure && currentContext.SolutionFiles.Count > 0)
+        {
+            contextSection.AppendLine("# CURRENT CODE CONTEXT");
+            contextSection.AppendLine($"""
+                                      Solution structure:
+                                      ```
+                                      {BuildSolutionFiles(currentContext, true)}
+                                      ```
+                                      """);
+        }
+
+        // Rules
+        var rules = profile.SendRules
+            ? await ruleService.GetRulesAsync(cancellationToken)
+            : string.Empty;
+
+        // agents.md
+        var agents = profile.SendAgentsMd
+            ? await ruleService.GetAgentsMdAsync(cancellationToken)
+            : string.Empty;
+
+        // Mode instructions — always Agent mode for sub-agents.
+        // delegate_task is excluded from sub-agent tools by SubAgentExecutor, so sub-agents can never delegate.
+        var modeInstructions = profile.SendModeInstructions
+            ? BuildModeInstructions(AppMode.Agent, canDelegate: false)
+            : string.Empty;
+
+        List<string?> systemPromptBlocks =
+        [
+            string.IsNullOrEmpty(customPrompt)
+                ? "You are a helpful assistant. Complete the task given to you."
+                : customPrompt,
+            modeInstructions,
+            skillsSection,
+            contextSection.ToString(),
+            rules,
+            !string.IsNullOrEmpty(agents) ? string.Join("# Agents instructions\n", agents) : null,
+            profile.SendCurrentDate ? $"Current date: {DateTime.Now:dd-MM-yyyy}" : null
+        ];
+
+        return string.Join(Environment.NewLine, systemPromptBlocks.Where(b => !string.IsNullOrEmpty(b)));
+    }
+
+    private static string BuildModeInstructions(AppMode mode, bool canDelegate = false)
     {
         var modeDesc = mode switch
         {
@@ -116,6 +183,18 @@ public class SystemPromptBuilder(
 
                           In this mode, you should NOT make any changes to files. Your goal is to get user approval for the plan.
                           Once the plan is approved, the mode will be switched to **Agent** for execution.
+                          """);
+        }
+
+        if (mode == AppMode.Agent && canDelegate)
+        {
+            sb.AppendLine("""
+                          ## Sub-Agent Delegation
+                          You can delegate tasks to sub-agents using the `delegate_task` tool. Sub-agents have their own conversation context and system prompt.
+                          
+                          - Use sub-agents for complex subtasks that benefit from focused attention and a specialized prompt.
+                          - The sub-agent's final answer is returned to you as the tool result.
+                          - Sub-agents cannot delegate further (no recursion).
                           """);
         }
 

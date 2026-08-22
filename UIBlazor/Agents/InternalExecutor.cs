@@ -6,6 +6,9 @@ namespace UIBlazor.Agents;
 public class InternalExecutor(IServiceProvider serviceProvider) : IInternalExecutor
 {
     public async Task<VsToolResult> ExecuteToolAsync(string name, string argsJson, CancellationToken cancellationToken)
+        => await ExecuteToolAsync(name, argsJson, null, cancellationToken);
+
+    public async Task<VsToolResult> ExecuteToolAsync(string name, string argsJson, ToolCall? toolCall, CancellationToken cancellationToken)
     {
         if (name == BasicEnum.SwitchMode)
         {
@@ -32,6 +35,21 @@ public class InternalExecutor(IServiceProvider serviceProvider) : IInternalExecu
         if (name == BasicEnum.AskUser)
         {
             return ExecuteAskUserAsync(argsJson);
+        }
+
+        if (name == BuiltInToolEnum.DelegateTask)
+        {
+            if (toolCall is null)
+            {
+                return new VsToolResult
+                {
+                    Success = false,
+                    ErrorMessage = "delegate_task requires a tool call context."
+                };
+            }
+
+            var subAgentExecutor = serviceProvider.GetRequiredService<ISubAgentExecutor>();
+            return await subAgentExecutor.ExecuteAsync(argsJson, toolCall, cancellationToken);
         }
 
         return new VsToolResult
@@ -72,6 +90,18 @@ public class InternalExecutor(IServiceProvider serviceProvider) : IInternalExecu
                         {
                             options.Add(option);
                         }
+                    }
+                }
+            }
+            else if (optionsObj is IList list)
+            {
+                // DeserializeParameters converts JSON arrays to List<object>
+                foreach (var item in list)
+                {
+                    var option = item?.ToString()?.Trim();
+                    if (!string.IsNullOrEmpty(option))
+                    {
+                        options.Add(option);
                     }
                 }
             }

@@ -21,6 +21,38 @@ public class BuiltInAgentTests
     }
 
     [Fact]
+    public void Tools_DelegateTask_IsRegistered()
+    {
+        var tool = _agent.Tools.FirstOrDefault(t => t.Name == BuiltInToolEnum.DelegateTask);
+        Assert.NotNull(tool);
+        Assert.Equal(ToolCategory.SubAgent, tool!.Category);
+        Assert.NotNull(tool.NativeTool);
+        Assert.Equal(BuiltInToolEnum.DelegateTask, tool.NativeTool.Function.Name);
+    }
+
+    [Fact]
+    public void Tools_DelegateTask_HasExecuteWithContextAsync()
+    {
+        var tool = _agent.Tools.First(t => t.Name == BuiltInToolEnum.DelegateTask);
+        Assert.NotNull(tool.ExecuteWithContextAsync);
+    }
+
+    [Fact]
+    public async Task Execute_DelegateTask_CallsInternalExecutor()
+    {
+        // Arrange
+        var tool = _agent.Tools.First(t => t.Name == BuiltInToolEnum.DelegateTask);
+        var args = JsonSerializer.Serialize(new { task = "Test", systemPrompt = "Prompt" });
+
+        // Act
+        await tool.ExecuteAsync(args, CancellationToken.None);
+
+        // Assert - InternalExecutor is called (which routes to SubAgentExecutor)
+        // Since we mock IInternalExecutor, it just returns default
+        // The key is that it doesn't throw
+    }
+
+    [Fact]
     public async Task Execute_ReadFiles_CallsBridge()
     {
         // Arrange

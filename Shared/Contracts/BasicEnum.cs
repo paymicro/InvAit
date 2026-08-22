@@ -2,7 +2,7 @@ namespace Shared.Contracts;
 
 public static class BasicEnum
 {
-
+    #pragma warning disable format
     // App state
     public const string SwitchMode          = "switch_mode";
 
