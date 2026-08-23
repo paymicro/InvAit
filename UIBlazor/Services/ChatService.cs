@@ -149,17 +149,22 @@ public class ChatService(
                 message.Timings.Content = TimeSpan.FromMilliseconds(sw.ElapsedMilliseconds - firstContentTokenMs);
             }
 
+            // Динамический подсчет таймингов для UI
+            CalcTimings(message, sw, firstTokenMs, resultCapture);
+
             onStateChange?.Invoke();
         }
 
-        CalcTimings(message, sw, firstTokenMs, resultCapture.Usage);
+        // Финальный подсчет таймингов. Нужен т.к. токен с Usage не запускает цикл выше (он без дельты)
+        CalcTimings(message, sw, firstTokenMs, resultCapture);
+
         message.IsStreaming = false;
     }
 
-    private static void CalcTimings(VisualChatMessage message, Stopwatch sw, double firstTokenMs, UsageInfo? usage)
+    private static void CalcTimings(VisualChatMessage message, Stopwatch sw, double firstTokenMs, CompletionsResult completionsResult)
     {
         var elapsedMs = sw.ElapsedMilliseconds;
-        message.Timings.Tokens = (usage?.CompletionTokens ?? 0) + message.Timings.Tokens;
+        message.Timings.Tokens = completionsResult.CompletionTokens;
         var secForTokens = Math.Max(1, (elapsedMs - firstTokenMs) / 1000.0);
         message.Timings.TokensInSec = (float)(message.Timings.Tokens / secForTokens);
         message.Timings.Total = TimeSpan.FromMilliseconds(elapsedMs);
@@ -403,6 +408,9 @@ public class ChatService(
             throw new LlmApiException(result);
         }
 
+        // количество токенов в сессии до запроса
+        var sessionTokens = targetSession.TotalTokens;
+
         // если не стрим, то возвращаем как один чанк
         if (!Options.Stream)
         {
@@ -416,6 +424,7 @@ public class ChatService(
             if (chunk?.Usage != null)
             {
                 resultCapture.Usage = chunk.Usage;
+                resultCapture.CompletionTokens = chunk.Usage.CompletionTokens;
                 targetSession.TotalTokens = chunk.Usage.TotalTokens;
             }
 
@@ -487,6 +496,7 @@ public class ChatService(
             if (chunk.Usage != null)
             {
                 resultCapture.Usage = chunk.Usage;
+                resultCapture.CompletionTokens = chunk.Usage.CompletionTokens;
                 targetSession.TotalTokens = chunk.Usage.TotalTokens;
             }
             else
@@ -499,10 +509,24 @@ public class ChatService(
                 // token budget limit в субагентах и компрессии контекста.
                 var estDelta = chunk.Choices.Count == 1 ? chunk.Choices[0].Delta : null;
                 var estimatedChars = (estDelta?.Content?.Length ?? 0)
-                                   + (estDelta?.ReasoningContent?.Length ?? 0)
-                                   + (estDelta?.Reasoning?.Length ?? 0);
+                                   + (estDelta?.ReasoningContent?.Length ?? 0);
+
+                // Tool calls (function name + arguments) тоже содержат токены,
+                // которые надо учитывать при приблизительной оценке во время стрима.
+                if (estDelta?.ToolCalls is { Count: > 0 })
+                {
+                    foreach (var tc in estDelta.ToolCalls)
+                    {
+                        estimatedChars += tc.Function?.Name?.Length ?? 0;
+                        estimatedChars += tc.Function?.Arguments?.Length ?? 0;
+                    }
+                }
+
                 if (estimatedChars > 0)
-                    targetSession.TotalTokens += Math.Max(1, estimatedChars / 4);
+                {
+                    resultCapture.CompletionTokens += Math.Max(1, estimatedChars / 4);
+                    targetSession.TotalTokens = sessionTokens + resultCapture.CompletionTokens;
+                }
             }
 
             resultCapture.Model ??= chunk.Model;

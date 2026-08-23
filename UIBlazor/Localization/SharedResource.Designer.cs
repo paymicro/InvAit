@@ -403,6 +403,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Max execution time per sub-agent.
+        /// </summary>
+        public static string MaxExecutionTimePerSubAgent {
+            get {
+                return ResourceManager.GetString("MaxExecutionTimePerSubAgent", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Max iterations per sub-agent.
         /// </summary>
         public static string MaxIterationsPerSubAgent {
@@ -840,6 +849,15 @@ namespace UIBlazor.Localization {
         public static string SubAgentFailed {
             get {
                 return ResourceManager.GetString("SubAgentFailed", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Restrictions for sub-agents.
+        /// </summary>
+        public static string SubagentRestrinctions {
+            get {
+                return ResourceManager.GetString("SubagentRestrinctions", resourceCulture);
             }
         }
         

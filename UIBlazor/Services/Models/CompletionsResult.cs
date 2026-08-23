@@ -15,6 +15,11 @@ public sealed class CompletionsResult
     public List<ToolCall>? AccumulatedToolCalls { get; set; }
 
     /// <summary>
+    /// Из <see cref="UsageInfo.CompletionTokens"/> или приблизительный подсчет токенов ответа
+    /// </summary>
+    public int CompletionTokens { get; set; }
+
+    /// <summary>
     /// Resets all captured state to null. Called at the start of each GetCompletionsAsync call.
     /// </summary>
     public void Reset()
@@ -24,5 +29,6 @@ public sealed class CompletionsResult
         Usage = null;
         FinishReason = null;
         AccumulatedToolCalls = null;
+        CompletionTokens = 0;
     }
 }

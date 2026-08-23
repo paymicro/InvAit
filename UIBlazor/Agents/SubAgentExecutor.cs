@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace UIBlazor.Agents;
 
 /// <summary>
@@ -187,7 +189,6 @@ public class SubAgentExecutor(
             subAgent.Status = SubAgentStatus.Failed;
             subAgent.CompletedAt = DateTime.Now;
             subAgent.ErrorMessage = ex.Message;
-            subAgent.IsExpanded = false; // Collapse when done
             subAgent.NotifyStateChanged();
             // Notify AiChat that sub-agent failed (structural change)
             Volatile.Read(ref SubAgentStateChanged)?.Invoke(subAgent);
@@ -322,9 +323,31 @@ public class SubAgentExecutor(
         var maxIterations = profile.MaxIterationsPerSubAgent > 0
             ? profile.MaxIterationsPerSubAgent
             : int.MaxValue; // If MaxIterationsPerSubAgent <= 0, the limit is disabled.
+        var maxExecutionTime = profile.MaxExecutionTimePerSubAgent > 0
+            ? TimeSpan.FromSeconds(profile.MaxExecutionTimePerSubAgent)
+            : TimeSpan.MaxValue; // If MaxExecutionTimePerSubAgent <= 0, the limit is disabled.
+        var loopStartTime = Stopwatch.GetTimestamp();
 
         while (iteration < maxIterations && !cancellationToken.IsCancellationRequested)
         {
+            // Check execution time budget before starting a new iteration.
+            // If MaxExecutionTimePerSubAgent <= 0, the limit is disabled.
+            if (maxExecutionTime != TimeSpan.MaxValue)
+            {
+                var elapsed = Stopwatch.GetElapsedTime(loopStartTime);
+                if (elapsed > maxExecutionTime)
+                {
+                    var lastContent = session.GetLastOrDefaultMessage(m => m.Role == ChatMessageRole.Assistant)?.Content ?? "(no response)";
+
+                    logger.LogInformation(
+                        "Sub-agent exceeded execution time limit: {Elapsed} / {Max} minutes.",
+                        elapsed.TotalMinutes, maxExecutionTime.TotalMinutes);
+
+                    return $"Sub-agent exceeded execution time limit ({elapsed.TotalMinutes:F1} / {maxExecutionTime.TotalMinutes:F0} minutes). " +
+                           $"Last response: {lastContent}";
+                }
+            }
+
             // Check token budget before starting a new iteration.
             // If MaxTokensPerSubAgent <= 0, the limit is disabled.
             if (maxTokens > 0 && session.TotalTokens > maxTokens)
@@ -722,6 +745,10 @@ public class SubAgentExecutor(
             if (ExcludedCategories.Contains(tool.Category))
                 continue;
 
+            // TODO: MCP tools are registered as mcp__{server}__{tool}. The LLM may not know
+            // the exact registered name, so allowedTools filtering by name may not work
+            // reliably for MCP tools. Consider adding fuzzy matching or exposing MCP tool
+            // display names to the LLM.
             // If allowedTools is specified, only include tools in the whitelist
             if (allowedTools is { Length: > 0 } && !allowedTools.Contains(tool.Name, StringComparer.OrdinalIgnoreCase))
                 continue;

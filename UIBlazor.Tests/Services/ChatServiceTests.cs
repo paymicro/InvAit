@@ -85,7 +85,7 @@ public partial class ChatServiceTests
     {
         // Arrange
         var sessionId = "session_2024-01-01T12:00:00";
-var existingSession = new ConversationSession { Id = sessionId };
+        var existingSession = new ConversationSession { Id = sessionId };
         existingSession.SetMessages([new() { Content = "Hi" }]);
         _localStorageMock.Setup(ls => ls.GetAllKeysAsync())
             .ReturnsAsync([sessionId]);

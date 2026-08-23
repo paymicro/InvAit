@@ -41,7 +41,7 @@ public class ConversationSession : BaseOptions
     /// <summary>
     /// Gets or sets the total tokens used in the conversation.
     /// </summary>
-    public int TotalTokens { get; set; }
+    public int TotalTokens { get; set => SetIfChanged(ref field, value); } = 0;
 
     /// <summary>
     /// Gets or sets the current application mode for this session.

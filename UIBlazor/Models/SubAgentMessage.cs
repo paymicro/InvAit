@@ -164,6 +164,7 @@ public class SubAgentMessage
     }
 
     /// <summary>
+    /// Internal use only, action must not re-enter the lock.
     /// Thread-safe: performs an action on each message.
     /// </summary>
     public void ForEachMessage(Action<VisualChatMessage> action)
@@ -306,11 +307,28 @@ public class SubAgentMessage
     /// </summary>
     public event Action? StateChanged;
 
+    [JsonIgnore]
+    private long _revision;
+
+    /// <summary>
+    /// Monotonically increasing revision number, incremented by every
+    /// <see cref="NotifyStateChanged"/> call. UI components compare it against
+    /// their last-seen value for an O(1) change check instead of scanning all
+    /// messages on every <c>ShouldRender</c> (which runs on every parent render,
+    /// including each token of the main agent stream).
+    /// </summary>
+    [JsonIgnore]
+    public long Revision => Interlocked.Read(ref _revision);
+
     /// <summary>
     /// Raises the StateChanged event to notify UI subscribers.
     /// Thread-safe invocation via Volatile.Read pattern.
     /// </summary>
-    public void NotifyStateChanged() => Volatile.Read(ref StateChanged)?.Invoke();
+    public void NotifyStateChanged()
+    {
+        Interlocked.Increment(ref _revision);
+        Volatile.Read(ref StateChanged)?.Invoke();
+    }
 
     /// <summary>
     /// Releases heavy runtime resources that are no longer needed after the sub-agent

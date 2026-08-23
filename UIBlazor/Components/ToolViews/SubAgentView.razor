@@ -158,6 +158,13 @@
     private bool _needsScroll;
 
     /// <summary>
+    /// Last <see cref="SubAgentMessage.Revision"/> value seen by a render.
+    /// Used for the O(1) change check in <see cref="HasChanges"/>.
+    /// -1 forces the first render.
+    /// </summary>
+    private long _lastSeenRevision = -1;
+
+    /// <summary>
     /// Detects whether the component has changes that require a render.
     /// Structural changes (status, message count, expansion, streaming→idle)
     /// set _structuralChanged to force an immediate render bypassing the throttle.
@@ -166,11 +173,29 @@
     /// </summary>
     protected override bool HasChanges()
     {
+        // Fast path (O(1), no locks, no scans): neither the sub-agent state
+        // (Revision is bumped by every NotifyStateChanged) nor the retry
+        // countdown changed since the last render. This matters because
+        // ShouldRender runs on every parent render — including every token of
+        // the MAIN agent stream — while this sub-agent may be idle.
+        if (SubAgent.Revision == _lastSeenRevision &&
+            SubAgent.RetryCountdown == _oldRetryCountdown)
+        {
+            return false;
+        }
+
+        // Slow path: the sub-agent had activity — analyze what exactly changed.
+
         // Detect streaming→idle transition for any message.
         // This is critical: when a message finishes streaming, the throttler may have
         // skipped the last few tokens. We must render immediately to show final content.
-        var anyStreaming = SubAgent.AnyMessage(m => m.IsStreaming);
-        var streamingStopped = _oldAnyStreaming && !anyStreaming;
+        // The scan is only needed when something WAS streaming at the last render —
+        // otherwise the transition cannot occur.
+        var streamingStopped = false;
+        if (_oldAnyStreaming)
+        {
+            streamingStopped = !SubAgent.AnyMessage(m => m.IsStreaming);
+        }
 
         // Structural changes always render immediately (rare events).
         var messageCountChanged = SubAgent.GetMessageCount() != _oldMessageCount;
@@ -209,6 +234,7 @@
     /// </summary>
     protected override void OnRendered()
     {
+        _lastSeenRevision = SubAgent.Revision;
         _oldMessageCount = SubAgent.GetMessageCount();
         _oldStatus = SubAgent.Status;
         _oldIsExpanded = SubAgent.IsExpanded;

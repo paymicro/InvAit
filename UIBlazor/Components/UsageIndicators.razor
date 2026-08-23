@@ -1,3 +1,6 @@
+@using System.ComponentModel
+@implements IDisposable
+
 <div class="usage-indicators">
     @if (ProfileManager.ActiveProfile.TokensToCompress > 0)
     {
@@ -33,4 +36,22 @@
     private int TokenProgress => ProfileManager.ActiveProfile.ContextWindow > 0
         ? Math.Min(100, ChatService.Session.TotalTokens * 100 / ProfileManager.ActiveProfile.ContextWindow)
         : 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        ChatService.SessionChanged += HandlePropertyChanged;
+        ProfileManager.PropertyChanged += HandlePropertyChanged;
+    }
+
+    private void HandlePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        ChatService.SessionChanged -= HandlePropertyChanged;
+        ProfileManager.PropertyChanged -= HandlePropertyChanged;
+    }
 }

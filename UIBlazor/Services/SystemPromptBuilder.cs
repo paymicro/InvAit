@@ -13,79 +13,18 @@ public class SystemPromptBuilder(
     {
         var profile = profileManager.ActiveProfile;
 
-        // Загружаем метаданные скиллов и добавляем в системный промпт
-        var skillsMetadata = await skillService.GetSkillsMetadataAsync(cancellationToken);
-        var skillsSection = profile.SendSkills
-            ? skillService.FormatSkillsForSystemPrompt(skillsMetadata)
-            : string.Empty;
-
-        var contextSection = new StringBuilder();
-        var currentContext = vsCodeContextService.CurrentContext;
-        if (currentContext != null)
-        {
-            var codeContext = new List<string>();
-            if (profile.SendSolutionStructure && currentContext.SolutionFiles.Count > 0)
-            {
-                codeContext.Add($"""
-                                Solution structure:
-                                ```
-                                {BuildSolutionFiles(currentContext, true)}
-                                ```
-                                """);
-            }
-            if (profile.SendCurrentFile && !string.IsNullOrEmpty(currentContext.ActiveFilePath))
-            {
-                codeContext.Add($"""
-                                ## Current (active) file
-                                - Path: {currentContext.ActiveFilePath}
-                                - Selected lines: {currentContext.SelectionStartLine} - {currentContext.SelectionEndLine}
-                                ```
-                                {currentContext.ActiveFileContent}
-                                ```
-                                """);
-            }
-            if (codeContext.Count > 0)
-            {
-                contextSection.AppendLine("# CURRENT CODE CONTEXT");
-                foreach (var item in codeContext)
-                {
-                    contextSection.AppendLine(item);
-                }
-            }
-        }
-
-        // Загружаем правила
-        var rules = profile.SendRules
-            ? await ruleService.GetRulesAsync(cancellationToken)
-            : string.Empty;
-        // файл agents.md
-        var agents = profile.SendAgentsMd
-            ? await ruleService.GetAgentsMdAsync(cancellationToken)
-            : string.Empty;
-
-        // Mermaid instructions — independent of mode instructions
-        var mermaidSection = profile.UseMermaidDiagrams
-            ? "Use Mermaid diagrams for clarity in explanations. This will help you better visualize the answer formula. Don`t use \", {, }, (, ), [, ], in Mermaid node names."
-            : string.Empty;
-
-        // Mode instructions — independent of Mermaid
         // Delegation instructions are only included if delegate_task is actually available
         var canDelegate = profile.SendModeInstructions &&
             toolManager.GetEnabledTools(mode).Any(t => t.Name == BuiltInToolEnum.DelegateTask);
-        var modeInstructions = profile.SendModeInstructions
-            ? BuildModeInstructions(mode, canDelegate)
-            : string.Empty;
 
-        List<string?> systemPromptBlocks = [profile.SystemPrompt,
-            mermaidSection,
-            modeInstructions,
-            skillsSection,
-            contextSection.ToString(),
-            rules,
-            !string.IsNullOrEmpty(agents) ? string.Join("# Agents instructions\n", agents) : null,
-            profile.SendCurrentDate ? $"Current date: {DateTime.Now:dd-MM-yyyy}" : null];
-
-        return string.Join(Environment.NewLine, systemPromptBlocks.Where(b => !string.IsNullOrEmpty(b)));
+        return await BuildPromptAsync(
+            new PromptSpec(
+                BasePrompt: profile.SystemPrompt,
+                Mode: mode,
+                CanDelegate: canDelegate,
+                IncludeActiveFile: true,
+                UseMermaid: profile.UseMermaidDiagrams),
+            cancellationToken);
     }
 
     /// <summary>
@@ -98,58 +37,131 @@ public class SystemPromptBuilder(
     /// </summary>
     public async Task<string> PrepareSubAgentSystemPromptAsync(string customPrompt, CancellationToken cancellationToken)
     {
+        // Sub-agents always run in Agent mode and never get delegation instructions:
+        // delegate_task is excluded from their tool set by SubAgentExecutor.
+        const string fallbackPrompt = "You are a helpful assistant. Complete the task given to you.";
+
+        return await BuildPromptAsync(
+            new PromptSpec(
+                BasePrompt: string.IsNullOrEmpty(customPrompt) ? fallbackPrompt : customPrompt,
+                Mode: AppMode.Agent,
+                CanDelegate: false,
+                IncludeActiveFile: false,
+                UseMermaid: false),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Parameters controlling which sections <see cref="BuildPromptAsync"/> includes.
+    /// </summary>
+    private readonly record struct PromptSpec(
+        string BasePrompt,
+        AppMode Mode,
+        bool CanDelegate,
+        bool IncludeActiveFile,
+        bool UseMermaid);
+
+    /// <summary>
+    /// Assembles a system prompt from shared sections (skills, code context, rules,
+    /// agents.md, date) according to <paramref name="spec"/>. Single source of truth
+    /// for both the main agent and sub-agent prompts.
+    /// </summary>
+    private async Task<string> BuildPromptAsync(PromptSpec spec, CancellationToken cancellationToken)
+    {
         var profile = profileManager.ActiveProfile;
-
-        // Skills metadata
-        var skillsMetadata = await skillService.GetSkillsMetadataAsync(cancellationToken);
-        var skillsSection = profile.SendSkills
-            ? skillService.FormatSkillsForSystemPrompt(skillsMetadata)
-            : string.Empty;
-
-        // Code context — solution structure only, never active file
-        var contextSection = new StringBuilder();
-        var currentContext = vsCodeContextService.CurrentContext;
-        if (currentContext != null && profile.SendSolutionStructure && currentContext.SolutionFiles.Count > 0)
-        {
-            contextSection.AppendLine("# CURRENT CODE CONTEXT");
-            contextSection.AppendLine($"""
-                                      Solution structure:
-                                      ```
-                                      {BuildSolutionFiles(currentContext, true)}
-                                      ```
-                                      """);
-        }
-
-        // Rules
-        var rules = profile.SendRules
-            ? await ruleService.GetRulesAsync(cancellationToken)
-            : string.Empty;
-
-        // agents.md
-        var agents = profile.SendAgentsMd
-            ? await ruleService.GetAgentsMdAsync(cancellationToken)
-            : string.Empty;
-
-        // Mode instructions — always Agent mode for sub-agents.
-        // delegate_task is excluded from sub-agent tools by SubAgentExecutor, so sub-agents can never delegate.
-        var modeInstructions = profile.SendModeInstructions
-            ? BuildModeInstructions(AppMode.Agent, canDelegate: false)
-            : string.Empty;
 
         List<string?> systemPromptBlocks =
         [
-            string.IsNullOrEmpty(customPrompt)
-                ? "You are a helpful assistant. Complete the task given to you."
-                : customPrompt,
-            modeInstructions,
-            skillsSection,
-            contextSection.ToString(),
-            rules,
-            !string.IsNullOrEmpty(agents) ? string.Join("# Agents instructions\n", agents) : null,
+            spec.BasePrompt,
+            spec.UseMermaid ? MermaidSection : string.Empty,
+            profile.SendModeInstructions ? BuildModeInstructions(spec.Mode, spec.CanDelegate) : string.Empty,
+            await BuildSkillsSectionAsync(cancellationToken),
+            BuildContextSection(spec.IncludeActiveFile),
+            profile.SendRules ? await ruleService.GetRulesAsync(cancellationToken) : null,
+            await BuildAgentsMdSectionAsync(cancellationToken),
             profile.SendCurrentDate ? $"Current date: {DateTime.Now:dd-MM-yyyy}" : null
         ];
 
         return string.Join(Environment.NewLine, systemPromptBlocks.Where(b => !string.IsNullOrEmpty(b)));
+    }
+
+    /// <summary>
+    /// Mermaid usage instructions (main agent only).
+    /// </summary>
+    private const string MermaidSection =
+        "Use Mermaid diagrams for clarity in explanations. This will help you better visualize the answer formula. Don`t use \", {, }, (, ), [, ], in Mermaid node names.";
+
+    /// <summary>
+    /// Skills metadata section, or empty if disabled.
+    /// </summary>
+    private async Task<string> BuildSkillsSectionAsync(CancellationToken cancellationToken)
+    {
+        var profile = profileManager.ActiveProfile;
+        if (!profile.SendSkills)
+            return string.Empty;
+
+        var skillsMetadata = await skillService.GetSkillsMetadataAsync(cancellationToken);
+        return skillService.FormatSkillsForSystemPrompt(skillsMetadata);
+    }
+
+    /// <summary>
+    /// "# CURRENT CODE CONTEXT" section: solution structure and (optionally) the
+    /// active file content. Returns empty when nothing should be included.
+    /// </summary>
+    private string BuildContextSection(bool includeActiveFile)
+    {
+        var profile = profileManager.ActiveProfile;
+        var currentContext = vsCodeContextService.CurrentContext;
+        if (currentContext == null)
+            return string.Empty;
+
+        var codeContext = new List<string>();
+        if (profile.SendSolutionStructure && currentContext.SolutionFiles.Count > 0)
+        {
+            codeContext.Add($"""
+                            Solution structure:
+                            ```
+                            {BuildSolutionFiles(currentContext, true)}
+                            ```
+                            """);
+        }
+        if (includeActiveFile && profile.SendCurrentFile && !string.IsNullOrEmpty(currentContext.ActiveFilePath))
+        {
+            codeContext.Add($"""
+                            ## Current (active) file
+                            - Path: {currentContext.ActiveFilePath}
+                            - Selected lines: {currentContext.SelectionStartLine} - {currentContext.SelectionEndLine}
+                            ```
+                            {currentContext.ActiveFileContent}
+                            ```
+                            """);
+        }
+
+        if (codeContext.Count == 0)
+            return string.Empty;
+
+        var contextSection = new StringBuilder();
+        contextSection.AppendLine("# CURRENT CODE CONTEXT");
+        foreach (var item in codeContext)
+        {
+            contextSection.AppendLine(item);
+        }
+        return contextSection.ToString();
+    }
+
+    /// <summary>
+    /// agents.md contents under a header, or null if disabled/empty.
+    /// Note: deliberately not using string.Join here — with two strings it binds to
+    /// the non-generic params overload and silently returns the value unchanged.
+    /// </summary>
+    private async Task<string?> BuildAgentsMdSectionAsync(CancellationToken cancellationToken)
+    {
+        var profile = profileManager.ActiveProfile;
+        if (!profile.SendAgentsMd)
+            return null;
+
+        var agents = await ruleService.GetAgentsMdAsync(cancellationToken);
+        return string.IsNullOrEmpty(agents) ? null : $"# Agents instructions\n{agents}";
     }
 
     private static string BuildModeInstructions(AppMode mode, bool canDelegate = false)

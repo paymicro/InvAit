@@ -25,7 +25,8 @@ public class ChatDelta
     public string? ReasoningContent { get => _reasoning; set => _reasoning = value; }
 
     /// <summary>
-    /// Некоторые модели сюда пишут размышления
+    /// Некоторые модели сюда пишут размышления.
+    /// Возвращает копию <see cref="ReasoningContent"/>
     /// </summary>
     [JsonPropertyName("reasoning")]
     public string? Reasoning { get => _reasoning; set => _reasoning = value; }

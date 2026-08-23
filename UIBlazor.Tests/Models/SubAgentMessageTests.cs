@@ -49,6 +49,33 @@ public class SubAgentMessageTests
     }
 
     [Fact]
+    public void SubAgentMessage_Revision_StartsAtZero()
+    {
+        // Act
+        var msg = new SubAgentMessage();
+
+        // Assert
+        Assert.Equal(0, msg.Revision);
+    }
+
+    [Fact]
+    public void SubAgentMessage_NotifyStateChanged_IncrementsRevision()
+    {
+        // Arrange
+        var msg = new SubAgentMessage();
+
+        // Act
+        msg.NotifyStateChanged();
+        msg.NotifyStateChanged();
+        var afterTwoNotifications = msg.Revision;
+        msg.NotifyStateChanged();
+
+        // Assert
+        Assert.Equal(2, afterTwoNotifications);
+        Assert.Equal(3, msg.Revision);
+    }
+
+    [Fact]
     public void SubAgentMessage_NotifyStateChanged_NoSubscribers_DoesNotThrow()
     {
         // Arrange

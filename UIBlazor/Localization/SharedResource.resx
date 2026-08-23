@@ -495,7 +495,13 @@
   <data name="MaxIterationsPerSubAgent" xml:space="preserve">
     <value>Max iterations per sub-agent</value>
   </data>
+  <data name="MaxExecutionTimePerSubAgent" xml:space="preserve">
+    <value>Max execution time per sub-agent</value>
+  </data>
   <data name="SubAgentAllTools" xml:space="preserve">
     <value>All tools</value>
+  </data>
+  <data name="SubagentRestrinctions" xml:space="preserve">
+    <value>Restrictions for sub-agents</value>
   </data>
 </root>
