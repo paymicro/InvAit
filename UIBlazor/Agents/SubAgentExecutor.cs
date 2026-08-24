@@ -18,6 +18,9 @@ public class SubAgentExecutor(
 {
     private const int MaxRetries = 2;
 
+    /// <summary>Total attempts for a single compression call before giving up (non-fatal).</summary>
+    private const int MaxCompressionAttempts = 2;
+
     private const string EmptyResponse = "(Sub-agent returned an empty response.)";
 
     private const string SummaryInstruction =
@@ -42,11 +45,40 @@ public class SubAgentExecutor(
             return VsToolResult.Failed(BuiltInToolEnum.DelegateTask, "delegate_task requires a 'task' parameter.");
 
         var allowedTools = ParseStringArray(args, "allowedTools");
+
+        // Fail fast when the whitelist matches nothing — the sub-agent would have zero tools
+        // and could not accomplish anything. Returning an error lets the LLM correct the names.
+        if (allowedTools is { Length: > 0 })
+        {
+            var availableNames = toolManager.GetEnabledTools(AppMode.Agent)
+                .Select(t => t.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var unknown = allowedTools.Where(n => !availableNames.Contains(n)).ToArray();
+            if (unknown.Length > 0)
+                logger.LogWarning("delegate_task allowedTools contains unknown tools: {UnknownTools}", string.Join(", ", unknown));
+
+            if (BuildSubAgentTools(allowedTools).FirstOrDefault() is null)
+            {
+                logger.LogWarning("delegate_task allowedTools matched no available Agent-mode tools: {AllowedTools}",
+                    string.Join(", ", allowedTools));
+                return VsToolResult.Failed(BuiltInToolEnum.DelegateTask,
+                    $"None of the requested allowedTools are available: {string.Join(", ", allowedTools)}. " +
+                    "Retry without allowedTools or use exact names of available tools.");
+            }
+        }
+
         var fullSystemPrompt = await systemPromptBuilder.PrepareSubAgentSystemPromptAsync(systemPrompt, cancellationToken);
-        var tools = BuildSubAgentTools(allowedTools);
+        var tools = BuildSubAgentTools(allowedTools).ToList();
 
         var handler = new ToolCallHandler(toolManager);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        // Hard cap on total execution time: a single long-running LLM call must not outlive
+        // the configured limit. Distinguished from user cancellation in the catch below.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(linkedCts.Token);
+        var timeLimitSeconds = profileManager.ActiveProfile.MaxExecutionTimePerSubAgent;
+        if (timeLimitSeconds > 0)
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeLimitSeconds));
 
         var subAgent = new SubAgentMessage
         {
@@ -58,10 +90,11 @@ public class SubAgentExecutor(
             ToolCallHandler = handler,
             MaxRetryAttempts = MaxRetries + 1,
         };
-        subAgent.SetCancellationTokenSource(linkedCts);
+        subAgent.SetCancellationTokenSource(timeoutCts);
         handler.ApprovalRequired += id => OnApprovalRequired(subAgent, id);
         toolCall.SubAgent = subAgent;
 
+        ConversationSession? session = null;
         try
         {
             // Initial structural notification: AiChat re-renders and ToolCallBlock subscribes
@@ -69,7 +102,7 @@ public class SubAgentExecutor(
             // SubAgentView throttles its own rendering via StateChanged.
             NotifyStructuralChange(subAgent);
 
-            var session = new ConversationSession
+            session = new ConversationSession
             {
                 Id = $"subagent_{DateTime.Now:s}_{Guid.NewGuid():N}",
                 Mode = AppMode.Agent
@@ -79,7 +112,7 @@ public class SubAgentExecutor(
 
             logger.LogInformation("Sub-agent started. Task: {Task}", task);
 
-            var result = await RunLoopAsync(session, subAgent, fullSystemPrompt, tools, handler, linkedCts.Token);
+            var result = await RunLoopAsync(session, subAgent, fullSystemPrompt, tools, handler, timeoutCts.Token);
 
             subAgent.Result = result;
             SyncTokens(subAgent, session);
@@ -88,11 +121,27 @@ public class SubAgentExecutor(
             logger.LogInformation("Sub-agent completed. Tokens: {Tokens}", session.TotalTokens);
             return new VsToolResult { Name = BuiltInToolEnum.DelegateTask, Result = result };
         }
-        catch (OperationCanceledException) when (linkedCts.Token.IsCancellationRequested)
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
         {
-            logger.LogInformation("Sub-agent cancelled.");
-            Finish(subAgent, SubAgentStatus.Cancelled, "Cancelled by user.");
-            return VsToolResult.Cancelled(BuiltInToolEnum.DelegateTask);
+            // linkedCts fires only on real user/chat-level cancellation; if it did not fire,
+            // the timeout chain (CancelAfter) is the cause.
+            if (linkedCts.Token.IsCancellationRequested)
+            {
+                logger.LogInformation("Sub-agent cancelled.");
+                Finish(subAgent, SubAgentStatus.Cancelled, "Cancelled by user.");
+                return VsToolResult.Cancelled(BuiltInToolEnum.DelegateTask);
+            }
+
+            // Hard execution-time limit fired mid-LLM-call (between-iteration checks missed it).
+            // Same graceful semantics as the between-iteration limit checks: a Completed status
+            // with an informative report for the parent agent.
+            var lastResponse = session is null ? "(no response)" : LastAssistantContent(session);
+            var message = $"Sub-agent exceeded execution time limit " +
+                          $"({(DateTime.Now - subAgent.StartedAt).TotalMinutes:F1} / {timeLimitSeconds / 60.0:F0} minutes). " +
+                          $"Last response: {lastResponse}";
+            logger.LogInformation("Sub-agent exceeded execution time limit mid-call.");
+            Finish(subAgent, SubAgentStatus.Completed);
+            return new VsToolResult { Name = BuiltInToolEnum.DelegateTask, Result = message };
         }
         catch (Exception ex)
         {
@@ -109,6 +158,7 @@ public class SubAgentExecutor(
 
     /// <summary>
     /// Stream LLM response → process tool calls → repeat until done or a limit is hit.
+    /// All limits are re-read from the active profile on every iteration for consistency.
     /// </summary>
     private async Task<string> RunLoopAsync(
         ConversationSession session,
@@ -118,14 +168,12 @@ public class SubAgentExecutor(
         IToolCallHandler handler,
         CancellationToken cancellationToken)
     {
-        var profile = profileManager.ActiveProfile;
-        var maxIterations = profile.MaxIterationsPerSubAgent > 0 ? profile.MaxIterationsPerSubAgent : int.MaxValue;
         var startedAt = Stopwatch.GetTimestamp();
         var iteration = 0;
 
-        while (iteration < maxIterations && !cancellationToken.IsCancellationRequested)
+        while (iteration < GetMaxIterations() && !cancellationToken.IsCancellationRequested)
         {
-            if (GetLimitExceededMessage(session, profile, startedAt) is { } limitMessage)
+            if (GetLimitExceededMessage(session, startedAt) is { } limitMessage)
                 return limitMessage;
 
             iteration++;
@@ -206,7 +254,7 @@ public class SubAgentExecutor(
                 subAgent.NotifyStateChanged();
                 break;
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 assistant.IsStreaming = false;
                 throw;
@@ -271,8 +319,13 @@ public class SubAgentExecutor(
 
         try
         {
-            // Per-second countdown is rendered by SubAgentView's throttled schedule — no notifications here.
-            await retryHandler.WaitForRetryAsync(delaySeconds, i => subAgent.RetryCountdown = i, cancellationToken);
+            // Notify on every tick: nothing else triggers a re-render while the LLM call
+            // is between attempts, so without notifications the countdown badge would freeze.
+            await retryHandler.WaitForRetryAsync(delaySeconds, i =>
+            {
+                subAgent.RetryCountdown = i;
+                subAgent.NotifyStateChanged();
+            }, cancellationToken);
         }
         finally
         {
@@ -286,7 +339,17 @@ public class SubAgentExecutor(
         => profileManager.ActiveProfile.TokensToCompress > 0
            && session.TotalTokens > profileManager.ActiveProfile.TokensToCompress;
 
-    /// <summary>Compression failure is non-fatal: the loop continues with the uncompressed context.</summary>
+    /// <summary>Re-read per iteration so mid-execution profile changes behave consistently.</summary>
+    private int GetMaxIterations()
+    {
+        var max = profileManager.ActiveProfile.MaxIterationsPerSubAgent;
+        return max > 0 ? max : int.MaxValue;
+    }
+
+    /// <summary>
+    /// Compression failure is non-fatal: the loop continues with the uncompressed context.
+    /// Transient errors are retried up to <see cref="MaxCompressionAttempts"/> times.
+    /// </summary>
     private async Task CompressContextAsync(ConversationSession session, SubAgentMessage subAgent, CancellationToken cancellationToken)
     {
         logger.LogInformation("Sub-agent context compression started. Tokens: {Tokens}", session.TotalTokens);
@@ -301,8 +364,25 @@ public class SubAgentExecutor(
 
         try
         {
-            await StreamAsync(session, subAgent, compressMessage, capture,
-                chatService.CompressSessionAsync(session, capture, cancellationToken), cancellationToken);
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    await StreamAsync(session, subAgent, compressMessage, capture,
+                        chatService.CompressSessionAsync(session, capture, cancellationToken), cancellationToken);
+                    break;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex) when (attempt < MaxCompressionAttempts && IsTransientError(ex))
+                {
+                    logger.LogWarning(ex, "Sub-agent context compression failed (attempt {Attempt}/{Total}). Retrying.",
+                        attempt, MaxCompressionAttempts);
+                    compressMessage.Content = string.Empty;
+                }
+            }
 
             // Compression rewrote the session history — mirror it back into the sub-agent messages.
             subAgent.SetMessages(session.GetMessagesSnapshot());
@@ -376,8 +456,10 @@ public class SubAgentExecutor(
     }
 
     /// <summary>Returns a report when the execution time or token budget is exceeded, otherwise null.</summary>
-    private string? GetLimitExceededMessage(ConversationSession session, ConnectionProfile profile, long startedAt)
+    private string? GetLimitExceededMessage(ConversationSession session, long startedAt)
     {
+        var profile = profileManager.ActiveProfile;
+
         if (profile.MaxExecutionTimePerSubAgent > 0)
         {
             var elapsed = Stopwatch.GetElapsedTime(startedAt);
@@ -447,9 +529,15 @@ public class SubAgentExecutor(
         return message;
     }
 
-    /// <summary>Network failures, timeouts and API errors are transient; cancellation never reaches here.</summary>
+    /// <summary>
+    /// Network failures, timeouts and API errors are transient. An OperationCanceledException
+    /// that is NOT caused by our token (e.g. HttpClient timeout surfacing as
+    /// TaskCanceledException) is treated as transient too — the cancellation-specific catch
+    /// above only matches when <c>cancellationToken.IsCancellationRequested</c>.
+    /// </summary>
     private static bool IsTransientError(Exception ex)
-        => ex is HttpRequestException or TimeoutException or LlmApiException;
+        => ex is HttpRequestException or TimeoutException or LlmApiException or IOException
+            or OperationCanceledException;
 
     private static string GetArg(IReadOnlyDictionary<string, object> args, string key)
         => args.TryGetValue(key, out var value) ? value?.ToString()?.Trim() ?? string.Empty : string.Empty;

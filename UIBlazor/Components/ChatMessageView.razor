@@ -154,12 +154,20 @@
     private bool _oldIsExpanded;
     private int _oldRetryCountdown;
     private string _oldContent = string.Empty;
-    private int _oldSubAgentCount;
-    private SubAgentStatus? _oldSubAgentStatus;
-    private int _oldSubAgentMessageCount;
-    private bool _oldSubAgentIsExpanded;
-    private string _oldSubAgentResult = string.Empty;
+
+    /// <summary>
+    /// Per-sub-agent snapshot (keyed by Id) used for change detection in ShouldRender.
+    /// Tracking every sub-agent individually means changes to the 2nd, 3rd, ... sub-agent
+    /// also trigger a re-render — and no false positives from cross-comparing agents.
+    /// </summary>
+    private Dictionary<string, SubAgentSnapshot> _oldSubAgentsState = [];
     private List<SubAgentMessage> _subAgents = [];
+
+    private readonly record struct SubAgentSnapshot(
+        SubAgentStatus Status,
+        int MessageCount,
+        bool IsExpanded,
+        string Result);
 
     protected override bool ShouldRender()
     {
@@ -174,12 +182,13 @@
             .Select(tc => tc.SubAgent!)
             .ToList() ?? [];
 
-        var subAgentChanged = _subAgents.Count != _oldSubAgentCount ||
+        var subAgentChanged = _subAgents.Count != _oldSubAgentsState.Count ||
             _subAgents.Any(sa =>
-                sa.Status != _oldSubAgentStatus ||
-                sa.GetMessageCount() != _oldSubAgentMessageCount ||
-                sa.IsExpanded != _oldSubAgentIsExpanded ||
-                (sa.Result ?? string.Empty) != _oldSubAgentResult);
+                !_oldSubAgentsState.TryGetValue(sa.Id, out var old) ||
+                sa.Status != old.Status ||
+                sa.GetMessageCount() != old.MessageCount ||
+                sa.IsExpanded != old.IsExpanded ||
+                (sa.Result ?? string.Empty) != old.Result);
 
         return Message.IsShouldRender ||
                Message.IsStreaming || _oldIsStreaming ||
@@ -203,14 +212,9 @@
         _oldIsEditing = Message.IsEditing;
         _oldIsExpanded = Message.IsExpanded;
         _oldContent = Message.Content;
-        _oldSubAgentCount = _subAgents.Count;
-        // Track the first sub-agent's state for change detection
-        // (individual sub-agent changes are handled by ToolCallBlock's own ShouldRender)
-        var firstSubAgent = _subAgents.FirstOrDefault();
-        _oldSubAgentStatus = firstSubAgent?.Status;
-        _oldSubAgentMessageCount = firstSubAgent?.GetMessageCount() ?? 0;
-        _oldSubAgentIsExpanded = firstSubAgent?.IsExpanded ?? false;
-        _oldSubAgentResult = firstSubAgent?.Result ?? string.Empty;
+        _oldSubAgentsState = _subAgents.ToDictionary(
+            sa => sa.Id,
+            sa => new SubAgentSnapshot(sa.Status, sa.GetMessageCount(), sa.IsExpanded, sa.Result ?? string.Empty));
         Message.IsShouldRender = false;
     }
 }
