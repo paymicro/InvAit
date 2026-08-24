@@ -41,7 +41,7 @@
     protected override void OnInitialized()
     {
         SyncSelectedFromProfile();
-        ProfileManager.ActiveProfile.PropertyChanged += OnProfilePropertyChanged;
+        ProfileManager.PropertyChanged += OnProfilePropertyChanged;
     }
 
     private void OnProfilePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -110,7 +110,7 @@
 
     public override void Dispose()
     {
-        ProfileManager.ActiveProfile.PropertyChanged -= OnProfilePropertyChanged;
+        ProfileManager.PropertyChanged -= OnProfilePropertyChanged;
         base.Dispose();
     }
 }

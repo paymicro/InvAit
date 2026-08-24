@@ -408,7 +408,7 @@
         base.OnInitialized();
         SyncLocalFlags();
         ChatService.SessionChanged += HandlePropertyChanged;
-        ProfileManager.ActiveProfile.PropertyChanged += HandlePropertyChanged;
+        ProfileManager.PropertyChanged += HandlePropertyChanged;
     }
 
     private void SyncLocalFlags()
@@ -454,7 +454,7 @@
     public void Dispose()
     {
         ChatService.SessionChanged -= HandlePropertyChanged;
-        ProfileManager.ActiveProfile.PropertyChanged -= HandlePropertyChanged;
+        ProfileManager.PropertyChanged -= HandlePropertyChanged;
     }
 
     private void OnModeChanged()

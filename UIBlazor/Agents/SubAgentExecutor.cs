@@ -106,50 +106,55 @@ public class SubAgentExecutor(
         // Create a linked CancellationTokenSource so the sub-agent can be cancelled
         // independently (via SubAgentMessage.Cancel()) without cancelling the entire chat.
         // The linked CTS is disposed in the finally block below.
+        //
+        // NOTE: The try/finally must wrap linkedCts creation to guarantee disposal
+        // even if an exception occurs before the main loop starts (e.g. in AttachSession
+        // or AddMessage). Without this, the CTS would leak on early exceptions.
         var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        subAgent.SetCancellationTokenSource(linkedCts);
-        // Set MaxRetryAttempts for UI display
-        subAgent.MaxRetryAttempts = MaxRetries + 1;
-
-        // NOTE: We intentionally do NOT relay subAgent.StateChanged to SubAgentStateChanged.
-        // StateChanged fires on every streaming token (high frequency), and relaying it
-        // would cause AiChat to re-render the ENTIRE chat tree on every token.
-        // Instead, SubAgentStateChanged is invoked explicitly only for structural events:
-        // - Initial notification (below)
-        // - Approval required (in ApprovalRequired handler above)
-        // - Status changes: completed/cancelled/failed (in try/catch below)
-        // SubAgentView handles its own throttled re-rendering for content updates.
-
-        // Initial notification so AiChat re-renders and ToolCallBlock subscribes
-        Volatile.Read(ref SubAgentStateChanged)?.Invoke(subAgent);
-
-        // Create a temporary session for the sub-agent (not saved to localStorage)
-        // GUID suffix ensures uniqueness even when multiple sub-agents start in the same second
-        var session = new ConversationSession
-        {
-            Id = $"subagent_{DateTime.Now:s}_{Guid.NewGuid():N}",
-            Mode = AppMode.Agent // Sub-agent is always in Agent mode
-        };
-
-        // Establish SubAgentMessage as the single source of truth.
-        // All subsequent subAgent.AddMessage/RemoveMessage/SetMessages calls will
-        // automatically propagate to the session, eliminating dual-list synchronization.
-        subAgent.AttachSession(session);
-
-        // Add the task as the initial user message
-        var userMessage = new VisualChatMessage
-        {
-            Content = task,
-            Role = ChatMessageRole.User,
-            IsExpanded = true
-        };
-        subAgent.AddMessage(userMessage);
-        subAgent.NotifyStateChanged();
-
-        logger.LogInformation("Sub-agent started. Task: {Task}", task);
 
         try
         {
+            subAgent.SetCancellationTokenSource(linkedCts);
+            // Set MaxRetryAttempts for UI display
+            subAgent.MaxRetryAttempts = MaxRetries + 1;
+
+            // NOTE: We intentionally do NOT relay subAgent.StateChanged to SubAgentStateChanged.
+            // StateChanged fires on every streaming token (high frequency), and relaying it
+            // would cause AiChat to re-render the ENTIRE chat tree on every token.
+            // Instead, SubAgentStateChanged is invoked explicitly only for structural events:
+            // - Initial notification (below)
+            // - Approval required (in ApprovalRequired handler above)
+            // - Status changes: completed/cancelled/failed (in try/catch below)
+            // SubAgentView handles its own throttled re-rendering for content updates.
+
+            // Initial notification so AiChat re-renders and ToolCallBlock subscribes
+            Volatile.Read(ref SubAgentStateChanged)?.Invoke(subAgent);
+
+            // Create a temporary session for the sub-agent (not saved to localStorage)
+            // GUID suffix ensures uniqueness even when multiple sub-agents start in the same second
+            var session = new ConversationSession
+            {
+                Id = $"subagent_{DateTime.Now:s}_{Guid.NewGuid():N}",
+                Mode = AppMode.Agent // Sub-agent is always in Agent mode
+            };
+
+            // Establish SubAgentMessage as the single source of truth.
+            // All subsequent subAgent.AddMessage/RemoveMessage/SetMessages calls will
+            // automatically propagate to the session, eliminating dual-list synchronization.
+            subAgent.AttachSession(session);
+
+            // Add the task as the initial user message
+            var userMessage = new VisualChatMessage
+            {
+                Content = task,
+                Role = ChatMessageRole.User,
+                IsExpanded = true
+            };
+            subAgent.AddMessage(userMessage);
+            subAgent.NotifyStateChanged();
+
+            logger.LogInformation("Sub-agent started. Task: {Task}", task);
+
             var result = await RunSubAgentLoopAsync(session, subAgent, fullSystemPrompt, subAgentTools, subAgentToolCallHandler, linkedCts.Token);
 
             subAgent.Status = SubAgentStatus.Completed;
@@ -214,7 +219,16 @@ public class SubAgentExecutor(
             // and transient flags. The full Messages list with Content/ReasoningContent/
             // ToolCalls is preserved so the user can still expand and review the
             // sub-agent's reasoning chain in the UI.
+            // ReleaseMemory also disposes the linked CancellationTokenSource via
+            // Interlocked.Exchange — safe even if Cancel() already took it.
             subAgent.ReleaseMemory();
+
+            // Defensive: ensure linkedCts is disposed even if ReleaseMemory()
+            // didn't take it (e.g. Cancel() already took ownership and disposed it).
+            // Interlocked.Exchange returns null if already taken — no-op.
+            // Note: linkedCts and _cancelSource point to the same object, so this
+            // is a safety net, not a double-dispose (Dispose is idempotent).
+            linkedCts.Dispose();
         }
     }
 
@@ -745,10 +759,6 @@ public class SubAgentExecutor(
             if (ExcludedCategories.Contains(tool.Category))
                 continue;
 
-            // TODO: MCP tools are registered as mcp__{server}__{tool}. The LLM may not know
-            // the exact registered name, so allowedTools filtering by name may not work
-            // reliably for MCP tools. Consider adding fuzzy matching or exposing MCP tool
-            // display names to the LLM.
             // If allowedTools is specified, only include tools in the whitelist
             if (allowedTools is { Length: > 0 } && !allowedTools.Contains(tool.Name, StringComparer.OrdinalIgnoreCase))
                 continue;

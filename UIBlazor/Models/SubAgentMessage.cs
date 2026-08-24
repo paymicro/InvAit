@@ -265,14 +265,38 @@ public class SubAgentMessage
     /// <summary>
     /// Sets the linked CancellationTokenSource so the sub-agent can be cancelled independently.
     /// Called by <c>SubAgentExecutor</c> after creating the linked token.
+    /// Uses <see cref="Volatile.Write"/> to ensure the assignment is immediately visible
+    /// to other threads (UI thread calling <see cref="Cancel"/>).
     /// </summary>
-    public void SetCancellationTokenSource(CancellationTokenSource cts) => _cancelSource = cts;
+    public void SetCancellationTokenSource(CancellationTokenSource cts)
+        => Volatile.Write(ref _cancelSource, cts);
 
     /// <summary>
     /// Cancels the sub-agent independently (without cancelling the parent chat).
-    /// Safe to call multiple times — does nothing if already cancelled or not started.
+    /// Safe to call multiple times and from any thread (typically the UI thread).
+    ///
+    /// Uses <see cref="Interlocked.Exchange"/> to atomically take ownership of the
+    /// CancellationTokenSource. This prevents a race with <see cref="ReleaseMemory"/>
+    /// (called from a background thread) where Cancel() could call .Cancel() on a
+    /// CTS that ReleaseMemory() has already disposed, causing ObjectDisposedException.
+    /// The thread that takes the CTS via Exchange owns it exclusively and is
+    /// responsible for both cancelling and disposing it.
     /// </summary>
-    public void Cancel() => _cancelSource?.Cancel();
+    public void Cancel()
+    {
+        var cts = Interlocked.Exchange(ref _cancelSource, null);
+        if (cts is null)
+            return;
+
+        try
+        {
+            cts.Cancel();
+        }
+        finally
+        {
+            cts.Dispose();
+        }
+    }
 
     /// <summary>
     /// Whether the sub-agent can currently be cancelled (i.e. it is still running).
@@ -374,9 +398,12 @@ public class SubAgentMessage
         // Clear the pending tool call ID — only relevant during execution.
         PendingToolCallId = null;
 
-        // Dispose the CancellationTokenSource — no longer needed after execution.
-        _cancelSource?.Dispose();
-        _cancelSource = null;
+        // Atomically take the CancellationTokenSource. If Cancel() already took it
+        // (user clicked cancel), Exchange returns null and disposal is skipped —
+        // Cancel() already disposed it. This prevents ObjectDisposedException when
+        // Cancel() and ReleaseMemory() race on different threads.
+        var cts = Interlocked.Exchange(ref _cancelSource, null);
+        cts?.Dispose();
 
         // Clean up heavy per-message transient data.
         // Segments are used only by MessageContent.razor (main chat), not by SubAgentView.
