@@ -608,6 +608,13 @@ public partial class SubAgentExecutorTests
             .Setup(x => x.GetRetryDelay(It.IsAny<int>()))
             .Returns(60); // 60 seconds — will be cancelled long before
 
+        // Delegate to the real handler so the countdown honors cancellation,
+        // exactly like RetryHandler does in production.
+        _retryHandlerMock
+            .Setup(x => x.WaitForRetryAsync(It.IsAny<int>(), It.IsAny<Action<int>>(), It.IsAny<CancellationToken>()))
+            .Returns((int delaySeconds, Action<int> onCountdownUpdate, CancellationToken ct) =>
+                new UIBlazor.Services.RetryHandler().WaitForRetryAsync(delaySeconds, onCountdownUpdate, ct));
+
         var processStreamCallCount = 0;
 
         _chatServiceMock
@@ -660,6 +667,9 @@ public partial class SubAgentExecutorTests
         // Assert
         Assert.False(result.Success);
         Assert.Equal(SubAgentStatus.Cancelled, toolCall.SubAgent!.Status);
+        // Retry indicators must be cleared even when the delay was cancelled (finally block)
+        Assert.False(toolCall.SubAgent!.IsRetrying);
+        Assert.Equal(0, toolCall.SubAgent.RetryCountdown);
         // Only 1 call to ChatService (the initial failed attempt)
         Assert.Equal(1, processStreamCallCount);
     }

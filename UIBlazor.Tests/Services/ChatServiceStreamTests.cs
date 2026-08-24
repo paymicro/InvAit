@@ -119,4 +119,72 @@ public partial class ChatServiceTests
         Assert.True(message.Timings.TokensInSec >= 0);
         Assert.True(message.Timings.Total.TotalMilliseconds >= 0);
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  Reasoning token split: the badge (Timings.Tokens) must show only visible
+    //  tokens (the context footprint), reasoning goes to Timings.ReasoningTokens.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task ProcessStreamAsync_WithReasoningTokens_SplitsVisibleAndReasoning()
+    {
+        // Arrange - full completion is 100 tokens, of which 40 are reasoning
+        var message = new VisualChatMessage();
+        var capture = new CompletionsResult { CompletionTokens = 100, ReasoningTokens = 40 };
+        var deltas = CreateAsyncEnumerable(new ChatDelta { Content = "Answer" });
+
+        // Act
+        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, capture, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(60, message.Timings!.Tokens);
+        Assert.Equal(40, message.Timings.ReasoningTokens);
+        // generation speed is based on the full output, including reasoning
+        Assert.True(message.Timings.TokensInSec > 0);
+    }
+
+    [Fact]
+    public async Task ProcessStreamAsync_WhileStreaming_BadgeShowsFullGenerationIncludingReasoning()
+    {
+        // Arrange - during streaming there are no visible tokens yet while the model thinks;
+        // a visible-only badge would look frozen at zero. Mid-stream snapshots must show
+        // the full count; only the final (post-stream) value switches to visible tokens.
+        var message = VisualChatMessage.CreateStreaming();
+        var capture = new CompletionsResult { CompletionTokens = 100, ReasoningTokens = 40 };
+        var midStreamSnapshots = new List<int>();
+        var deltas = CreateAsyncEnumerable(
+            new ChatDelta { ReasoningContent = "Thinking..." },
+            new ChatDelta { Content = "Answer" });
+
+        // Act
+        await CreateChatService().ProcessStreamAsync(
+            message, deltas,
+            onContentUpdate: _ => { },
+            onToolCallsUpdate: _ => { },
+            onStateChange: () => midStreamSnapshots.Add(message.Timings!.Tokens),
+            capture,
+            TestContext.Current.CancellationToken);
+
+        // Assert - every in-stream update includes reasoning; the final one does not
+        Assert.NotEmpty(midStreamSnapshots);
+        Assert.All(midStreamSnapshots, tokens => Assert.Equal(100, tokens));
+        Assert.True(message.IsStreaming == false);
+        Assert.Equal(60, message.Timings!.Tokens);
+    }
+
+    [Fact]
+    public async Task ProcessStreamAsync_WithoutReasoning_BadgeShowsFullCompletion()
+    {
+        // Arrange - provider without details: ReasoningTokens stays 0
+        var message = new VisualChatMessage();
+        var capture = new CompletionsResult { CompletionTokens = 75 };
+        var deltas = CreateAsyncEnumerable(new ChatDelta { Content = "Answer" });
+
+        // Act
+        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, capture, TestContext.Current.CancellationToken);
+
+        // Assert - behavior identical to pre-split versions
+        Assert.Equal(75, message.Timings!.Tokens);
+        Assert.Equal(0, message.Timings.ReasoningTokens);
+    }
 }

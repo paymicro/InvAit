@@ -15,9 +15,22 @@ public sealed class CompletionsResult
     public List<ToolCall>? AccumulatedToolCalls { get; set; }
 
     /// <summary>
-    /// Из <see cref="UsageInfo.CompletionTokens"/> или приблизительный подсчет токенов ответа
+    /// Полный вывод модели: из <see cref="UsageInfo.CompletionTokens"/> или приблизительный подсчет во время стрима.
+    /// Включает размышления — для места в контексте используйте <see cref="VisibleCompletionTokens"/>.
     /// </summary>
     public int CompletionTokens { get; set; }
+
+    /// <summary>
+    /// Токены размышлений. Из API (completion_tokens_details.reasoning_tokens),
+    /// если провайдер их отдает, иначе приблизительный подсчет reasoning-дельт во время стрима.
+    /// Размышления не отправляются повторно и место в контексте не занимают.
+    /// </summary>
+    public int ReasoningTokens { get; set; }
+
+    /// <summary>
+    /// Видимые токены ответа (без размышлений) — столько сообщение занимает в контексте.
+    /// </summary>
+    public int VisibleCompletionTokens => Math.Max(0, CompletionTokens - ReasoningTokens);
 
     /// <summary>
     /// Resets all captured state to null. Called at the start of each GetCompletionsAsync call.
@@ -30,5 +43,6 @@ public sealed class CompletionsResult
         FinishReason = null;
         AccumulatedToolCalls = null;
         CompletionTokens = 0;
+        ReasoningTokens = 0;
     }
 }

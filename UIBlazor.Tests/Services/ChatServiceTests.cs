@@ -194,6 +194,82 @@ public partial class ChatServiceTests
         Assert.Equal(sseResponse[6..], result.Error);
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    //  Reasoning token accounting:
+    //  usage.total_tokens includes reasoning, but reasoning is never resent,
+    //  so Session.TotalTokens (context window / compression trigger) and the
+    //  message badge must exclude it.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task GetCompletionsAsync_UsageWithReasoningDetails_ExcludesReasoningFromSessionTokens()
+    {
+        // Arrange - prompt 100 + completion 500 (of which reasoning 300) = total 600.
+        var sseResponse = """
+            data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"reasoner","choices":[{"index":0,"message":null,"delta":{"role":"assistant","content":"Answer","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"reasoner","choices":[],"usage":{"prompt_tokens":100,"completion_tokens":500,"total_tokens":600,"completion_tokens_details":{"reasoning_tokens":300}}}
+            data: [DONE]
+            """;
+
+        var server = WireMockServer.Start();
+        var httpClient = server.CreateClient();
+        server
+            .Given(Request.Create().WithPath("/v1/chat/completions").UsingPost())
+            .RespondWith(
+                Response.Create()
+                    .WithStatusCode(200)
+                    .WithHeader("Content-Type", "text/event-stream")
+                    .WithHeader("Cache-Control", "no-cache")
+                    .WithBody(sseResponse)
+            );
+        var chatService = CreateChatService(httpClient);
+
+        // Act
+        var result = new CompletionsResult();
+        await foreach (var _ in chatService.GetCompletionsAsync(result, TestContext.Current.CancellationToken)) { }
+
+        // Assert - reasoning is a subset of completion (OpenAI semantics):
+        // context footprint = prompt + (completion - reasoning) = 100 + 200 = 300.
+        Assert.Equal(300, result.ReasoningTokens);
+        Assert.Equal(500, result.CompletionTokens);          // full generation incl. reasoning
+        Assert.Equal(200, result.VisibleCompletionTokens);   // visible part of the completion
+        Assert.Equal(300, chatService.Session.TotalTokens);  // total minus reasoning
+    }
+
+    [Fact]
+    public async Task GetCompletionsAsync_UsageWithoutReasoningDetails_KeepsStreamingEstimate()
+    {
+        // Arrange - provider does not send completion_tokens_details; the heuristic
+        // estimate accumulated during streaming must be preserved.
+        var sseResponse = """
+            data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"message":null,"delta":{"role":"assistant","content":"Answer text here","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"more","reasoning_content":null,"tool_calls":null},"finish_reason":"stop"}],"usage":{"prompt_tokens":50,"completion_tokens":30,"total_tokens":80}}
+            data: [DONE]
+            """;
+
+        var server = WireMockServer.Start();
+        var httpClient = server.CreateClient();
+        server
+            .Given(Request.Create().WithPath("/v1/chat/completions").UsingPost())
+            .RespondWith(
+                Response.Create()
+                    .WithStatusCode(200)
+                    .WithHeader("Content-Type", "text/event-stream")
+                    .WithHeader("Cache-Control", "no-cache")
+                    .WithBody(sseResponse)
+            );
+        var chatService = CreateChatService(httpClient);
+
+        // Act
+        var result = new CompletionsResult();
+        await foreach (var _ in chatService.GetCompletionsAsync(result, TestContext.Current.CancellationToken)) { }
+
+        // Assert - no details → no reasoning split; session gets the exact API total
+        Assert.Equal(0, result.ReasoningTokens);
+        Assert.Equal(30, result.CompletionTokens);
+        Assert.Equal(80, chatService.Session.TotalTokens);
+    }
+
     private static async IAsyncEnumerable<T> CreateAsyncEnumerable<T>(params T[] items)
     {
         foreach (var item in items)

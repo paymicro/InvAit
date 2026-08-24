@@ -20,7 +20,7 @@ public class ChatService(
     #pragma warning disable format
     private const string _thinkStart    = "<think>";
     private const string _thinkEnd      = "</think>";
-    private const string _complitions   = "/v1/chat/completions";
+    private const string _completions   = "/v1/chat/completions";
     private const string _models        = "/v1/models";
     #pragma warning restore format
 
@@ -58,22 +58,7 @@ public class ChatService(
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, $"{Options.Endpoint}{_models}");
 
-        if (!string.IsNullOrEmpty(Options.ApiKey))
-        {
-            if (string.IsNullOrWhiteSpace(Options.ApiKeyHeader))
-            {
-                throw new InvalidOperationException("API key header must be specified when an API key is provided.");
-            }
-
-            if (string.Equals(Options.ApiKeyHeader, "Authorization", StringComparison.OrdinalIgnoreCase))
-            {
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Options.ApiKey);
-            }
-            else
-            {
-                request.Headers.Add(Options.ApiKeyHeader, Options.ApiKey);
-            }
-        }
+        ApplyApiKey(request);
 
         if (string.IsNullOrEmpty(Options.Endpoint))
         {
@@ -155,20 +140,106 @@ public class ChatService(
             onStateChange?.Invoke();
         }
 
-        // Финальный подсчет таймингов. Нужен т.к. токен с Usage не запускает цикл выше (он без дельты)
-        CalcTimings(message, sw, firstTokenMs, resultCapture);
-
+        // Финальный подсчет таймингов. Нужен т.к. токен с Usage не запускает цикл выше (он без дельты).
+        // IsStreaming сбрасывается ДО расчета: завершенный бейдж должен показать видимые токены.
         message.IsStreaming = false;
+        CalcTimings(message, sw, firstTokenMs, resultCapture);
     }
 
     private static void CalcTimings(VisualChatMessage message, Stopwatch sw, double firstTokenMs, CompletionsResult completionsResult)
     {
         var elapsedMs = sw.ElapsedMilliseconds;
-        message.Timings.Tokens = completionsResult.CompletionTokens;
+
+        // Пока модель думает, видимых токенов еще нет и бейдж выглядел бы «зависшим» на нуле —
+        // поэтому в стриминге показываем полный вывод (включая размышления), а после завершения —
+        // только видимые токены: столько сообщение реально занимает в контексте.
+        message.Timings.Tokens = message.IsStreaming
+            ? completionsResult.CompletionTokens
+            : completionsResult.VisibleCompletionTokens;
+        message.Timings.ReasoningTokens = completionsResult.ReasoningTokens;
+
+        // Скорость генерации честнее считать по полному выводу, включая размышления.
         var secForTokens = Math.Max(1, (elapsedMs - firstTokenMs) / 1000.0);
-        message.Timings.TokensInSec = (float)(message.Timings.Tokens / secForTokens);
+        message.Timings.TokensInSec = (float)(completionsResult.CompletionTokens / secForTokens);
         message.Timings.Total = TimeSpan.FromMilliseconds(elapsedMs);
         message.Timings.FirstToken = TimeSpan.FromMilliseconds(firstTokenMs);
+    }
+
+    /// <summary>
+    /// Adds the API key to the request via the configured header
+    /// ("Authorization" gets the standard Bearer scheme).
+    /// </summary>
+    private void ApplyApiKey(HttpRequestMessage request)
+    {
+        if (string.IsNullOrEmpty(Options.ApiKey))
+            return;
+
+        if (string.IsNullOrWhiteSpace(Options.ApiKeyHeader))
+        {
+            throw new InvalidOperationException("API key header must be specified when an API key is provided.");
+        }
+
+        if (string.Equals(Options.ApiKeyHeader, "Authorization", StringComparison.OrdinalIgnoreCase))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Options.ApiKey);
+        }
+        else
+        {
+            request.Headers.Add(Options.ApiKeyHeader, Options.ApiKey);
+        }
+    }
+
+    /// <summary>
+    /// Records usage data from a response chunk. Session.TotalTokens keeps the context-relevant
+    /// size: reasoning tokens are excluded because they are not resent in subsequent requests.
+    /// </summary>
+    private static void CaptureUsage(StreamChunk? chunk, CompletionsResult resultCapture, ConversationSession targetSession)
+    {
+        if (chunk?.Usage == null)
+            return;
+
+        resultCapture.Usage = chunk.Usage;
+        resultCapture.CompletionTokens = chunk.Usage.CompletionTokens;
+
+        if (chunk.Usage.CompletionDetails is not null)
+            resultCapture.ReasoningTokens = chunk.Usage.ReasoningTokens;
+        // без details оставляем эвристическую оценку размышлений, накопленную во время стрима
+
+        targetSession.TotalTokens = chunk.Usage.TotalTokens - resultCapture.ReasoningTokens;
+    }
+
+    /// <summary>
+    /// Approximate token count while streaming, before usage data arrives (~4 chars per token).
+    /// CompletionTokens always tracks the FULL generation (reasoning included) — same semantics
+    /// as the final usage overwrite; ReasoningTokens holds the breakdown, so reasoning can be
+    /// excluded from the context-relevant counters without changing CompletionTokens meaning.
+    /// </summary>
+    private static void EstimateTokens(StreamChunk chunk, CompletionsResult resultCapture, ConversationSession targetSession, int sessionTokens)
+    {
+        var estDelta = chunk.Choices.Count == 1 ? chunk.Choices[0].Delta : null;
+
+        var contentChars = (estDelta?.Content?.Length ?? 0) + ToolCallChars(estDelta);
+        var reasoningChars = estDelta?.ReasoningContent?.Length ?? 0;
+        var estimatedChars = contentChars + reasoningChars;
+
+        if (estimatedChars == 0)
+            return;
+
+        resultCapture.CompletionTokens += Math.Max(1, estimatedChars / 4);
+
+        if (reasoningChars > 0)
+            resultCapture.ReasoningTokens += Math.Max(1, reasoningChars / 4);
+
+        // Размышления повторно не отправляются — из места в контексте исключаем их сразу.
+        targetSession.TotalTokens = sessionTokens + resultCapture.VisibleCompletionTokens;
+    }
+
+    private static int ToolCallChars(ChatDelta? delta)
+    {
+        if (delta?.ToolCalls is not { Count: > 0 })
+            return 0;
+
+        return delta.ToolCalls.Sum(tc => (tc.Function?.Name?.Length ?? 0) + (tc.Function?.Arguments?.Length ?? 0));
     }
 
     public async IAsyncEnumerable<ChatDelta> CompressSessionAsync(CompletionsResult resultCapture, [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -275,8 +346,7 @@ public class ChatService(
         if (_recentSessionsCache == null) return;
 
         var existing = _recentSessionsCache.FirstOrDefault(s => s.Id == session.Id);
-        var firstMessage = session.GetMessagesSnapshot().FirstOrDefault(m => m.Role == ChatMessageRole.User)?.Content ?? string.Empty;
-        var preview = firstMessage is { Length: > 40 } ? firstMessage[..40] + "..." : firstMessage;
+        var preview = TruncatePreview(FirstUserMessage(session) ?? string.Empty);
 
         if (existing != null)
         {
@@ -293,6 +363,14 @@ public class ChatService(
             _recentSessionsCache = [.. _recentSessionsCache.OrderByDescending(s => s.CreatedAt)];
         }
     }
+
+    /// <summary>Content of the first user message, or null when the session has none.</summary>
+    private static string? FirstUserMessage(ConversationSession session)
+        => session.GetMessagesSnapshot().FirstOrDefault(m => m.Role == ChatMessageRole.User)?.Content;
+
+    /// <summary>Truncates a session preview to 40 chars.</summary>
+    private static string TruncatePreview(string content)
+        => content.Length > 40 ? content[..40] + "..." : content;
 
     private async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(
         IEnumerable<object> messages,
@@ -323,8 +401,7 @@ public class ChatService(
         resultCapture.Reset();
 
         // Use runtime parameters or fall back to configured options
-        var url = $"{Options.Endpoint}{_complitions}";
-        var effectiveApiKeyHeader = Options.ApiKeyHeader;
+        var url = $"{Options.Endpoint}{_completions}";
 
         var payload = new Dictionary<string, object>
         {
@@ -381,17 +458,7 @@ public class ChatService(
                 MediaTypeNames.Application.Json)
         };
 
-        if (!string.IsNullOrEmpty(Options.ApiKey))
-        {
-            if (string.Equals(effectiveApiKeyHeader, "Authorization", StringComparison.OrdinalIgnoreCase))
-            {
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Options.ApiKey);
-            }
-            else
-            {
-                request.Headers.Add(effectiveApiKeyHeader, Options.ApiKey);
-            }
-        }
+        ApplyApiKey(request);
 
         foreach (var header in Options.ExtraHeaders.Where(h => !string.IsNullOrEmpty(h.Name)))
         {
@@ -421,12 +488,7 @@ public class ChatService(
             var message = chunk?.Choice?.Message;
 
             resultCapture.Model ??= chunk?.Model;
-            if (chunk?.Usage != null)
-            {
-                resultCapture.Usage = chunk.Usage;
-                resultCapture.CompletionTokens = chunk.Usage.CompletionTokens;
-                targetSession.TotalTokens = chunk.Usage.TotalTokens;
-            }
+            CaptureUsage(chunk, resultCapture, targetSession);
 
             if (message?.ToolCalls is { Count: > 0 })
             {
@@ -493,40 +555,10 @@ public class ChatService(
                 continue;
             }
 
-            if (chunk.Usage != null)
+            CaptureUsage(chunk, resultCapture, targetSession);
+            if (chunk.Usage == null)
             {
-                resultCapture.Usage = chunk.Usage;
-                resultCapture.CompletionTokens = chunk.Usage.CompletionTokens;
-                targetSession.TotalTokens = chunk.Usage.TotalTokens;
-            }
-            else
-            {
-                // Приблизительная оценка токенов во время стрима до получения usage data.
-                // Стандартная эвристика: ~4 символа на токен.
-                // Используется только до финального чанка с usage, который перезапишет
-                // TotalTokens точным значением. Это предотвращает сильное завышение
-                // счётчика (раньше каждый chunk добавлял +1) и преждевременный триггер
-                // token budget limit в субагентах и компрессии контекста.
-                var estDelta = chunk.Choices.Count == 1 ? chunk.Choices[0].Delta : null;
-                var estimatedChars = (estDelta?.Content?.Length ?? 0)
-                                   + (estDelta?.ReasoningContent?.Length ?? 0);
-
-                // Tool calls (function name + arguments) тоже содержат токены,
-                // которые надо учитывать при приблизительной оценке во время стрима.
-                if (estDelta?.ToolCalls is { Count: > 0 })
-                {
-                    foreach (var tc in estDelta.ToolCalls)
-                    {
-                        estimatedChars += tc.Function?.Name?.Length ?? 0;
-                        estimatedChars += tc.Function?.Arguments?.Length ?? 0;
-                    }
-                }
-
-                if (estimatedChars > 0)
-                {
-                    resultCapture.CompletionTokens += Math.Max(1, estimatedChars / 4);
-                    targetSession.TotalTokens = sessionTokens + resultCapture.CompletionTokens;
-                }
+                EstimateTokens(chunk, resultCapture, targetSession, sessionTokens);
             }
 
             resultCapture.Model ??= chunk.Model;
@@ -677,23 +709,21 @@ public class ChatService(
         foreach (var id in sessionIds)
         {
             var session = await localStorage.TryGetItemAsync<ConversationSession>(id);
-            var firstMessage = session?.GetMessagesSnapshot().FirstOrDefault(m => m.Role == ChatMessageRole.User)?.Content;
-            if (session != null && firstMessage != null)
-            {
-                var preview = firstMessage.Length > 40 ? firstMessage[..40] + "..." : firstMessage;
+            var firstMessage = session is null ? null : FirstUserMessage(session);
 
-                summaries.Add(new SessionSummary
-                {
-                    Id = id,
-                    CreatedAt = session.CreatedAt,
-                    FirstUserMessage = preview
-                });
-            }
-            else
+            if (session == null || firstMessage == null)
             {
                 await localStorage.RemoveItemAsync(id);
                 logger.LogError("Invalid session {id} is removed", id);
+                continue;
             }
+
+            summaries.Add(new SessionSummary
+            {
+                Id = id,
+                CreatedAt = session.CreatedAt,
+                FirstUserMessage = TruncatePreview(firstMessage)
+            });
         }
 
         _recentSessionsCache = [.. summaries.OrderByDescending(s => s.CreatedAt)];
@@ -727,14 +757,20 @@ public class ChatService(
         }
     }
 
-    public async Task LoadSessionAsync(string id)
+    /// <summary>Loads a session from storage and assigns its stored id, or null when not found.</summary>
+    private async Task<ConversationSession?> TryLoadSessionAsync(string id)
     {
         var session = await localStorage.TryGetItemAsync<ConversationSession>(id);
-        if (session != null)
-        {
-            session.Id = id;
-            Session = session;
-        }
+        if (session == null)
+            return null;
+
+        session.Id = id;
+        return session;
+    }
+
+    public async Task LoadSessionAsync(string id)
+    {
+        Session = await TryLoadSessionAsync(id) ?? Session;
     }
 
     public async Task DeleteSessionAsync(string id)
@@ -759,23 +795,18 @@ public class ChatService(
 
     public async Task LoadLastSessionOrGenerateNewAsync()
     {
-        var sessionList = await GetAllSessionIdsAsync();
-        // сортируем сессии по времени создания и берем самую свежую
-        var lastSessionId = sessionList.OrderByDescending(id =>
-            DateTime.TryParseExact(id[8..], "s", CultureInfo.InvariantCulture, DateTimeStyles.None, out var result)
-                ? result
-                : DateTime.MinValue).FirstOrDefault();
-        if (lastSessionId is not null)
-        {
-            var fromStorage = await localStorage.TryGetItemAsync<ConversationSession>(lastSessionId);
-            fromStorage?.Id = lastSessionId;
-            Session = fromStorage ?? CreateNewSession();
-        }
-        else
-        {
-            Session = CreateNewSession();
-        }
+        // самая свежая сессия по времени создания, закодированному в id после префикса "session_"
+        var lastSessionId = (await GetAllSessionIdsAsync())
+            .OrderByDescending(ParseSessionCreatedAt)
+            .FirstOrDefault();
+
+        Session = (lastSessionId is not null ? await TryLoadSessionAsync(lastSessionId) : null) ?? CreateNewSession();
     }
+
+    private static DateTime ParseSessionCreatedAt(string id)
+        => DateTime.TryParseExact(id[8..], "s", CultureInfo.InvariantCulture, DateTimeStyles.None, out var result)
+            ? result
+            : DateTime.MinValue;
 
     public void Dispose()
     {

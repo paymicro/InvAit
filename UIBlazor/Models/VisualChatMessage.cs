@@ -106,4 +106,15 @@ public class VisualChatMessage
 
     [JsonIgnore]
     public bool IsRetrying => RetryCountdown > 0;
+
+    /// <summary>
+    /// Creates an assistant message marked as streaming (used while receiving an LLM response).
+    /// </summary>
+    public static VisualChatMessage CreateStreaming(string initialContent = "") => new()
+    {
+        Role = ChatMessageRole.Assistant,
+        IsStreaming = true,
+        IsExpanded = true,
+        Content = initialContent
+    };
 }

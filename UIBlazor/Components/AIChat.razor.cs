@@ -103,7 +103,7 @@ public partial class AiChat : RadzenComponent
     /// <returns>Сжалась ли сессия. False если завершилось ошибкой</returns>
     private async Task<bool> CompressAsync(int retryCount, CancellationToken cancellationToken)
     {
-        var assistantMessage = CreateStreamingMessage("## ♻ \n\n");
+        var assistantMessage = VisualChatMessage.CreateStreaming("## ♻ \n\n");
         MessageParser.UpdateSegments(assistantMessage.Content, assistantMessage);
         ChatService.Session.AddMessage(assistantMessage);
         await InvokeAsync(StateHasChanged);
@@ -174,7 +174,7 @@ public partial class AiChat : RadzenComponent
             }
         }
 
-        var assistantMessage = CreateStreamingMessage();
+        var assistantMessage = VisualChatMessage.CreateStreaming();
         ChatService.Session.AddMessage(assistantMessage);
         await ChatService.SaveSessionAsync();
         await InvokeAsync(StateHasChanged);
@@ -338,14 +338,6 @@ public partial class AiChat : RadzenComponent
         ChatService.Session.RemoveMessage(message.Id);
         await retryAction.Invoke();
     }
-
-    private static VisualChatMessage CreateStreamingMessage(string initialContent = "") => new()
-    {
-        Role = ChatMessageRole.Assistant,
-        IsStreaming = true,
-        IsExpanded = true,
-        Content = initialContent
-    };
 
     private static void ParsePlan(VisualChatMessage message)
     {

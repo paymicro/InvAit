@@ -390,6 +390,12 @@
   <data name="FirstToken" xml:space="preserve">
     <value>First token</value>
   </data>
+  <data name="Generated" xml:space="preserve">
+    <value>Generated</value>
+  </data>
+  <data name="IncludingReasoning" xml:space="preserve">
+    <value>incl. reasoning</value>
+  </data>
   <data name="SettingsMisc" xml:space="preserve">
     <value>Misc</value>
   </data>

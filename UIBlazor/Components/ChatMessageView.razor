@@ -104,7 +104,7 @@
                         <RadzenBadge BadgeStyle="BadgeStyle.Light" >
                             <i class="fa-regular fa-clock"></i> @Message.Timings.TokensInSec.ToString("F1") t/s
                         </RadzenBadge>
-                        <RadzenBadge BadgeStyle="BadgeStyle.Light">
+                        <RadzenBadge BadgeStyle="BadgeStyle.Light" title="@TokensTitle">
                             <i class="fa-solid @(Message.IsStreaming ? "fa-jello" : "") fa-pen"></i> @Message.Timings.Tokens tok
                         </RadzenBadge>
                         <RadzenBadge BadgeStyle="BadgeStyle.Light">
@@ -130,6 +130,22 @@
     [Parameter] public EventCallback<VisualChatMessage> OnSaveEdit { get; set; }
     [Parameter] public EventCallback<VisualChatMessage> OnDelete { get; set; }
     [Parameter] public EventCallback OnRegenerate { get; set; }
+
+    /// <summary>
+    /// Tooltip of the token badge. With reasoning models the finished badge shows only visible
+    /// tokens (the context footprint); while streaming it shows the full generation count.
+    /// </summary>
+    private string TokensTitle
+    {
+        get
+        {
+            if (Message.Timings is not { ReasoningTokens: > 0 } timings)
+                return SharedResource.Tokens;
+
+            var generated = Message.IsStreaming ? timings.Tokens : timings.Tokens + timings.ReasoningTokens;
+            return $"{SharedResource.Generated}: {generated}, {SharedResource.IncludingReasoning}: {timings.ReasoningTokens}";
+        }
+    }
 
     private bool _oldIsStreaming;
     private bool _oldIsEditing;

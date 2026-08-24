@@ -356,7 +356,25 @@ namespace UIBlazor.Localization {
                 return ResourceManager.GetString("FirstToken", resourceCulture);
             }
         }
-        
+
+        /// <summary>
+        ///   Looks up a localized string similar to Generated.
+        /// </summary>
+        public static string Generated {
+            get {
+                return ResourceManager.GetString("Generated", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to incl. reasoning.
+        /// </summary>
+        public static string IncludingReasoning {
+            get {
+                return ResourceManager.GetString("IncludingReasoning", resourceCulture);
+            }
+        }
+
         /// <summary>
         ///   Looks up a localized string similar to Header.
         /// </summary>
