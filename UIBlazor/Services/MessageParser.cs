@@ -77,7 +77,7 @@ public class MessageParser : IMessageParser
         // Если есть перенос строки - фиксируем завершенные линии
         if (segment.Type == SegmentType.Markdown || !token.Contains('\n'))
             return;
-        
+
         var content = segment.CurrentLine.ToString();
         var parts = content.Split('\n');
 

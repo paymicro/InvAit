@@ -15,5 +15,9 @@ public class MessageTimings
 
     public float TokensInSec { get; set; } = 0;
 
+    /// <summary>Видимые токены ответа (без размышлений) — столько сообщение занимает в контексте.</summary>
     public int Tokens { get; set; } = 0;
+
+    /// <summary>Токены размышлений, не входят в <see cref="Tokens"/> и место в контексте не занимают.</summary>
+    public int ReasoningTokens { get; set; } = 0;
 }

@@ -80,7 +80,7 @@ public partial class ChatControl : IDisposable
         _vsVersion ??= (await VS.Shell.GetVsVersionAsync()).ToString();
         WebViewHost.Content = _webView = new WV.WebView2();
         _webView.CoreWebView2InitializationCompleted += CoreWebView2InitializationCompleted;
-        
+
         var userDataFolder = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "InvAitChatWebView2");
@@ -103,7 +103,7 @@ public partial class ChatControl : IDisposable
         }
         catch (Exception ex)
         {
-            Logger.Log($"Failed to launch WebView. To completely wipe data, delete the folder '{userDataFolder}' and restart the application. " +
+            await Logger.LogAsync($"Failed to launch WebView. To completely wipe data, delete the folder '{userDataFolder}' and restart the application. " +
                 $"Details: {ex.Message}", "ERROR");
             throw;
         }

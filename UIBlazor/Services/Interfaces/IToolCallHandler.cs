@@ -2,6 +2,12 @@ namespace UIBlazor.Services.Interfaces;
 
 public interface IToolCallHandler
 {
+    /// <summary>
+    /// Raised when one or more tool calls require user approval or ask_user interaction.
+    /// Parameter is the tool call ID that needs attention.
+    /// </summary>
+    event Action<string>? ApprovalRequired;
+
     void PrepareToolsForApprovals(List<ToolCall> toolCalls);
 
     /// <summary>
@@ -18,4 +24,11 @@ public interface IToolCallHandler
     /// Handles user answer for ask_user tool.
     /// </summary>
     Task HandleAskUserAnswerAsync(string toolCallId, string answer);
+
+    /// <summary>
+    /// Cancels all pending approval and ask_user waiters.
+    /// Called internally by PrepareToolsForApprovals before setting up new waiters,
+    /// and externally for cleanup (e.g. SubAgentMessage.ReleaseMemory).
+    /// </summary>
+    void CancelPendingApprovals();
 }

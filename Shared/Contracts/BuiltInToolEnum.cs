@@ -30,4 +30,7 @@ public static class BuiltInToolEnum
     public const string GitLog = "git_log";
     public const string GitDiff = "git_diff";
     public const string GitStatus = "git_status";
+
+    // Multi-agent
+    public const string DelegateTask = "delegate_task";
 }

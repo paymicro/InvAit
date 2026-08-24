@@ -104,7 +104,7 @@
                         <RadzenBadge BadgeStyle="BadgeStyle.Light" >
                             <i class="fa-regular fa-clock"></i> @Message.Timings.TokensInSec.ToString("F1") t/s
                         </RadzenBadge>
-                        <RadzenBadge BadgeStyle="BadgeStyle.Light">
+                        <RadzenBadge BadgeStyle="BadgeStyle.Light" title="@TokensTitle">
                             <i class="fa-solid @(Message.IsStreaming ? "fa-jello" : "") fa-pen"></i> @Message.Timings.Tokens tok
                         </RadzenBadge>
                         <RadzenBadge BadgeStyle="BadgeStyle.Light">
@@ -131,6 +131,22 @@
     [Parameter] public EventCallback<VisualChatMessage> OnDelete { get; set; }
     [Parameter] public EventCallback OnRegenerate { get; set; }
 
+    /// <summary>
+    /// Tooltip of the token badge. With reasoning models the finished badge shows only visible
+    /// tokens (the context footprint); while streaming it shows the full generation count.
+    /// </summary>
+    private string TokensTitle
+    {
+        get
+        {
+            if (Message.Timings is not { ReasoningTokens: > 0 } timings)
+                return SharedResource.Tokens;
+
+            var generated = Message.IsStreaming ? timings.Tokens : timings.Tokens + timings.ReasoningTokens;
+            return $"{SharedResource.Generated}: {generated}, {SharedResource.IncludingReasoning}: {timings.ReasoningTokens}";
+        }
+    }
+
     private bool _oldIsStreaming;
     private bool _oldIsEditing;
     private bool _oldIsLast;
@@ -139,10 +155,40 @@
     private int _oldRetryCountdown;
     private string _oldContent = string.Empty;
 
+    /// <summary>
+    /// Per-sub-agent snapshot (keyed by Id) used for change detection in ShouldRender.
+    /// Tracking every sub-agent individually means changes to the 2nd, 3rd, ... sub-agent
+    /// also trigger a re-render — and no false positives from cross-comparing agents.
+    /// </summary>
+    private Dictionary<string, SubAgentSnapshot> _oldSubAgentsState = [];
+    private List<SubAgentMessage> _subAgents = [];
+
+    private readonly record struct SubAgentSnapshot(
+        SubAgentStatus Status,
+        int MessageCount,
+        bool IsExpanded,
+        string Result);
+
     protected override bool ShouldRender()
     {
         // Проверяем, изменилось ли состояние загрузки конкретно для последнего (или только что переставшего быть последним) сообщения
         var isLoadingChangedForLast = (IsLast || _oldIsLast) && (_oldIsLoading != IsLoading);
+
+        // Sub-agent state changes should trigger re-render.
+        // Check all tool calls for sub-agent data (multiple delegate_task calls
+        // can exist in one message, each with its own sub-agent).
+        _subAgents = Message.ToolCalls?
+            .Where(tc => tc.SubAgent is not null)
+            .Select(tc => tc.SubAgent!)
+            .ToList() ?? [];
+
+        var subAgentChanged = _subAgents.Count != _oldSubAgentsState.Count ||
+            _subAgents.Any(sa =>
+                !_oldSubAgentsState.TryGetValue(sa.Id, out var old) ||
+                sa.Status != old.Status ||
+                sa.GetMessageCount() != old.MessageCount ||
+                sa.IsExpanded != old.IsExpanded ||
+                (sa.Result ?? string.Empty) != old.Result);
 
         return Message.IsShouldRender ||
                Message.IsStreaming || _oldIsStreaming ||
@@ -151,7 +197,8 @@
                _oldIsLast != IsLast ||
                isLoadingChangedForLast ||
                Message.IsExpanded != _oldIsExpanded ||
-               Message.Content != _oldContent;
+               Message.Content != _oldContent ||
+               subAgentChanged;
     }
 
     protected override void OnAfterRender(bool firstRender)
@@ -165,6 +212,9 @@
         _oldIsEditing = Message.IsEditing;
         _oldIsExpanded = Message.IsExpanded;
         _oldContent = Message.Content;
+        _oldSubAgentsState = _subAgents.ToDictionary(
+            sa => sa.Id,
+            sa => new SubAgentSnapshot(sa.Status, sa.GetMessageCount(), sa.IsExpanded, sa.Result ?? string.Empty));
         Message.IsShouldRender = false;
     }
 }

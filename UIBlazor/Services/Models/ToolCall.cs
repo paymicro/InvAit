@@ -38,4 +38,12 @@ public class ToolCall
 
     [JsonPropertyName("result")]
     public ToolResult? Result { get; set; }
+
+    /// <summary>
+    /// Sub-agent data if this tool call is a delegate_task.
+    /// Bound to the specific tool call, not the parent message,
+    /// so multiple delegate_task calls in one message each have their own sub-agent.
+    /// </summary>
+    [JsonIgnore]
+    public SubAgentMessage? SubAgent { get; set; }
 }

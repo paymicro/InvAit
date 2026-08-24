@@ -7,7 +7,8 @@ public enum ToolCategory
     DeleteFiles,
     Mcp,
     ModeSwitch,
-    Execution
+    Execution,
+    SubAgent
 }
 
 public enum ToolApprovalMode

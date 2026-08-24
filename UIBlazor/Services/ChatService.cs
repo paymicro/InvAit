@@ -17,10 +17,12 @@ public class ChatService(
     IToolManager toolManager
     ) : IChatService
 {
+    #pragma warning disable format
     private const string _thinkStart    = "<think>";
     private const string _thinkEnd      = "</think>";
-    private const string _complitions   = "/v1/chat/completions";
+    private const string _completions   = "/v1/chat/completions";
     private const string _models        = "/v1/models";
+    #pragma warning restore format
 
     public ConnectionProfile Options => profileManager.ActiveProfile;
 
@@ -56,22 +58,7 @@ public class ChatService(
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, $"{Options.Endpoint}{_models}");
 
-        if (!string.IsNullOrEmpty(Options.ApiKey))
-        {
-            if (string.IsNullOrWhiteSpace(Options.ApiKeyHeader))
-            {
-                throw new InvalidOperationException("API key header must be specified when an API key is provided.");
-            }
-
-            if (string.Equals(Options.ApiKeyHeader, "Authorization", StringComparison.OrdinalIgnoreCase))
-            {
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Options.ApiKey);
-            }
-            else
-            {
-                request.Headers.Add(Options.ApiKeyHeader, Options.ApiKey);
-            }
-        }
+        ApplyApiKey(request);
 
         if (string.IsNullOrEmpty(Options.Endpoint))
         {
@@ -97,6 +84,7 @@ public class ChatService(
         Action<string>? onContentUpdate,
         Action<List<ToolCall>>? onToolCallsUpdate,
         Action? onStateChange,
+        CompletionsResult resultCapture,
         CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
@@ -130,7 +118,7 @@ public class ChatService(
                 onContentUpdate?.Invoke(delta.Content);
             }
 
-            if (delta.ToolCalls is { Count: > 0 } && AccumulatedToolCalls is not null)
+            if (delta.ToolCalls is { Count: > 0 } && resultCapture.AccumulatedToolCalls is not null)
             {
                 if (firstContentTokenMs == 0)
                 {
@@ -138,40 +126,143 @@ public class ChatService(
                     message.Timings.Reasoning = TimeSpan.FromMilliseconds(firstContentTokenMs - firstTokenMs);
                 }
 
-                onToolCallsUpdate?.Invoke(AccumulatedToolCalls);
+                onToolCallsUpdate?.Invoke(resultCapture.AccumulatedToolCalls);
             }
-
-            CalcTimings(message, sw, firstTokenMs);
 
             if (firstContentTokenMs > 0)
             {
                 message.Timings.Content = TimeSpan.FromMilliseconds(sw.ElapsedMilliseconds - firstContentTokenMs);
             }
 
+            // Динамический подсчет таймингов для UI
+            CalcTimings(message, sw, firstTokenMs, resultCapture);
+
             onStateChange?.Invoke();
         }
 
-        CalcTimings(message, sw, firstTokenMs);
+        // Финальный подсчет таймингов. Нужен т.к. токен с Usage не запускает цикл выше (он без дельты).
+        // IsStreaming сбрасывается ДО расчета: завершенный бейдж должен показать видимые токены.
         message.IsStreaming = false;
+        CalcTimings(message, sw, firstTokenMs, resultCapture);
     }
 
-    private void CalcTimings(VisualChatMessage message, Stopwatch sw, double firstTokenMs)
+    private static void CalcTimings(VisualChatMessage message, Stopwatch sw, double firstTokenMs, CompletionsResult completionsResult)
     {
         var elapsedMs = sw.ElapsedMilliseconds;
-        message.Timings.Tokens = LastUsage?.CompletionTokens ?? 1 + message.Timings.Tokens;
+
+        // Пока модель думает, видимых токенов еще нет и бейдж выглядел бы «зависшим» на нуле —
+        // поэтому в стриминге показываем полный вывод (включая размышления), а после завершения —
+        // только видимые токены: столько сообщение реально занимает в контексте.
+        message.Timings.Tokens = message.IsStreaming
+            ? completionsResult.CompletionTokens
+            : completionsResult.VisibleCompletionTokens;
+        message.Timings.ReasoningTokens = completionsResult.ReasoningTokens;
+
+        // Скорость генерации честнее считать по полному выводу, включая размышления.
         var secForTokens = Math.Max(1, (elapsedMs - firstTokenMs) / 1000.0);
-        message.Timings.TokensInSec = (float)(message.Timings.Tokens / secForTokens);
+        message.Timings.TokensInSec = (float)(completionsResult.CompletionTokens / secForTokens);
         message.Timings.Total = TimeSpan.FromMilliseconds(elapsedMs);
         message.Timings.FirstToken = TimeSpan.FromMilliseconds(firstTokenMs);
     }
 
-    public async IAsyncEnumerable<ChatDelta> CompressSessionAsync([EnumeratorCancellation] CancellationToken cancellationToken)
+    /// <summary>
+    /// Adds the API key to the request via the configured header
+    /// ("Authorization" gets the standard Bearer scheme).
+    /// </summary>
+    private void ApplyApiKey(HttpRequestMessage request)
     {
-        var (Messages, LastUserMessage) = Session.GetFormattedMessagesForCompress();
+        if (string.IsNullOrEmpty(Options.ApiKey))
+            return;
+
+        if (string.IsNullOrWhiteSpace(Options.ApiKeyHeader))
+        {
+            throw new InvalidOperationException("API key header must be specified when an API key is provided.");
+        }
+
+        if (string.Equals(Options.ApiKeyHeader, "Authorization", StringComparison.OrdinalIgnoreCase))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Options.ApiKey);
+        }
+        else
+        {
+            request.Headers.Add(Options.ApiKeyHeader, Options.ApiKey);
+        }
+    }
+
+    /// <summary>
+    /// Records usage data from a response chunk. Session.TotalTokens keeps the context-relevant
+    /// size: reasoning tokens are excluded because they are not resent in subsequent requests.
+    /// </summary>
+    private static void CaptureUsage(StreamChunk? chunk, CompletionsResult resultCapture, ConversationSession targetSession)
+    {
+        if (chunk?.Usage == null)
+            return;
+
+        resultCapture.Usage = chunk.Usage;
+        resultCapture.CompletionTokens = chunk.Usage.CompletionTokens;
+
+        if (chunk.Usage.CompletionDetails is not null)
+            resultCapture.ReasoningTokens = chunk.Usage.ReasoningTokens;
+        // без details оставляем эвристическую оценку размышлений, накопленную во время стрима
+
+        targetSession.TotalTokens = chunk.Usage.TotalTokens - resultCapture.ReasoningTokens;
+    }
+
+    /// <summary>
+    /// Approximate token count while streaming, before usage data arrives (~4 chars per token).
+    /// CompletionTokens always tracks the FULL generation (reasoning included) — same semantics
+    /// as the final usage overwrite; ReasoningTokens holds the breakdown, so reasoning can be
+    /// excluded from the context-relevant counters without changing CompletionTokens meaning.
+    /// </summary>
+    private static void EstimateTokens(StreamChunk chunk, CompletionsResult resultCapture, ConversationSession targetSession, int sessionTokens)
+    {
+        var estDelta = chunk.Choices.Count == 1 ? chunk.Choices[0].Delta : null;
+
+        var contentChars = (estDelta?.Content?.Length ?? 0) + ToolCallChars(estDelta);
+        var reasoningChars = estDelta?.ReasoningContent?.Length ?? 0;
+        var estimatedChars = contentChars + reasoningChars;
+
+        if (estimatedChars == 0)
+            return;
+
+        resultCapture.CompletionTokens += Math.Max(1, estimatedChars / 4);
+
+        if (reasoningChars > 0)
+            resultCapture.ReasoningTokens += Math.Max(1, reasoningChars / 4);
+
+        // Размышления повторно не отправляются — из места в контексте исключаем их сразу.
+        targetSession.TotalTokens = sessionTokens + resultCapture.VisibleCompletionTokens;
+    }
+
+    private static int ToolCallChars(ChatDelta? delta)
+    {
+        if (delta?.ToolCalls is not { Count: > 0 })
+            return 0;
+
+        return delta.ToolCalls.Sum(tc => (tc.Function?.Name?.Length ?? 0) + (tc.Function?.Arguments?.Length ?? 0));
+    }
+
+    public async IAsyncEnumerable<ChatDelta> CompressSessionAsync(CompletionsResult resultCapture, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await foreach (var delta in CompressSessionAsync(Session, resultCapture, cancellationToken))
+        {
+            yield return delta;
+        }
+    }
+
+    /// <summary>
+    /// Сжатие контекста для произвольной сессии (например, sub-agent).
+    /// </summary>
+    public async IAsyncEnumerable<ChatDelta> CompressSessionAsync(
+        ConversationSession session,
+        CompletionsResult resultCapture,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var (Messages, LastUserMessage) = session.GetFormattedMessagesForCompress();
 
         // Получаем сжатый текст от LLM
         var contentSb = new StringBuilder();
-        await foreach (var chatDelta in GetCompletionsAsync(Messages, false, cancellationToken))
+        await foreach (var chatDelta in GetCompletionsAsync(Messages, false, session, null, resultCapture, cancellationToken))
         {
             if (chatDelta.Content is not null)
             {
@@ -182,7 +273,7 @@ public class ChatService(
 
         if (cancellationToken.IsCancellationRequested)
             yield break;
-        
+
         // Создаем новый объект сообщения со сжатым контекстом
         var compressedMessage = new VisualChatMessage
         {
@@ -191,7 +282,8 @@ public class ChatService(
             IsExpanded = true
         };
 
-        var totalCount = Session.Messages.Count;
+        var snapshot = session.GetMessagesSnapshot();
+        var totalCount = snapshot.Count;
         var windowSize = totalCount < 6 ? 2 : 3;
 
         var topMessages = new List<VisualChatMessage>();
@@ -199,7 +291,7 @@ public class ChatService(
 
         for (var i = 0; i < totalCount - 1; i++)
         {
-            var msg = Session.Messages[i];
+            var msg = snapshot[i];
 
             if (msg.Id == LastUserMessage?.Id)
                 continue;
@@ -229,7 +321,7 @@ public class ChatService(
         }
 
         // Перезаписываем историю
-        Session.Messages = keptMessages;
+        session.SetMessages(keptMessages);
     }
 
     /// <summary>
@@ -254,8 +346,7 @@ public class ChatService(
         if (_recentSessionsCache == null) return;
 
         var existing = _recentSessionsCache.FirstOrDefault(s => s.Id == session.Id);
-        var firstMessage = session.Messages.FirstOrDefault(m => m.Role == ChatMessageRole.User)?.Content ?? string.Empty;
-        var preview = firstMessage is { Length: > 40 } ? firstMessage[..40] + "..." : firstMessage;
+        var preview = TruncatePreview(FirstUserMessage(session) ?? string.Empty);
 
         if (existing != null)
         {
@@ -273,38 +364,44 @@ public class ChatService(
         }
     }
 
-    /// <summary>
-    /// Модель, которая последняя отвечала
-    /// </summary>
-    public string? LastCompletionsModel { get; private set; }
+    /// <summary>Content of the first user message, or null when the session has none.</summary>
+    private static string? FirstUserMessage(ConversationSession session)
+        => session.GetMessagesSnapshot().FirstOrDefault(m => m.Role == ChatMessageRole.User)?.Content;
 
-    /// <summary>
-    /// Текст ошибки
-    /// </summary>
-    public string? LastError { get; private set; }
+    /// <summary>Truncates a session preview to 40 chars.</summary>
+    private static string TruncatePreview(string content)
+        => content.Length > 40 ? content[..40] + "..." : content;
 
-    /// <summary>
-    /// Последнее использование токенов
-    /// </summary>
-    public UsageInfo? LastUsage { get; private set; }
-
-    public string? FinishReason { get; private set; }
-
-    /// <summary>
-    /// Accumulated native tool_calls from the last streaming response.
-    /// </summary>
-    public List<ToolCall>? AccumulatedToolCalls { get; private set; }
-
-    private async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(IEnumerable<object> messages, bool withTools, [EnumeratorCancellation] CancellationToken cancellationToken)
+    private async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(
+        IEnumerable<object> messages,
+        bool withTools,
+        CompletionsResult resultCapture,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        LastCompletionsModel = null;
-        LastUsage = null;
-        LastError = null;
-        FinishReason = null;
+        await foreach (var delta in GetCompletionsAsync(messages, withTools, Session, null, resultCapture, cancellationToken))
+        {
+            yield return delta;
+        }
+    }
+
+    /// <summary>
+    /// Internal completions method that supports a custom session (for sub-agents).
+    /// All LLM call state (model, usage, tool_calls, finish_reason, error) is written
+    /// exclusively to <paramref name="resultCapture"/>, never to instance properties.
+    /// This ensures isolation between main agent and sub-agent calls.
+    /// </summary>
+    private async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(
+        IEnumerable<object> messages,
+        bool withTools,
+        ConversationSession targetSession,
+        IEnumerable<Tool>? customTools,
+        CompletionsResult resultCapture,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        resultCapture.Reset();
 
         // Use runtime parameters or fall back to configured options
-        var url = $"{Options.Endpoint}{_complitions}";
-        var effectiveApiKeyHeader = Options.ApiKeyHeader;
+        var url = $"{Options.Endpoint}{_completions}";
 
         var payload = new Dictionary<string, object>
         {
@@ -343,7 +440,9 @@ public class ChatService(
         // Add native tool definitions
         if (withTools)
         {
-            var enabledTools = toolManager.GetEnabledTools(Session.Mode).Select(t => t.NativeTool).ToList();
+            var enabledTools = (customTools ?? (targetSession == Session
+                ? toolManager.GetEnabledTools(Session.Mode)
+                : toolManager.GetEnabledTools(AppMode.Agent))).Select(t => t.NativeTool).ToList();
             if (enabledTools.Count > 0)
             {
                 payload["tools"] = enabledTools;
@@ -351,7 +450,7 @@ public class ChatService(
             }
         }
 
-        var request = new HttpRequestMessage(HttpMethod.Post, url)
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
         {
             Content = new StringContent(
                 JsonSerializer.Serialize(payload),
@@ -359,52 +458,43 @@ public class ChatService(
                 MediaTypeNames.Application.Json)
         };
 
-        if (!string.IsNullOrEmpty(Options.ApiKey))
-        {
-            if (string.Equals(effectiveApiKeyHeader, "Authorization", StringComparison.OrdinalIgnoreCase))
-            {
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Options.ApiKey);
-            }
-            else
-            {
-                request.Headers.Add(effectiveApiKeyHeader, Options.ApiKey);
-            }
-        }
+        ApplyApiKey(request);
 
         foreach (var header in Options.ExtraHeaders.Where(h => !string.IsNullOrEmpty(h.Name)))
         {
             request.Headers.TryAddWithoutValidation(header.Name, header.Value);
         }
 
-        var response = await httpClient.SendAsync(request, Options.Stream ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead, cancellationToken);
+        using var response = await httpClient.SendAsync(request, Options.Stream ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead, cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {
             var result = $"HttpCode: {response.StatusCode} | server failed: {await response.Content.ReadAsStringAsync(cancellationToken)}";
-            throw new Exception(result);
+            // Typed exception: SubAgentExecutor (and other callers) use it to
+            // classify HTTP status errors (429/5xx) as transient and retry them.
+            throw new LlmApiException(result);
         }
+
+        // количество токенов в сессии до запроса
+        var sessionTokens = targetSession.TotalTokens;
 
         // если не стрим, то возвращаем как один чанк
         if (!Options.Stream)
         {
             // Reset accumulated tool calls
-            AccumulatedToolCalls = null;
+            resultCapture.AccumulatedToolCalls = null;
 
             var chunk = await response.Content.ReadFromJsonAsync<StreamChunk>(cancellationToken);
             var message = chunk?.Choice?.Message;
 
-            LastCompletionsModel ??= chunk?.Model;
-            if (chunk?.Usage != null)
-            {
-                LastUsage = chunk.Usage;
-                Session.TotalTokens = chunk.Usage.TotalTokens;
-            }
+            resultCapture.Model ??= chunk?.Model;
+            CaptureUsage(chunk, resultCapture, targetSession);
 
             if (message?.ToolCalls is { Count: > 0 })
             {
                 // Native tool calls in non-streaming response
-                AccumulatedToolCalls = [.. message.ToolCalls];
-                FinishReason = chunk?.Choice?.FinishReason ?? "tool_calls";
+                resultCapture.AccumulatedToolCalls = [.. message.ToolCalls];
+                resultCapture.FinishReason = chunk?.Choice?.FinishReason ?? "tool_calls";
                 yield return message;
                 yield break;
             }
@@ -425,7 +515,7 @@ public class ChatService(
 
         // стрим
         // Reset accumulated tool calls for this response
-        AccumulatedToolCalls = null;
+        resultCapture.AccumulatedToolCalls = null;
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);
@@ -449,13 +539,13 @@ public class ChatService(
 
             if (json == "[DONE]")
             {
-                FinishReason = lastChoise?.FinishReason;
+                resultCapture.FinishReason = lastChoise?.FinishReason;
                 break;
             }
 
             if (json.StartsWith("{\"error\""))
             {
-                LastError = json;
+                resultCapture.Error = json;
                 continue;
             }
 
@@ -465,18 +555,13 @@ public class ChatService(
                 continue;
             }
 
-            if (chunk.Usage != null)
+            CaptureUsage(chunk, resultCapture, targetSession);
+            if (chunk.Usage == null)
             {
-                LastUsage = chunk.Usage;
-                Session.TotalTokens = chunk.Usage.TotalTokens;
-            }
-            else
-            {
-                // Динамический подсчёт токенов во время стрима (приблизительный)
-                Session.TotalTokens++;
+                EstimateTokens(chunk, resultCapture, targetSession, sessionTokens);
             }
 
-            LastCompletionsModel ??= chunk.Model;
+            resultCapture.Model ??= chunk.Model;
 
             if (chunk.Choices.Count != 1 || chunk.Choices[0].Delta == null)
             {
@@ -484,7 +569,7 @@ public class ChatService(
             }
 
             var delta = chunk.Choices[0].Delta!;
-            var content = delta.Content;            
+            var content = delta.Content;
             role ??= delta?.Role;
 
             // Размышляющие модели по разному отдают размышления
@@ -554,7 +639,7 @@ public class ChatService(
                     if (!string.IsNullOrEmpty(tc.Function?.Arguments))
                         existing.Function.Arguments += tc.Function.Arguments;
                 }
-                AccumulatedToolCalls = [.. toolCallAcc.Values];
+                resultCapture.AccumulatedToolCalls = [.. toolCallAcc.Values];
             }
 
             yield return delta;
@@ -578,12 +663,33 @@ public class ChatService(
     /// completion. The stream completes when the response is fully received.
     /// </returns>
     /// <exception cref="Exception">Thrown if the chat completion request fails or the server returns an unsuccessful response.</exception>
-    public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync([EnumeratorCancellation] CancellationToken cancellationToken)
+    public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(CompletionsResult resultCapture, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // Get formatted messages including conversation history
         var messages = Session.GetFormattedMessages(await systemPromptBuilder.PrepareSystemPromptAsync(Session.Mode, cancellationToken)) ?? [];
-        
-        await foreach (var chatDelta in GetCompletionsAsync(messages, true, cancellationToken))
+
+        await foreach (var chatDelta in GetCompletionsAsync(messages, true, resultCapture, cancellationToken))
+        {
+            yield return chatDelta;
+        }
+    }
+
+    /// <summary>
+    /// Получение ответа для sub-agent с произвольным системным промптом и набором инструментов.
+    /// Использует переданную сессию вместо основной.
+    /// Состояние (AccumulatedToolCalls, Usage и т.д.) записывается в <paramref name="resultCapture"/>,
+    /// а не в общие свойства экземпляра, чтобы избежать конфликтов с главным агентом.
+    /// </summary>
+    public async IAsyncEnumerable<ChatDelta> GetCompletionsForSubAgentAsync(
+        ConversationSession session,
+        string systemPrompt,
+        IEnumerable<Tool> enabledTools,
+        CompletionsResult resultCapture,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var messages = session.GetFormattedMessages(systemPrompt);
+
+        await foreach (var chatDelta in GetCompletionsAsync(messages, true, session, enabledTools, resultCapture, cancellationToken))
         {
             yield return chatDelta;
         }
@@ -603,23 +709,21 @@ public class ChatService(
         foreach (var id in sessionIds)
         {
             var session = await localStorage.TryGetItemAsync<ConversationSession>(id);
-            var firstMessage = session?.Messages.FirstOrDefault(m => m.Role == ChatMessageRole.User)?.Content;
-            if (session != null && firstMessage != null)
-            {
-                var preview = firstMessage.Length > 40 ? firstMessage[..40] + "..." : firstMessage;
+            var firstMessage = session is null ? null : FirstUserMessage(session);
 
-                summaries.Add(new SessionSummary
-                {
-                    Id = id,
-                    CreatedAt = session.CreatedAt,
-                    FirstUserMessage = preview
-                });
-            }
-            else
+            if (session == null || firstMessage == null)
             {
                 await localStorage.RemoveItemAsync(id);
                 logger.LogError("Invalid session {id} is removed", id);
+                continue;
             }
+
+            summaries.Add(new SessionSummary
+            {
+                Id = id,
+                CreatedAt = session.CreatedAt,
+                FirstUserMessage = TruncatePreview(firstMessage)
+            });
         }
 
         _recentSessionsCache = [.. summaries.OrderByDescending(s => s.CreatedAt)];
@@ -630,7 +734,7 @@ public class ChatService(
     public async Task NewSessionAsync()
     {
         // Save current session if it has messages
-        if (Session?.Messages.Count > 0)
+        if (Session?.GetMessageCount() > 0)
         {
             await SaveSessionAsync();
         }
@@ -653,14 +757,20 @@ public class ChatService(
         }
     }
 
-    public async Task LoadSessionAsync(string id)
+    /// <summary>Loads a session from storage and assigns its stored id, or null when not found.</summary>
+    private async Task<ConversationSession?> TryLoadSessionAsync(string id)
     {
         var session = await localStorage.TryGetItemAsync<ConversationSession>(id);
-        if (session != null)
-        {
-            session.Id = id;
-            Session = session;
-        }
+        if (session == null)
+            return null;
+
+        session.Id = id;
+        return session;
+    }
+
+    public async Task LoadSessionAsync(string id)
+    {
+        Session = await TryLoadSessionAsync(id) ?? Session;
     }
 
     public async Task DeleteSessionAsync(string id)
@@ -685,23 +795,18 @@ public class ChatService(
 
     public async Task LoadLastSessionOrGenerateNewAsync()
     {
-        var sessionList = await GetAllSessionIdsAsync();
-        // сортируем сессии по времени создания и берем самую свежую
-        var lastSessionId = sessionList.OrderByDescending(id =>
-            DateTime.TryParseExact(id[8..], "s", CultureInfo.InvariantCulture, DateTimeStyles.None, out var result)
-                ? result
-                : DateTime.MinValue).FirstOrDefault();
-        if (lastSessionId is not null)
-        {
-            var fromStorage = await localStorage.TryGetItemAsync<ConversationSession>(lastSessionId);
-            fromStorage?.Id = lastSessionId;
-            Session = fromStorage ?? CreateNewSession();
-        }
-        else
-        {
-            Session = CreateNewSession();
-        }
+        // самая свежая сессия по времени создания, закодированному в id после префикса "session_"
+        var lastSessionId = (await GetAllSessionIdsAsync())
+            .OrderByDescending(ParseSessionCreatedAt)
+            .FirstOrDefault();
+
+        Session = (lastSessionId is not null ? await TryLoadSessionAsync(lastSessionId) : null) ?? CreateNewSession();
     }
+
+    private static DateTime ParseSessionCreatedAt(string id)
+        => DateTime.TryParseExact(id[8..], "s", CultureInfo.InvariantCulture, DateTimeStyles.None, out var result)
+            ? result
+            : DateTime.MinValue;
 
     public void Dispose()
     {

@@ -1,6 +1,5 @@
 #pragma warning disable IDE0060 // Remove unused parameter
 
-using System.Collections;
 using System.ComponentModel;
 using System.Reflection;
 
@@ -134,6 +133,16 @@ public static class BuiltInToolDefs
     public static void AskUser(
         [Description("The question to ask the user")] string question,
         [Description("A list of options for the user to choose from. Pass an empty array for a free-form question.")] string[] options)
+    { }
+
+    [DisplayName(BuiltInToolEnum.DelegateTask)]
+    [Description("Delegate a task to a sub-agent. The sub-agent runs with its own system prompt and conversation context, " +
+                 "has access to tools, and returns the final result. Sub-agents cannot delegate further (no recursion). " +
+                 "Use this for complex subtasks that benefit from focused attention and a specialized prompt.")]
+    public static void DelegateTask(
+        [Description("Clear task description for the sub-agent")] string task,
+        [Description("System prompt defining the sub-agent's role and expertise")] string systemPrompt,
+        [Description("List of tool names the sub-agent is allowed to use. If null or empty, all tools are available. Only these tools will be accessible; all others are denied.")] string[]? allowedTools)
     { }
 
     public static NativeToolDefinition MapMethodToTool(string methodName)

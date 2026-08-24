@@ -184,6 +184,17 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             Category = ToolCategory.ReadFiles,
             NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.AskUser)),
             ExecuteAsync = (args, c) => internalExecutor.ExecuteToolAsync(BasicEnum.AskUser, args, c)
+        },
+
+        // Multi-agent
+        new()
+        {
+            Name = BuiltInToolEnum.DelegateTask,
+            DisplayName = SharedResource.ToolDelegateTask,
+            Category = ToolCategory.SubAgent,
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.DelegateTask)),
+            ExecuteAsync = (args, c) => internalExecutor.ExecuteToolAsync(BuiltInToolEnum.DelegateTask, args, c),
+            ExecuteWithContextAsync = (args, toolCall, c) => internalExecutor.ExecuteToolAsync(BuiltInToolEnum.DelegateTask, args, toolCall, c)
         }
     ];
 }

@@ -2,7 +2,6 @@ using System.ComponentModel;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Radzen;
-using UIBlazor.Services;
 using ConversationSession = UIBlazor.Models.ConversationSession;
 
 namespace UIBlazor.Components;
@@ -13,8 +12,6 @@ public partial class AiChat : RadzenComponent
         @"<plan>(?<plan>.*?)</plan>",
         RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.NonBacktracking,
         TimeSpan.FromMilliseconds(200));
-
-    private List<VisualChatMessage> Messages => ChatService.Session.Messages;
 
     private bool IsLoading { get; set; }
 
@@ -36,6 +33,7 @@ public partial class AiChat : RadzenComponent
     [Inject] private ILogger<AiChat> Logger { get; set; } = null!;
     [Inject] private IRetryHandler RetryHandler { get; set; } = null!;
     [Inject] private IToolCallHandler ToolCallHandler { get; set; } = null!;
+    [Inject] private ISubAgentExecutor SubAgentExecutor { get; set; } = null!;
 
     public async Task NewSessionAsync()
     {
@@ -105,37 +103,42 @@ public partial class AiChat : RadzenComponent
     /// <returns>Сжалась ли сессия. False если завершилось ошибкой</returns>
     private async Task<bool> CompressAsync(int retryCount, CancellationToken cancellationToken)
     {
-        var assistantMessage = CreateStreamingMessage("## ♻ \n\n");
+        var assistantMessage = VisualChatMessage.CreateStreaming("## ♻ \n\n");
         MessageParser.UpdateSegments(assistantMessage.Content, assistantMessage);
         ChatService.Session.AddMessage(assistantMessage);
         await InvokeAsync(StateHasChanged);
 
         var result = false;
 
+        var completions = new CompletionsResult();
+
         try
         {
             await ChatService.ProcessStreamAsync(
                  assistantMessage,
-                 ChatService.CompressSessionAsync(cancellationToken),
+                 ChatService.CompressSessionAsync(completions, cancellationToken),
                  onContentUpdate: content => MessageParser.UpdateSegments(content, assistantMessage),
-                 onToolCallsUpdate: toolCalls => {
+                 onToolCallsUpdate: toolCalls =>
+                 {
                      assistantMessage.ToolCalls = toolCalls;
                      assistantMessage.IsShouldRender = true;
                  },
                  onStateChange: () =>
                  {
-                     assistantMessage.Model ??= ChatService.LastCompletionsModel;
+                     assistantMessage.Model ??= completions.Model;
                      InvokeAsync(StateHasChanged);
                  },
+                 completions,
                  cancellationToken);
             // обновление потерянных сегментов
-            foreach (var message in ChatService.Session.Messages.Where(m => m.Segments.Count == 0))
+            var messages = ChatService.Session.GetMessagesSnapshot().Where(m => m.Segments.Count == 0).ToList();
+            foreach (var message in messages)
             {
                 MessageParser.UpdateSegments(message.Content, message);
             }
             result = true;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             HandleCancellation(assistantMessage);
         }
@@ -171,30 +174,34 @@ public partial class AiChat : RadzenComponent
             }
         }
 
-        var assistantMessage = CreateStreamingMessage();
+        var assistantMessage = VisualChatMessage.CreateStreaming();
         ChatService.Session.AddMessage(assistantMessage);
         await ChatService.SaveSessionAsync();
         await InvokeAsync(StateHasChanged);
+
+        var completions = new CompletionsResult();
 
         try
         {
             await ChatService.ProcessStreamAsync(
                 assistantMessage,
-                ChatService.GetCompletionsAsync(cancellationToken),
+                ChatService.GetCompletionsAsync(completions, cancellationToken),
                 onContentUpdate: content => MessageParser.UpdateSegments(content, assistantMessage),
-                onToolCallsUpdate: toolCalls => {
+                onToolCallsUpdate: toolCalls =>
+                {
                     assistantMessage.ToolCalls = toolCalls;
                     assistantMessage.IsShouldRender = true;
                 },
                 onStateChange: () =>
                 {
-                    assistantMessage.Model ??= ChatService.LastCompletionsModel;
+                    assistantMessage.Model ??= completions.Model;
                     InvokeAsync(StateHasChanged);
                 },
+                completions,
                 cancellationToken);
-            await HandleStreamCompletionAsync(assistantMessage, cancellationToken);
+            await HandleStreamCompletionAsync(assistantMessage, completions, cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             HandleCancellation(assistantMessage);
         }
@@ -212,14 +219,14 @@ public partial class AiChat : RadzenComponent
         }
     }
 
-    private async Task HandleStreamCompletionAsync(VisualChatMessage message, CancellationToken cancellationToken)
+    private async Task HandleStreamCompletionAsync(VisualChatMessage message, CompletionsResult result, CancellationToken cancellationToken)
     {
-        NotifyIfNeeded();
+        NotifyIfNeeded(result);
         ParsePlan(message);
         await ChatService.SaveSessionAsync();
 
         // Handle native tool_calls from the API response
-        message.ToolCalls = ChatService.AccumulatedToolCalls;
+        message.ToolCalls = result.AccumulatedToolCalls;
         if (message.ToolCalls is { Count: > 0 })
         {
             ToolCallHandler.PrepareToolsForApprovals(message.ToolCalls);
@@ -239,9 +246,9 @@ public partial class AiChat : RadzenComponent
         }
     }
 
-    private void NotifyIfNeeded()
+    private void NotifyIfNeeded(CompletionsResult result)
     {
-        if (ChatService.FinishReason?.Equals("length", StringComparison.OrdinalIgnoreCase) == true)
+        if (result.FinishReason?.Equals("length", StringComparison.OrdinalIgnoreCase) == true)
         {
             NotificationService.Notify(new NotificationMessage
             {
@@ -253,12 +260,12 @@ public partial class AiChat : RadzenComponent
             });
         }
 
-        if (!string.IsNullOrEmpty(ChatService.LastError))
+        if (!string.IsNullOrEmpty(result.Error))
         {
             NotificationService.Notify(new NotificationMessage
             {
                 Severity = NotificationSeverity.Error,
-                Summary = ChatService.LastError,
+                Summary = result.Error,
                 Detail = string.Empty,
                 Duration = 30_000,
                 ShowProgress = true,
@@ -327,18 +334,10 @@ public partial class AiChat : RadzenComponent
         {
             message.RetryCountdown = 0;
         }
-        
+
         ChatService.Session.RemoveMessage(message.Id);
         await retryAction.Invoke();
     }
-
-    private static VisualChatMessage CreateStreamingMessage(string initialContent = "") => new()
-    {
-        Role = ChatMessageRole.Assistant,
-        IsStreaming = true,
-        IsExpanded = true,
-        Content = initialContent
-    };
 
     private static void ParsePlan(VisualChatMessage message)
     {
@@ -372,7 +371,8 @@ public partial class AiChat : RadzenComponent
 
     private void LoadMessagesFromSession()
     {
-        foreach (var chatMessage in Messages)
+        var messages = ChatService.Session.GetMessagesSnapshot().ToList();
+        foreach (var chatMessage in messages)
         {
             if (chatMessage.Role == ChatMessageRole.Assistant)
             {
@@ -407,6 +407,8 @@ public partial class AiChat : RadzenComponent
 
         _dotNetRef = DotNetObjectReference.Create(this);
         ChatService.SessionChanged += HandleSessionChanged;
+        SubAgentExecutor.SubAgentStateChanged += OnSubAgentStateChanged;
+        ToolCallHandler.ApprovalRequired += OnApprovalRequired;
 
         ToolManager.RegisterAllTools();
         await VsBridge.InitializeAsync();
@@ -420,6 +422,79 @@ public partial class AiChat : RadzenComponent
 
         LoadMessagesFromSession();
         InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Called when a sub-agent's state changes during execution.
+    /// Triggers Blazor re-render so the ToolCallBlock component can pick up
+    /// the newly-attached SubAgentMessage, subscribe to its StateChanged event,
+    /// and render the SubAgentView with live updates.
+    /// Also checks if the sub-agent has a pending tool call requiring user action.
+    /// </summary>
+    private void OnSubAgentStateChanged(SubAgentMessage subAgent)
+    {
+        // Check if sub-agent has a tool call requiring user action
+        if (!string.IsNullOrEmpty(subAgent.PendingToolCallId))
+        {
+            var toolCallId = subAgent.PendingToolCallId;
+            subAgent.PendingToolCallId = null; // Clear to avoid duplicate notifications
+            _ = InvokeAsync(async () =>
+            {
+                try
+                {
+                    await HandleApprovalRequiredAsync(toolCallId, isSubAgent: true);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "Error handling sub-agent approval notification");
+                }
+            });
+        }
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Called when the main agent's ToolCallHandler has a tool requiring approval or ask_user.
+    /// </summary>
+    private void OnApprovalRequired(string toolCallId)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await HandleApprovalRequiredAsync(toolCallId, isSubAgent: false);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error handling approval notification");
+            }
+        });
+    }
+
+    /// <summary>
+    /// Handles a tool call that requires user action (approval or ask_user).
+    /// Shows a notification and scrolls to the tool call element with highlight.
+    /// </summary>
+    private async Task HandleApprovalRequiredAsync(string toolCallId, bool isSubAgent)
+    {
+        // Show notification
+        NotificationService.Notify(new NotificationMessage
+        {
+            Severity = NotificationSeverity.Warning,
+            Summary = isSubAgent
+                ? $"{SharedResource.SubAgent}: {SharedResource.ApproveRequired}"
+                : SharedResource.ApproveRequired,
+            Detail = string.Empty,
+            Duration = 10_000,
+            ShowProgress = true,
+        });
+
+        // Wait for Blazor to render the tool call block, then scroll to it
+        await Task.Yield();
+        await InvokeAsync(StateHasChanged);
+        await Task.Yield();
+        await JsRuntime.InvokeVoidAsync("scrollToToolCall", toolCallId);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -481,7 +556,7 @@ public partial class AiChat : RadzenComponent
 
     private async Task OnRegenerateLastAsync()
     {
-        var lastAssistantMessage = Messages.LastOrDefault(m => m.Role == ChatMessageRole.Assistant);
+        var lastAssistantMessage = ChatService.Session.GetLastOrDefaultMessage(m => m.Role == ChatMessageRole.Assistant);
         if (lastAssistantMessage != null)
         {
             ChatService.Session.RemoveMessage(lastAssistantMessage.Id);
@@ -514,6 +589,8 @@ public partial class AiChat : RadzenComponent
 
         _dotNetRef?.Dispose();
         ChatService.SessionChanged -= HandleSessionChanged;
+        SubAgentExecutor.SubAgentStateChanged -= OnSubAgentStateChanged;
+        ToolCallHandler.ApprovalRequired -= OnApprovalRequired;
 
         _cts?.Cancel();
         _cts?.Dispose();

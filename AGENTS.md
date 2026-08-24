@@ -63,6 +63,8 @@ Skills: `*SKILL.md` with YAML frontmatter. Local `{solutionDir}/**/skills/**` (p
 
 **Build:** Publish `UIBlazor` → `wwwroot` mapped to `blazorui.local`. Build `InvAit` → VSIX.
 
+**Test (MTPv2):** `dotnet test` or `dotnet test --project UIBlazor.Tests/UIBlazor.Tests.csproj`
+
 **Conventions:**
 - **Diff (`edits`):** Fuzzy matching (trim + case-insensitive). `approximateLine` hint ±5, then full-file search. Applied bottom-to-top.
 - **Tool Calling:** OpenAI-compatible, `strict: true`. Optional params use union types (`["string","null"]`).

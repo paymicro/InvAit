@@ -7,7 +7,7 @@ namespace UIBlazor.Tests.Services;
 /// <summary>
 /// <seealso cref="ChatService"/>
 /// </summary>
-public class ChatServiceTests
+public partial class ChatServiceTests
 {
     private readonly Mock<IProfileManager> _profileManagerMock;
     private readonly Mock<IToolManager> _toolManagerMock;
@@ -85,7 +85,8 @@ public class ChatServiceTests
     {
         // Arrange
         var sessionId = "session_2024-01-01T12:00:00";
-        var existingSession = new ConversationSession { Id = sessionId, Messages = [new() { Content = "Hi" }] };
+        var existingSession = new ConversationSession { Id = sessionId };
+        existingSession.SetMessages([new() { Content = "Hi" }]);
         _localStorageMock.Setup(ls => ls.GetAllKeysAsync())
             .ReturnsAsync([sessionId]);
         _localStorageMock.Setup(ls => ls.TryGetItemAsync<ConversationSession>(sessionId))
@@ -98,7 +99,7 @@ public class ChatServiceTests
 
         // Assert
         Assert.Equal(sessionId, chatService.Session.Id);
-        Assert.Single(chatService.Session.Messages);
+        Assert.Single(chatService.Session.GetMessagesSnapshot());
     }
 
     [Fact]
@@ -116,7 +117,7 @@ public class ChatServiceTests
         // Assert
         Assert.NotNull(chatService.Session);
         Assert.StartsWith("session_", chatService.Session.Id);
-        Assert.Empty(chatService.Session.Messages);
+        Assert.Empty(chatService.Session.GetMessagesSnapshot());
     }
 
     [Fact]
@@ -146,8 +147,9 @@ public class ChatServiceTests
         var chatService = CreateChatService(httpClient);
 
         // Act
+        var result = new CompletionsResult();
         var deltas = new List<ChatDelta>();
-        await foreach (var delta in chatService.GetCompletionsAsync(TestContext.Current.CancellationToken))
+        await foreach (var delta in chatService.GetCompletionsAsync(result, TestContext.Current.CancellationToken))
         {
             deltas.Add(delta);
         }
@@ -180,130 +182,92 @@ public class ChatServiceTests
         var chatService = CreateChatService(httpClient);
 
         // Act
+        var result = new CompletionsResult();
         var deltas = new List<ChatDelta>();
-        await foreach (var delta in chatService.GetCompletionsAsync(TestContext.Current.CancellationToken))
+        await foreach (var delta in chatService.GetCompletionsAsync(result, TestContext.Current.CancellationToken))
         {
             deltas.Add(delta);
         }
 
         // Assert
         Assert.Empty(deltas);
-        Assert.Equal(sseResponse[6..], chatService.LastError);
+        Assert.Equal(sseResponse[6..], result.Error);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  Reasoning token accounting:
+    //  usage.total_tokens includes reasoning, but reasoning is never resent,
+    //  so Session.TotalTokens (context window / compression trigger) and the
+    //  message badge must exclude it.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task GetCompletionsAsync_UsageWithReasoningDetails_ExcludesReasoningFromSessionTokens()
+    {
+        // Arrange - prompt 100 + completion 500 (of which reasoning 300) = total 600.
+        var sseResponse = """
+            data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"reasoner","choices":[{"index":0,"message":null,"delta":{"role":"assistant","content":"Answer","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"reasoner","choices":[],"usage":{"prompt_tokens":100,"completion_tokens":500,"total_tokens":600,"completion_tokens_details":{"reasoning_tokens":300}}}
+            data: [DONE]
+            """;
+
+        var server = WireMockServer.Start();
+        var httpClient = server.CreateClient();
+        server
+            .Given(Request.Create().WithPath("/v1/chat/completions").UsingPost())
+            .RespondWith(
+                Response.Create()
+                    .WithStatusCode(200)
+                    .WithHeader("Content-Type", "text/event-stream")
+                    .WithHeader("Cache-Control", "no-cache")
+                    .WithBody(sseResponse)
+            );
+        var chatService = CreateChatService(httpClient);
+
+        // Act
+        var result = new CompletionsResult();
+        await foreach (var _ in chatService.GetCompletionsAsync(result, TestContext.Current.CancellationToken)) { }
+
+        // Assert - reasoning is a subset of completion (OpenAI semantics):
+        // context footprint = prompt + (completion - reasoning) = 100 + 200 = 300.
+        Assert.Equal(300, result.ReasoningTokens);
+        Assert.Equal(500, result.CompletionTokens);          // full generation incl. reasoning
+        Assert.Equal(200, result.VisibleCompletionTokens);   // visible part of the completion
+        Assert.Equal(300, chatService.Session.TotalTokens);  // total minus reasoning
     }
 
     [Fact]
-    public async Task ProcessStreamAsync_WithReasoningOnly_UpdatesReasoningContent()
+    public async Task GetCompletionsAsync_UsageWithoutReasoningDetails_KeepsStreamingEstimate()
     {
-        // Arrange
-        var message = new VisualChatMessage();
-        var deltas = CreateAsyncEnumerable(
-            new ChatDelta { ReasoningContent = "Thinking step 1" },
-            new ChatDelta { ReasoningContent = "Thinking step 2" }
-        );
+        // Arrange - provider does not send completion_tokens_details; the heuristic
+        // estimate accumulated during streaming must be preserved.
+        var sseResponse = """
+            data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"message":null,"delta":{"role":"assistant","content":"Answer text here","reasoning_content":null,"tool_calls":null},"finish_reason":null}]}
+            data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"message":null,"delta":{"role":null,"content":"more","reasoning_content":null,"tool_calls":null},"finish_reason":"stop"}],"usage":{"prompt_tokens":50,"completion_tokens":30,"total_tokens":80}}
+            data: [DONE]
+            """;
+
+        var server = WireMockServer.Start();
+        var httpClient = server.CreateClient();
+        server
+            .Given(Request.Create().WithPath("/v1/chat/completions").UsingPost())
+            .RespondWith(
+                Response.Create()
+                    .WithStatusCode(200)
+                    .WithHeader("Content-Type", "text/event-stream")
+                    .WithHeader("Cache-Control", "no-cache")
+                    .WithBody(sseResponse)
+            );
+        var chatService = CreateChatService(httpClient);
 
         // Act
-        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, TestContext.Current.CancellationToken);
+        var result = new CompletionsResult();
+        await foreach (var _ in chatService.GetCompletionsAsync(result, TestContext.Current.CancellationToken)) { }
 
-        // Assert
-        Assert.Empty(message.Content);
-        Assert.Equal("Thinking step 1Thinking step 2", message.ReasoningContent);
-    }
-
-    [Fact]
-    public async Task ProcessStreamAsync_WithContentOnly_UpdatesContent()
-    {
-        // Arrange
-        var message = new VisualChatMessage();
-        var deltas = CreateAsyncEnumerable(
-            new ChatDelta { Content = "Hello" },
-            new ChatDelta { Content = " World" }
-        );
-
-        // Act
-        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, TestContext.Current.CancellationToken);
-
-        // Assert
-        Assert.Equal("Hello World", message.Content);
-        Assert.Empty(message.ReasoningContent);
-    }
-
-    [Fact]
-    public async Task ProcessStreamAsync_MixedContent_UpdatesBoth()
-    {
-        // Arrange
-        var message = new VisualChatMessage();
-        var deltas = CreateAsyncEnumerable(
-            new ChatDelta { ReasoningContent = "Reasoning..." },
-            new ChatDelta { Content = "Response" }
-        );
-
-        // Act
-        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, TestContext.Current.CancellationToken);
-
-        // Assert
-        Assert.Equal("Response", message.Content);
-        Assert.Equal("Reasoning...", message.ReasoningContent);
-    }
-
-    [Fact]
-    public async Task ProcessStreamAsync_WithoutModelProvider_LeavesModelNull()
-    {
-        // Arrange
-        var message = new VisualChatMessage();
-        var deltas = CreateAsyncEnumerable(
-            new ChatDelta { Content = "Hello" }
-        );
-
-        // Act
-        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, TestContext.Current.CancellationToken);
-
-        // Assert - message.Model remains null when no provider is given
-        Assert.Null(message.Model);
-    }
-
-    [Fact]
-    public async Task ProcessStreamAsync_CallsOnContentUpdate_WithEachDelta()
-    {
-        // Arrange - onContentUpdate is called with individual deltas for incremental parsing
-        // MessageParser.UpdateSegments handles accumulation internally via AppendToken
-        var message = new VisualChatMessage();
-        var capturedContents = new List<string>();
-        var deltas = CreateAsyncEnumerable(
-            new ChatDelta { Content = "Hello" },
-            new ChatDelta { Content = " World" },
-            new ChatDelta { Content = "!" }
-        );
-
-        // Act
-        await CreateChatService().ProcessStreamAsync(message, deltas, capturedContents.Add, null, null, TestContext.Current.CancellationToken);
-
-        // Assert - onContentUpdate receives individual deltas for incremental parsing
-        Assert.Equal(3, capturedContents.Count);
-        Assert.Equal("Hello", capturedContents[0]);
-        Assert.Equal(" World", capturedContents[1]);
-        Assert.Equal("!", capturedContents[2]);
-        // The message has the correct final content
-        Assert.Equal("Hello World!", message.Content);
-    }
-
-    [Fact]
-    public async Task ProcessStreamAsync_UpdatesTimingsInRealTime()
-    {
-        // Arrange
-        var message = new VisualChatMessage();
-        var deltas = CreateAsyncEnumerable(
-            new ChatDelta { Content = "A" },
-            new ChatDelta { Content = "BC" },
-            new ChatDelta { Content = "DEF" }
-        );
-
-        // Act
-        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, TestContext.Current.CancellationToken);
-
-        // Assert - message.Timings is initialized and updated during streaming
-        Assert.NotNull(message.Timings);
-        Assert.True(message.Timings.TokensInSec >= 0);
-        Assert.True(message.Timings.Total.TotalMilliseconds >= 0);
+        // Assert - no details → no reasoning split; session gets the exact API total
+        Assert.Equal(0, result.ReasoningTokens);
+        Assert.Equal(30, result.CompletionTokens);
+        Assert.Equal(80, chatService.Session.TotalTokens);
     }
 
     private static async IAsyncEnumerable<T> CreateAsyncEnumerable<T>(params T[] items)

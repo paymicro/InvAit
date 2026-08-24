@@ -3,6 +3,13 @@ namespace UIBlazor.Models;
 public class ConversationSession : BaseOptions
 {
     /// <summary>
+    /// Lock object protecting <see cref="Messages"/> from concurrent access
+    /// (background streaming threads vs. UI render thread).
+    /// </summary>
+    [JsonIgnore]
+    private readonly object _messagesLock = new();
+
+    /// <summary>
     /// Gets or sets the unique identifier for the conversation session.
     /// </summary>
     [JsonIgnore]
@@ -10,8 +17,16 @@ public class ConversationSession : BaseOptions
 
     /// <summary>
     /// Gets or sets the list of messages in the conversation.
+    /// The getter/setter are for JSON serialization compatibility only.
+    /// For thread-safe access from application code, use the dedicated methods:
+    /// <see cref="AddMessage"/>, <see cref="RemoveMessage"/>,
+    /// <see cref="GetMessagesSnapshot"/>, <see cref="GetMessageCount"/>,
+    /// <see cref="GetLastMessage"/>, <see cref="SetMessages"/>.
+    /// The getter returns the backing list directly (for serialization);
+    /// callers must NOT use it for concurrent reads — use <see cref="GetMessagesSnapshot"/>.
     /// </summary>
-    public List<VisualChatMessage> Messages { get; set; } = [];
+    [JsonInclude]
+    private List<VisualChatMessage> Messages { get; set; } = [];
 
     /// <summary>
     /// Gets or sets the timestamp when the conversation was created.
@@ -26,7 +41,7 @@ public class ConversationSession : BaseOptions
     /// <summary>
     /// Gets or sets the total tokens used in the conversation.
     /// </summary>
-    public int TotalTokens { get; set; }
+    public int TotalTokens { get; set => SetIfChanged(ref field, value); } = 0;
 
     /// <summary>
     /// Gets or sets the current application mode for this session.
@@ -35,56 +50,142 @@ public class ConversationSession : BaseOptions
 
     /// <summary>
     /// Adds a message object to the conversation and manages memory limits.
+    /// Thread-safe.
     /// </summary>
     public void AddMessage(VisualChatMessage message)
     {
-        Messages.Add(message);
-        LastUpdated = DateTime.Now;
-    }
-
-    /// <summary>
-    /// Removes a message from the conversation.
-    /// </summary>
-    public void RemoveMessage(string id)
-    {
-        var message = Messages.FirstOrDefault(m => m.Id == id);
-        if (message != null)
+        lock (_messagesLock)
         {
-            TotalTokens -= (message.Timings?.Tokens ?? 0) + (message.ToolCalls?.Sum(t => t.Tokens) ?? 0);
-            Messages.Remove(message);
+            Messages.Add(message);
             LastUpdated = DateTime.Now;
         }
     }
 
     /// <summary>
+    /// Removes a message from the conversation.
+    /// Thread-safe.
+    /// </summary>
+    public void RemoveMessage(string id)
+    {
+        lock (_messagesLock)
+        {
+            var message = Messages.FirstOrDefault(m => m.Id == id);
+            if (message != null)
+            {
+                TotalTokens -= (message.Timings?.Tokens ?? 0) + (message.ToolCalls?.Sum(t => t.Tokens) ?? 0);
+                Messages.Remove(message);
+                LastUpdated = DateTime.Now;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Removes the specified message object from the conversation.
+    /// Thread-safe.
+    /// </summary>
+    public void RemoveMessage(VisualChatMessage message)
+    {
+        lock (_messagesLock)
+        {
+            if (Messages.Remove(message))
+            {
+                TotalTokens -= (message.Timings?.Tokens ?? 0) + (message.ToolCalls?.Sum(t => t.Tokens) ?? 0);
+                LastUpdated = DateTime.Now;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns a snapshot copy of the messages list for safe iteration.
+    /// Thread-safe.
+    /// </summary>
+    public List<VisualChatMessage> GetMessagesSnapshot()
+    {
+        lock (_messagesLock)
+            return [.. Messages];
+    }
+
+    /// <summary>
+    /// Returns the number of messages in the conversation.
+    /// Thread-safe.
+    /// </summary>
+    public int GetMessageCount()
+    {
+        lock (_messagesLock)
+            return Messages.Count;
+    }
+
+    /// <summary>
+    /// Returns the last message in the conversation, or null if empty.
+    /// Thread-safe.
+    /// </summary>
+    public VisualChatMessage? GetLastMessage()
+    {
+        lock (_messagesLock)
+            return Messages.Count > 0 ? Messages[^1] : null;
+    }
+
+    /// <summary>
+    /// Replaces all messages with the provided list.
+    /// Thread-safe.
+    /// </summary>
+    public void SetMessages(List<VisualChatMessage> messages)
+    {
+        lock (_messagesLock)
+        {
+            Messages = messages;
+            LastUpdated = DateTime.Now;
+        }
+    }
+
+    /// <summary>
+    /// Returns the last message matching the predicate, or null if none found.
+    /// Thread-safe.
+    /// </summary>
+    public VisualChatMessage? GetLastOrDefaultMessage(Func<VisualChatMessage, bool> predicate)
+    {
+        lock (_messagesLock)
+            return Messages.LastOrDefault(predicate);
+    }
+
+    /// <summary>
     /// Updates the content of a message.
+    /// Thread-safe.
     /// </summary>
     public void UpdateMessage(string id, string content)
     {
-        var message = Messages.FirstOrDefault(m => m.Id == id);
-        if (message != null)
+        lock (_messagesLock)
         {
-            message.Content = content;
-            LastUpdated = DateTime.Now;
+            var message = Messages.FirstOrDefault(m => m.Id == id);
+            if (message != null)
+            {
+                message.Content = content;
+                LastUpdated = DateTime.Now;
+            }
         }
     }
 
     /// <summary>
     /// Gets the conversation messages formatted for the AI API.
+    /// Thread-safe: takes a snapshot of <see cref="Messages"/> under lock.
     /// </summary>
     /// <param name="systemPrompt">The system prompt to include.</param>
     /// <returns>A list of message objects for the AI API.</returns>
     public IEnumerable<object> GetFormattedMessages(string systemPrompt)
     {
+        List<VisualChatMessage> snapshot;
+        lock (_messagesLock)
+            snapshot = [.. Messages];
+
         var messages = new List<object>
         {
             // Add system message
             new { role = ChatMessageRole.System, content = systemPrompt }
         };
 
-        messages.AddRange(PrepareMessages(Messages));
+        messages.AddRange(PrepareMessages(snapshot));
 
-        return Messages is [.., { IsStreaming: true }] // не отправлять последнее сообщение, если оно стримится
+        return snapshot is [.., { IsStreaming: true }] // не отправлять последнее сообщение, если оно стримится
             ? messages.SkipLast(1)
             : messages;
     }
@@ -134,6 +235,10 @@ public class ConversationSession : BaseOptions
 
     public (IEnumerable<object> Messages, VisualChatMessage? LastUserMessage) GetFormattedMessagesForCompress()
     {
+        List<VisualChatMessage> snapshot;
+        lock (_messagesLock)
+            snapshot = [.. Messages];
+
         var messages = new List<object>
         {
             // Add system message
@@ -148,8 +253,8 @@ public class ConversationSession : BaseOptions
             }
         };
 
-        var lastUserMessage = Messages.TakeLast(2).FirstOrDefault(m => m.Role == ChatMessageRole.User);
-        var compressedMessages = Messages.SkipLast(lastUserMessage is null ? 1 : 2);
+        var lastUserMessage = snapshot.TakeLast(2).FirstOrDefault(m => m.Role == ChatMessageRole.User);
+        var compressedMessages = snapshot.SkipLast(lastUserMessage is null ? 1 : 2);
 
         messages.AddRange(PrepareMessages(compressedMessages));
 
