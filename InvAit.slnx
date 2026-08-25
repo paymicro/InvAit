@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/Backend/">
-    <Project Path="ToolCore.Standalone/ToolCore.Standalone.csproj" Id="6eaaebdd-2e16-43ce-9e47-ac324b5800d2" />
+    <Project Path="McpHost.Cli/McpHost.Cli.csproj" />
+    <Project Path="McpHost/McpHost.csproj" />
     <Project Path="ToolCore/ToolCore.csproj" Id="ce5f7c3b-ffb6-4b0b-adba-d10a3b42798d" />
   </Folder>
   <Folder Name="/Tests/">

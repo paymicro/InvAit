@@ -25,4 +25,17 @@ public sealed class InvAitPackage : ToolkitPackage
         await Logger.InitializeAsync();
         await Logger.LogAsync("Started");
     }
+
+    protected override async Task DisposeAsync(bool disposing)
+    {
+        try
+        {
+            await Agent.McpHostRuntime;
+        }
+        catch
+        {
+        }
+
+        base.Dispose(disposing);
+    }
 }

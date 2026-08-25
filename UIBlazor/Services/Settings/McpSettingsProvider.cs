@@ -5,8 +5,7 @@ namespace UIBlazor.Services.Settings;
 public class McpSettingsProvider(
     ILocalStorageService storage,
     ILogger<McpSettingsProvider> logger,
-    IVsBridge vsBridge,
-    HttpClient httpClient)
+    IVsBridge vsBridge)
     : BaseSettingsProvider<McpOptions>(storage, logger, "McpSettings"), IMcpSettingsProvider
 {
     public async Task StopAllAsync()
@@ -52,43 +51,133 @@ public class McpSettingsProvider(
             }
 
             var settingsFile = JsonUtils.Deserialize<McpSettingsFile>(result.Result);
-            if (settingsFile?.McpServers == null)
+            var fileServers = settingsFile?.GetServers();
+            if (fileServers == null || fileServers.Count == 0)
             {
                 logger.LogWarning("mcp.json has no servers defined");
                 return;
             }
 
+            foreach (var name in (settingsFile!.Mcp ?? []).Keys.Intersect((settingsFile.McpServers ?? []).Keys))
+            {
+                logger.LogWarning($"Server '{name}' defined in both 'mcp' and 'mcpServers'; using 'mcp' entry.");
+            }
+
             var servers = new List<McpServerConfig>();
             var initServerTasks = new List<Task>();
-            foreach (var (name, entry) in settingsFile.McpServers)
+            foreach (var (name, entry) in fileServers)
             {
-                logger.LogInformation($"Loading server: {name}");
-                var isRemote = !string.IsNullOrEmpty(entry.Url);
-                var server = new McpServerConfig
+                logger.LogInformation($"Loading server: {name} (type: {entry.Type ?? "local"})");
+
+                var serverType = entry.Type?.Trim().ToLowerInvariant() ?? string.Empty;
+                if (serverType is not ("" or "local" or "stdio" or "remote" or "http" or "streamable-http"))
                 {
-                    Name = name,
-                    Transport = isRemote ? "http" : "stdio",
-                    Command = entry.Command ?? string.Empty,
-                    Args = entry.Args ?? [],
-                    Url = entry.Url ?? string.Empty,
-                    Endpoint = entry.Url ?? string.Empty,
-                    Env = entry.Env ?? [],
-                    Enabled = true
-                };
+                    Current.ServerErrors[name] =
+                        $"Unknown type '{entry.Type}'. Supported values: 'local', 'stdio', 'remote', 'http', 'streamable-http'.";
+                    continue;
+                }
+
+                var isRemote = serverType is "remote" or "http" or "streamable-http"
+                    || (serverType == "" && !string.IsNullOrEmpty(entry.Url));
+                var enabled = entry.Enabled ?? true;
+
+                McpServerConfig server;
+                if (isRemote)
+                {
+                    if (string.IsNullOrEmpty(entry.Url))
+                    {
+                        Current.ServerErrors[name] = "'type': 'remote' requires a 'url' field.";
+                        continue;
+                    }
+
+                    if (entry.Oauth == true)
+                    {
+                        Current.ServerErrors[name] = "OAuth MCP servers are not supported yet. Use static headers instead.";
+                        continue;
+                    }
+
+                    server = new McpServerConfig
+                    {
+                        Name = name,
+                        Transport = "http",
+                        Url = entry.Url!,
+                        Endpoint = entry.Url!,
+                        Headers = entry.Headers ?? [],
+                        Env = entry.EffectiveEnv ?? [],
+                        Enabled = enabled
+                    };
+                }
+                else
+                {
+                    if (string.IsNullOrEmpty(entry.CommandProgram))
+                    {
+                        Current.ServerErrors[name] =
+                            "Local MCP server requires a 'command' field, e.g. \"command\": [\"npx\", \"-y\", \"@modelcontextprotocol/server-everything\"].";
+                        continue;
+                    }
+
+                    if (!string.IsNullOrEmpty(entry.Url))
+                    {
+                        logger.LogInformation($"Server '{name}' is local; ignoring its 'url' field.");
+                    }
+
+                    server = new McpServerConfig
+                    {
+                        Name = name,
+                        Transport = "stdio",
+                        Command = entry.CommandProgram!,
+                        Args = entry.EffectiveArgs.ToArray(),
+                        Headers = entry.Headers ?? [],
+                        Env = entry.EffectiveEnv ?? [],
+                        Enabled = enabled
+                    };
+                }
 
                 servers.Add(server);
-                initServerTasks.Add(InitToolsAsync(server));
+
+                if (enabled)
+                {
+                    initServerTasks.Add(InitToolsAsync(server));
+                }
             }
 
             await Task.WhenAll(initServerTasks);
+            PruneOrphanedStates(servers);
             Current.Servers = servers;
             logger.LogInformation($"MCP settings loaded: {servers.Count} servers");
             await SaveAsync();
+        }
+        catch (JsonException jex)
+        {
+            var position = jex.LineNumber >= 0 ? $" (line {jex.LineNumber + 1})" : string.Empty;
+            logger.LogError($"mcp.json parse error{position}: {jex.Message}");
+            Current.ServerErrors["__global__"] = $"mcp.json parse error{position}: {jex.Message}. Fix the file and press reload.";
         }
         catch (Exception ex)
         {
             logger.LogError($"Error loading MCP settings: {ex.Message}");
             Current.ServerErrors["__global__"] = ex.Message;
+        }
+    }
+
+    private void PruneOrphanedStates(List<McpServerConfig> servers)
+    {
+        var names = servers.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var stale in Current.ServerEnabledStates.Keys.Where(k => !names.Contains(k)).ToList())
+        {
+            Current.ServerEnabledStates.Remove(stale);
+        }
+
+        foreach (var stale in Current.ServerApprovalModes.Keys.Where(k => !names.Contains(k)).ToList())
+        {
+            Current.ServerApprovalModes.Remove(stale);
+        }
+
+        foreach (var stale in Current.ToolDisabledStates
+                     .Where(k => !names.Contains(k.Split(':')[0]))
+                     .ToList())
+        {
+            Current.ToolDisabledStates.Remove(stale);
         }
     }
 
@@ -126,124 +215,50 @@ public class McpSettingsProvider(
         {
             logger.LogInformation($"Refreshing tools for server: {server.Name} ({server.Transport})");
 
+            var toolArgs = new Dictionary<string, object>
+            {
+                { "serverId", server.Name },
+                { "command", server.Command },
+                { "args", server.Args },
+                { "env", server.Env },
+                { "url", server.Url },
+                { "headers", server.Headers }
+            };
+
             if (server.Transport == "stdio")
             {
-                var argsString = string.Join(" ", server.Args);
-                var toolArgs = new Dictionary<string, object>
-                {
-                    { "serverId", server.Name },
-                    { "command", server.Command },
-                    { "args", argsString },
-                    { "env", server.Env }
-                };
-
-                logger.LogInformation($"Starting stdio server: {server.Command} {argsString}");
-                var result = await vsBridge.ExecuteToolAsync(BasicEnum.McpGetTools, JsonUtils.Serialize(toolArgs));
-#if DEBUG
-                result = HeadlessMocker.GetVsToolResult(result);
-#endif
-                if (!result.Success)
-                {
-                    logger.LogError($"Failed to get tools from {server.Name}: {result.ErrorMessage}");
-                    return $"Error: {result.ErrorMessage}";
-                }
-
-                var mcpData = JsonUtils.Deserialize<JsonElement>(result.Result);
-                updateResult = await UpdateServerToolsAsync(server, mcpData);
-                logger.LogInformation($"Refresh result for {server.Name}: {updateResult}");
+                logger.LogInformation($"Starting stdio server: {server.Command} {string.Join(" ", server.Args)}");
             }
-            else // http sse
+            else
             {
                 logger.LogInformation($"Connecting to HTTP MCP server: {server.Url}");
-                // MCP SSE handshake
-                using var request = new HttpRequestMessage(HttpMethod.Get, server.Url);
-                using var handshakeResponse = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
-                if (!handshakeResponse.IsSuccessStatusCode)
-                {
-                    logger.LogError($"HTTP server {server.Name} returned status: {handshakeResponse.StatusCode}");
-                    return $"Error: HTTP {handshakeResponse.StatusCode}";
-                }
-                var stream = await handshakeResponse.Content.ReadAsStreamAsync();
-                using var reader = new StreamReader(stream);
-
-                var postUrl = string.Empty;
-
-                while (true)
-                {
-                    var line = await reader.ReadLineAsync();
-                    if (line == null) break;
-
-                    if (line.StartsWith("data: ") && !line.Contains('{'))
-                    {
-                        var path = line[6..].Trim();
-                        var baseUri = new Uri(server.Url);
-                        postUrl = new Uri(baseUri, path).ToString();
-                        logger.LogInformation($"HTTP MCP endpoint: {postUrl}");
-
-                        var nextLine = await reader.ReadLineAsync();
-                        if (nextLine != null && nextLine.StartsWith("event: endpoint"))
-                        {
-                            break;
-                        }
-                    }
-                }
-
-                var mcpRequest = new McpRequest
-                {
-                    Method = "tools/list",
-                    Params = new { },
-                    Id = "list_req_" + Guid.NewGuid().ToString("N")
-                };
-
-                using var requestMessage = new HttpRequestMessage(HttpMethod.Post, postUrl)
-                {
-                    Content = new StringContent(JsonUtils.Serialize(mcpRequest), Encoding.UTF8, "application/json")
-                };
-
-                requestMessage.Content.Headers.ContentType!.CharSet = null;
-                logger.LogInformation($"Requesting tools list from {postUrl}");
-                var postResponse = await httpClient.SendAsync(requestMessage);
-
-                if (!postResponse.IsSuccessStatusCode)
-                {
-                    logger.LogError($"HTTP server {server.Name} returned code: {postResponse.StatusCode}");
-                    return $"{updateResult} {postResponse.StatusCode}";
-                }
-
-                while (true)
-                {
-                    var line = await reader.ReadLineAsync();
-                    if (line == null)
-                        break;
-
-                    if (line.StartsWith("data: "))
-                    {
-                        var jsonData = line[6..].Trim();
-                        var mcpData = JsonUtils.Deserialize<McpResponse>(jsonData);
-                        if (mcpData?.Id == mcpRequest.Id && mcpData.Result is JsonElement jsonElement)
-                        {
-                            updateResult = await UpdateServerToolsAsync(server, jsonElement);
-                            logger.LogInformation($"HTTP refresh result for {server.Name}: {updateResult}");
-                            break;
-                        }
-                    }
-                }
             }
+
+            var result = await vsBridge.ExecuteToolAsync(BasicEnum.McpGetTools, JsonUtils.Serialize(toolArgs));
+#if DEBUG
+            result = HeadlessMocker.GetVsToolResult(result);
+#endif
+            if (!result.Success)
+            {
+                logger.LogError($"Failed to get tools from {server.Name}: {result.ErrorMessage}");
+                return $"Error: {result.ErrorMessage}";
+            }
+
+            var mcpData = JsonUtils.Deserialize<JsonElement>(result.Result);
+            if (mcpData.ValueKind != JsonValueKind.Object)
+            {
+                var snippet = result.Result is { Length: > 0 } raw ? raw[..Math.Min(raw.Length, 800)] : "<empty payload>";
+                logger.LogError($"Unexpected tools payload from {server.Name} ({mcpData.ValueKind}): {snippet}");
+                return $"Error: Unexpected tools payload (see output window).";
+            }
+
+            updateResult = await UpdateServerToolsAsync(server, mcpData);
+            logger.LogInformation($"Refresh result for {server.Name}: {updateResult}");
         }
         catch (Exception ex)
         {
             logger.LogError($"Error refreshing tools for {server.Name}: {ex.Message}");
             return $"Error: {ex.Message}";
-        }
-
-        // Restore tool enabled state from persisted settings
-        if (server.Tools.Count > 0)
-        {
-            foreach (var tool in server.Tools)
-            {
-                var toolKey = $"{server.Name}:{tool.Name}";
-                tool.Enabled = !Current.ToolDisabledStates.Contains(toolKey);
-            }
         }
 
         return updateResult;

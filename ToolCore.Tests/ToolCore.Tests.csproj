@@ -26,7 +26,19 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="TestAssets\**" />
+    <Content Remove="TestAssets\**" />
+    <None Remove="TestAssets\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\McpHost\McpHost.csproj" />
     <ProjectReference Include="..\ToolCore\ToolCore.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="TestAssets\EchoMcpServer\EchoMcpServer.csproj" />
+    <ProjectReference Include="TestAssets\HttpEchoMcpServer\HttpEchoMcpServer.csproj" />
   </ItemGroup>
 
 </Project>

@@ -114,7 +114,7 @@ public class ToolManager(
         });
 
         var mcp = mcpSettingsProvider.Current.Enabled
-            ? GetMcpTools().Where(t => !mcpSettingsProvider.Current.ToolDisabledStates.Contains(t.Name))
+            ? GetMcpTools().Where(t => !mcpSettingsProvider.Current.ToolDisabledStates.Contains($"{t.Server}:{t.DisplayName}"))
             : [];
 
         return builtIn.Concat(mcp);
@@ -149,7 +149,7 @@ public class ToolManager(
         if (_mcpToolsCache != null)
             return _mcpToolsCache;
 
-        _mcpToolsCache = BuildMcpTools();
+        _mcpToolsCache = BuildMcpTools().ToList();
         return _mcpToolsCache;
     }
 
@@ -178,7 +178,7 @@ public class ToolManager(
 
                 var toolName = $"mcp__{server.Name}__{toolConfig.Name}";
 
-                var isEnabled = !mcpSettingsProvider.Current.ToolDisabledStates.Contains(toolName);
+                var isEnabled = !mcpSettingsProvider.Current.ToolDisabledStates.Contains($"{server.Name}:{toolConfig.Name}");
                 var currentToolConfig = toolConfig;
                 var currentServer = server;
                 yield return new Tool
@@ -199,8 +199,10 @@ public class ToolManager(
                             { "arguments", arguments },
                             // Command/Arguments for auto-start if needed
                             { "command", currentServer.Command },
-                            { "args", string.Join(" ", currentServer.Args) },
+                            { "args", currentServer.Args },
                             { "env", currentServer.Env },
+                            { "url", currentServer.Url },
+                            { "headers", currentServer.Headers },
                             { "timeoutMs", commonSettingsProvider.Current.ToolTimeoutMs }
                         };
 
@@ -213,17 +215,16 @@ public class ToolManager(
 
     public ToolApprovalMode GetApprovalModeByToolName(string name)
     {
-        if (name.StartsWith("mcp__"))
+        if (name.StartsWith("mcp__", StringComparison.Ordinal))
         {
-            var parts = name.Split("__", 3, StringSplitOptions.None);
-            if (parts.Length >= 2)
+            var rest = name["mcp__".Length..];
+            var separator = rest.IndexOf("__", StringComparison.Ordinal);
+            var serverName = separator > 0 ? rest[..separator] : rest;
+            if (mcpSettingsProvider.Current.ServerApprovalModes.TryGetValue(serverName, out var mode))
             {
-                var serverName = parts[1];
-                if (mcpSettingsProvider.Current.ServerApprovalModes.TryGetValue(serverName, out var mode))
-                {
-                    return mode;
-                }
+                return mode;
             }
+
             return ToolApprovalMode.Allow;
         }
 

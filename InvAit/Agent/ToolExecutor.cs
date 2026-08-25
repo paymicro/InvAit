@@ -15,7 +15,9 @@ using Microsoft.Build.Evaluation;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
 using Shared.Contracts;
+using Shared.Contracts.McpHost;
 using ToolCore;
+using ToolCore.McpHost;
 using IAsyncDisposable = Microsoft.VisualStudio.Threading.IAsyncDisposable;
 using Process = System.Diagnostics.Process;
 using Shell = Microsoft.VisualStudio.Shell;
@@ -26,8 +28,6 @@ namespace InvAit.Agent;
 
 public class ToolExecutor : IAsyncDisposable
 {
-    private readonly McpProcessManager _mcpProcessManager = new(new VsLogger());
-    // private readonly McpManager _mcpManager = new(new VsLogger());
     private readonly ProcessExecutor _processExecutor = new(new VsLogger());
     private readonly Dictionary<string, string> _skillPathByName = [];
     private readonly FileUtils _fileUtils = new();
@@ -1306,22 +1306,14 @@ public class ToolExecutor : IAsyncDisposable
         public int Line { get; set; }
     }
 
-    private readonly ConcurrentDictionary<string, bool> _initializedServers = new();
-
     private async Task<VsResponse> StopAllMcpServersAsync()
     {
-        try
+        if (!McpHostRuntime.Supervisor.IsConnected)
         {
-            await _mcpProcessManager.StopAllProcessesAsync();
-            // await _mcpManager.StopAllAsync();
-            _initializedServers.Clear();
-            return new VsResponse { Success = true, Payload = "All MCP processes stopped." };
+            return new VsResponse { Success = true, Payload = "All MCP servers stopped." };
         }
-        catch (Exception ex)
-        {
-            await Logger.LogAsync($"Error stopping all MCP processes: {ex.Message}", "ERROR");
-            return new VsResponse { Success = false, Error = ex.Message };
-        }
+
+        return await SendToMcpHostAsync(McpHostMethods.StopAll, null, TimeSpan.FromSeconds(30));
     }
 
     private static string GetMcpSettingsPath()
@@ -1393,9 +1385,8 @@ public class ToolExecutor : IAsyncDisposable
 
             if (!File.Exists(filePath))
             {
-                // Create a sample mcp.json
-                var sample = "{\n  \"mcpServers\": {}\n}";
-                File.WriteAllText(filePath, sample, Encoding.UTF8);
+                var sample = "{\n  \"mcp\": {}\n}";
+                File.WriteAllText(filePath, sample);
             }
 
             var doc = await VS.Documents.OpenAsync(filePath);
@@ -1414,98 +1405,62 @@ public class ToolExecutor : IAsyncDisposable
         }
     }
 
-    private async Task<string> EnsureServerRunningAsync(string serverId, string? command = null, string? arguments = null, Dictionary<string, string> env = null)
+    private async Task<VsResponse> SendToMcpHostAsync(string method, object? parameters, TimeSpan timeout)
     {
-        if (!_mcpProcessManager.IsProcessRunning(serverId))
+        try
         {
-            if (string.IsNullOrEmpty(command))
-            {
-                return $"ERROR: Server {serverId} not running and no command provided to start it";
-            }
+            var supervisor = McpHostRuntime.Supervisor;
+            await supervisor.EnsureStartedAsync();
 
-            _initializedServers.TryRemove(serverId, out _);
-            var solutionPath = await GetSolutionPathAsync();
-            var startResult = await _mcpProcessManager.StartProcessAsync(serverId, command, arguments ?? "", solutionPath, env);
-
-            if (!startResult.StartsWith("OK"))
+            var response = await supervisor.SendRequestAsync(method, parameters, timeout);
+            return new VsResponse
             {
-                return startResult;
-            }
+                Success = response.Success,
+                Payload = response.Result is { } result ? result.GetRawText() : null,
+                Error = response.Error,
+            };
         }
-        else if (_initializedServers.ContainsKey(serverId))
+        catch (McpHostStartupException ex)
         {
-            return "OK";
+            await Logger.LogAsync($"MCP host startup failed: {ex.UserMessage}", "ERROR");
+            return new VsResponse { Success = false, Error = ex.UserMessage };
         }
-
-        // Этап инициализации (рупокожатия)
-        var requestId = Guid.NewGuid().ToString("N");
-        var initRequest = new McpRequest
+        catch (TimeoutException)
         {
-            Id = requestId,
-            Method = "initialize",
-            Params = new
-            {
-                protocolVersion = "2024-11-05",
-                capabilities = new { },
-                clientInfo = new { name = "InvAit", version = Vsix.Version }
-            }
-        };
-
-        var responseJson = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(initRequest), 100_000);
-        if (!responseJson.Success)
-            return responseJson.Error;
-
-        var initializedNotification = new McpNotification
+            return new VsResponse { Success = false, Error = $"MCP host request '{method}' timed out." };
+        }
+        catch (Exception ex)
         {
-            Method = "notifications/initialized",
-            Params = new { }
-        };
-
-        await _mcpProcessManager.SendMessageAsync(serverId, JsonUtils.SerializeCompact(initializedNotification));
-        _initializedServers[serverId] = true;
-        return "OK";
+            await Logger.LogAsync($"MCP host request '{method}' failed: {ex.Message}", "ERROR");
+            return new VsResponse { Success = false, Error = ex.Message };
+        }
     }
 
     private async Task<VsResponse> McpGetToolsAsync(IReadOnlyDictionary<string, object> args)
     {
-        var serverId = args.GetString("param1") ?? args.GetString("serverId");
-        var command = args.GetString("param2") ?? args.GetString("command");
-        var arguments = args.GetString("param3") ?? args.GetString("args");
+        var serverId = args.GetString("serverId");
+        var command = args.GetString("command");
+        var arguments = args.GetObject<List<string>>("args") ?? [];
         var env = args.GetDictionary("env");
+        var url = args.GetString("url");
+        var headers = args.GetDictionary("headers");
 
         if (string.IsNullOrEmpty(serverId))
         {
             return new VsResponse { Success = false, Error = "serverId is required" };
         }
 
-        //try
-        //{
-        //    var result = await _mcpManager.ListToolsAsync(serverId);
-        //    return new VsResponse { Payload = JsonUtils.Serialize(result) };
-        //}
-        //catch (Exception ex)
-        //{
-        //    return new VsResponse { Success = false, Error = ex.Message };
-        //}
-
-        // old
-        var runResult = await EnsureServerRunningAsync(serverId, command, arguments, env);
-        if (runResult != "OK")
+        var solutionPath = await GetSolutionPathAsync();
+        return await SendToMcpHostAsync(McpHostMethods.ListTools, new McpListToolsParams
         {
-            return new VsResponse { Success = false, Error = runResult };
-        }
-
-        try
-        {
-            var requestId = Guid.NewGuid().ToString("N");
-            var request = new McpRequest { Id = requestId, Method = "tools/list", Params = new { } };
-            var result = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(request), 20_000);
-            return new VsResponse { Success = result.Success, Payload = result.Payload, Error = result.Error };
-        }
-        catch (Exception ex)
-        {
-            return new VsResponse { Success = false, Error = ex.Message };
-        }
+            ServerId = serverId,
+            Command = command ?? string.Empty,
+            Args = arguments,
+            WorkingDirectory = solutionPath,
+            Url = url,
+            Headers = headers,
+            Env = env,
+        }, TimeSpan.FromSeconds(90));
     }
 
     private async Task<VsResponse> McpCallToolAsync(IReadOnlyDictionary<string, object> args)
@@ -1525,55 +1480,36 @@ public class ToolExecutor : IAsyncDisposable
             toolArgs = toolArgsRaw;
         }
 
-        // Command/Arguments for auto-start if needed
         var command = args.GetString("command");
-        var commandArgs = args.GetString("args");
+        var commandArgs = args.GetObject<List<string>>("args") ?? [];
         var env = args.GetDictionary("env");
+        var url = args.GetString("url");
+        var headers = args.GetDictionary("headers");
 
         if (string.IsNullOrEmpty(serverId) || string.IsNullOrEmpty(toolName))
         {
             return new VsResponse { Success = false, Error = "serverId and toolName are required" };
         }
 
-        //try
-        //{
-        //    var result = await _mcpManager.CallToolAsync(serverId, toolName, toolArgs);
-        //    return new VsResponse { Success = result.Success, Payload = result.Payload, Error = result.Error };
-        //}
-        //catch (Exception ex)
-        //{
-        //    return new VsResponse { Success = false, Error = ex.Message };
-        //}
-
-        // old
-        var runResult = await EnsureServerRunningAsync(serverId, command, commandArgs, env);
-        if (runResult != "OK")
+        var solutionPath = await GetSolutionPathAsync();
+        return await SendToMcpHostAsync(McpHostMethods.CallTool, new McpCallToolParams
         {
-            return new VsResponse { Success = false, Error = runResult };
-        }
-
-        try
-        {
-            var requestId = Guid.NewGuid().ToString("N");
-            var request = new McpRequest
-            {
-                Id = requestId,
-                Method = "tools/call",
-                Params = new { name = toolName, arguments = toolArgs ?? new { } }
-            };
-
-            var result = await _mcpProcessManager.CallMethodAsync(serverId, requestId, JsonUtils.SerializeCompact(request), timeoutMs);
-            return new VsResponse { Success = result.Success, Payload = result.Payload, Error = result.Error };
-        }
-        catch (Exception ex)
-        {
-            return new VsResponse { Success = false, Error = ex.Message };
-        }
+            ServerId = serverId,
+            Command = command ?? string.Empty,
+            Args = commandArgs,
+            WorkingDirectory = solutionPath,
+            Url = url,
+            Headers = headers,
+            Env = env,
+            ToolName = toolName,
+            Arguments = toolArgs as JsonElement?,
+            TimeoutMs = timeoutMs,
+        }, TimeSpan.FromMilliseconds(timeoutMs) + TimeSpan.FromSeconds(30));
     }
 
-    public async Task DisposeAsync()
+    public Task DisposeAsync()
     {
-        await StopAllMcpServersAsync();
+        return Task.CompletedTask;
     }
 
     private class SearchFileInfo

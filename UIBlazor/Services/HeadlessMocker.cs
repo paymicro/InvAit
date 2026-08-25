@@ -22,14 +22,14 @@ public class HeadlessMocker
             {
                 Result = JsonUtils.Serialize(new McpSettingsFile
                 {
-                    McpServers = new Dictionary<string, McpServerJsonEntry>
+                    Mcp = new Dictionary<string, McpServerJsonEntry>
                     {
                         {
                             "ui-test",
                             new McpServerJsonEntry
                             {
-                                Command = "npx",
-                                Args = ["-y", "ui-test"],
+                                Type = "local",
+                                Command = ["npx", "-y", "ui-test"],
                                 Env = new Dictionary<string, string> { { "env1", "val1" } }
                             }
                         }
