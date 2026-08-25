@@ -29,4 +29,39 @@ public partial class ToolManagerTests
         var secondCallTools = _toolManager.GetMcpTools().ToList();
         Assert.Equal(2, secondCallTools.Count);
     }
+
+    [Fact]
+    public void GetEnabledTools_McpDisableKey_FiltersByServerAndDisplayName()
+    {
+        var schema = JsonSerializer.SerializeToElement(new { type = "object", properties = new { } });
+        _mcpOptions.Servers.Add(new McpServerConfig
+        {
+            Name = "srv",
+            Enabled = true,
+            Tools =
+            [
+                new McpToolConfig { Name = "tool1", InputSchema = schema },
+                new McpToolConfig { Name = "tool2", InputSchema = schema }
+            ]
+        });
+        _mcpOptions.ToolDisabledStates.Add("srv:tool1");
+        _toolManager.RegisterAllTools();
+
+        var mcpDisplayNames = _toolManager.GetEnabledTools(AppMode.Agent)
+            .Where(t => t.Category == ToolCategory.Mcp)
+            .Select(t => t.DisplayName)
+            .ToList();
+
+        Assert.Equal(["tool2"], mcpDisplayNames);
+    }
+
+    [Fact]
+    public void GetApprovalModeByToolName_McpDunderName_UsesServerApprovalMode()
+    {
+        _mcpOptions.ServerApprovalModes["my"] = ToolApprovalMode.Ask;
+
+        var mode = _toolManager.GetApprovalModeByToolName("mcp__my__sub__tool");
+
+        Assert.Equal(ToolApprovalMode.Ask, mode);
+    }
 }

@@ -49,6 +49,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Agent\SolutionStructure.cs" />
+    <Compile Include="Agent\McpHostRuntime.cs" />
     <Compile Include="Agent\ToolExecutor.cs" />
     <Compile Include="Agent\VsCodeContextPublisher.cs" />
     <Compile Include="Agent\VsLogger.cs" />
@@ -140,7 +141,7 @@
     <PropertyGroup>
       <BlazorProjectPath>$(SolutionDir)UIBlazor\UIBlazor.csproj</BlazorProjectPath>
     </PropertyGroup>
-    <Exec Command="dotnet publish &quot;$(BlazorProjectPath)&quot; -c $(Configuration) --output UI" Condition="!Exists('UI\wwwroot\index.html')" />
+    <Exec Command="dotnet publish &quot;$(BlazorProjectPath)&quot; -c $(Configuration) --output UI" />
     <ItemGroup>
       <Content Include="UI\**\*.*">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -150,5 +151,17 @@
   </Target>
   <Target Name="RemoveUIBlazor" BeforeTargets="Clean">
     <RemoveDir Directories="UI" />
+  </Target>
+  <Target Name="IncludeMcpHostInVsix" BeforeTargets="_CopyFilesMarkedCopyLocal;_CopyFilesToOutputDirectory;_CopySourceItemsToOutputDirectory">
+    <Exec Command="dotnet publish &quot;$(MSBuildProjectDirectory)\..\McpHost\McpHost.csproj&quot; -c $(Configuration) --output MCPHost" />
+    <ItemGroup>
+      <Content Include="MCPHost\**\*.*">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <IncludeInVSIX>true</IncludeInVSIX>
+      </Content>
+    </ItemGroup>
+  </Target>
+  <Target Name="RemoveMcpHost" BeforeTargets="Clean">
+    <RemoveDir Directories="MCPHost" />
   </Target>
 </Project>

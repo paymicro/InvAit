@@ -12,6 +12,20 @@
 
     @if (McpSettingsProvider.Current.Enabled)
     {
+        var orphanErrors = McpSettingsProvider.Current.ServerErrors
+            .Where(kv => kv.Key == "__global__" || McpSettingsProvider.Current.Servers.All(s => s.Name != kv.Key))
+            .ToList();
+
+        @if (orphanErrors.Any())
+        {
+            @foreach (var error in orphanErrors)
+            {
+                <RadzenStack class="server-error-text">
+                    <strong>@(error.Key == "__global__" ? SharedResource.Error : error.Key):</strong> @error.Value
+                </RadzenStack>
+            }
+        }
+
         @if (!McpSettingsProvider.Current.Servers.Any())
         {
             <RadzenText TextStyle="TextStyle.Caption" class="server-error-text">
