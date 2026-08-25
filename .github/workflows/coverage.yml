@@ -30,8 +30,10 @@ jobs:
           dotnet restore UIBlazor.Tests/UIBlazor.Tests.csproj
 
       - name: Test & Collect Coverage
+        # Белый список: считаем покрытие только продуктивной сборки UI.
+        # Новые NuGet-зависимости не попадут в отчет автоматически.
         run: |
-          dotnet test --project UIBlazor.Tests/UIBlazor.Tests.csproj -c Release --results-directory TestResults --coverlet --coverlet-output-format cobertura --coverlet-exclude "[*.Tests]*,[Shared.Contracts]*,[*.Models]*,[*GraphQL*]*,[*Humanizer*]*,[*Meziantou*]*,[*Moq*]*,[Newtonsoft.*]*"
+          dotnet test --project UIBlazor.Tests/UIBlazor.Tests.csproj -c Release --results-directory TestResults --coverlet --coverlet-output-format cobertura --coverlet-include "[UIBlazor]*"
 
       - name: Generate Report
         uses: danielpalme/ReportGenerator-GitHub-Action@5.5.2
@@ -39,7 +41,7 @@ jobs:
           reports: 'TestResults/**/coverage.cobertura.*.xml'
           targetdir: 'coveragereport'
           reporttypes: 'HtmlInline;Badges'
-          assemblyfilters: '+*;-*.Tests;-GraphQL*;-Humanizer*;-Meziantou*;-Moq*;-Newtonsoft*'
+          assemblyfilters: '+*;-*.Tests'
 
       - name: Deploy to GitHub Pages
         if: github.ref == 'refs/heads/master'
