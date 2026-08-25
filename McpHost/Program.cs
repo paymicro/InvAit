@@ -1,4 +1,13 @@
+using System.Text;
 using McpHost;
+
+try
+{
+    Console.OutputEncoding = Encoding.UTF8;
+}
+catch
+{
+}
 
 var pipeName = args.Length > 1 && args[0] == "--pipe-name" ? args[1] : null;
 var idleExitMs = 30_000;

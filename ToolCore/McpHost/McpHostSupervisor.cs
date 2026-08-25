@@ -286,6 +286,8 @@ public sealed class McpHostSupervisor : IAsyncDisposable
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
             WorkingDirectory = Path.GetDirectoryName(hostPath) ?? Environment.CurrentDirectory,
         };
 

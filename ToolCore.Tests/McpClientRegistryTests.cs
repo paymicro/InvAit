@@ -288,6 +288,28 @@ public class McpClientRegistryIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task CallTool_Cyrillic_RoundTripsUnescaped()
+    {
+        var registry = new McpClientRegistry();
+        await using (registry)
+        {
+            var result = await registry.CallToolAsync(new McpCallToolParams
+            {
+                ServerId = "cyr-test",
+                Command = GetEchoServerExePath(),
+                ToolName = "cyr",
+                Arguments = JsonSerializer.SerializeToElement(new { text = "мир — «тест» \"в кавычках\"" }),
+            }, CancellationToken.None);
+
+            Assert.False(result.GetProperty("isError").GetBoolean());
+            var text = Text(result);
+            Assert.Contains("Привет, мир — «тест» \"в кавычках\"!", text);
+            Assert.DoesNotContain("\\u", result.GetRawText());
+            Assert.DoesNotContain("\\u04", text);
+        }
+    }
+
     private static string Text(JsonElement toolResult)
         => toolResult.GetProperty("content")[0].GetProperty("text").GetString() ?? string.Empty;
 

@@ -1,5 +1,3 @@
-using System.IO;
-
 namespace Shared.Ipc;
 
 /// <summary>
@@ -48,13 +46,13 @@ public static class FrameCodec
 
     private static async Task<bool> ReadExactAsync(Stream stream, byte[] buffer, CancellationToken cancellationToken)
     {
-        int total = 0;
+        var total = 0;
         while (total < buffer.Length)
         {
 #if NETSTANDARD2_0
-            int read = await stream.ReadAsync(buffer, total, buffer.Length - total, cancellationToken).ConfigureAwait(false);
+            var read = await stream.ReadAsync(buffer, total, buffer.Length - total, cancellationToken).ConfigureAwait(false);
 #else
-            int read = await stream.ReadAsync(buffer.AsMemory(total), cancellationToken).ConfigureAwait(false);
+            var read = await stream.ReadAsync(buffer.AsMemory(total), cancellationToken).ConfigureAwait(false);
 #endif
             if (read <= 0) return false;
             total += read;

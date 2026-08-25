@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Encodings.Web;
 using Shared.Contracts.McpHost;
 
 namespace McpHost;
@@ -10,6 +11,7 @@ public sealed class RequestDispatcher
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
     private readonly long _startedAtTimestamp = Stopwatch.GetTimestamp();

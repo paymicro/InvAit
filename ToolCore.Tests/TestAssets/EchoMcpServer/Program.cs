@@ -42,6 +42,11 @@ var options = new McpServerOptions
             Name = "sleep",
             Description = "Sleeps for the given number of milliseconds.",
         }),
+        McpServerTool.Create((string text) => $"Привет, {text}!", new McpServerToolCreateOptions
+        {
+            Name = "cyr",
+            Description = "Возвращает приветствие с кириллицей.",
+        }),
         McpServerTool.Create((Func<string>)(() => { Environment.Exit(7); return ""; }), new McpServerToolCreateOptions
         {
             Name = "exit",
