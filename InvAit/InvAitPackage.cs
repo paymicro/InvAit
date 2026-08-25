@@ -26,11 +26,11 @@ public sealed class InvAitPackage : ToolkitPackage
         await Logger.LogAsync("Started");
     }
 
-    protected override async Task DisposeAsync(bool disposing)
+    protected override void Dispose(bool disposing)
     {
         try
         {
-            await Agent.McpHostRuntime;
+            Agent.McpHostRuntime.ShutdownAsync().FileAndForget("McpHostShutdown");
         }
         catch
         {
