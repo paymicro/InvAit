@@ -2,7 +2,11 @@
 
 <RadzenTabs RenderMode="TabRenderMode.Client" class="settings">
     <Tabs>
-        <RadzenTabsItem Text="@SharedResource.SettingsGeneral">
+        <RadzenTabsItem title="@SharedResource.SettingsGeneral">
+            <Template>
+                <i class="fa-solid fa-sliders"></i>
+            </Template>
+            <ChildContent>
             <RadzenStack Gap="1rem">
                 <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
                     <RadzenText TextStyle="TextStyle.Subtitle1">@SharedResource.Profile:</RadzenText>
@@ -85,11 +89,44 @@
 
                 <CheckBox Text="@SharedResource.SkipSSL" @bind-Value=@ProfileManager.ActiveProfile.SkipSSL />
             </RadzenStack>
+            </ChildContent>
         </RadzenTabsItem>
-        <RadzenTabsItem Text="@SharedResource.SystemPromptSettings">
-            <SystemPromptSettings />
+
+        @* Prompt + Misc *@
+        <RadzenTabsItem title="@SharedResource.SystemPromptSettings">
+            <Template>
+                <i class="fa-solid fa-file-lines"></i>
+            </Template>
+            <ChildContent>
+            <RadzenStack Gap="1rem">
+                <SystemPromptSettings />
+
+                <RadzenDivider class="settings-divider" />
+
+                <RadzenText TextStyle="TextStyle.Overline">@SharedResource.SettingsMisc</RadzenText>
+
+                <RadzenStack Gap="1rem">
+                    <RadzenStack Gap="0.2rem">
+                        <RadzenLabel Text="@SharedResource.MaxRetries" />
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                            <RadzenSlider @bind-Value="@CommonSettingsProvider.Current.MaxRetries" Min="0" Max="50" Step="1" Style="width: 100%; height: 20px;" />
+                            <RadzenLabel Text="@CommonSettingsProvider.Current.MaxRetries.ToString()" Style="text-align: right; width: 50px;" />
+                        </RadzenStack>
+                    </RadzenStack>
+
+                    <CheckBox Text="@SharedResource.ShowMessageTimings" @bind-Value="@CommonSettingsProvider.Current.ShowMessageTimings" />
+
+                    <LanguageSelector />
+                </RadzenStack>
+            </RadzenStack>
+            </ChildContent>
         </RadzenTabsItem>
-        <RadzenTabsItem Text="@SharedResource.SettingsTools">
+
+        <RadzenTabsItem title="@SharedResource.SettingsTools">
+            <Template>
+                <i class="fa-solid fa-screwdriver-wrench"></i>
+            </Template>
+            <ChildContent>
             <RadzenStack Gap="1rem">
                 @foreach (var category in _toolCategories)
                 {
@@ -173,26 +210,16 @@
                     </RadzenStack>
                 </RadzenStack>
             </RadzenStack>
+            </ChildContent>
         </RadzenTabsItem>
 
-        <RadzenTabsItem Text="MCP">
-            <MCPSettingsTab />
-        </RadzenTabsItem>
-        <RadzenTabsItem Text="@SharedResource.SettingsMisc">
-            <RadzenStack Gap="1rem">
-                
-                <RadzenStack Gap="0.2rem">
-                    <RadzenLabel Text="@SharedResource.MaxRetries" />
-                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                        <RadzenSlider @bind-Value="@CommonSettingsProvider.Current.MaxRetries" Min="0" Max="50" Step="1" Style="width: 100%; height: 20px;" />
-                        <RadzenLabel Text="@CommonSettingsProvider.Current.MaxRetries.ToString()" Style="text-align: right; width: 50px;" />
-                    </RadzenStack>
-                </RadzenStack>
-                
-                <CheckBox Text="@SharedResource.ShowMessageTimings" @bind-Value="@CommonSettingsProvider.Current.ShowMessageTimings" />
-
-                <LanguageSelector />
-            </RadzenStack>
+        <RadzenTabsItem title="MCP">
+            <Template>
+                <i class="fa-solid fa-plug"></i>
+            </Template>
+            <ChildContent>
+                <MCPSettingsTab />
+            </ChildContent>
         </RadzenTabsItem>
     </Tabs>
 </RadzenTabs>

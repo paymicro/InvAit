@@ -188,6 +188,19 @@ code.hljs {
         display: block !important;
     }
 
+/* Icon-only tab headers */
+.settings .rz-tabview-nav-link {
+    justify-content: center;
+}
+
+.settings .rz-tabview-title i {
+    font-size: 1.1rem;
+}
+
+.settings .settings-divider {
+    margin: 0;
+}
+
 .rz-slider {
     transition: var(--rz-transition-all);
 }

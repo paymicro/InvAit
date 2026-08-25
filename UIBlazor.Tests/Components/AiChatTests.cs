@@ -76,6 +76,7 @@ public class AiChatTests : BunitContext
         Services.AddSingleton<IRetryHandler>(new RetryHandler());
         Services.AddSingleton<IToolCallHandler>(new ToolCallHandler(_mockToolManager.Object));
         Services.AddSingleton(new Mock<ISubAgentExecutor>().Object);
+        Services.AddSingleton(new Mock<ISkillService>().Object);
 
         // Add Radzen components
         Services.AddRadzenComponents();

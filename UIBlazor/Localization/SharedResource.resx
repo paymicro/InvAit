@@ -420,6 +420,9 @@
   <data name="CommandCompact" xml:space="preserve">
     <value>Summarize session to reduce context size</value>
   </data>
+  <data name="CommandSkillNotFound" xml:space="preserve">
+    <value>Skill '{0}' not found</value>
+  </data>
   <data name="SendCurrentDate" xml:space="preserve">
     <value>Send current date</value>
   </data>

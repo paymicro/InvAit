@@ -19,6 +19,9 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
         }
 
         var result = await vsBridge.ExecuteToolAsync(BasicEnum.GetSkillsMetadata, null, cancellationToken);
+#if DEBUG
+        result = HeadlessMocker.GetVsToolResult(result);
+#endif
         if (!result.Success)
         {
             return _skillsCache ?? [];
@@ -56,6 +59,9 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
 
         var args = JsonUtils.SerializeCompact(new { skillName });
         var result = await vsBridge.ExecuteToolAsync(BasicEnum.ReadSkillContent, args, cancellationToken);
+#if DEBUG
+        result = HeadlessMocker.GetVsToolResult(result);
+#endif
         if (!result.Success)
         {
             return null;

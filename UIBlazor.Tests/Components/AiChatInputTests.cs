@@ -14,6 +14,7 @@ public class AiChatInputTests : BunitContext
     private readonly Mock<ICommonSettingsProvider> _mockCommonSettings;
     private readonly Mock<IProfileManager> _mockProfileManager;
     private readonly Mock<IJSRuntime> _mockJsRuntime;
+    private readonly Mock<ISkillService> _mockSkillService;
     private readonly ConversationSession _session;
     private readonly ConnectionProfile _profile;
     private readonly VsCodeContext _vsCodeContext;
@@ -26,6 +27,7 @@ public class AiChatInputTests : BunitContext
         _mockCommonSettings = new Mock<ICommonSettingsProvider>();
         _mockProfileManager = new Mock<IProfileManager>();
         _mockJsRuntime = new Mock<IJSRuntime>();
+        _mockSkillService = new Mock<ISkillService>();
 
         // Setup session
         _session = new ConversationSession
@@ -58,6 +60,8 @@ public class AiChatInputTests : BunitContext
         _mockCommonSettings.Setup(x => x.Current).Returns(new CommonOptions());
         _mockProfileManager.Setup(x => x.ActiveProfile).Returns(_profile);
         _mockVsCodeContextService.Setup(x => x.CurrentContext).Returns(_vsCodeContext);
+        _mockSkillService.Setup(x => x.GetSkillsMetadataAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
 
         // Register services
         Services.AddSingleton(_mockChatService.Object);
@@ -66,6 +70,7 @@ public class AiChatInputTests : BunitContext
         Services.AddSingleton(_mockCommonSettings.Object);
         Services.AddSingleton(_mockProfileManager.Object);
         Services.AddSingleton(_mockJsRuntime.Object);
+        Services.AddSingleton(_mockSkillService.Object);
         Services.AddSingleton(new Mock<ILogger<AiChatInput>>().Object);
 
         // Add Radzen components
@@ -941,6 +946,146 @@ public class AiChatInputTests : BunitContext
         // Assert - dropdown should reflect the change
         var modeDropdown = cut.FindComponent<RadzenDropDown<AppMode>>();
         Assert.Equal(AppMode.Agent, modeDropdown.Instance.Value);
+    }
+
+    #endregion
+
+    #region Slash Command / Skill Tests
+
+    [Fact]
+    public async Task Slash_ShowsCompactCommand()
+    {
+        // Arrange
+        var cut = Render<AiChatInput>();
+        var textarea = cut.Find("textarea.text-input");
+
+        // Act
+        await cut.InvokeAsync(() => textarea.Input("/"));
+
+        // Assert
+        var hintItems = cut.FindAll(".hint-item");
+        Assert.Single(hintItems);
+        Assert.Contains("compact", hintItems[0].TextContent);
+    }
+
+    [Fact]
+    public async Task Slash_ShowsSkills_InMenu()
+    {
+        // Arrange
+        _mockSkillService.Setup(x => x.GetSkillsMetadataAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new SkillMetadata { Name = "code-review", Description = "Review code quality" },
+                new SkillMetadata { Name = "refactor", Description = "Refactoring guide" }
+            ]);
+        var cut = Render<AiChatInput>();
+        var textarea = cut.Find("textarea.text-input");
+
+        // Act
+        await cut.InvokeAsync(() => textarea.Input("/"));
+
+        // Assert - compact + 2 skills
+        var hintItems = cut.FindAll(".hint-item");
+        Assert.Equal(3, hintItems.Count);
+        Assert.Contains("code-review", hintItems[1].TextContent);
+        Assert.Contains("Review code quality", hintItems[1].TextContent);
+    }
+
+    [Fact]
+    public async Task Slash_FiltersCommandsAndSkills_ByQuery()
+    {
+        // Arrange
+        _mockSkillService.Setup(x => x.GetSkillsMetadataAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new SkillMetadata { Name = "skill-a", Description = "A" }]);
+        var cut = Render<AiChatInput>();
+        var textarea = cut.Find("textarea.text-input");
+
+        // Act
+        await cut.InvokeAsync(() => textarea.Input("/ski"));
+
+        // Assert
+        var hintItems = cut.FindAll(".hint-item");
+        Assert.Single(hintItems);
+        Assert.Contains("skill-a", hintItems[0].TextContent);
+    }
+
+    [Fact]
+    public async Task Enter_OnSkillCommand_InvokesCommandTriggered_WithSkillPrefix()
+    {
+        // Arrange
+        string? triggered = null;
+        _mockSkillService.Setup(x => x.GetSkillsMetadataAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new SkillMetadata { Name = "my-skill", Description = "My skill" }]);
+
+        var cut = Render<AiChatInput>(parameters => parameters
+            .Add(p => p.CommandTriggered, EventCallback.Factory.Create<string>(this, cmd => triggered = cmd)));
+        var textarea = cut.Find("textarea.text-input");
+
+        // Act
+        await cut.InvokeAsync(() => textarea.Input("/my-skill"));
+        await cut.InvokeAsync(() => textarea.KeyDown("Enter"));
+
+        // Assert
+        Assert.Equal($"{AiChatInput.SkillCommandPrefix}my-skill", triggered);
+    }
+
+    [Fact]
+    public async Task Slash_FindsSkill_BySubstring()
+    {
+        // Arrange
+        _mockSkillService.Setup(x => x.GetSkillsMetadataAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new SkillMetadata { Name = "test-skill", Description = "A" }]);
+        var cut = Render<AiChatInput>();
+        var textarea = cut.Find("textarea.text-input");
+
+        // Act - "skill" является частью имени "test-skill"
+        await cut.InvokeAsync(() => textarea.Input("/skill"));
+
+        // Assert
+        var hintItems = cut.FindAll(".hint-item");
+        Assert.Single(hintItems);
+        Assert.Contains("test-skill", hintItems[0].TextContent);
+    }
+
+    [Fact]
+    public async Task Slash_PrefixMatches_ComeBefore_SubstringMatches()
+    {
+        // Arrange
+        _mockSkillService.Setup(x => x.GetSkillsMetadataAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new SkillMetadata { Name = "my-skill", Description = "A" },
+                new SkillMetadata { Name = "skill-helper", Description = "B" }
+            ]);
+        var cut = Render<AiChatInput>();
+        var textarea = cut.Find("textarea.text-input");
+
+        // Act - оба содержат "skill", но skill-helper начинается с него
+        await cut.InvokeAsync(() => textarea.Input("/skill"));
+
+        // Assert
+        var hintItems = cut.FindAll(".hint-item");
+        Assert.Equal(2, hintItems.Count);
+        Assert.Contains("skill-helper", hintItems[0].TextContent);
+        Assert.Contains("my-skill", hintItems[1].TextContent);
+    }
+
+    [Fact]
+    public async Task BuiltinCommand_TakesPriorityOver_SkillWithSameName()
+    {
+        // Arrange
+        _mockSkillService.Setup(x => x.GetSkillsMetadataAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new SkillMetadata { Name = "compact", Description = "Duplicate" }]);
+        var cut = Render<AiChatInput>();
+        var textarea = cut.Find("textarea.text-input");
+
+        // Act
+        await cut.InvokeAsync(() => textarea.Input("/"));
+
+        // Assert - only one compact entry with builtin description
+        var hintItems = cut.FindAll(".hint-item");
+        Assert.Single(hintItems);
+        Assert.Contains(SharedResource.CommandCompact, hintItems[0].TextContent);
     }
 
     #endregion

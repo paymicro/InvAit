@@ -178,6 +178,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Skill '{0}' not found.
+        /// </summary>
+        public static string CommandSkillNotFound {
+            get {
+                return ResourceManager.GetString("CommandSkillNotFound", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Compressing....
         /// </summary>
         public static string Compressing {

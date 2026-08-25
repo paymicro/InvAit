@@ -81,22 +81,21 @@
         </div>
     </div>
 
-    @* Всплывающее меню с файлами или командами *@
-    @if (_filteredCommands.Any())
+    @* Всплывающее меню с файлами или командами/скиллами *@
+    @if (_filteredSuggestions.Any())
     {
         <div class="hints-menu">
             <ul class="hints-list">
-                @for (var i = 0; i < _filteredCommands.Count; i++)
+                @for (var i = 0; i < _filteredSuggestions.Count; i++)
                 {
                     var index = i;
-                    var cmd = _filteredCommands[i];
-                    var desc = _availableCommands[cmd];
+                    var cmd = _filteredSuggestions[i];
                     var isSelected = index == _selectedIndex;
                     <li class="hint-item @(isSelected ? "selected" : "")"
                     @onclick="() => SendCommandAsync(cmd)">
-                        <span class="file-icon">⌘</span>
-                        <span class="file-name">@cmd</span>
-                        <span class="file-path">@desc</span>
+                        <span class="file-icon">@cmd.Icon</span>
+                        <span class="file-name">@cmd.Name</span>
+                        <span class="file-path">@cmd.Description</span>
                     </li>
                 }
             </ul>
@@ -138,6 +137,14 @@
     [Inject] private IVsBridge VsBridge { get; set; } = null!;
     [Inject] private ICommonSettingsProvider CommonSettingsProvider { get; set; } = null!;
     [Inject] private IProfileManager ProfileManager { get; set; } = null!;
+    [Inject] private ISkillService SkillService { get; set; } = null!;
+
+    /// <summary>
+    /// Префикс команды вызова скилла: "skill:{name}"
+    /// </summary>
+    public const string SkillCommandPrefix = "skill:";
+
+    public sealed record CommandSuggestion(string Name, string Description, string Icon, bool IsSkill = false);
 
     private static readonly Dictionary<string, string> _availableCommands = new()
     {
@@ -148,9 +155,10 @@
     private readonly List<InputToken> _tokens = [];
     private string _currentInput = string.Empty;
     private List<string> _filteredFiles = [];
-    private List<string> _filteredCommands = [];
+    private List<CommandSuggestion> _filteredSuggestions = [];
     private int _selectedIndex;
     private bool _shouldPreventDefault;
+    private List<SkillMetadata> _skills = [];
 
     // Local mirrors of profile flags for reliable RadzenToggleButton rendering
     private bool _sendCurrentFile;
@@ -176,15 +184,20 @@
 
         var trimmed = _currentInput.TrimStart();
 
-        // Команда через / в начале строки
+        // Команда через / в начале строки (встроенные команды + скиллы)
         if (trimmed.StartsWith('/'))
         {
             var query = trimmed.Substring(1); // текст после /
 
-            _filteredCommands = string.IsNullOrEmpty(query)
-                ? [.. _availableCommands.Keys]
-                : _availableCommands.Keys
-                    .Where(c => c.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+            var allSuggestions = GetCommandSuggestions();
+
+            _filteredSuggestions = string.IsNullOrEmpty(query)
+                ? allSuggestions.Take(10).ToList()
+                : allSuggestions
+                    .Where(c => c.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+                    // Совпадения по префиксу — выше, остальные по вхождению
+                    .OrderByDescending(c => c.Name.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+                    .ThenBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
                     .Take(10)
                     .ToList();
             _filteredFiles.Clear();
@@ -216,7 +229,28 @@
         else
         {
             _filteredFiles.Clear();
-            _filteredCommands.Clear();
+            _filteredSuggestions.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Все доступные suggestions после /: встроенные команды + скиллы (команды имеют приоритет)
+    /// </summary>
+    private IEnumerable<CommandSuggestion> GetCommandSuggestions()
+    {
+        foreach (var (name, description) in _availableCommands)
+        {
+            yield return new CommandSuggestion(name, description, "⌘");
+        }
+
+        foreach (var skill in _skills)
+        {
+            if (string.IsNullOrWhiteSpace(skill.Name) || _availableCommands.ContainsKey(skill.Name))
+            {
+                continue;
+            }
+
+        yield return new CommandSuggestion(skill.Name, skill.Description, "✨", IsSkill: true);
         }
     }
 
@@ -252,7 +286,7 @@
         await FocusInputAsync();
     }
 
-    private async Task SendCommandAsync(string command)
+    private async Task SendCommandAsync(CommandSuggestion suggestion)
     {
         // Удаляем / и текст после него из currentInput
         var trimmed = _currentInput.TrimStart();
@@ -265,11 +299,12 @@
             }
         }
 
-        _filteredCommands.Clear();
+        _filteredSuggestions.Clear();
         _selectedIndex = 0;
         await FocusInputAsync();
 
-        // вызов команды
+        // вызов команды (скиллы передаются с префиксом skill:)
+        var command = suggestion.IsSkill ? $"{SkillCommandPrefix}{suggestion.Name}" : suggestion.Name;
         await CommandTriggered.InvokeAsync(command);
     }
 
@@ -287,7 +322,7 @@
 
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
-        var count = _filteredFiles.Count + _filteredCommands.Count;
+        var count = _filteredFiles.Count + _filteredSuggestions.Count;
         if (count > 0)
         {
             switch (e.Key)
@@ -306,9 +341,9 @@
                         _shouldPreventDefault = true;
                         if (_selectedIndex >= 0 && _selectedIndex < count)
                         {
-                            if (_filteredCommands.Count > 0)
+                            if (_filteredSuggestions.Count > 0)
                             {
-                                await SendCommandAsync(_filteredCommands[_selectedIndex]);
+                                await SendCommandAsync(_filteredSuggestions[_selectedIndex]);
                             }
                             else
                             {
@@ -320,13 +355,13 @@
                 case "Escape":
                     _shouldPreventDefault = true;
                     _filteredFiles.Clear();
-                    _filteredCommands.Clear();
+                    _filteredSuggestions.Clear();
                     return;
             }
         }
 
         // Enter без Shift/Ctrl — отправка
-        if (e is { Key: "Enter", CtrlKey: false, ShiftKey: false } && !_filteredFiles.Any() && !(_filteredCommands.Any()))
+        if (e is { Key: "Enter", CtrlKey: false, ShiftKey: false } && !_filteredFiles.Any() && !(_filteredSuggestions.Any()))
         {
             _shouldPreventDefault = true;
             await OnSendClick();
@@ -376,7 +411,7 @@
         _currentInput = string.Empty;
         _tokens.Clear();
         _filteredFiles.Clear();
-        _filteredCommands.Clear();
+        _filteredSuggestions.Clear();
 
         await SendMessage.InvokeAsync(message);
     }
@@ -403,12 +438,23 @@
         };
     }
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        base.OnInitialized();
         SyncLocalFlags();
         ChatService.SessionChanged += HandlePropertyChanged;
         ProfileManager.PropertyChanged += HandlePropertyChanged;
+
+        try
+        {
+            var skills = await SkillService.GetSkillsMetadataAsync(CancellationToken.None);
+            _skills = skills ?? [];
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Скиллы недоступны — оставляем только встроенные команды
+            _skills = [];
+        }
     }
 
     private void SyncLocalFlags()

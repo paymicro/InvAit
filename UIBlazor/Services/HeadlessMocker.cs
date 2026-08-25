@@ -130,6 +130,35 @@ public class HeadlessMocker
                     ]
                 }),
             },
+            BasicEnum.GetSkillsMetadata => new VsToolResult
+            {
+                Result = JsonUtils.Serialize(new List<SkillMetadata>
+                {
+                    new()
+                    {
+                        Name = "test-skill",
+                        Description = "Test skill for headless UI testing without VS"
+                    }
+                })
+            },
+            BasicEnum.ReadSkillContent => new VsToolResult
+            {
+                Result = JsonUtils.Serialize(new SkillContent
+                {
+                    Name = "test-skill",
+                    Description = "Test skill for headless UI testing without VS",
+                    Content = """
+                             # Test Skill
+
+                             This is a test skill for running the UI without Visual Studio.
+
+                             ## Instructions
+
+                             1. Verify that skills metadata is loaded.
+                             2. Verify that skill content activation works via slash command.
+                             """
+                })
+            },
             BuiltInToolEnum.ReadOpenFile => new VsToolResult
             {
                 Result = """

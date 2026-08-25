@@ -420,6 +420,9 @@
   <data name="CommandCompact" xml:space="preserve">
     <value>Суммировать сессию для уменьшения объема контекста</value>
   </data>
+  <data name="CommandSkillNotFound" xml:space="preserve">
+    <value>Скилл '{0}' не найден</value>
+  </data>
   <data name="SendCurrentDate" xml:space="preserve">
     <value>Отправить текущую дату</value>
   </data>

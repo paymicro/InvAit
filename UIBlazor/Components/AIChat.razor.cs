@@ -34,6 +34,7 @@ public partial class AiChat : RadzenComponent
     [Inject] private IRetryHandler RetryHandler { get; set; } = null!;
     [Inject] private IToolCallHandler ToolCallHandler { get; set; } = null!;
     [Inject] private ISubAgentExecutor SubAgentExecutor { get; set; } = null!;
+    [Inject] private ISkillService SkillService { get; set; } = null!;
 
     public async Task NewSessionAsync()
     {
@@ -62,6 +63,13 @@ public partial class AiChat : RadzenComponent
     {
         if (IsLoading) return;
 
+        // Вызов скилла: "skill:{name}"
+        if (command.StartsWith(AiChatInput.SkillCommandPrefix, StringComparison.Ordinal))
+        {
+            await InvokeSkillAsync(command[AiChatInput.SkillCommandPrefix.Length..]);
+            return;
+        }
+
         switch (command)
         {
             case "compact":
@@ -80,6 +88,55 @@ public partial class AiChat : RadzenComponent
                 }
                 break;
         }
+    }
+
+    /// <summary>
+    /// Активация скилла пользователем через слэш-команду.
+    /// Загружает содержимое скилла и отправляет его модели как инструкцию.
+    /// </summary>
+    private async Task InvokeSkillAsync(string skillName)
+    {
+        if (string.IsNullOrWhiteSpace(skillName)) return;
+
+        VsToolResult result;
+        try
+        {
+            var args = JsonUtils.SerializeCompact(new { skillName });
+            result = await SkillService.LoadSkillContentMarkDownAsync(args, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load skill {SkillName}", skillName);
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = string.Format(SharedResource.CommandSkillNotFound, skillName),
+                Detail = ex.Message,
+                Duration = 10_000,
+                ShowProgress = true,
+            });
+            return;
+        }
+
+        if (!result.Success || string.IsNullOrWhiteSpace(result.Result))
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = string.Format(SharedResource.CommandSkillNotFound, skillName),
+                Detail = result.ErrorMessage,
+                Duration = 10_000,
+                ShowProgress = true,
+            });
+            return;
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"The user activated the skill \"{skillName}\" via slash command. Follow its instructions below.");
+        sb.AppendLine();
+        sb.AppendLine(result.Result.Trim());
+
+        await SendMessageAsync(sb.ToString());
     }
 
     private async Task ScrollToBottomAsync()
