@@ -28,12 +28,17 @@ jobs:
         run: |
           dotnet restore UIBlazor/UIBlazor.csproj
           dotnet restore UIBlazor.Tests/UIBlazor.Tests.csproj
+          dotnet restore ToolCore.Tests/ToolCore.Tests.csproj
 
-      - name: Test & Collect Coverage
+      - name: Test & Collect Coverage (UIBlazor)
         # Белый список: считаем покрытие только продуктивной сборки UI.
         # Новые NuGet-зависимости не попадут в отчет автоматически.
         run: |
-          dotnet test --project UIBlazor.Tests/UIBlazor.Tests.csproj -c Release --results-directory TestResults --coverlet --coverlet-output-format cobertura --coverlet-include "[UIBlazor]*"
+          dotnet test --project UIBlazor.Tests/UIBlazor.Tests.csproj -c Release --results-directory TestResults/UIBlazor --coverlet --coverlet-output-format cobertura --coverlet-include "[UIBlazor]*"
+
+      - name: Test & Collect Coverage (ToolCore)
+        run: |
+          dotnet test --project ToolCore.Tests/ToolCore.Tests.csproj -c Release --results-directory TestResults/ToolCore --coverlet --coverlet-output-format cobertura --coverlet-include "[ToolCore]*"
 
       - name: Generate Report
         uses: danielpalme/ReportGenerator-GitHub-Action@5.5.2

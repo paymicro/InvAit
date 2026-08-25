@@ -8,7 +8,21 @@ namespace ToolCore.Tests;
 internal static class TestAssetLocator
 {
     public static string GetAssetExePath(string assetProjectDirName, string exeName)
-        => GetProjectOutputPath(Path.Combine("TestAssets", assetProjectDirName, "bin", GetConfiguration(), "net10.0", exeName));
+    {
+        var path = GetProjectOutputPath(Path.Combine("TestAssets", assetProjectDirName, "bin", GetConfiguration(), "net10.0", exeName));
+
+        // На Unix apphost собирается без расширения .exe
+        if (!OperatingSystem.IsWindows() && !File.Exists(path))
+        {
+            var withoutExtension = Path.ChangeExtension(path, null);
+            if (File.Exists(withoutExtension))
+            {
+                return withoutExtension;
+            }
+        }
+
+        return path;
+    }
 
     public static string GetHostDllPath()
         => GetProjectOutputPath(Path.Combine("..", "McpHost", "bin", GetConfiguration(), "net10.0", "InvAit.McpHost.dll"));
