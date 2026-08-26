@@ -1,5 +1,7 @@
+/* overflow: clip (не hidden): hidden создаёт scroll-контейнер и ломает
+   position:sticky у .header внутри раскрытого блока */
 .custom-details {
-    overflow: hidden;
+    overflow: clip;
     transition: border-color 0.3s ease, box-shadow 0.3s ease;
     margin-bottom: 8px;
     font-size: 0.9rem;
@@ -8,6 +10,9 @@
 }
 
 .header {
+    position: sticky;
+    top: -8px;
+    z-index: 1;
     padding: 0.6rem 0.8rem;
     cursor: pointer;
     display: flex;
@@ -36,12 +41,16 @@
     border-radius: 0.5em;
 }
 
-.is-expanded .content-wrapper {
+/* Только ">" (прямой потомок): селектор ".is-expanded .content-wrapper" при
+   раскрытом внешнем Details принудительно разворачивал и ВЛОЖЕННЫЕ Details */
+.is-expanded > .content-wrapper {
     grid-template-rows: 1fr;
 }
 
 .content-inner {
-    overflow: hidden;
+    /* clip вместо hidden: не создавать scroll-контейнер, чтобы sticky-заголовки
+       ВЛОЖЕННЫХ Details (напр. результат внутри ToolCallBlock) работали относительно чата */
+    overflow: clip;
     min-height: 0;
 }
 
@@ -51,7 +60,7 @@
     margin: 0;
 }
 
-.is-expanded .arrow {
+.is-expanded > .header .arrow {
     transform: rotate(180deg);
 }
 

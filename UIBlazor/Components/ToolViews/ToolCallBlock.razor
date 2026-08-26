@@ -9,85 +9,93 @@
 *@
 
 <div class="tool-call-block" data-tool="@ToolCall.Function.Name" data-toolcall-id="@ToolCall.Id">
-    <div class="tool-call-header @StatusClass">
-        @if (!ToolCall.IsReady)
-        {
-            <i class="fa-regular fa-hourglass fa-spin"></i> 
-        }
-        @SharedResource.CallingTool: <strong>@DisplayName</strong>        
-        <RadzenBadge BadgeStyle="BadgeStyle.Light" Variant="Variant.Text" title="Tokens for tool">
-            ~@ToolCall.Tokens tokens
-        </RadzenBadge>
-    </div>
-
-    @if (ToolCall.Function.Arguments.Length > 0)
-    {
-        <div class="tool-call-args">
-            @if (ToolCall.Function.Name == BuiltInToolEnum.Edits)
+    @* Весь блок сворачивается через Details; заголовок повторяет прежний .tool-call-header
+       (стиль задается в app.css через переопределение .header). IsExpanded — только начальное
+       состояние (true), внутреннее состояние Details переживает перерендеры родителя. *@
+    <Details IsExpanded="true" class="@($"tool-call-details {StatusClass}")">
+        <HeaderTemplate>
+            @if (!ToolCall.IsReady)
             {
-                var result = new
+                <i class="fa-regular fa-hourglass fa-spin"></i>
+            }
+            <span>@SharedResource.CallingTool:</span>
+            <strong>@DisplayName</strong>
+            <RadzenBadge BadgeStyle="BadgeStyle.Light" Variant="Variant.Text" title="Tokens for tool">
+                ~@ToolCall.Tokens tokens
+            </RadzenBadge>
+        </HeaderTemplate>
+        <ChildContent>
+
+        @if (ToolCall.Function.Arguments.Length > 0)
+        {
+            <div class="tool-call-args">
+                @if (ToolCall.Function.Name == BuiltInToolEnum.Edits)
                 {
-                    filePath = default(string),
-                    edits = default(DiffEdit[])
-                };
-                result = JsonUtils.DeserializePartialAnonymousType(ToolCall.Function.Arguments, result);
-                <DiffView FilePath="@(result.filePath ?? string.Empty)" Edits="@(result.edits ?? [])" />
-            }
-            else if (ToolCall.Function.Name == BuiltInToolEnum.CreateFile)
-            {
-                var result = new
+                    var result = new
+                    {
+                        filePath = default(string),
+                        edits = default(DiffEdit[])
+                    };
+                    result = JsonUtils.DeserializePartialAnonymousType(ToolCall.Function.Arguments, result);
+                    <DiffView FilePath="@(result.filePath ?? string.Empty)" Edits="@(result.edits ?? [])" />
+                }
+                else if (ToolCall.Function.Name == BuiltInToolEnum.CreateFile)
                 {
-                    filePath = default(string),
-                    content = default(string)
-                };
-                result = JsonUtils.DeserializePartialAnonymousType(ToolCall.Function.Arguments, result);
-                <ToolCreateNewFile FilePath="@(result.filePath ?? string.Empty)" Content="@(result.content ?? string.Empty)" />
-            }
-            else if (ToolCall.Function.Name == BasicEnum.AskUser)
-            {
-                <ToolAskOptions Args="@ToolCall.Function.Arguments"
-                                Answer="@ToolCall.Result?.Content"
-                                OnOptionSelectedCallback="@(async (answer) => await OnAskUserAnswer(answer))" />
-            }
-            else if (ToolCall.Function.Name == BuiltInToolEnum.DelegateTask)
-            {
-                <DelegateTaskView Args="@ToolCall.Function.Arguments" />
-            }
-            else
-            {
-                <JsonArgsView Args="@ToolCall.Function.Arguments" />
-            }
-        </div>
-    }
-
-    @if (ToolCall.IsReady && ToolCall.Function.Name != BasicEnum.AskUser)
-    {
-        <div class="tool-approval-footer @StatusClass">
-            @if (ToolCall.ApprovalStatus == ToolApprovalStatus.Pending)
-            {
-                <div class="tool-approval-label"><i class="rz-icon-notification rz-ml-2"></i>@SharedResource.ApproveRequired</div>
-                <div class="tool-approval-actions">
-                    <RadzenButton Icon="check" class="tool-approve-btn rz-m-2" Click="@(async () => await OnApproval.InvokeAsync((ToolCall.Id, true)))" />
-                    <RadzenButton Icon="close" class="tool-reject-btn rz-m-2" Click="@(async () => await OnApproval.InvokeAsync((ToolCall.Id, false)))" />
-                </div>
-            }
-        </div>
-
-        @* Sub-agent view: show expanded conversation when delegate_task has a SubAgent attached *@
-        @if (ToolCall.Function.Name == BuiltInToolEnum.DelegateTask && SubAgent is not null)
-        {
-            <SubAgentView SubAgent="@SubAgent" />
+                    var result = new
+                    {
+                        filePath = default(string),
+                        content = default(string)
+                    };
+                    result = JsonUtils.DeserializePartialAnonymousType(ToolCall.Function.Arguments, result);
+                    <ToolCreateNewFile FilePath="@(result.filePath ?? string.Empty)" Content="@(result.content ?? string.Empty)" />
+                }
+                else if (ToolCall.Function.Name == BasicEnum.AskUser)
+                {
+                    <ToolAskOptions Args="@ToolCall.Function.Arguments"
+                                    Answer="@ToolCall.Result?.Content"
+                                    OnOptionSelectedCallback="@(async (answer) => await OnAskUserAnswer(answer))" />
+                }
+                else if (ToolCall.Function.Name == BuiltInToolEnum.DelegateTask)
+                {
+                    <DelegateTaskView Args="@ToolCall.Function.Arguments" />
+                }
+                else
+                {
+                    <JsonArgsView Args="@ToolCall.Function.Arguments" />
+                }
+            </div>
         }
-        else if (ToolCall.Result is not null)
+
+        @if (ToolCall.IsReady && ToolCall.Function.Name != BasicEnum.AskUser)
         {
-            <Details Text="@ToolCall.Result.DisplayName">
-                @* Intentionally using <pre> instead of <MarkdownBlock> here.
-                   Tool results are typically plain text (file contents, command output, JSON),
-                   not markdown. Rendering as markdown would misformat raw text. *@
-                <pre class="rz-p-2 rz-background-color-base-900 rz-color-white">@ToolCall.Result.Content</pre>
-            </Details>
+            <div class="tool-approval-footer @StatusClass">
+                @if (ToolCall.ApprovalStatus == ToolApprovalStatus.Pending)
+                {
+                    <div class="tool-approval-label"><i class="rz-icon-notification rz-ml-2"></i>@SharedResource.ApproveRequired</div>
+                    <div class="tool-approval-actions">
+                        <RadzenButton Icon="check" class="tool-approve-btn rz-m-2" Click="@(async () => await OnApproval.InvokeAsync((ToolCall.Id, true)))" />
+                        <RadzenButton Icon="close" class="tool-reject-btn rz-m-2" Click="@(async () => await OnApproval.InvokeAsync((ToolCall.Id, false)))" />
+                    </div>
+                }
+            </div>
+
+            @* Sub-agent view: show expanded conversation when delegate_task has a SubAgent attached *@
+            @if (ToolCall.Function.Name == BuiltInToolEnum.DelegateTask && SubAgent is not null)
+            {
+                <SubAgentView SubAgent="@SubAgent" />
+            }
+            else if (ToolCall.Result is not null)
+            {
+                <Details Text="@ToolCall.Result.DisplayName">
+                    @* Intentionally using <pre> instead of <MarkdownBlock> here.
+                       Tool results are typically plain text (file contents, command output, JSON),
+                       not markdown. Rendering as markdown would misformat raw text. *@
+                    <pre class="rz-p-2 rz-background-color-base-900 rz-color-white">@ToolCall.Result.Content</pre>
+                </Details>
+            }
         }
-    }
+        </ChildContent>
+    </Details>
 </div>
 
 @code {

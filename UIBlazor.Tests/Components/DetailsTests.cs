@@ -66,6 +66,40 @@ public class DetailsTests : BunitContext
 
     #endregion
 
+    #region Header Template Tests
+
+    [Fact]
+    public void ShouldRenderHeaderTemplate_WhenProvided()
+    {
+        // Act
+        var cut = Render<Details>(parameters => parameters
+            .Add(p => p.Text, "Ignored Text")
+            .Add(p => p.HeaderTemplate, "<span class=\"tpl-marker\">template header</span>")
+            .AddChildContent("content"));
+
+        // Assert
+        Assert.NotNull(cut.Find(".header-left .tpl-marker"));
+        Assert.Contains("template header", cut.Find(".header-left").TextContent);
+    }
+
+    [Fact]
+    public void HeaderTemplate_TakesPrecedenceOverTextAndIcon()
+    {
+        // Act
+        var cut = Render<Details>(parameters => parameters
+            .Add(p => p.Text, "Ignored Text")
+            .Add(p => p.Icon, "fa-solid fa-lightbulb")
+            .Add(p => p.HeaderTemplate, "<span class=\"tpl-marker\">custom</span>")
+            .AddChildContent("content"));
+
+        // Assert
+        Assert.Contains("custom", cut.Find(".header-left").TextContent);
+        Assert.Throws<ElementNotFoundException>(() => cut.Find(".header-left .icon-spacing"));
+        Assert.DoesNotContain("Ignored Text", cut.Find(".header-left").TextContent);
+    }
+
+    #endregion
+
     #region Icon Tests
 
     [Fact]
@@ -186,6 +220,27 @@ public class DetailsTests : BunitContext
         await cut.InvokeAsync(() => cut.Find(".header").Click());
 
         // Assert
+        Assert.DoesNotContain("is-expanded", cut.Find(".custom-details").ClassList);
+    }
+
+    [Fact]
+    public void IsExpanded_IsInitialValueOnly_ParentRerenderDoesNotResetUserToggle()
+    {
+        // Arrange - развернут изначально
+        var cut = Render<Details>(parameters => parameters
+            .Add(p => p.IsExpanded, true)
+            .AddChildContent("content"));
+
+        // Act - пользователь сворачивает...
+        cut.InvokeAsync(() => cut.Find(".header").Click()).Wait();
+        Assert.DoesNotContain("is-expanded", cut.Find(".custom-details").ClassList);
+
+        // ...а родитель перерендеривается, снова передавая IsExpanded=true (напр. стриминг)
+        cut.Render(parameters => parameters
+            .Add(p => p.IsExpanded, true)
+            .AddChildContent("content"));
+
+        // Assert - выбор пользователя сохранен
         Assert.DoesNotContain("is-expanded", cut.Find(".custom-details").ClassList);
     }
 

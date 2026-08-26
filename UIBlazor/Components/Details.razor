@@ -1,11 +1,18 @@
-<div class="custom-details @(IsExpanded ? "is-expanded" : "") @(IsRounded ? "is-rounded" : "") @CustomClass">
+<div class="custom-details @(_isExpanded ? "is-expanded" : "") @(IsRounded ? "is-rounded" : "") @CustomClass">
     <div class="header" @onclick="Toggle">
         <div class="header-left">
-            @if (!string.IsNullOrEmpty(Icon))
+            @if (HeaderTemplate is not null)
             {
-                <i class="@Icon icon-spacing"></i>
+                @HeaderTemplate
             }
-            @Text
+            else
+            {
+                @if (!string.IsNullOrEmpty(Icon))
+                {
+                    <i class="@Icon icon-spacing"></i>
+                }
+                @Text
+            }
         </div>
         <span class="arrow">▼</span>
     </div>
@@ -19,9 +26,17 @@
 @code {
     [Parameter] public string Text { get; set; } = string.Empty;
     [Parameter] public string? Icon { get; set; }
+    // Кастомное содержимое заголовка; заменяет собой Icon + Text
+    [Parameter] public RenderFragment? HeaderTemplate { get; set; }
     [Parameter] public RenderFragment ChildContent { get; set; } = null!;
+    // Задает только НАЧАЛЬНОЕ состояние раскрытости. Дальше состояние внутреннее:
+    // повторные перерендеры родителя не должны сбрасывать выбор пользователя.
     [Parameter] public bool IsExpanded { get; set; }
     [Parameter] public bool IsRounded { get; set; }
+
+    private bool _isExpanded;
+
+    protected override void OnInitialized() => _isExpanded = IsExpanded;
 
     // Позволяет передавать любые другие атрибуты RadzenSwitch (напр. Title, TabIndex)
     [Parameter(CaptureUnmatchedValues = true)]
@@ -32,5 +47,5 @@
                                       ? AdditionalAttributes["class"].ToString() ?? ""
                                       : "";
 
-    private void Toggle() => IsExpanded = !IsExpanded;
+    private void Toggle() => _isExpanded = !_isExpanded;
 }

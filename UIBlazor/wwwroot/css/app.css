@@ -293,13 +293,15 @@ code.hljs {
 .message-content-wrapper {
     position: relative;
     width: 100%;
-    overflow: hidden;
+    /* clip вместо hidden: hidden создаёт scroll-контейнер и ломает
+       position:sticky у заголовков Details внутри сообщения */
+    overflow: clip;
     transition: max-height 0.3s ease-out;
 }
 
     .message-content-wrapper.collapsed {
         max-height: 18em !important;
-        overflow: hidden !important;
+        overflow: clip !important;
     }
 
         .message-content-wrapper.collapsed::after {
@@ -336,7 +338,7 @@ code.hljs {
     border: 1px solid var(--rz-base-600);
     border-radius: 8px;
     margin: 0.8rem 0;
-    overflow: hidden;
+    overflow: clip;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     transition: box-shadow 0.3s, border-color 0.3s;
 }
@@ -357,27 +359,35 @@ code.hljs {
     }
 }
 
-.tool-call-header {
-    background-color: var(--rz-base-700);
-    padding: 0.6rem 0.8rem;
-    font-size: 0.9rem;
-    border-bottom: 1px solid var(--rz-base-600);
-    color: var(--rz-on-base-dark);
-    border-left: 4px solid var(--rz-info);
-    white-space: normal;
-    display: flex;
-    align-items: center;
+/* Заголовок tool call рендерится компонентом Details (HeaderTemplate) —
+   переопределяем .header, чтобы сохранить прежний вид .tool-call-header */
+.tool-call-block > .custom-details {
+    margin-bottom: 0;
 }
 
-    .tool-call-header strong {
-        color: var(--rz-info-light);
-        margin-left: 0.3rem;
-        font-weight: 600;
+    .tool-call-block .custom-details .header {
+        background-color: var(--rz-base-700);
+        color: var(--rz-on-base-dark);
+        border-bottom: 1px solid var(--rz-base-600);
+        white-space: normal;
     }
 
-    .tool-call-header span:last-child {
-        margin-left: auto;
+    .tool-call-block .custom-details .header-left {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        min-width: 0;
+        flex: 1;
     }
+
+        .tool-call-block .custom-details .header-left strong {
+            color: var(--rz-info-light);
+            font-weight: 600;
+        }
+
+        .tool-call-block .custom-details .header-left .rz-badge {
+            margin-left: auto;
+        }
 
 .tool-call-args {
     padding: 0.6rem 0.8rem;

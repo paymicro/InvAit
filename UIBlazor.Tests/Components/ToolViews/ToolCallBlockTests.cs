@@ -102,20 +102,8 @@ public class ToolCallBlockTests : BunitContext
             builder.CloseElement();
         });
 
-        // Details stub keeps child content visible so tool results can be asserted
-        ComponentFactories.AddStub<Details>(parameters => builder =>
-        {
-            var text = parameters.Get(p => p.Text);
-            var childContent = parameters.Get(p => p.ChildContent);
-            builder.OpenElement(0, "div");
-            builder.AddAttribute(1, "class", "details-stub");
-            builder.AddContent(2, text ?? string.Empty);
-            if (childContent is not null)
-            {
-                builder.AddContent(3, childContent);
-            }
-            builder.CloseElement();
-        });
+        // Details используется реальный: заголовок блока рендерится через HeaderTemplate,
+        // а результат инструмента — через вложенный Details.
     }
 
     private static Tool CreateTool(string name, string displayName)
@@ -162,7 +150,7 @@ public class ToolCallBlockTests : BunitContext
             .Add(p => p.ToolCall, CreateReadyCall(BuiltInToolEnum.ReadFiles)));
 
         // Assert
-        var header = cut.Find(".tool-call-header");
+        var header = cut.Find(".tool-call-details .header");
         Assert.Contains(SharedResource.CallingTool, header.TextContent);
         Assert.Contains("Read Files Display", header.TextContent);
     }
@@ -175,7 +163,7 @@ public class ToolCallBlockTests : BunitContext
             .Add(p => p.ToolCall, CreateReadyCall("some_unknown_tool")));
 
         // Assert
-        Assert.Contains("some_unknown_tool", cut.Find(".tool-call-header").TextContent);
+        Assert.Contains("some_unknown_tool", cut.Find(".tool-call-details .header").TextContent);
     }
 
     [Fact]
@@ -191,7 +179,7 @@ public class ToolCallBlockTests : BunitContext
             .Add(p => p.ToolCall, call));
 
         // Assert
-        Assert.Contains("~28 tokens", cut.Find(".tool-call-header").TextContent);
+        Assert.Contains("~28 tokens", cut.Find(".tool-call-details .header").TextContent);
     }
 
     [Fact]
@@ -206,7 +194,7 @@ public class ToolCallBlockTests : BunitContext
             .Add(p => p.ToolCall, call));
 
         // Assert
-        Assert.NotNull(cut.Find(".tool-call-header i.fa-hourglass"));
+        Assert.NotNull(cut.Find(".tool-call-details .header i.fa-hourglass"));
         Assert.Throws<ElementNotFoundException>(() => cut.Find(".tool-approval-footer"));
     }
 
@@ -229,7 +217,7 @@ public class ToolCallBlockTests : BunitContext
         Assert.Contains(SharedResource.ApproveRequired, cut.Markup);
         Assert.NotNull(cut.Find(".tool-approve-btn"));
         Assert.NotNull(cut.Find(".tool-reject-btn"));
-        Assert.Contains("pending", cut.Find(".tool-call-header").ClassList);
+        Assert.Contains("pending", cut.Find(".tool-call-details").ClassList);
     }
 
     [Fact]
@@ -284,7 +272,7 @@ public class ToolCallBlockTests : BunitContext
             .Add(p => p.ToolCall, call));
 
         // Assert
-        Assert.Contains("rejected", cut.Find(".tool-call-header").ClassList);
+        Assert.Contains("rejected", cut.Find(".tool-call-details").ClassList);
         Assert.Throws<ElementNotFoundException>(() => cut.Find(".tool-approve-btn"));
     }
 
@@ -481,10 +469,10 @@ public class ToolCallBlockTests : BunitContext
         var cut = Render<ToolCallBlock>(parameters => parameters
             .Add(p => p.ToolCall, call));
 
-        // Assert
-        var details = cut.Find(".details-stub");
-        Assert.Contains("✅ Read Files Display", details.TextContent);
-        var pre = details.QuerySelector("pre");
+        // Assert - вложенный Details (результат) внутри внешнего tool-call-details
+        var resultDetails = cut.Find(".tool-call-details .custom-details");
+        Assert.Contains("✅ Read Files Display", resultDetails.TextContent);
+        var pre = resultDetails.QuerySelector("pre");
         Assert.NotNull(pre);
         Assert.Contains("file body content", pre.TextContent);
     }
@@ -496,8 +484,26 @@ public class ToolCallBlockTests : BunitContext
         var cut = Render<ToolCallBlock>(parameters => parameters
             .Add(p => p.ToolCall, CreateReadyCall(BuiltInToolEnum.ReadFiles)));
 
-        // Assert
-        Assert.Throws<ElementNotFoundException>(() => cut.Find(".details-stub"));
+        // Assert - внутри внешнего Details нет вложенного Details с результатом
+        Assert.Throws<ElementNotFoundException>(
+            () => cut.Find(".tool-call-details .custom-details"));
+    }
+
+    [Fact]
+    public async Task ClickHeader_CollapsesWholeBlock_ButContentStaysRendered()
+    {
+        // Arrange
+        var cut = Render<ToolCallBlock>(parameters => parameters
+            .Add(p => p.ToolCall, CreateReadyCall(BuiltInToolEnum.Grep, """{"pattern":"x"}""")));
+
+        Assert.NotNull(cut.Find(".jsonargs-stub"));
+
+        // Act
+        await cut.InvokeAsync(() => cut.Find(".tool-call-details .header").Click());
+
+        // Assert - блок свернут (класс снят), но содержимое остается в DOM
+        Assert.DoesNotContain("is-expanded", cut.Find(".tool-call-details").ClassList);
+        Assert.NotNull(cut.Find(".jsonargs-stub"));
     }
 
     #endregion
