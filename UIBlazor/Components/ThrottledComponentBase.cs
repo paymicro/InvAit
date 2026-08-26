@@ -11,6 +11,7 @@ public abstract class ThrottledComponentBase : ComponentBase, IDisposable
     private bool _shouldRender = true;
     private DateTime _lastRenderTime = DateTime.MinValue;
     private CancellationTokenSource? _pendingCts;
+    private bool _forceTrailingRender;
 
     /// <summary>
     /// Minimum interval between renders in milliseconds.
@@ -31,6 +32,19 @@ public abstract class ThrottledComponentBase : ComponentBase, IDisposable
 
     protected override bool ShouldRender()
     {
+        // Trailing render: it was scheduled when changes existed, so it must not
+        // be vetoed by HasChanges(). Otherwise an identical re-render arriving
+        // between scheduling and firing (e.g. the stream-completion cascade)
+        // clears HasChanges and the last streamed content is never displayed.
+        if (_forceTrailingRender)
+        {
+            _forceTrailingRender = false;
+            _shouldRender = false;
+            _lastRenderTime = DateTime.Now;
+            OnRendered();
+            return true;
+        }
+
         if (!HasChanges())
             return false;
 
@@ -62,7 +76,7 @@ public abstract class ThrottledComponentBase : ComponentBase, IDisposable
         try
         {
             await Task.Delay(RenderIntervalMs, ct);
-            _shouldRender = true;
+            _forceTrailingRender = true;
             StateHasChanged();
         }
         catch (TaskCanceledException) { }

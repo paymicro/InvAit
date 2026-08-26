@@ -197,10 +197,6 @@ code.hljs {
     font-size: 1.1rem;
 }
 
-.settings .settings-divider {
-    margin: 0;
-}
-
 .rz-slider {
     transition: var(--rz-transition-all);
 }

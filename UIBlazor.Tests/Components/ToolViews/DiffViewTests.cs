@@ -159,6 +159,54 @@ public class DiffViewTests : BunitContext
 
     #endregion
 
+    #region Streaming Regression Tests
+
+    [Fact]
+    public async Task Streaming_IdenticalReRenderAfterBurst_FinalContentIsDisplayed()
+    {
+        // Reproduces production bug: while tool-call arguments stream in, each
+        // parent push grows Edits and DiffView throttles the renders. When the
+        // stream completes, ChatService bumps message state -> parent cascade
+        // re-renders with an identical Edits payload -> ParseDiff computes
+        // HasChanges=false, and when the pending delayed render fires it was
+        // vetoed — the last streamed chunk stayed invisible forever.
+        var cut = Render<DiffView>(parameters => parameters
+            .Add(p => p.FilePath, "src\\Program.cs")
+            .Add(p => p.Edits, [CreateEdit(null!, "chunk-0")]));
+        Assert.Contains("chunk-0", cut.Markup);
+
+        // Stream: append tokens strictly INSIDE one throttle window (all pushes
+        // complete within 500ms of the initial render, so none of them can get
+        // an immediate leading render — the trailing delayed render is the only
+        // chance to display them; payload grows monotonically like SSE appends)
+        const string baseChunk = "chunk-0";
+        const string finalChunk = baseChunk + "\nstream-token-6-xxxxxxxxxxxxxxxxxxxx" +
+                                  "\nfinal-line-marker";
+        for (var i = 1; i <= 6; i++)
+        {
+            await Task.Delay(50);
+            var text = i == 6
+                ? finalChunk
+                : baseChunk + $"\nstream-token-{i}-xxxxxxxxxxxxxxxxxxxx";
+            cut.Render(parameters => parameters
+                .Add(p => p.FilePath, "src\\Program.cs")
+                .Add(p => p.Edits, [CreateEdit(null!, text)]));
+        }
+
+        // Stream completed: identical payload pushed again (new array instance,
+        // same values) -> ParseDiff sees no growth -> HasChanges=false
+        cut.Render(parameters => parameters
+            .Add(p => p.FilePath, "src\\Program.cs")
+            .Add(p => p.Edits, new[] { CreateEdit(null!, finalChunk) }));
+
+        // Settle past the interval and assert the final line is displayed
+        cut.WaitForAssertion(
+            () => Assert.Contains("final-line-marker", cut.Markup),
+            TimeSpan.FromSeconds(3));
+    }
+
+    #endregion
+
     #region DiffViewSection Tests
 
     [Fact]

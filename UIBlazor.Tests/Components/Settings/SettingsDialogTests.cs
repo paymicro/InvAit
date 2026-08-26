@@ -99,9 +99,9 @@ public class SettingsDialogTests : BunitContext
         var expectedIcons = new[]
         {
             "fa-sliders",
-            "fa-file-lines",
             "fa-screwdriver-wrench",
-            "fa-plug"
+            "fa-plug",
+            "fa-file-lines"
         };
 
         for (var i = 0; i < expectedIcons.Length; i++)
@@ -133,12 +133,12 @@ public class SettingsDialogTests : BunitContext
         // Arrange & Act
         var cut = Render<SettingsDialog>();
 
-        // Assert
+        // Assert - prompt tab moved to the last position (after MCP)
         var tabButtons = cut.FindAll(".rz-tabview-nav li button[role='tab']");
         Assert.Equal(SharedResource.SettingsGeneral, tabButtons[0].GetAttribute("title"));
-        Assert.Equal(SharedResource.SystemPromptSettings, tabButtons[1].GetAttribute("title"));
-        Assert.Equal(SharedResource.SettingsTools, tabButtons[2].GetAttribute("title"));
-        Assert.Equal("MCP", tabButtons[3].GetAttribute("title"));
+        Assert.Equal(SharedResource.SettingsTools, tabButtons[1].GetAttribute("title"));
+        Assert.Equal("MCP", tabButtons[2].GetAttribute("title"));
+        Assert.Equal(SharedResource.SystemPromptSettings, tabButtons[3].GetAttribute("title"));
     }
 
     [Fact]
@@ -147,9 +147,9 @@ public class SettingsDialogTests : BunitContext
         // Arrange & Act
         var cut = Render<SettingsDialog>();
 
-        // Select the merged (second) tab
+        // Select the merged prompt+misc tab (last position)
         var tabButtons = cut.FindAll(".rz-tabview-nav li button[role='tab']");
-        tabButtons[1].Click();
+        tabButtons[tabButtons.Count - 1].Click();
 
         // Assert - prompt section
         Assert.NotNull(cut.FindComponent<SystemPromptSettings>());

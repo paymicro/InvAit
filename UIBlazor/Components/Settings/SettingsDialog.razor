@@ -92,36 +92,6 @@
             </ChildContent>
         </RadzenTabsItem>
 
-        @* Prompt + Misc *@
-        <RadzenTabsItem title="@SharedResource.SystemPromptSettings">
-            <Template>
-                <i class="fa-solid fa-file-lines"></i>
-            </Template>
-            <ChildContent>
-            <RadzenStack Gap="1rem">
-                <SystemPromptSettings />
-
-                <RadzenDivider class="settings-divider" />
-
-                <RadzenText TextStyle="TextStyle.Overline">@SharedResource.SettingsMisc</RadzenText>
-
-                <RadzenStack Gap="1rem">
-                    <RadzenStack Gap="0.2rem">
-                        <RadzenLabel Text="@SharedResource.MaxRetries" />
-                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                            <RadzenSlider @bind-Value="@CommonSettingsProvider.Current.MaxRetries" Min="0" Max="50" Step="1" Style="width: 100%; height: 20px;" />
-                            <RadzenLabel Text="@CommonSettingsProvider.Current.MaxRetries.ToString()" Style="text-align: right; width: 50px;" />
-                        </RadzenStack>
-                    </RadzenStack>
-
-                    <CheckBox Text="@SharedResource.ShowMessageTimings" @bind-Value="@CommonSettingsProvider.Current.ShowMessageTimings" />
-
-                    <LanguageSelector />
-                </RadzenStack>
-            </RadzenStack>
-            </ChildContent>
-        </RadzenTabsItem>
-
         <RadzenTabsItem title="@SharedResource.SettingsTools">
             <Template>
                 <i class="fa-solid fa-screwdriver-wrench"></i>
@@ -219,6 +189,33 @@
             </Template>
             <ChildContent>
                 <MCPSettingsTab />
+            </ChildContent>
+        </RadzenTabsItem>
+
+        <RadzenTabsItem title="@SharedResource.SystemPromptSettings">
+            <Template>
+                <i class="fa-solid fa-file-lines"></i>
+            </Template>
+            <ChildContent>
+            <RadzenStack Gap="1rem">
+                <SystemPromptSettings />
+
+                <RadzenText TextStyle="TextStyle.H2">@SharedResource.SettingsMisc</RadzenText>
+
+                <RadzenStack Gap="1rem">
+                    <RadzenStack Gap="0.2rem">
+                        <RadzenLabel Text="@SharedResource.MaxRetries" />
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                            <RadzenSlider @bind-Value="@CommonSettingsProvider.Current.MaxRetries" Min="0" Max="50" Step="1" Style="width: 100%; height: 20px;" />
+                            <RadzenLabel Text="@CommonSettingsProvider.Current.MaxRetries.ToString()" Style="text-align: right; width: 50px;" />
+                        </RadzenStack>
+                    </RadzenStack>
+
+                    <CheckBox Text="@SharedResource.ShowMessageTimings" @bind-Value="@CommonSettingsProvider.Current.ShowMessageTimings" />
+
+                    <LanguageSelector />
+                </RadzenStack>
+            </RadzenStack>
             </ChildContent>
         </RadzenTabsItem>
     </Tabs>

@@ -134,7 +134,7 @@ public class DelegateTaskViewTests : BunitContext
     }
 
     [Fact]
-    public void ShouldRenderSystemPromptRow_WithLongClass()
+    public void ShouldRenderTaskAndSystemPrompt_WithLongClass()
     {
         // Arrange
         var args = """{"task":"Task","systemPrompt":"Long prompt here"}""";
@@ -143,10 +143,11 @@ public class DelegateTaskViewTests : BunitContext
         var cut = Render<DelegateTaskView>(parameters => parameters
             .Add(p => p.Args, args));
 
-        // Assert
-        var longValue = cut.Find(".subagent-info-value--long");
-        Assert.NotNull(longValue);
-        Assert.Contains("Long prompt here", longValue.TextContent);
+        // Assert - both task and system prompt values render with --long modifier
+        var longValues = cut.FindAll(".subagent-info-value--long");
+        Assert.Equal(2, longValues.Count);
+        Assert.Contains("Task", longValues[0].TextContent);
+        Assert.Contains("Long prompt here", longValues[1].TextContent);
     }
 
     #endregion
