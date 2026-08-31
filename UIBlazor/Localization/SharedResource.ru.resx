@@ -124,7 +124,7 @@
     <value>Требуется подтверждение</value>
   </data>
   <data name="CallingTool" xml:space="preserve">
-    <value>Вызов</value>
+    <value>Инструмент</value>
   </data>
   <data name="Cancel" xml:space="preserve">
     <value>Отмена</value>
@@ -512,5 +512,8 @@
   </data>
   <data name="SubagentRestrinctions" xml:space="preserve">
     <value>Ограничения для субагентов</value>
+  </data>
+  <data name="CallingToolAwait" xml:space="preserve">
+    <value>Ожидание результата</value>
   </data>
 </root>

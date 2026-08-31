@@ -97,11 +97,20 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Calling tool.
+        ///   Looks up a localized string similar to Tool.
         /// </summary>
         public static string CallingTool {
             get {
                 return ResourceManager.GetString("CallingTool", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Wait for the result.
+        /// </summary>
+        public static string CallingToolAwait {
+            get {
+                return ResourceManager.GetString("CallingToolAwait", resourceCulture);
             }
         }
         
@@ -178,7 +187,7 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Skill '{0}' not found.
+        ///   Looks up a localized string similar to Skill &apos;{0}&apos; not found.
         /// </summary>
         public static string CommandSkillNotFound {
             get {
@@ -365,7 +374,7 @@ namespace UIBlazor.Localization {
                 return ResourceManager.GetString("FirstToken", resourceCulture);
             }
         }
-
+        
         /// <summary>
         ///   Looks up a localized string similar to Generated.
         /// </summary>
@@ -374,22 +383,22 @@ namespace UIBlazor.Localization {
                 return ResourceManager.GetString("Generated", resourceCulture);
             }
         }
-
-        /// <summary>
-        ///   Looks up a localized string similar to incl. reasoning.
-        /// </summary>
-        public static string IncludingReasoning {
-            get {
-                return ResourceManager.GetString("IncludingReasoning", resourceCulture);
-            }
-        }
-
+        
         /// <summary>
         ///   Looks up a localized string similar to Header.
         /// </summary>
         public static string Header {
             get {
                 return ResourceManager.GetString("Header", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to incl. reasoning.
+        /// </summary>
+        public static string IncludingReasoning {
+            get {
+                return ResourceManager.GetString("IncludingReasoning", resourceCulture);
             }
         }
         

@@ -20,6 +20,10 @@
             }
             <span>@SharedResource.CallingTool:</span>
             <strong>@DisplayName</strong>
+            @if (ToolCall.IsReady && ToolCall.Result is null)
+            {
+                <i class="fa-regular fa-hourglass fa-spin"></i> <span>@SharedResource.CallingToolAwait</span>
+            }
             <RadzenBadge BadgeStyle="BadgeStyle.Light" Variant="Variant.Text" title="Tokens for tool">
                 ~@ToolCall.Tokens tokens
             </RadzenBadge>

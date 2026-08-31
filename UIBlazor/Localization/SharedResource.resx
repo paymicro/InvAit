@@ -124,7 +124,7 @@
     <value>Approve required</value>
   </data>
   <data name="CallingTool" xml:space="preserve">
-    <value>Calling tool</value>
+    <value>Tool</value>
   </data>
   <data name="Cancel" xml:space="preserve">
     <value>Cancel</value>
@@ -512,5 +512,8 @@
   </data>
   <data name="SubagentRestrinctions" xml:space="preserve">
     <value>Restrictions for sub-agents</value>
+  </data>
+  <data name="CallingToolAwait" xml:space="preserve">
+    <value>Wait for the result</value>
   </data>
 </root>
