@@ -72,7 +72,11 @@ public static class BuiltInToolDefs
     { }
 
     [DisplayName(BuiltInToolEnum.RunTests)]
-    [Description("Rebuild and run all tests in solution")]
+    [Description("""
+        Rebuilds the solution AND runs all tests.
+        Use this immediately to test code or verify changes.
+        This tool automatically handles the full rebuild process itself.
+        """)]
     public static void RunTests()
     { }
 

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Shared.Contracts.Mcp;
 
 namespace UIBlazor.Services;
 
@@ -215,7 +216,41 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
             return await tool.ExecuteWithContextAsync(toolCall.Function.Arguments, toolCall, cancellationToken);
         }
 
-        return await tool.ExecuteAsync(toolCall.Function.Arguments, cancellationToken);
+        var result = await tool.ExecuteAsync(toolCall.Function.Arguments, cancellationToken);
+
+        if (tool.Category != ToolCategory.Mcp)
+        {
+            // Для MCP добавлено распаковка контента MCPToolResult
+            return result;
+        }
+
+        var mcpToolResult = JsonUtils.Deserialize<MCPToolResult>(result.Result);
+        if (mcpToolResult is null)
+        {
+            return result;
+        }
+
+        var sb = new StringBuilder();
+        foreach (var content in mcpToolResult.Content)
+        {
+            sb.AppendLine(
+                content.Type switch
+                {
+                    "text" => content.Text,
+                    "image" => $"## Image\n{content.Data}\n##MimeType\n{content.MimeType}",
+                    "resource" => $"## Resource\n{(content.Resource != null ? JsonUtils.Serialize(content.Resource) : null)}",
+                    _ => "## Error - undefined content type"
+                }
+            );
+        }
+        var success = result.Success && !mcpToolResult.IsError;
+        return new VsToolResult()
+        {
+            Name = result.Name,
+            Success = success,
+            Result = success ? sb.ToString() : string.Empty,
+            ErrorMessage = !success ? sb.ToString() : string.Empty
+        };
     }
 
     public Task HandleApprovalAsync(string toolCallId, bool approved)

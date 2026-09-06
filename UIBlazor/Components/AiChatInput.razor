@@ -29,19 +29,21 @@
 
             <div class="misc">
                 <RadzenToggleButton Value="_sendCurrentFile"
-                ButtonStyle="ButtonStyle.Base"
-                Size="ButtonSize.Small"
-                Variant="Variant.Flat"
-                title="@SharedResource.PromptSectionActiveFile"
-                ValueChanged="@OnSendCurrentFileChanged">
+                    ButtonStyle="ButtonStyle.Base"
+                    Size="ButtonSize.Small"
+                    Variant="Variant.Flat"
+                    title="@SharedResource.PromptSectionActiveFile"
+                    class="hide-500"
+                    ValueChanged="@OnSendCurrentFileChanged">
                     <i class="fa-solid fa-file"></i>
                 </RadzenToggleButton>
                 <RadzenToggleButton Value="_sendSolutionStructure"
-                ButtonStyle="ButtonStyle.Base"
-                Size="ButtonSize.Small"
-                Variant="Variant.Flat"
-                title="@SharedResource.PromptSectionSolutionStructure"
-                ValueChanged="@OnSendSolutionStructureChanged">
+                    ButtonStyle="ButtonStyle.Base"
+                    Size="ButtonSize.Small"
+                    Variant="Variant.Flat"
+                    title="@SharedResource.PromptSectionSolutionStructure"
+                    class="hide-500"
+                    ValueChanged="@OnSendSolutionStructureChanged">
                     <i class="fa-solid fa-folder-tree"></i>
                 </RadzenToggleButton>
             </div>
@@ -56,25 +58,37 @@
                 </RadzenStack>
 
                 <RadzenStack Orientation="Orientation.Horizontal" Gap="4px" JustifyContent="JustifyContent.End" AlignItems="AlignItems.Center">
-                    <RadzenButton Icon="gavel" ButtonStyle="ButtonStyle.Base" Variant="Variant.Text" Size="ButtonSize.Small" Click="@OpenRulesAsync" Title="@SharedResource.OpenRules" />
-                    <RadzenButton Icon="extension" ButtonStyle="ButtonStyle.Base" Variant="Variant.Text" Size="ButtonSize.Small" Click="@OpenSkillsAsync" Title="@SharedResource.OpenSkills" />
+                    <RadzenButton Icon="gavel"
+                        ButtonStyle="ButtonStyle.Base"
+                        Variant="Variant.Text"
+                        Size="ButtonSize.Small"
+                        Click="@OpenRulesAsync"
+                        title="@SharedResource.OpenRules"
+                        class="hide-500"/>
+                    <RadzenButton Icon="extension"
+                        ButtonStyle="ButtonStyle.Base"
+                        Variant="Variant.Text"
+                        Size="ButtonSize.Small"
+                        Click="@OpenSkillsAsync"
+                        title="@SharedResource.OpenSkills"
+                        class="hide-500" />
 
                     <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" JustifyContent="JustifyContent.End" AlignItems="AlignItems.Center">
                         <RadzenButton Icon="send"
-                        ButtonStyle="ButtonStyle.Base"
-                        Variant="Variant.Text"
-                        Visible="@(!IsLoading)"
-                        Disabled="@(!CanSend())"
-                        Click="@OnSendClick"
-                        title="@SharedResource.SendMessage"
-                        class="rz-chat-send-btn" />
+                            ButtonStyle="ButtonStyle.Base"
+                            Variant="Variant.Text"
+                            Visible="@(!IsLoading)"
+                            Disabled="@(!CanSend())"
+                            Click="@OnSendClick"
+                            title="@SharedResource.SendMessage"
+                            class="rz-chat-send-btn" />
                         <RadzenButton Icon="cancel"
-                        ButtonStyle="ButtonStyle.Danger"
-                        Variant="Variant.Text"
-                        Visible="@IsLoading"
-                        Click="@Cancel.InvokeAsync"
-                        title="@SharedResource.Cancel"
-                        class="rz-chat-cancel-btn" />
+                            ButtonStyle="ButtonStyle.Danger"
+                            Variant="Variant.Text"
+                            Visible="@IsLoading"
+                            Click="@Cancel.InvokeAsync"
+                            title="@SharedResource.Cancel"
+                            class="rz-chat-cancel-btn" />
                     </RadzenStack>
                 </RadzenStack>
             </RadzenStack>

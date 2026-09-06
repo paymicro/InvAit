@@ -828,3 +828,15 @@ code.hljs {
         color: var(--rz-base-400) !important;
         white-space: pre !important;
     }
+
+@media (max-width: 500px) {
+    .hide-500 {
+        display: none;
+    }
+}
+
+@media (max-width: 350px) {
+    .hide-350 {
+        display: none;
+    }
+}

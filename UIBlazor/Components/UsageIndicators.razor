@@ -1,7 +1,7 @@
 @using System.ComponentModel
 @implements IDisposable
 
-<div class="usage-indicators">
+<div class="usage-indicators @CustomClass">
     @if (ProfileManager.ActiveProfile.TokensToCompress > 0)
     {
         <div class="usage-item" title="@SharedResource.CompressionTokenThreshold: @(ChatService.Session?.TotalTokens ?? 0) / @ProfileManager.ActiveProfile.TokensToCompress">
@@ -36,6 +36,13 @@
     private int TokenProgress => ProfileManager.ActiveProfile.ContextWindow > 0
         ? Math.Min(100, ChatService.Session.TotalTokens * 100 / ProfileManager.ActiveProfile.ContextWindow)
         : 0;
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CustomClass => AdditionalAttributes?.ContainsKey("class") == true
+                              ? AdditionalAttributes["class"].ToString() ?? ""
+                              : "";
 
     protected override async Task OnInitializedAsync()
     {

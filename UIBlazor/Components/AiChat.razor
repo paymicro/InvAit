@@ -2,14 +2,24 @@
 
 <div @ref="@Element" @attributes="Attributes" class="rz-chat rz-h-100" id="@GetId()">
     <!-- Chat Header -->
-    <RadzenStack class="rz-chat-header" Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem">
-        <UsageIndicators />
-        <RadzenStack class="rz-chat-header-actions" Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.5rem">
+    <RadzenStack class="rz-chat-header"
+        Orientation="Orientation.Horizontal"
+        AlignItems="AlignItems.Center"
+        JustifyContent="JustifyContent.SpaceBetween"
+        Gap="0.5rem">
+        <UsageIndicators class="hide-350" />
+        <RadzenStack class="rz-chat-header-actions"
+            Orientation="Orientation.Horizontal"
+            AlignItems="AlignItems.End"
+            JustifyContent="JustifyContent.End"
+            Gap="0.5rem"
+            Style="flex:1">
             @if (ProfileManager.Current.Profiles.Count > 0)
             {
                 <RadzenDropDown TValue="string" Data="@ProfileManager.Current.Profiles" TextProperty="Name" ValueProperty="Id"
                                 Value="@ProfileManager.Current.ActiveProfileId" Change="@OnProfileChangeAsync"
                                 Placeholder="Select Profile"
+                                class="hide-500"
                                 Style="width: 180px;" />
             }
             <RadzenButton
