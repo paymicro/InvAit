@@ -6,11 +6,11 @@
         <CheckBox Text="Enable MCP" @bind-Value="@McpSettingsProvider.Current.Enabled" @bind-Value:after="OnMcpEnabledChanged" />
         <RadzenStack Orientation="Orientation.Horizontal" Gap="0.3rem" JustifyContent="JustifyContent.End">
             <RadzenButton Icon="edit_note" ButtonStyle="ButtonStyle.Info" Size="ButtonSize.Small" Click="@OnOpenMcpSettings" />
-            <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@OnReloadMcpSettings" />
+            <RadzenButton Icon="refresh" IsBusy="@_reloadProcess" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@OnReloadMcpSettings" />
         </RadzenStack>
     </RadzenStack>
 
-    @if (McpSettingsProvider.Current.Enabled)
+    @if (McpSettingsProvider.Current.Enabled && !_reloadProcess)
     {
         var orphanErrors = McpSettingsProvider.Current.ServerErrors
             .Where(kv => kv.Key == "__global__" || McpSettingsProvider.Current.Servers.All(s => s.Name != kv.Key))
@@ -113,6 +113,12 @@
             </RadzenStack>
         }
     }
+    else if (_reloadProcess)
+    {
+        <RadzenStack AlignItems="AlignItems.Center">
+            <i class="fa-solid fa-sync fa-spin" style="font-size: 60px;"/>
+        </RadzenStack>
+    }
 </RadzenStack>
 
     @code {
@@ -121,6 +127,7 @@
     [Inject] DialogService DialogService { get; set; } = null!;
     [Inject] IToolManager ToolManager { get; set; } = null!;
 
+    private bool _reloadProcess = false;
     private string? _refreshingServerId;
 
     private async Task OnMcpEnabledChanged()
@@ -139,7 +146,10 @@
 
     private async Task OnReloadMcpSettings()
     {
+        _reloadProcess = true;
+        StateHasChanged();
         await McpSettingsProvider.LoadMcpFileAsync();
+        _reloadProcess = false;
         StateHasChanged();
     }
 
