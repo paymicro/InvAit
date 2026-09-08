@@ -131,7 +131,7 @@ public class ModelSelectorTests : BunitContext
         var dropdown = cut.FindComponent<RadzenDropDown<string>>();
 
         // Act - user picks the synthesized "➕ new-model" command
-        await cut.InvokeAsync(() => dropdown.Instance.Change.InvokeAsync("➕ new-model"));
+        await cut.InvokeAsync(() => dropdown.Instance.ValueChanged.InvokeAsync("➕ new-model"));
 
         // Assert
         Assert.Equal("new-model", _profile.Model);
