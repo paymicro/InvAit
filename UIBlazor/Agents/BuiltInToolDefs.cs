@@ -96,7 +96,14 @@ public static class BuiltInToolDefs
     { }
 
     [DisplayName(BuiltInToolEnum.Bash)]
-    [Description("To run a shell command (Git Bash). The shell is stateless. Avoid using single quotes inside your commands if possible. Do NOT perform actions requiring special/admin privileges. Choose terminal commands and scripts optimized for win32 and x64.")]
+    [Description("""
+        To run a shell command (Git Bash). The shell is stateless.
+        Avoid using single quotes inside your commands if possible.
+        Do NOT perform actions requiring special/admin privileges.
+        Choose terminal commands and scripts optimized for win32 and x64.
+        Working directory is current project solution.
+        """)]
+        
     public static void Bash(
         [Description("Shell command to execute")] string command)
     { }

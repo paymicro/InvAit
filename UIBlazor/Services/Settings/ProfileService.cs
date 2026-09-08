@@ -70,7 +70,7 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
         // актуализация активного профиля
         if (profileId == Current.ActiveProfileId)
         {
-            await ActivateProfileAsync(Current.Profiles.First().Id, saveImediatly: true);
+            await ActivateProfileAsync(Current.Profiles.First().Id, saveImmediately: true);
         }
         else
         {
@@ -78,7 +78,15 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
         }
     }
 
-    public async Task ActivateProfileAsync(string profileId, bool saveImediatly = false)
+    public async Task AddNewProfile()
+    {
+        var newProfile = new ConnectionProfile();
+        newProfile.PropertyChanged += OnPropertyChanged;
+        Current.Profiles.Add(newProfile);
+        await ActivateProfileAsync(newProfile.Id, true);
+    }
+
+    public async Task ActivateProfileAsync(string profileId, bool saveImmediately = false)
     {
         var profile = Current.Profiles.FirstOrDefault(p => p.Id == profileId);
         if (profile != null)
@@ -87,7 +95,7 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
 
             NotifySkipSsl(profile.SkipSSL);
 
-            if (!saveImediatly)
+            if (!saveImmediately)
             {
                 Debouncer.Trigger();
             }

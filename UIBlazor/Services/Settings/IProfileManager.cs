@@ -16,5 +16,7 @@ public interface IProfileManager : IBaseSettingsProvider
 
     Task DeleteProfileAsync(string profileId);
 
+    Task AddNewProfile();
+
     Task ActivateProfileAsync(string profileId, bool saveImediatly = false);
 }

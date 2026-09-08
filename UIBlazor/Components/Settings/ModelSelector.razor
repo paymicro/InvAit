@@ -4,11 +4,11 @@
 <RadzenDropDown TValue="string"
                 @attributes="AdditionalAttributes"
                 Data="@viewModels"
-                @bind-Value="@ProfileManager.ActiveProfile.Model"
+                Value="@ProfileManager.ActiveProfile.Model"
                 Placeholder="Model"
                 AllowFiltering="true"
                 LoadData="@OnLoadData"
-                Change="@OnValueChange" />
+                ValueChanged="@OnValueChange" />
 
 @code {
     [Parameter(CaptureUnmatchedValues = true)]
@@ -59,6 +59,10 @@
             var newModelName = selectedValue.Substring(2).Trim();
             ProfileManager.ActiveProfile.Model = newModelName;
             viewModels = ProfileManager.ActiveProfile.AvailableModels;
+        }
+        else
+        {
+            ProfileManager.ActiveProfile.Model = selectedValue ?? "---";
         }
     }
 

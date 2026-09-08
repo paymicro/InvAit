@@ -58,6 +58,7 @@ body {
 
 pre {
     text-wrap: auto;
+    overflow-wrap: anywhere;
 }
 
 pre code.hljs {

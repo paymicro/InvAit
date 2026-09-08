@@ -41,8 +41,7 @@
                     <End>
                         <RadzenButton
                             Icon="autorenew" Click="UpdateModelsAsync"
-                            class="@(_isModelUpdating ? "icon-spin" : "")"
-                            Disabled="@_isModelUpdating"
+                            IsBusy="@_isModelUpdating"
                             ButtonStyle="ButtonStyle.Secondary" />
                     </End>
                 </RadzenFormField>
@@ -247,12 +246,7 @@
                                                        }
                                                        """;
 
-    private async Task OnAddProfile()
-    {
-        var newProfile = new ConnectionProfile();
-        ProfileManager.Current.Profiles.Add(newProfile);
-        await ProfileManager.ActivateProfileAsync(newProfile.Id, true);
-    }
+    private Task OnAddProfile() => ProfileManager.AddNewProfile();
 
     private async Task OnDeleteProfile()
     {

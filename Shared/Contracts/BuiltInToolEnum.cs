@@ -20,7 +20,7 @@ public static class BuiltInToolEnum
     public const string GetErrors = "get_error_list";
     public const string GetProjectInfo = "get_project_info";
     public const string GetSolutionStructure = "get_solution_structure";
-    public const string RunTests = "build_and_run_tests";
+    public const string RunTests = "run_tests";
     public const string Build = "build";
 
     // Execution
