@@ -30,7 +30,7 @@
         </HeaderTemplate>
         <ChildContent>
 
-        @if (ToolCall.Function.Arguments.Length > 0)
+        @if (ToolCall.Function.Arguments.Length > 2) // json object: {}
         {
             <div class="tool-call-args">
                 @if (ToolCall.Function.Name == BuiltInToolEnum.Edits)
@@ -76,6 +76,11 @@
                 @if (ToolCall.ApprovalStatus == ToolApprovalStatus.Pending)
                 {
                     <div class="tool-approval-label"><i class="rz-icon-notification rz-ml-2"></i>@SharedResource.ApproveRequired</div>
+                    <div>
+                        <i class="fa-solid fa-exclamation fa-bounce" style="--fa-animation-delay: 0.1s;"></i>
+                        <i class="fa-solid fa-exclamation-triangle fa-bounce" style="font-size:larger"></i>
+                        <i class="fa-solid fa-exclamation fa-bounce" style="--fa-animation-delay: 0.1s;"></i>
+                    </div>
                     <div class="tool-approval-actions">
                         <RadzenButton Icon="check" class="tool-approve-btn rz-m-2" Click="@(async () => await OnApproval.InvokeAsync((ToolCall.Id, true)))" />
                         <RadzenButton Icon="close" class="tool-reject-btn rz-m-2" Click="@(async () => await OnApproval.InvokeAsync((ToolCall.Id, false)))" />

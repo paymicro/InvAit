@@ -669,6 +669,10 @@ code.hljs {
     color: var(--rz-base-400);
 }
 
+.chat-cancel-btn:is(:hover) {
+    background-color: var(--rz-danger-dark) !important;
+}
+
 /* Tool Approval UI */
 .tool-approval-footer {
     display: flex;

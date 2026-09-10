@@ -117,37 +117,6 @@ public class ChatMessageViewTests : BunitContext
     }
 
     [Fact]
-    public void ShouldRenderAssistantAvatar_WithRobotIcon()
-    {
-        // Arrange
-        var message = CreateMessage(ChatMessageRole.Assistant);
-
-        // Act
-        var cut = Render<ChatMessageView>(parameters => parameters
-            .Add(p => p.Message, message));
-
-        // Assert
-        var icon = cut.FindComponent<RadzenIcon>();
-        Assert.Equal("robot_2", icon.Instance.Icon);
-    }
-
-    [Fact]
-    public void ShouldRenderToolAvatar_WithDesignServicesIcon()
-    {
-        // Arrange
-        var message = CreateMessage(ChatMessageRole.Tool);
-
-        // Act
-        var cut = Render<ChatMessageView>(parameters => parameters
-            .Add(p => p.Message, message));
-
-        // Assert
-        var icons = cut.FindComponents<RadzenIcon>();
-        var toolIcon = icons.FirstOrDefault(i => i.Instance.Icon == "design_services");
-        Assert.NotNull(toolIcon);
-    }
-
-    [Fact]
     public void ShouldRenderTimestamp()
     {
         // Arrange

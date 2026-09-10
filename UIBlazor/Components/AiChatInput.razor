@@ -82,13 +82,13 @@
                             Click="@OnSendClick"
                             title="@SharedResource.SendMessage"
                             class="rz-chat-send-btn" />
-                        <RadzenButton Icon="cancel"
-                            ButtonStyle="ButtonStyle.Danger"
-                            Variant="Variant.Text"
+                        <RadzenButton Icon="close"
+                            ButtonStyle="ButtonStyle.Base"
+                            Size="ButtonSize.Small"
                             Visible="@IsLoading"
                             Click="@Cancel.InvokeAsync"
                             title="@SharedResource.Cancel"
-                            class="rz-chat-cancel-btn" />
+                            class="chat-cancel-btn" />
                     </RadzenStack>
                 </RadzenStack>
             </RadzenStack>

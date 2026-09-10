@@ -209,7 +209,7 @@ public class AiChatInputTests : BunitContext
             .Add(p => p.IsLoading, true));
 
         // Assert
-        var cancelButton = cut.Find(".rz-chat-cancel-btn");
+        var cancelButton = cut.Find(".chat-cancel-btn");
         Assert.NotNull(cancelButton);
     }
 
@@ -221,7 +221,7 @@ public class AiChatInputTests : BunitContext
             .Add(p => p.IsLoading, false));
 
         // Assert
-        Assert.Throws<ElementNotFoundException>(() => cut.Find(".rz-chat-cancel-btn"));
+        Assert.Throws<ElementNotFoundException>(() => cut.Find(".chat-cancel-btn"));
     }
 
     [Fact]
@@ -845,7 +845,7 @@ public class AiChatInputTests : BunitContext
             .Add(p => p.Cancel, EventCallback.Factory.Create<string>(this, _ => cancelCalled = true)));
 
         // Act
-        var cancelButton = cut.Find(".rz-chat-cancel-btn");
+        var cancelButton = cut.Find(".chat-cancel-btn");
         await cut.InvokeAsync(() => cancelButton.Click());
 
         // Assert
