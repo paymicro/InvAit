@@ -62,7 +62,7 @@ public partial class SubAgentExecutorTests
                     resultCapture.Model = "test-model";
                     resultCapture.AccumulatedToolCalls = null;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
                 It.IsAny<VisualChatMessage>(),
@@ -79,7 +79,7 @@ public partial class SubAgentExecutorTests
                     onContent?.Invoke(content);
                 })
             .Returns(Task.CompletedTask);
-        _toolManagerMock.Setup(x => x.GetEnabledTools(AppMode.Agent)).Returns(new List<Tool>());
+        _toolManagerMock.Setup(x => x.GetEnabledTools(AppMode.Agent)).Returns([]);
     }
 
     private void SetupChatServiceToThrowCancellation(CancellationToken token)
@@ -91,7 +91,7 @@ public partial class SubAgentExecutorTests
                 It.IsAny<IEnumerable<Tool>>(),
                 It.IsAny<CompletionsResult>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
                 It.IsAny<VisualChatMessage>(),
@@ -102,7 +102,7 @@ public partial class SubAgentExecutorTests
                 It.IsAny<CompletionsResult>(),
                 It.IsAny<CancellationToken>()))
             .Throws(new OperationCanceledException(token));
-        _toolManagerMock.Setup(x => x.GetEnabledTools(AppMode.Agent)).Returns(new List<Tool>());
+        _toolManagerMock.Setup(x => x.GetEnabledTools(AppMode.Agent)).Returns([]);
     }
 
     private void SetupChatServiceToThrowException(Exception ex)
@@ -114,7 +114,7 @@ public partial class SubAgentExecutorTests
                 It.IsAny<IEnumerable<Tool>>(),
                 It.IsAny<CompletionsResult>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
                 It.IsAny<VisualChatMessage>(),
@@ -125,11 +125,10 @@ public partial class SubAgentExecutorTests
                 It.IsAny<CompletionsResult>(),
                 It.IsAny<CancellationToken>()))
             .Throws(ex);
-        _toolManagerMock.Setup(x => x.GetEnabledTools(AppMode.Agent)).Returns(new List<Tool>());
+        _toolManagerMock.Setup(x => x.GetEnabledTools(AppMode.Agent)).Returns([]);
     }
 
-    private static async IAsyncEnumerable<ChatDelta> CreateEmptyDeltaStream(
-        [EnumeratorCancellation] CancellationToken ct = default)
+    private static async IAsyncEnumerable<ChatDelta> CreateEmptyDeltaStream([EnumeratorCancellation] CancellationToken ct)
     {
         await Task.CompletedTask;
         yield break;

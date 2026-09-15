@@ -33,7 +33,7 @@ public partial class SubAgentExecutorTests
                     resultCapture.Model = "test-model";
                     resultCapture.AccumulatedToolCalls = null;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -88,7 +88,7 @@ public partial class SubAgentExecutorTests
                         resultCapture.Error = apiError;
                     }
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -342,7 +342,7 @@ public partial class SubAgentExecutorTests
                         ? [new ToolCall { Id = "tc1", Function = new ToolCallFunction { Name = "read_files", Arguments = "{}" } }]
                         : null;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -548,7 +548,7 @@ public partial class SubAgentExecutorTests
                     resultCapture.Model = "test-model";
                     resultCapture.AccumulatedToolCalls = null;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -630,7 +630,7 @@ public partial class SubAgentExecutorTests
                     resultCapture.Model = "test-model";
                     resultCapture.AccumulatedToolCalls = null;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -746,7 +746,7 @@ public partial class SubAgentExecutorTests
                     if (completionsCallCount == 2)
                         tokensSeenOnSecondCall = session.TotalTokens;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(

@@ -61,7 +61,7 @@ public partial class SubAgentExecutorTests
                         resultCapture.AccumulatedToolCalls = null;
                     }
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         var processStreamCallCount = 0;
         _chatServiceMock

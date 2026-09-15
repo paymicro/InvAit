@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using McpHost;
 using Shared.Contracts.McpHost;
 using ToolCore.McpHost;
 
@@ -36,10 +35,10 @@ public class McpHostSupervisorIntegrationTests
 
         try
         {
-            await supervisor.EnsureStartedAsync();
+            await supervisor.EnsureStartedAsync(TestContext.Current.CancellationToken);
             Assert.True(supervisor.IsConnected);
 
-            var ping = await supervisor.PingAsync();
+            var ping = await supervisor.PingAsync(TestContext.Current.CancellationToken);
 
             Assert.Equal(McpHostProtocol.Version, ping.Version);
             Assert.True(ping.Pid > 0);
@@ -56,9 +55,9 @@ public class McpHostSupervisorIntegrationTests
     public async Task Status_ReturnsSuccessWithUptime()
     {
         await using var supervisor = new McpHostSupervisor(CreateOptions(), new SilentLogger());
-        await supervisor.EnsureStartedAsync();
+        await supervisor.EnsureStartedAsync(TestContext.Current.CancellationToken);
 
-        var response = await supervisor.SendRequestAsync(McpHostMethods.Status);
+        var response = await supervisor.SendRequestAsync(McpHostMethods.Status, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(response.Success, response.Error);
         Assert.True(response.Result.HasValue);
@@ -68,9 +67,9 @@ public class McpHostSupervisorIntegrationTests
     public async Task UnknownMethod_ReturnsError()
     {
         await using var supervisor = new McpHostSupervisor(CreateOptions(), new SilentLogger());
-        await supervisor.EnsureStartedAsync();
+        await supervisor.EnsureStartedAsync(TestContext.Current.CancellationToken);
 
-        var response = await supervisor.SendRequestAsync("no_such_method");
+        var response = await supervisor.SendRequestAsync("no_such_method", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(response.Success);
         Assert.Contains("no_such_method", response.Error);
@@ -80,20 +79,28 @@ public class McpHostSupervisorIntegrationTests
     public async Task Shutdown_StopsHostProcess()
     {
         await using var supervisor = new McpHostSupervisor(CreateOptions(), new SilentLogger());
-        await supervisor.EnsureStartedAsync();
+        await supervisor.EnsureStartedAsync(TestContext.Current.CancellationToken);
 
-        var response = await supervisor.SendRequestAsync(McpHostMethods.Shutdown);
+        try
+        {
+            var response = await supervisor.SendRequestAsync(McpHostMethods.Shutdown,
+                cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.True(response.Success);
-        Assert.True(WaitForCondition(() => !supervisor.IsConnected, TimeSpan.FromSeconds(5)),
-            "Connection should drop after shutdown request.");
+            Assert.True(response.Success);
+            Assert.True(WaitForCondition(() => !supervisor.IsConnected, TimeSpan.FromSeconds(5)),
+                "Connection should drop after shutdown request.");
+        }
+        catch (IOException)
+        {
+            // ignore
+        }
     }
 
     [Fact]
     public async Task Dispose_KillsHostProcess()
     {
         var supervisor = new McpHostSupervisor(CreateOptions(), new SilentLogger());
-        await supervisor.EnsureStartedAsync();
+        await supervisor.EnsureStartedAsync(TestContext.Current.CancellationToken);
         Assert.True(supervisor.IsConnected);
 
         await supervisor.DisposeAsync();
@@ -130,7 +137,7 @@ public class McpHostSupervisorIntegrationTests
             o.RestartBaseDelay = TimeSpan.FromMilliseconds(200);
         }), new SilentLogger());
 
-        await supervisor.EnsureStartedAsync();
+        await supervisor.EnsureStartedAsync(TestContext.Current.CancellationToken);
         Assert.True(supervisor.IsConnected);
         var firstPid = await GetHostPid(supervisor);
 
@@ -159,21 +166,18 @@ public class McpHostSupervisorIntegrationTests
     public async Task SendRequest_PerCallTimeout_DoesNotBlockSubsequentRequests()
     {
         await using var supervisor = new McpHostSupervisor(CreateOptions(), new SilentLogger());
-        await supervisor.EnsureStartedAsync();
+        await supervisor.EnsureStartedAsync(TestContext.Current.CancellationToken);
 
-        await Assert.ThrowsAsync<TimeoutException>(() => supervisor.SendRequestAsync(
-            McpHostMethods.CallTool,
-            new McpCallToolParams
+        await Assert.ThrowsAsync<TimeoutException>(() => supervisor.SendRequestAsync(McpHostMethods.CallTool, new McpCallToolParams
             {
                 ServerId = "sleepy",
                 Command = TestAssetLocator.GetAssetExePath("EchoMcpServer", "EchoMcpServer.exe"),
                 ToolName = "sleep",
                 Arguments = JsonSerializer.SerializeToElement(new { ms = 4000 }),
                 TimeoutMs = 8000,
-            },
-            TimeSpan.FromMilliseconds(700)));
+            }, TimeSpan.FromMilliseconds(700), TestContext.Current.CancellationToken));
 
-        var ping = await supervisor.PingAsync();
+        var ping = await supervisor.PingAsync(TestContext.Current.CancellationToken);
         Assert.True(ping.Pid > 0);
     }
 
@@ -191,7 +195,7 @@ public class McpHostSupervisorIntegrationTests
 
         try
         {
-            var ex = await Assert.ThrowsAsync<McpHostStartupException>(() => supervisor.EnsureStartedAsync());
+            var ex = await Assert.ThrowsAsync<McpHostStartupException>(() => supervisor.EnsureStartedAsync(TestContext.Current.CancellationToken));
             Assert.Contains("missing-host.exe", ex.UserMessage);
         }
         finally

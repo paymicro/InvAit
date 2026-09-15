@@ -2,6 +2,7 @@ namespace UIBlazor.Tests.Utils;
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Rendering;
+using System.Reflection;
 using UIBlazor.Components;
 
 /// <summary>
@@ -42,6 +43,49 @@ public class ThrottledComponentBaseTests : BunitContext
         {
             builder.AddMarkupContent(0, Content);
         }
+    }
+
+    /// <summary>
+    /// Harness with render counting and configurable interval.
+    /// RenderCount is incremented in BuildRenderTree (actual render).
+    /// OnRenderedOrder is set in OnRendered, BuildRenderTreeOrder in BuildRenderTree,
+    /// so tests can verify call ordering.
+    /// </summary>
+    private abstract class CountingHarness : ThrottledComponentBase
+    {
+        public int RenderCount { get; private set; }
+        public int OnRenderedOrder { get; private set; }
+        public int BuildRenderTreeOrder { get; private set; }
+        private int _callOrder;
+        private bool _changed = true;
+
+        public void MarkChanged() => _changed = true;
+
+        protected override bool HasChanges() => _changed;
+        protected override void OnRendered()
+        {
+            OnRenderedOrder = ++_callOrder;
+            _changed = false;
+        }
+
+        protected override void BuildRenderTree(RenderTreeBuilder builder)
+        {
+            BuildRenderTreeOrder = ++_callOrder;
+            RenderCount++;
+            builder.AddMarkupContent(0, "content");
+        }
+    }
+
+    /// <summary>5-second interval — no timing pressure for CTS inspection tests.</summary>
+    private class LongIntervalHarness : CountingHarness
+    {
+        protected override int RenderIntervalMs => 5000;
+    }
+
+    /// <summary>500ms interval — matches default, used for timing-sensitive tests.</summary>
+    private class MediumIntervalHarness : CountingHarness
+    {
+        protected override int RenderIntervalMs => 500;
     }
 
     [Fact]
@@ -114,5 +158,160 @@ public class ThrottledComponentBaseTests : BunitContext
         cut.WaitForAssertion(
             () => Assert.Contains("v6", cut.Markup),
             TimeSpan.FromSeconds(2));
+    }
+
+    // ----------------------------------------------------------------
+    //  Throttle internals tests
+    //  Blazor does NOT call ShouldRender() on the initial render.
+    //  The _shouldRender flag is consumed on the 2nd render (first
+    //  ShouldRender call). Throttle logic kicks in from the 3rd render on.
+    // ----------------------------------------------------------------
+
+    [Fact]
+    public async Task Throttle_ReplacedCts_IsDisposed()
+    {
+        var cut = Render<LongIntervalHarness>();
+        Assert.Equal(1, cut.Instance.RenderCount);
+
+        // Burn the first ShouldRender call
+        cut.Instance.MarkChanged();
+        cut.Render(parameters => { });
+        Assert.Equal(2, cut.Instance.RenderCount);
+        Assert.Null(cut.Instance.PendingCts);
+
+        // First throttle hit
+        cut.Instance.MarkChanged();
+        cut.Render(parameters => { });
+        var firstCts = cut.Instance.PendingCts;
+        Assert.NotNull(firstCts);
+        Assert.False(firstCts.IsCancellationRequested);
+
+        // Second throttle hit — replaces PendingCts
+        cut.Instance.MarkChanged();
+        cut.Render(parameters => { });
+        var secondCts = cut.Instance.PendingCts;
+        Assert.NotSame(firstCts, secondCts);
+
+        // Old CTS must be canceled and disposed
+        Assert.True(firstCts.IsCancellationRequested);
+        Assert.True(IsCtsDisposed(firstCts));
+
+        cut.Instance.Dispose();
+        await Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task UnthrottledRender_PendingCts_IsCanceled()
+    {
+        var cut = Render<MediumIntervalHarness>();
+        Assert.Equal(1, cut.Instance.RenderCount);
+
+        // Burn the first ShouldRender call
+        cut.Instance.MarkChanged();
+        cut.Render(parameters => { });
+        Assert.Equal(2, cut.Instance.RenderCount);
+
+        // Throttle path — schedules delayed render
+        await Task.Delay(100);
+        cut.Instance.MarkChanged();
+        cut.Render(parameters => { });
+        Assert.Equal(2, cut.Instance.RenderCount);
+        Assert.NotNull(cut.Instance.PendingCts);
+        Assert.False(cut.Instance.PendingCts.IsCancellationRequested);
+
+        // Unthrottled render (elapsed >= interval)
+        await Task.Delay(450);
+        cut.Instance.MarkChanged();
+        cut.Render(parameters => { });
+        Assert.Equal(3, cut.Instance.RenderCount);
+
+        // Pending CTS must be canceled after unthrottled render
+        var cts = cut.Instance.PendingCts;
+        if (cts is not null)
+            Assert.True(cts.IsCancellationRequested);
+
+        cut.Instance.Dispose();
+    }
+
+    [Fact]
+    public async Task UnthrottledRender_NoRedundantTrailingRender()
+    {
+        var cut = Render<MediumIntervalHarness>();
+        Assert.Equal(1, cut.Instance.RenderCount);
+
+        // Burn the first ShouldRender call
+        cut.Instance.MarkChanged();
+        cut.Render(parameters => { });
+        Assert.Equal(2, cut.Instance.RenderCount);
+
+        // Throttle — schedule delayed render
+        await Task.Delay(100);
+        cut.Instance.MarkChanged();
+        cut.Render(parameters => { });
+        Assert.Equal(2, cut.Instance.RenderCount);
+
+        // Unthrottled render (550 >= 500)
+        await Task.Delay(450);
+        cut.Instance.MarkChanged();
+        cut.Render(parameters => { });
+        Assert.Equal(3, cut.Instance.RenderCount);
+
+        var renderCountAfterUnthrottled = cut.Instance.RenderCount;
+
+        // Wait past the delayed callback deadline
+        await Task.Delay(200);
+
+        // No redundant render should occur
+        Assert.Equal(renderCountAfterUnthrottled, cut.Instance.RenderCount);
+
+        cut.Instance.Dispose();
+    }
+
+    [Fact]
+    public void OnRendered_CalledBeforeBuildRenderTree()
+    {
+        var cut = Render<LongIntervalHarness>();
+
+        // Initial render: ShouldRender NOT called
+        Assert.Equal(0, cut.Instance.OnRenderedOrder);
+        Assert.Equal(1, cut.Instance.BuildRenderTreeOrder);
+
+        // Second render: ShouldRender IS called
+        cut.Instance.MarkChanged();
+        cut.Render(parameters => { });
+
+        Assert.Equal(2, cut.Instance.OnRenderedOrder);
+        Assert.Equal(3, cut.Instance.BuildRenderTreeOrder);
+        Assert.True(cut.Instance.OnRenderedOrder < cut.Instance.BuildRenderTreeOrder);
+
+        cut.Instance.Dispose();
+    }
+
+    /// <summary>
+    /// CancellationTokenSource.IsDisposed is internal in .NET.
+    /// Use reflection to check disposal state for test assertions.
+    /// </summary>
+    private static bool IsCtsDisposed(CancellationTokenSource cts)
+    {
+        var field = typeof(CancellationTokenSource)
+            .GetField("_disposed", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? typeof(CancellationTokenSource)
+                .GetField("m_disposed", BindingFlags.NonPublic | BindingFlags.Instance);
+        if (field is not null)
+        {
+            var value = field.GetValue(cts);
+            if (value is int intVal) return intVal != 0;
+            if (value is bool boolVal) return boolVal;
+        }
+        // Fallback: a disposed CTS throws ObjectDisposedException on Cancel()
+        try
+        {
+            cts.Cancel();
+            return false; // still alive
+        }
+        catch (ObjectDisposedException)
+        {
+            return true;
+        }
     }
 }

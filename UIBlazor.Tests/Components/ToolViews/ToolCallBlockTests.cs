@@ -296,7 +296,7 @@ public class ToolCallBlockTests : BunitContext
     }
 
     [Fact]
-    public void EditsTool_RendersDiffView_WithParsedEdits()
+    public void EditFilesTool_RendersDiffView_WithParsedEdits()
     {
         // Arrange
         const string args = """
@@ -311,7 +311,7 @@ public class ToolCallBlockTests : BunitContext
 
         // Act
         var cut = Render<ToolCallBlock>(parameters => parameters
-            .Add(p => p.ToolCall, CreateReadyCall(BuiltInToolEnum.Edits, args)));
+            .Add(p => p.ToolCall, CreateReadyCall(BuiltInToolEnum.EditFiles, args)));
 
         // Assert
         Assert.NotNull(cut.Find(".diffview-stub"));

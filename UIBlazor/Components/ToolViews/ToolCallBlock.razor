@@ -33,7 +33,7 @@
         @if (ToolCall.Function.Arguments.Length > 2) // json object: {}
         {
             <div class="tool-call-args">
-                @if (ToolCall.Function.Name == BuiltInToolEnum.Edits)
+                @if (ToolCall.Function.Name == BuiltInToolEnum.EditFiles)
                 {
                     var result = new
                     {

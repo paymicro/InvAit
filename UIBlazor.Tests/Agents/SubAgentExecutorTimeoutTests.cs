@@ -64,7 +64,7 @@ public partial class SubAgentExecutorTests
                         ? [new ToolCall { Id = $"tc{completionsCallCount}", Function = new ToolCallFunction { Name = "read_files", Arguments = "{}" } }]
                         : null;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -136,7 +136,7 @@ public partial class SubAgentExecutorTests
                         ? [new ToolCall { Id = "tc1", Function = new ToolCallFunction { Name = "read_files", Arguments = "{}" } }]
                         : null;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         // Use Returns with async lambda so the delay is actually awaited.
         // Moq Callback with async lambda is fire-and-forget — the delay would not block.
@@ -206,7 +206,7 @@ public partial class SubAgentExecutorTests
                         ? [new ToolCall { Id = "tc1", Function = new ToolCallFunction { Name = "read_files", Arguments = "{}" } }]
                         : null;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -271,7 +271,7 @@ public partial class SubAgentExecutorTests
                         ? [new ToolCall { Id = "tc1", Function = new ToolCallFunction { Name = "read_files", Arguments = "{}" } }]
                         : null;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -338,7 +338,7 @@ public partial class SubAgentExecutorTests
                         ? [new ToolCall { Id = "tc1", Function = new ToolCallFunction { Name = "read_files", Arguments = "{}" } }]
                         : null;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(

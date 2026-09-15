@@ -282,8 +282,8 @@
   <data name="ToolCreateFile" xml:space="preserve">
     <value>Создание файла</value>
   </data>
-  <data name="ToolApplyDiff" xml:space="preserve">
-    <value>Применение изменений</value>
+  <data name="ToolEditFile" xml:space="preserve">
+    <value>Редактирование файла</value>
   </data>
   <data name="ToolSearchFiles" xml:space="preserve">
     <value>Поиск файлов</value>
@@ -515,5 +515,11 @@
   </data>
   <data name="CallingToolAwait" xml:space="preserve">
     <value>Ожидание результата</value>
+  </data>
+  <data name="NewSession" xml:space="preserve">
+    <value>Новая сессия</value>
+  </data>
+  <data name="Delete" xml:space="preserve">
+    <value>Удалить</value>
   </data>
 </root>

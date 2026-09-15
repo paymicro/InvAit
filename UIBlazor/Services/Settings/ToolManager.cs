@@ -120,7 +120,7 @@ public class ToolManager(
         return builtIn.Concat(mcp);
     }
 
-    private static bool EnableInMode(Tool tool, AppMode mode)
+    public static bool EnableInMode(Tool tool, AppMode mode)
     {
         return mode switch
         {

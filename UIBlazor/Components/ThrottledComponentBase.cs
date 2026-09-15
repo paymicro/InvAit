@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.AspNetCore.Components;
 
 namespace UIBlazor.Components;
@@ -8,10 +9,12 @@ namespace UIBlazor.Components;
 /// </summary>
 public abstract class ThrottledComponentBase : ComponentBase, IDisposable
 {
-    private bool _shouldRender = true;
-    private DateTime _lastRenderTime = DateTime.MinValue;
-    private CancellationTokenSource? _pendingCts;
+    private bool _disposed;
+    private bool _firstRenderPending = true;
+    private long _lastRenderTicks;
     private bool _forceTrailingRender;
+    // internal for test access only
+    protected internal CancellationTokenSource? PendingCts;
 
     /// <summary>
     /// Minimum interval between renders in milliseconds.
@@ -32,6 +35,9 @@ public abstract class ThrottledComponentBase : ComponentBase, IDisposable
 
     protected override bool ShouldRender()
     {
+        if (_disposed)
+            return false;
+
         // Trailing render: it was scheduled when changes existed, so it must not
         // be vetoed by HasChanges(). Otherwise an identical re-render arriving
         // between scheduling and firing (e.g. the stream-completion cascade)
@@ -39,8 +45,9 @@ public abstract class ThrottledComponentBase : ComponentBase, IDisposable
         if (_forceTrailingRender)
         {
             _forceTrailingRender = false;
-            _shouldRender = false;
-            _lastRenderTime = DateTime.Now;
+            _firstRenderPending = false;
+            CancelPendingCts();
+            _lastRenderTicks = Stopwatch.GetTimestamp();
             OnRendered();
             return true;
         }
@@ -48,27 +55,36 @@ public abstract class ThrottledComponentBase : ComponentBase, IDisposable
         if (!HasChanges())
             return false;
 
-        if (_shouldRender)
+        if (_firstRenderPending)
         {
-            _lastRenderTime = DateTime.Now;
-            _shouldRender = false;
+            _lastRenderTicks = Stopwatch.GetTimestamp();
+            _firstRenderPending = false;
             OnRendered();
             return true;
         }
 
         // Throttle: if rendered recently, defer
-        var elapsed = (DateTime.Now - _lastRenderTime).TotalMilliseconds;
-        if (elapsed < RenderIntervalMs)
+        var elapsedMs = Stopwatch.GetElapsedTime(_lastRenderTicks).TotalMilliseconds;
+        if (elapsedMs < RenderIntervalMs)
         {
-            _pendingCts?.Cancel();
-            _pendingCts = new CancellationTokenSource();
-            _ = DelayedStateHasChangedAsync(_pendingCts.Token);
+            PendingCts?.Cancel();
+            PendingCts?.Dispose();
+            PendingCts = new CancellationTokenSource();
+            _ = DelayedStateHasChangedAsync(PendingCts.Token);
             return false;
         }
 
-        _lastRenderTime = DateTime.Now;
+        CancelPendingCts();
+        _lastRenderTicks = Stopwatch.GetTimestamp();
         OnRendered();
         return true;
+    }
+
+    private void CancelPendingCts()
+    {
+        PendingCts?.Cancel();
+        PendingCts?.Dispose();
+        PendingCts = null;
     }
 
     private async Task DelayedStateHasChangedAsync(CancellationToken ct)
@@ -79,12 +95,27 @@ public abstract class ThrottledComponentBase : ComponentBase, IDisposable
             _forceTrailingRender = true;
             StateHasChanged();
         }
-        catch (TaskCanceledException) { }
+        catch (OperationCanceledException) { }
+        catch (Exception)
+        {
+            // игнорим?
+        }
     }
 
     public void Dispose()
     {
-        _pendingCts?.Cancel();
-        _pendingCts?.Dispose();
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
+        if (disposing)
+            CancelPendingCts();
     }
 }

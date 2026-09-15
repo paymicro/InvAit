@@ -1,7 +1,9 @@
 <div class="input-chip">
     <span class="chip-icon">@Icon</span>
     <span class="chip-name">@Token.FileName</span>
-    <button class="chip-remove" @onclick="OnRemove" title="Remove">×</button>
+    <Tooltip Text="@SharedResource.Delete">
+        <button class="chip-remove" @onclick="OnRemove">×</button>
+    </Tooltip>
 </div>
 
 @code {

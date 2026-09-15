@@ -36,7 +36,7 @@ public partial class SubAgentExecutorTests
                         : null;
                     session.TotalTokens = completionsCallCount == 1 ? 100 : 30;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -77,7 +77,7 @@ public partial class SubAgentExecutorTests
                     // Simulate compression reducing token count
                     session.TotalTokens = 30;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _toolManagerMock.Setup(x => x.GetEnabledTools(AppMode.Agent)).Returns(new List<Tool>
         {
@@ -184,7 +184,7 @@ public partial class SubAgentExecutorTests
                         : null;
                     session.TotalTokens = completionsCallCount == 1 ? 100 : 30;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -215,7 +215,7 @@ public partial class SubAgentExecutorTests
                 It.IsAny<ConversationSession>(),
                 It.IsAny<CompletionsResult>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _toolManagerMock.Setup(x => x.GetEnabledTools(AppMode.Agent)).Returns(new List<Tool>
         {
@@ -263,7 +263,7 @@ public partial class SubAgentExecutorTests
                         : null;
                     session.TotalTokens = completionsCallCount == 1 ? 100 : 30;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -304,7 +304,7 @@ public partial class SubAgentExecutorTests
                     resultCapture.Model = "test-model";
                     session.TotalTokens = 30;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _toolManagerMock.Setup(x => x.GetEnabledTools(AppMode.Agent)).Returns(new List<Tool>
         {
@@ -350,7 +350,7 @@ public partial class SubAgentExecutorTests
                         : null;
                     session.TotalTokens = completionsCallCount == 1 ? 100 : 30;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -380,7 +380,7 @@ public partial class SubAgentExecutorTests
                 It.IsAny<ConversationSession>(),
                 It.IsAny<CompletionsResult>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _toolManagerMock.Setup(x => x.GetEnabledTools(AppMode.Agent)).Returns(new List<Tool>
         {
@@ -448,7 +448,7 @@ public partial class SubAgentExecutorTests
                         : null;
                     session.TotalTokens = 100; // Always above threshold
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -480,7 +480,7 @@ public partial class SubAgentExecutorTests
                 It.IsAny<ConversationSession>(),
                 It.IsAny<CompletionsResult>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _toolManagerMock.Setup(x => x.GetEnabledTools(AppMode.Agent)).Returns(new List<Tool>
         {
@@ -533,7 +533,7 @@ public partial class SubAgentExecutorTests
                     // Always set tokens above threshold (except last iteration)
                     session.TotalTokens = completionsCallCount <= 2 ? 100 : 30;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -575,7 +575,7 @@ public partial class SubAgentExecutorTests
                     // Compression reduces tokens, but they'll be set back to 100 on next LLM call
                     session.TotalTokens = 30;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _toolManagerMock.Setup(x => x.GetEnabledTools(AppMode.Agent)).Returns(new List<Tool>
         {
@@ -626,7 +626,7 @@ public partial class SubAgentExecutorTests
                         : null;
                     session.TotalTokens = completionsCallCount <= 3 ? 100 : 30;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -667,7 +667,7 @@ public partial class SubAgentExecutorTests
                     resultCapture.Model = "test-model";
                     session.TotalTokens = 30;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _toolManagerMock.Setup(x => x.GetEnabledTools(AppMode.Agent)).Returns(new List<Tool>
         {

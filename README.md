@@ -42,7 +42,7 @@
 
 | Server | Run description | Endpoint | 
 |----------|-------|-------|
-| [FoundryLocal](https://foundrylocal.ai) | <pre>winget install Microsoft.FoundryLocal<br/>foundry service set --port 22334<br/>foundry model run qwen2.5-coder-7b</pre> | http://localhost:22334 |
+| [unsloth](https://unsloth.ai) | install / download model / create api token | http://localhost:8888 |
 | [LM Studio](https://lmstudio.ai) | install / download model / start local server | http://localhost:1234 |
 | [Olama](https://ollama.com) | install / download model | http://localhost:11434 |
 

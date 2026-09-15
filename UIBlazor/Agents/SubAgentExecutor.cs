@@ -197,7 +197,7 @@ public class SubAgentExecutor(
             assistant.IsShouldRender = true;
             subAgent.NotifyStateChanged();
 
-            await handler.ProcessToolCallsAsync(assistant.ToolCalls, cancellationToken);
+            await handler.ProcessToolCallsAsync(assistant.ToolCalls, AppMode.Agent, cancellationToken);
 
             // TotalTokens is already maintained by ChatService from usage data — just mirror it.
             SyncTokens(subAgent, session);

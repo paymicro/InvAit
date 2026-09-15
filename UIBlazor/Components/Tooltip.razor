@@ -1,0 +1,51 @@
+@inject TooltipService TooltipService
+@implements IDisposable
+
+<div @ref="wrapperRef"
+     @onmouseenter="Show"
+     @onmouseleave="Hide"
+     style="display: inline-flex; max-width: max-content; align-items: center;">
+    @ChildContent
+</div>
+
+@code {
+    private ElementReference wrapperRef;
+    private bool isMouseOver = false;
+
+    [Parameter] public RenderFragment ChildContent { get; set; } = null!;
+    [Parameter] public string Text { get; set; } = string.Empty;
+    [Parameter] public TooltipPosition Position { get; set; } = TooltipPosition.Top;
+    [Parameter] public int Delay { get; set; } = 150; // Небольшая задержка для плавности
+
+    private async Task Show()
+    {
+        if (string.IsNullOrEmpty(Text)) return;
+
+        isMouseOver = true;
+
+        // Небольшой таймаут, чтобы Radzen успел точно зафиксировать позицию элемента на экране
+        await Task.Delay(Delay);
+
+        // Проверяем, остался ли курсор на элементе после задержки
+        if (isMouseOver)
+        {
+            TooltipService.Open(wrapperRef, Text, new TooltipOptions
+            {
+                Position = Position,
+                Duration = null // Закрываем строго вручную через Hide()
+            });
+        }
+    }
+
+    private void Hide()
+    {
+        isMouseOver = false;
+        TooltipService.Close();
+    }
+
+    // Защита от "залипания" тултипа, если пользователь ушел на другую страницу
+    public void Dispose()
+    {
+        TooltipService.Close();
+    }
+}

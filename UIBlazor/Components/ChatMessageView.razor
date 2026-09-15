@@ -75,31 +75,55 @@
             <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.25rem" class="rz-chat-message-actions">
                 @if (!Message.IsStreaming)
                 {
-                    <RadzenButton Icon="edit" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
-                    Click="@(() => OnEdit.InvokeAsync(Message))" Title="@SharedResource.MessageEdit" />
-                    <RadzenButton Icon="delete" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
-                    Click="@(() => OnDelete.InvokeAsync(Message))" Title="@SharedResource.MessageDelete" />
+                    <Tooltip Text="@SharedResource.MessageEdit">
+                        <RadzenButton
+                            Icon="edit"
+                            Variant="Variant.Text"
+                            ButtonStyle="ButtonStyle.Base"
+                            Size="ButtonSize.ExtraSmall"
+                            Click="@(() => OnEdit.InvokeAsync(Message))" />
+                    </Tooltip>
+                    <Tooltip Text="@SharedResource.MessageDelete">
+                        <RadzenButton
+                            Icon="delete"
+                            Variant="Variant.Text"
+                            ButtonStyle="ButtonStyle.Base"
+                            Size="ButtonSize.ExtraSmall"
+                            Click="@(() => OnDelete.InvokeAsync(Message))" />
+                    </Tooltip>
                     @if (!IsLoading && IsLast && Message.Role == ChatMessageRole.Assistant)
                     {
-                        <RadzenButton Icon="refresh" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" 
-                        Click="@OnRegenerate" Title="@SharedResource.MessageRegenerate" />
+                        <Tooltip Text="@SharedResource.MessageRegenerate">
+                            <RadzenButton
+                                Icon="refresh"
+                                Variant="Variant.Text"
+                                ButtonStyle="ButtonStyle.Base"
+                                Size="ButtonSize.ExtraSmall" 
+                                Click="@OnRegenerate" />
+                        </Tooltip>
                     }
                 }
                 <div class="message-badges">
                     @if (CommonSettingsProvider.Current.ShowMessageTimings && Message.Timings is { FirstToken.TotalMilliseconds: > 100 })
                     {
-                        <RadzenBadge BadgeStyle="BadgeStyle.Light" title="@SharedResource.FirstToken">
-                            <i class="fa-solid fa-arrow-right-arrow-left"></i> @Message.Timings.FirstToken.TotalSeconds.ToString("F1")
-                        </RadzenBadge>
+                        <Tooltip Text="@SharedResource.FirstToken">
+                            <RadzenBadge BadgeStyle="BadgeStyle.Light">
+                                <i class="fa-solid fa-arrow-right-arrow-left"></i> @Message.Timings.FirstToken.TotalSeconds.ToString("F1")
+                            </RadzenBadge>
+                        </Tooltip>
                         <RadzenBadge BadgeStyle="BadgeStyle.Light" >
                             <i class="fa-regular fa-clock"></i> @Message.Timings.TokensInSec.ToString("F1") t/s
                         </RadzenBadge>
-                        <RadzenBadge BadgeStyle="BadgeStyle.Light" title="@TokensTitle">
-                            <i class="fa-solid @(Message.IsStreaming ? "fa-jello" : "") fa-pen"></i> @Message.Timings.Tokens tok
-                        </RadzenBadge>
-                        <RadzenBadge BadgeStyle="BadgeStyle.Light">
-                            <i class="@(Message.IsStreaming ? "fa-regular fa-hourglass fa-spin" : "fa-solid fa-flag")"></i> @Message.Timings.Total.TotalSeconds.ToString("F1")
-                        </RadzenBadge>
+                        <Tooltip Text="@TokensTitle">
+                            <RadzenBadge BadgeStyle="BadgeStyle.Light">
+                                <i class="fa-solid @(Message.IsStreaming ? "fa-jello" : "") fa-pen"></i> @Message.Timings.Tokens tok
+                            </RadzenBadge>
+                        </Tooltip>
+                        <Tooltip Text="@TotalSecTotal">
+                            <RadzenBadge BadgeStyle="BadgeStyle.Light">
+                                <i class="@(Message.IsStreaming ? "fa-regular fa-hourglass fa-spin" : "fa-solid fa-flag")"></i> @Message.Timings.Total.TotalSeconds.ToString("F1")
+                            </RadzenBadge>
+                        </Tooltip>
                     }
                 </div>
             </RadzenStack>
@@ -134,6 +158,15 @@
 
             var generated = Message.IsStreaming ? timings.Tokens : timings.Tokens + timings.ReasoningTokens;
             return $"{SharedResource.Generated}: {generated}, {SharedResource.IncludingReasoning}: {timings.ReasoningTokens}";
+        }
+    }
+
+    private string TotalSecTotal
+    {
+        get {
+            return Message.Timings.Total.TotalMinutes >= 1
+                ? $"{(int)Message.Timings.Total.TotalMinutes} min {Message.Timings.Total.Seconds} sec"
+                : $"{Message.Timings.Total.Seconds} sec";
         }
     }
 

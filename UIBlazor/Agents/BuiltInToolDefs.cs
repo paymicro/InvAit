@@ -25,9 +25,9 @@ public static class BuiltInToolDefs
         [Description("Content")] string content)
     { }
 
-    [DisplayName(BuiltInToolEnum.Edits)]
+    [DisplayName(BuiltInToolEnum.EditFiles)]
     [Description("Applies a series of Search & Replace edits to the specified file.")]
-    public static void Edit(
+    public static void EditFiles(
         [Description("File path")] string filePath,
         [Description("List of pairs 'search/replace'. Executed sequentially.")] DiffEdit[] edits)
     { }

@@ -282,8 +282,8 @@
   <data name="ToolCreateFile" xml:space="preserve">
     <value>Create file</value>
   </data>
-  <data name="ToolApplyDiff" xml:space="preserve">
-    <value>Apply diff</value>
+  <data name="ToolEditFile" xml:space="preserve">
+    <value>Edit file</value>
   </data>
   <data name="ToolSearchFiles" xml:space="preserve">
     <value>Search files</value>
@@ -515,5 +515,11 @@
   </data>
   <data name="CallingToolAwait" xml:space="preserve">
     <value>Wait for the result</value>
+  </data>
+  <data name="NewSession" xml:space="preserve">
+    <value>New Session</value>
+  </data>
+  <data name="Delete" xml:space="preserve">
+    <value>Delete</value>
   </data>
 </root>

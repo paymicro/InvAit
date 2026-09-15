@@ -289,7 +289,7 @@ public partial class AiChat : RadzenComponent
             ToolCallHandler.PrepareToolsForApprovals(message.ToolCalls);
             message.IsShouldRender = true;
             await InvokeAsync(StateHasChanged);
-            await ToolCallHandler.ProcessToolCallsAsync(message.ToolCalls, cancellationToken);
+            await ToolCallHandler.ProcessToolCallsAsync(message.ToolCalls, ChatService.Session.Mode, cancellationToken);
             ChatService.Session.TotalTokens += message.ToolCalls?.Sum(t => t.Tokens) ?? 0;
             await ChatService.SaveSessionAsync();
             message.IsShouldRender = true;
@@ -361,7 +361,7 @@ public partial class AiChat : RadzenComponent
             Severity = NotificationSeverity.Error,
             Summary = $"[{retryCount}/{maxRetries}] Response error",
             Detail = ex.Message,
-            Duration = 30_000,
+            Duration = 25_000,
             ShowProgress = true,
         });
 
@@ -573,7 +573,8 @@ public partial class AiChat : RadzenComponent
                 Severity = NotificationSeverity.Info,
                 Summary = "Profile Changed",
                 Detail = "Active profile updated.",
-                Duration = 1000
+                Duration = 1000,
+                ShowProgress = true,
             });
         }
     }

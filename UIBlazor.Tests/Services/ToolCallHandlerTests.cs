@@ -1,3 +1,5 @@
+using HandlebarsDotNet.Helpers.Enums;
+
 namespace UIBlazor.Tests.Services;
 
 /// <summary>
@@ -36,28 +38,42 @@ public partial class ToolCallHandlerTests
         var toolCalls = new List<ToolCall>();
 
         // Act
-        await _sut.ProcessToolCallsAsync(toolCalls, CancellationToken.None);
+        await _sut.ProcessToolCallsAsync(toolCalls, AppMode.Agent, TestContext.Current.CancellationToken);
 
         // Assert
         _toolManagerMock.Verify(t => t.GetTool(It.IsAny<string>()), Times.Never);
         Assert.Empty(toolCalls);
     }
 
-    [Fact]
-    public async Task ProcessToolCallsAsync_ToolNotFound_ReturnsErrorResult()
+    [Theory]
+    [InlineData(AppMode.Agent, "tool_disabled", ToolCategory.WriteFiles, false)]
+    [InlineData(AppMode.Plan, "tool_write_in_plan", ToolCategory.WriteFiles, true)]
+    [InlineData(AppMode.Plan, "tool_delete_in_plan", ToolCategory.DeleteFiles, true)]
+    [InlineData(AppMode.Plan, "tool_subagent_in_plan", ToolCategory.SubAgent, true)]
+    [InlineData(AppMode.Chat, "tool_write_in_chat", ToolCategory.WriteFiles, true)]
+    [InlineData(AppMode.Chat, "tool_delete_in_chat", ToolCategory.DeleteFiles, true)]
+    [InlineData(AppMode.Chat, "tool_subagent_in_chat", ToolCategory.SubAgent, true)]
+    public async Task ProcessToolCallsAsync_ToolCantExecute_ReturnsErrorResult(
+        AppMode appMode, string toolName, ToolCategory toolCategory, bool enabled)
     {
         // Arrange
-        var list = CreateList("unknown_tool", ToolApprovalStatus.Approved);
+        var list = CreateList(toolName, ToolApprovalStatus.Approved);
 
-        _toolManagerMock.Setup(t => t.GetTool("unknown_tool")).Returns((Tool?)null);
+        _toolManagerMock.Setup(t => t.GetTool(toolName)).Returns(new Tool {
+            Name = toolName,
+            Category = toolCategory,
+            Enabled = enabled,
+            ExecuteAsync = null!,
+            NativeTool = null!,
+        });
 
         // Act
-        await _sut.ProcessToolCallsAsync(list, CancellationToken.None);
+        await _sut.ProcessToolCallsAsync(list, appMode, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(list);
-        Assert.False(list[0].Result.Success);
-        Assert.Contains("Tool not found", list[0].Result.Content);
+        Assert.False(list[0].Result!.Success);
+        Assert.Contains($"Tool {toolName} can't execute", list[0].Result!.Content);
     }
 
     [Fact]
@@ -77,12 +93,12 @@ public partial class ToolCallHandlerTests
         _toolManagerMock.Setup(t => t.GetTool("read_files")).Returns(tool);
 
         // Act
-        await _sut.ProcessToolCallsAsync(list, CancellationToken.None);
+        await _sut.ProcessToolCallsAsync(list, AppMode.Chat, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(list);
-        Assert.False(list[0].Result.Success);
-        Assert.Contains("denied", list[0].Result.Content, StringComparison.OrdinalIgnoreCase);
+        Assert.False(list[0].Result!.Success);
+        Assert.Contains("denied", list[0].Result!.Content, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -104,7 +120,7 @@ public partial class ToolCallHandlerTests
         _toolManagerMock.Setup(t => t.GetTool("read_files")).Returns(tool);
 
         // Act
-        await _sut.ProcessToolCallsAsync(list, CancellationToken.None);
+        await _sut.ProcessToolCallsAsync(list, AppMode.Agent, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(list);
@@ -118,11 +134,11 @@ public partial class ToolCallHandlerTests
         // Arrange
         var list = CreateList("mcp__server__tool_name", ToolApprovalStatus.Approved);
         list[0].Function.Arguments = """
-                                                  {
-                                                      "param1" : "value1",
-                                                      "param2" : "value2"
-                                                  }
-                                                  """;
+            {
+                "param1" : "value1",
+                "param2" : "value2"
+            }
+            """;
 
         string? capturedArgs = null;
 
@@ -142,7 +158,7 @@ public partial class ToolCallHandlerTests
         _toolManagerMock.Setup(t => t.GetTool("mcp__server__tool_name")).Returns(tool);
 
         // Act
-        await _sut.ProcessToolCallsAsync(list, CancellationToken.None);
+        await _sut.ProcessToolCallsAsync(list, AppMode.Agent, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(capturedArgs);
@@ -167,11 +183,11 @@ public partial class ToolCallHandlerTests
         _toolManagerMock.Setup(t => t.GetTool("read_files")).Returns(tool);
 
         // Act
-        await _sut.ProcessToolCallsAsync(list, CancellationToken.None);
+        await _sut.ProcessToolCallsAsync(list, AppMode.Chat, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(list);
-        Assert.True(list[0].Result.Success);
+        Assert.True(list[0].Result!.Success);
     }
 
     private static List<ToolCall> CreateList(string toolName, ToolApprovalStatus status)

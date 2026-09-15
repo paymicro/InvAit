@@ -16,27 +16,34 @@
             Style="flex:1">
             @if (ProfileManager.Current.Profiles.Count > 0)
             {
-                <RadzenDropDown TValue="string" Data="@ProfileManager.Current.Profiles" TextProperty="Name" ValueProperty="Id"
-                                Value="@ProfileManager.Current.ActiveProfileId" Change="@OnProfileChangeAsync"
-                                Placeholder="Select Profile"
-                                class="hide-500"
-                                Style="width: 180px;" />
+                <RadzenDropDown
+                    TValue="string"
+                    Data="@ProfileManager.Current.Profiles"
+                    TextProperty="Name"
+                    ValueProperty="Id"
+                    Value="@ProfileManager.Current.ActiveProfileId"
+                    Change="@OnProfileChangeAsync"
+                    Placeholder="Select Profile"
+                    class="hide-500"
+                    Style="width: 180px;" />
             }
-            <RadzenButton
-                Icon="add_comment"
-                Variant="Variant.Text"
-                ButtonStyle="ButtonStyle.Base"
-                Click="@NewSessionAsync"
-                title="New session"
-                class="rz-chat-header-new" />
-            <RadzenButton
-                Icon="settings"
-                Variant="Variant.Text"
-                ButtonStyle="ButtonStyle.Base"
-                Click="@OnShowSettingsAsync"
-                IsBusy="@_callSettings"
-                title="Settings"
-                class="rz-chat-header-settings" />
+            <Tooltip Text="@SharedResource.NewSession">
+                <RadzenButton
+                    Icon="add_comment"
+                    Variant="Variant.Text"
+                    ButtonStyle="ButtonStyle.Base"
+                    Click="@NewSessionAsync"
+                    class="rz-chat-header-new" />
+            </Tooltip>
+            <Tooltip Text="@SharedResource.Settings">
+                <RadzenButton
+                    Icon="settings"
+                    Variant="Variant.Text"
+                    ButtonStyle="ButtonStyle.Base"
+                    Click="@OnShowSettingsAsync"
+                    IsBusy="@_callSettings"
+                    class="rz-chat-header-settings" />
+            </Tooltip>
         </RadzenStack>
     </RadzenStack>
 

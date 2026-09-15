@@ -41,7 +41,7 @@ public partial class SubAgentExecutorTests
                     // Simulate tokens accumulated from the LLM response
                     session.TotalTokens = 150;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -110,7 +110,7 @@ public partial class SubAgentExecutorTests
                     ];
                     session.TotalTokens = 150;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -176,7 +176,7 @@ public partial class SubAgentExecutorTests
                     ];
                     session.TotalTokens = 150;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -244,7 +244,7 @@ public partial class SubAgentExecutorTests
                     // Set high token count that WOULD exceed a budget if one were set
                     session.TotalTokens = 99999;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -314,7 +314,7 @@ public partial class SubAgentExecutorTests
                     // Tokens well within budget
                     session.TotalTokens = 50;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -382,7 +382,7 @@ public partial class SubAgentExecutorTests
                     ];
                     session.TotalTokens = 250;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(

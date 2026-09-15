@@ -52,7 +52,7 @@
                     <RadzenLabel Text="@SharedResource.MaxTokens" />
                     <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
                         <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.MaxTokens" Min=0 Max=30000 Step="1000" Style="width: 100%; height: 20px;" />
-                        <RadzenLabel Text="@($"{ProfileManager.ActiveProfile.MaxTokens}")" Style="text-align: right; width: 50px;" />
+                        <RadzenLabel Text="@(ProfileManager.ActiveProfile.MaxTokens > 0 ? ProfileManager.ActiveProfile.MaxTokens.ToString() : "∞")" Style="text-align: right; width: 50px;" />
                     </RadzenStack>
                 </RadzenStack>
 
@@ -76,7 +76,7 @@
                     <RadzenLabel Text="@SharedResource.CompressionTokenThreshold" />
                     <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
                         <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.TokensToCompress" Min=0 Max=256000 Step="1000" Style="width: 100%; height: 20px;" />
-                        <RadzenLabel Text="@($"{ProfileManager.ActiveProfile.TokensToCompress / 1000}K")" Style="text-align: right; width: 50px;" />
+                        <RadzenLabel Text="@(ProfileManager.ActiveProfile.TokensToCompress > 0 ? $"{ProfileManager.ActiveProfile.TokensToCompress / 1000}K" : "∞")" Style="text-align: right; width: 50px;" />
                     </RadzenStack>
                 </RadzenStack>
 

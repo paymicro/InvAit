@@ -42,7 +42,7 @@ public class ConnectionProfile : BaseOptions
     /// Максимальное количество итараций(вызовов) для одного субагента (delegate_task).
     /// 0 — ограничение отключено.
     /// </summary>
-    public int MaxIterationsPerSubAgent { get; set => SetIfChanged(ref field, value); } = 20;
+    public int MaxIterationsPerSubAgent { get; set => SetIfChanged(ref field, value); } = 50;
 
     /// <summary>
     /// Максимальное время выполнения для одного субагента (delegate_task), в секундах.

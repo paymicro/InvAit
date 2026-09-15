@@ -73,27 +73,6 @@ public class FileChipTests : BunitContext
     }
 
     [Fact]
-    public void ShouldRenderRemoveButton()
-    {
-        // Arrange
-        var token = new FileToken
-        {
-            FilePath = "C:\\path\\to\\file.cs",
-            FileName = "file.cs"
-        };
-
-        // Act
-        var cut = Render<FileChip>(parameters => parameters
-            .Add(p => p.Token, token));
-
-        // Assert
-        var removeButton = cut.Find(".chip-remove");
-        Assert.NotNull(removeButton);
-        Assert.Equal("Remove", removeButton.GetAttribute("title"));
-        Assert.Equal("×", removeButton.TextContent);
-    }
-
-    [Fact]
     public void ShouldRenderDefaultIcon_WhenIconNotProvided()
     {
         // Arrange
@@ -486,25 +465,6 @@ public class FileChipTests : BunitContext
         // Assert
         var removeButton = cut.Find("button.chip-remove");
         Assert.NotNull(removeButton);
-    }
-
-    [Fact]
-    public void RemoveButton_ShouldHaveCorrectTitle()
-    {
-        // Arrange
-        var token = new FileToken
-        {
-            FilePath = "C:\\path\\to\\file.cs",
-            FileName = "file.cs"
-        };
-
-        // Act
-        var cut = Render<FileChip>(parameters => parameters
-            .Add(p => p.Token, token));
-
-        // Assert
-        var removeButton = cut.Find(".chip-remove");
-        Assert.Equal("Remove", removeButton.GetAttribute("title"));
     }
 
     #endregion

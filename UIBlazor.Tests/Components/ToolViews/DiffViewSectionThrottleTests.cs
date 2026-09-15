@@ -40,18 +40,18 @@ public class DiffViewSectionThrottleTests : BunitContext
         const int lastChunk = 8;
         for (var i = 1; i <= lastChunk; i++)
         {
-            await Task.Delay(100);
+            await Task.Delay(100, TestContext.Current.CancellationToken);
             var text = $"chunk-{i}";
             cut.Render(parameters => parameters
                 .Add(p => p.Model, BuildModel(text)));
         }
 
         // Settle - wait past the throttle interval for the trailing render
-        await Task.Delay(800);
+        await Task.Delay(800, TestContext.Current.CancellationToken);
 
         // Assert - the final streamed line MUST be visible
-        cut.WaitForAssertion(
-            () => Assert.Contains($"chunk-{lastChunk}", cut.Markup),
-            TimeSpan.FromSeconds(3));
+        cut.WaitForState(
+             () => cut.Markup.Contains($"chunk-{lastChunk}"),
+             TimeSpan.FromSeconds(3));
     }
 }

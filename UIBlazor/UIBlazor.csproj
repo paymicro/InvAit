@@ -22,6 +22,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="UIBlazor.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Update="Localization\SharedResource.Designer.cs">
       <DesignTime>True</DesignTime>
       <AutoGen>True</AutoGen>

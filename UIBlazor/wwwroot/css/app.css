@@ -86,6 +86,7 @@ code.hljs {
 
 .rz-chat-message-text {
     overflow-anchor: none;
+    overflow-wrap: anywhere;
 }
 
 .anchor {

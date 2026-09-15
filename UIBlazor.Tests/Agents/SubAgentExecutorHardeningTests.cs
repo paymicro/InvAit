@@ -20,7 +20,7 @@ public partial class SubAgentExecutorTests
                     resultCapture.Model = "test-model";
                     onCompletions(resultCapture, completionsCallCount);
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         var processStreamCallCount = 0;
         _chatServiceMock
@@ -146,7 +146,7 @@ public partial class SubAgentExecutorTests
                 capture.Model = "test-model";
                 session.TotalTokens = 30; // below threshold after compression
             })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         var processStreamCalls = 0;
         var completionsCalls = 0;
@@ -166,7 +166,7 @@ public partial class SubAgentExecutorTests
                         ? [new ToolCall { Id = "tc1", Function = new ToolCallFunction { Name = "read_files", Arguments = "{}" } }]
                         : null;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -214,7 +214,7 @@ public partial class SubAgentExecutorTests
                 compressCalls++;
                 capture.Model = "test-model";
             })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         var processStreamCalls = 0;
         var completionsCalls = 0;
@@ -232,7 +232,7 @@ public partial class SubAgentExecutorTests
                         ? [new ToolCall { Id = "tc1", Function = new ToolCallFunction { Name = "read_files", Arguments = "{}" } }]
                         : null;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -311,7 +311,7 @@ public partial class SubAgentExecutorTests
                 It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
             .Callback<ConversationSession, string, IEnumerable<Tool>, CompletionsResult, CancellationToken>(
                 (_, _, tools, _, _) => captureLastTools = tools.ToArray())
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
                 It.IsAny<VisualChatMessage>(), It.IsAny<IAsyncEnumerable<ChatDelta>>(),
@@ -367,7 +367,7 @@ public partial class SubAgentExecutorTests
                     if (completionsCalls == 2)
                         summaryTools = tools; // the summary call must be text-only (no tools)
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -412,7 +412,7 @@ public partial class SubAgentExecutorTests
             .Setup(x => x.GetCompletionsForSubAgentAsync(
                 It.IsAny<ConversationSession>(), It.IsAny<string>(), It.IsAny<IEnumerable<Tool>>(),
                 It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -464,7 +464,7 @@ public partial class SubAgentExecutorTests
                         resultCapture.AccumulatedToolCalls = null; // summary / final answer
                     }
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(

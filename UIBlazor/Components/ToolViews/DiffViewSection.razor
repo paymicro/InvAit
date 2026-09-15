@@ -1,5 +1,4 @@
 @using DiffPlex.DiffBuilder.Model
-@implements IDisposable
 
 <div class="diff-pane" style="overflow: auto;">
     <table class="diff">
@@ -43,29 +42,6 @@
     private void Toggle()
     {
         _isOldHidden = !_isOldHidden;
-        _changed = true;
         InvokeAsync(StateHasChanged);
     }
-
-    private bool _changed;
-    private Throttler _throttler = new(500); // Интервал рендеринга от 500мс
-
-    protected override bool ShouldRender()
-    {
-        if (_changed && _throttler.ShouldRender(() => InvokeAsync(StateHasChanged)))
-        {
-            _changed = false;
-            return true;
-        }
-
-        return false;
-    }
-
-    protected override void OnParametersSet()
-    {
-        base.OnParametersSet();
-        _changed = true;
-    }
-
-    public void Dispose() => _throttler.Dispose();
 }

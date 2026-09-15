@@ -106,7 +106,7 @@ public partial class SubAgentExecutorTests
                     resultCapture.Model = "test-model";
                     resultCapture.AccumulatedToolCalls = null;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(

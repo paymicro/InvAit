@@ -137,10 +137,10 @@ public partial class BuiltInToolDefsTests
     }
 
     [Fact]
-    public void MapMethodToTool_ApplyDiff_ReturnsCorrectPropertyDescription()
+    public void MapMethodToTool_EditFiles_ReturnsCorrectPropertyDescription()
     {
         // Arrange
-        var method = typeof(BuiltInToolDefs).GetMethod(nameof(BuiltInToolDefs.Edit));
+        var method = typeof(BuiltInToolDefs).GetMethod(nameof(BuiltInToolDefs.EditFiles));
 
         // Act
         var result = BuiltInToolDefs.MapMethodToTool(method);
@@ -149,7 +149,7 @@ public partial class BuiltInToolDefsTests
         // Assert
         Assert.True(result.Function.Parameters.Properties.ContainsKey("filePath"));
         Assert.Equal("File path", result.Function.Parameters.Properties["filePath"].Description);
-        Assert.Equivalent(json, "{\"type\":\"function\",\"function\":{\"name\":\"edits\",\"description\":\"Applies a series of Search & Replace edits to the specified file.\",\"strict\":true,\"parameters\":{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"string\",\"description\":\"File path\"},\"edits\":{\"type\":\"array\",\"description\":\"List of pairs 'search/replace'. Executed sequentially.\",\"items\":{\"type\":\"object\",\"properties\":{\"approximateLine\":{\"type\":[\"integer\",\"null\"],\"description\":\"Approximate start line or null (default '-1')\"},\"oldStr\":{\"type\":\"string\",\"description\":\"Unique fragment of code\"},\"newStr\":{\"type\":\"string\",\"description\":\"New fragment of code\"}},\"required\":[\"oldStr\",\"newStr\"],\"additionalProperties\":false}}},\"required\":[\"filePath\",\"edits\"],\"additionalProperties\":false}}}");
+        Assert.Equivalent(json, "{\"type\":\"function\",\"function\":{\"name\":\"edit_files\",\"description\":\"Applies a series of Search & Replace edits to the specified file.\",\"strict\":true,\"parameters\":{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"string\",\"description\":\"File path\"},\"edits\":{\"type\":\"array\",\"description\":\"List of pairs 'search/replace'. Executed sequentially.\",\"items\":{\"type\":\"object\",\"properties\":{\"approximateLine\":{\"type\":[\"integer\",\"null\"],\"description\":\"Approximate start line or null (default '-1')\"},\"oldStr\":{\"type\":\"string\",\"description\":\"Unique fragment of code\"},\"newStr\":{\"type\":\"string\",\"description\":\"New fragment of code\"}},\"required\":[\"oldStr\",\"newStr\"],\"additionalProperties\":false}}},\"required\":[\"filePath\",\"edits\"],\"additionalProperties\":false}}}");
     }
 
     [Fact]

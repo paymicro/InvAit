@@ -58,8 +58,12 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
         }
     }
 
+    private static bool ToolCanExecute(Tool? tool, AppMode appMode)
+        => tool is { Enabled: true } && ToolManager.EnableInMode(tool, appMode);
+
     public async Task ProcessToolCallsAsync(
         List<ToolCall> toolCalls,
+        AppMode appMode,
         CancellationToken cancellationToken)
     {
         // Separate delegate_task calls (can run in parallel) from other tool calls (sequential).
@@ -74,6 +78,19 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
                 return;
 
             var tool = toolManager.GetTool(toolCall.Function.Name);
+
+            if (!ToolCanExecute(tool, appMode))
+            {
+                toolCall.Result = new ToolResult
+                {
+                    Content = string.Join(" ",
+                        new string[] { "Tool", tool?.Name ?? string.Empty, "can't execute" }.Where(s => !string.IsNullOrEmpty(s))),
+                    Name = toolCall.Function.Name,
+                    DisplayName = tool?.DisplayName ?? string.Empty,
+                    Success = false
+                };
+                continue;
+            }
 
             if (toolCall.Function.Name == BuiltInToolEnum.DelegateTask)
                 delegateTasks.Add((toolCall, tool));

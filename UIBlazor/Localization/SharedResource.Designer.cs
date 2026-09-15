@@ -241,6 +241,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Delete.
+        /// </summary>
+        public static string Delete {
+            get {
+                return ResourceManager.GetString("Delete", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Delete Profile.
         /// </summary>
         public static string DeleteProfile {
@@ -516,6 +525,15 @@ namespace UIBlazor.Localization {
         public static string Messages {
             get {
                 return ResourceManager.GetString("Messages", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to New Session.
+        /// </summary>
+        public static string NewSession {
+            get {
+                return ResourceManager.GetString("NewSession", resourceCulture);
             }
         }
         
@@ -979,15 +997,6 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Apply diff.
-        /// </summary>
-        public static string ToolApplyDiff {
-            get {
-                return ResourceManager.GetString("ToolApplyDiff", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to Ask user.
         /// </summary>
         public static string ToolAskUser {
@@ -1038,6 +1047,15 @@ namespace UIBlazor.Localization {
         public static string ToolDir {
             get {
                 return ResourceManager.GetString("ToolDir", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Edit file.
+        /// </summary>
+        public static string ToolEditFile {
+            get {
+                return ResourceManager.GetString("ToolEditFile", resourceCulture);
             }
         }
         

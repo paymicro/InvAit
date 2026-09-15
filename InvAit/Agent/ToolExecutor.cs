@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -48,7 +47,7 @@ public class ToolExecutor : IAsyncDisposable
                 BuiltInToolEnum.FindDeclarations => await FindDeclarationsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.FindReferences => await FindReferencesAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.Dir => await ListDirectoryAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BuiltInToolEnum.Edits => await EditsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.EditFiles => await EditsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.Build => await BuildSolutionAsync(),
                 BuiltInToolEnum.RunTests => await RunTestsAsync(),
                 BuiltInToolEnum.GetErrors => await GetErrorListAsync(),
@@ -301,7 +300,7 @@ public class ToolExecutor : IAsyncDisposable
         var result = await _processExecutor.ExecuteBashAsync(param, solutionPath, 120_000);
         return new VsResponse
         {
-            Success = result.Success,
+            Success = result.Success && !result.TimedOut && !result.Cancelled,
             Payload = TruncateOutput(result.Output),
             Error = TruncateOutput(result.Error)
         };
@@ -553,7 +552,7 @@ public class ToolExecutor : IAsyncDisposable
         var diffEdits = args.GetObject<List<DiffEdit>>("edits");
         var filepath = GetAbsolutePath(inputFileName, solutionPath);
 
-        if (diffEdits.Count == 0)
+        if (diffEdits is null || diffEdits.Count == 0)
             return new VsResponse { Success = false, Error = "Failed to get replacements" };
 
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();

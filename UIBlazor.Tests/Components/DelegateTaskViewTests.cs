@@ -336,15 +336,15 @@ public class DelegateTaskViewTests : BunitContext
     public void ShouldRenderAllSections_WhenFullArgsProvided()
     {
         // Arrange
-        var args = """{"task":"Implement feature X","systemPrompt":"You are an expert developer","allowedTools":["read_files","edits"]}""";
+        var args = """{"task":"Implement feature X","systemPrompt":"You are an expert developer","allowedTools":["read_files","edit_files"]}""";
 
         _mockToolManager
             .Setup(x => x.GetTool("read_files"))
             .Returns(CreateTool("read_files", "Read Files"));
 
         _mockToolManager
-            .Setup(x => x.GetTool("edits"))
-            .Returns(CreateTool("edits", "Apply diff"));
+            .Setup(x => x.GetTool("edit_files"))
+            .Returns(CreateTool("edit_files", "Edit File"));
 
         // Act
         var cut = Render<DelegateTaskView>(parameters => parameters
@@ -354,7 +354,7 @@ public class DelegateTaskViewTests : BunitContext
         Assert.Contains("Implement feature X", cut.Markup);
         Assert.Contains("You are an expert developer", cut.Markup);
         Assert.Contains("Read Files", cut.Markup);
-        Assert.Contains("Apply diff", cut.Markup);
+        Assert.Contains("Edit File", cut.Markup);
         Assert.Contains(SharedResource.SubAgentTask, cut.Markup);
         Assert.Contains(SharedResource.SubAgentSystemPrompt, cut.Markup);
         Assert.Contains(SharedResource.SubAgentAllowedTools, cut.Markup);

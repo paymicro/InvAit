@@ -13,7 +13,7 @@ public interface IToolCallHandler
     /// <summary>
     /// Processes all tool calls in the message and returns results.
     /// </summary>
-    Task ProcessToolCallsAsync(List<ToolCall> toolCalls, CancellationToken cancellationToken);
+    Task ProcessToolCallsAsync(List<ToolCall> toolCalls, AppMode appMode, CancellationToken cancellationToken);
 
     /// <summary>
     /// Handles approval response from user.

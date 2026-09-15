@@ -71,7 +71,7 @@ public partial class SubAgentExecutorTests
                         ? [new ToolCall { Id = "tc1", Function = new ToolCallFunction { Name = "read_files", Arguments = "{}" } }]
                         : null;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
                 It.IsAny<VisualChatMessage>(),
@@ -150,7 +150,7 @@ public partial class SubAgentExecutorTests
                         ]
                         : null;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(
@@ -220,7 +220,7 @@ public partial class SubAgentExecutorTests
                         ]
                         : null;
                 })
-            .Returns(CreateEmptyDeltaStream());
+            .Returns(CreateEmptyDeltaStream(TestContext.Current.CancellationToken));
 
         _chatServiceMock
             .Setup(x => x.ProcessStreamAsync(

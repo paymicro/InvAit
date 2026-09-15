@@ -1,10 +1,12 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace ToolCore;
 
 /// <summary>
-/// Executor for running external processes (git, dotnet, cmd, etc.)
+/// Исполнитель внешних процессов (git, dotnet, sh), адаптированный для .NET Standard 2.0.
+/// Обеспечивает жесткие таймауты, ограничение памяти и убийство всего дерева процессов.
 /// </summary>
 public class ProcessExecutor(ILogger logger)
 {
@@ -14,10 +16,9 @@ public class ProcessExecutor(ILogger logger)
     {
     }
 
-    /// <summary>
-    /// Переменные окружения для полностью неинтерактивного режима.
-    /// Отключают ANSI-цвета, terminal logger, телеметрию, пейджеры и интерактивные промпты.
-    /// </summary>
+    public const int DefaultOutputLimit = 30_000; // ~30 KB
+    public const int MaxOutputLines = 50_000;
+
     private static readonly Dictionary<string, string> NonInteractiveEnv = new()
     {
         ["TERM"] = "dumb",                       // тупая консоль - никакого интерактива
@@ -33,82 +34,79 @@ public class ProcessExecutor(ILogger logger)
         ["LC_ALL"] = "en_US.UTF-8",
     };
 
-    /// <summary>
-    /// Применяет неинтерактивные переменные окружения к ProcessStartInfo.
-    /// Использовать для всех процессов, вывод которых перенаправляется.
-    /// </summary>
     public static void ConfigureNonInteractiveEnvironment(ProcessStartInfo startInfo)
     {
         foreach (var kvp in NonInteractiveEnv)
         {
-            startInfo.Environment[kvp.Key] = kvp.Value;
+            startInfo.EnvironmentVariables[kvp.Key] = kvp.Value;
         }
     }
 
     public static string? FindGitSh()
     {
-        // 1. Проверяем PATH (вдруг он там всё-таки есть)
         if (GetFullPathCommand("sh.exe") != null)
             return "sh.exe";
 
-        // 2. Ищем в реестре (64-бит и 32-бит)
-        string[] registryPaths = [
-            @"SOFTWARE\GitForWindows",
-            @"SOFTWARE\WOW6432Node\GitForWindows"
-        ];
-
-        foreach (var path in registryPaths)
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(path);
-            var installPath = key?.GetValue("InstallPath") as string;
-            if (!string.IsNullOrEmpty(installPath))
+            string[] registryPaths = [
+                @"SOFTWARE\GitForWindows",
+                @"SOFTWARE\WOW6432Node\GitForWindows"
+            ];
+
+            foreach (var path in registryPaths)
             {
-                var shPath = Path.Combine(installPath, "bin", "sh.exe");
-                if (File.Exists(shPath))
-                    return shPath;
+                try
+                {
+                    using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(path);
+                    if (key?.GetValue("InstallPath") is string installPath && !string.IsNullOrEmpty(installPath))
+                    {
+                        var shPath = Path.Combine(installPath, "bin", "sh.exe");
+                        if (File.Exists(shPath))
+                            return shPath;
+                    }
+                }
+                catch
+                {
+                    // Игнорируем ошибки доступа к реестру
+                }
             }
+
+            var defaultPath = @"C:\Program Files\Git\bin\sh.exe";
+            if (File.Exists(defaultPath)) return defaultPath;
         }
 
-        // 3. Стандартный путь как последний шанс
-        var defaultPath = @"C:\Program Files\Git\bin\sh.exe";
-        return File.Exists(defaultPath) ? defaultPath : null;
+        return null;
     }
 
-    /// <summary>
-    /// Find full path to command, searching in PATH if needed
-    /// </summary>
     private static string? GetFullPathCommand(string commandName)
     {
-        // If already has path separator, check as-is
         if (commandName.Contains(Path.DirectorySeparatorChar) || commandName.Contains(Path.AltDirectorySeparatorChar))
         {
             return File.Exists(commandName) ? commandName : null;
         }
 
-        // Get extensions from PATHEXT (.COM;.EXE;.BAT;.CMD etc.)
         var extensions = Environment.GetEnvironmentVariable("PATHEXT")?.Split(';')
             ?? [".exe", ".com", ".bat", ".cmd"];
 
-        // Get paths from PATH
-        var paths = Environment.GetEnvironmentVariable("PATH")?.Split(Path.PathSeparator) ?? [];
+        var paths = Environment.GetEnvironmentVariable("PATH")?.Split(Path.PathSeparator) ?? Array.Empty<string>();
 
-        // Add current directory to search paths
-        var searchPaths = new[] { Directory.GetCurrentDirectory() }.Concat(paths);
+        // Безопасность: Убираем текущую папку из приоритета поиска, сначала ищем в системе
+        var searchPaths = paths.Concat([Directory.GetCurrentDirectory()]);
 
         var fileNameExt = Path.GetExtension(commandName).ToUpperInvariant();
         var hasExecutableExtension = !string.IsNullOrEmpty(fileNameExt) && extensions.Contains(fileNameExt);
 
         foreach (var directory in searchPaths)
         {
+            if (string.IsNullOrEmpty(directory)) continue;
             var fullPathWithOriginalName = Path.Combine(directory, commandName);
 
-            // If user already specified executable extension (e.g. npx.cmd)
             if (hasExecutableExtension && File.Exists(fullPathWithOriginalName))
             {
                 return fullPathWithOriginalName;
             }
 
-            // Try all possible extensions from PATHEXT
             foreach (var ext in extensions)
             {
                 var candidatePath = Path.ChangeExtension(fullPathWithOriginalName, ext);
@@ -123,135 +121,294 @@ public class ProcessExecutor(ILogger logger)
     }
 
     /// <summary>
-    /// Execute a command and wait for completion
+    /// Прямой запуск исполняемого файла с передачей аргументов
     /// </summary>
     public async Task<ProcessResult> ExecuteAsync(
         string command,
         string arguments,
         string? workingDirectory = null,
-        int timeoutMs = 30000)
+        int timeoutMs = 30000,
+        int outputLimit = DefaultOutputLimit,
+        CancellationToken cancellationToken = default,
+        CommandPolicy? policy = null)
     {
-        _logger.Log($"Executing: {command} {arguments}");
-
-        string fullCommand;
-
-        fullCommand = command == "sh"
-            ? FindGitSh() ?? "cmd"
-            : GetFullPathCommand(command) ?? "cmd";
-        if (fullCommand == null)
-        {
-            return new ProcessResult
-            {
-                Success = false,
-                Error = $"Failed to find {command} in system."
-            };
-        }
-
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = fullCommand,
-            Arguments = arguments,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = workingDirectory ?? Environment.CurrentDirectory
-        };
-
-        ConfigureNonInteractiveEnvironment(startInfo);
-
         try
         {
-            using var process = Process.Start(startInfo);
-            if (process == null)
+            // Политика применяется к полной командной строке (команда + аргументы)
+            if (policy is not null && !policy.IsAllowed($"{command} {arguments}"))
             {
-                return new ProcessResult
-                {
-                    Success = false,
-                    Error = "Failed to start process"
-                };
+                _logger.Log($"Command blocked by policy: {command}", "WARNING");
+                return new ProcessResult { Success = false, Error = $"Command '{command}' is blocked by the command policy." };
             }
 
-            var outputTask = process.StandardOutput.ReadToEndAsync();
-            var errorTask = process.StandardError.ReadToEndAsync();
+            _logger.Log($"Executing command: {command} (arguments redacted)");
 
-            // Асинхронное ожидание с таймаутом — не блокирует вызывающий поток
-            // netstandard2.0 не имеет WaitForExitAsync, поэтому используем Task.Run
-            var isTimedOut = !await Task.Run(() => process.WaitForExit(timeoutMs));
-
-            if (isTimedOut)
+            string? fullCommand;
+            if (command == "sh")
             {
-                try { process.Kill(); } catch { /* Игнорируем, если уже умер */ }
-            }
-
-            await Task.WhenAll(outputTask, errorTask);
-
-            var stdout = await outputTask;
-            var stderr = await errorTask;
-
-            var result = new ProcessResult
-            {
-                Success = process.ExitCode == 0 && !isTimedOut,
-                Output = stdout,
-                ExitCode = process.ExitCode
-            };
-
-            if (!result.Success)
-            {
-                result.Error = string.Join("\n", stdout, stderr);
-
-                if (isTimedOut)
+                fullCommand = FindGitSh();
+                if (fullCommand == null)
                 {
-                    result.Error += $"\nCommand timed out after {timeoutMs}ms";
+                    return new ProcessResult { Success = false, Error = "Git sh not found. Bash execution is unavailable." };
+                }
+            }
+            else
+            {
+                fullCommand = GetFullPathCommand(command);
+                if (fullCommand == null)
+                {
+                    return new ProcessResult { Success = false, Error = $"Failed to find executable: {command} in system PATH." };
                 }
             }
 
-            return result;
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = fullCommand,
+                Arguments = arguments,
+                RedirectStandardInput = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = workingDirectory ?? Environment.CurrentDirectory
+            };
+
+            ConfigureNonInteractiveEnvironment(startInfo);
+
+            return await RunProcessInternalAsync(startInfo, timeoutMs, outputLimit, cancellationToken);
         }
         catch (Exception ex)
         {
-            _logger.Log($"Process execution error: {ex.Message}", "ERROR");
-            return new ProcessResult
-            {
-                Success = false,
-                Error = ex.Message
-            };
+            _logger.Log($"Process initialization error: {ex.Message}", "ERROR");
+            return new ProcessResult { Success = false, Error = $"Initialization failed: {ex.Message}" };
         }
     }
 
     /// <summary>
-    /// Execute a shell command (sh -c ...)
+    /// Запуск bash-скрипта/команды через временный файл.
+    /// Надёжнее, чем '-c': нет проблем с экранированием кавычек и лимитом длины командной строки.
     /// </summary>
     public async Task<ProcessResult> ExecuteBashAsync(
-        string command,
+        string bashScript,
         string? workingDirectory = null,
-        int timeoutMs = 120_000)
+        int timeoutMs = 120_000,
+        int outputLimit = DefaultOutputLimit,
+        CancellationToken cancellationToken = default,
+        CommandPolicy? policy = null)
     {
-        return await ExecuteAsync("sh", $"-c '{command.Replace('\\', '/').Replace("'", "'\\''")}'", workingDirectory, timeoutMs);
+        var shPath = FindGitSh();
+        if (shPath == null)
+        {
+            return new ProcessResult { Success = false, Error = "Git sh not found. Cannot execute bash commands." };
+        }
+
+        if (policy is not null && !policy.IsAllowed(bashScript))
+        {
+            _logger.Log("Bash command blocked by policy.", "WARNING");
+            return new ProcessResult { Success = false, Error = "Bash command is blocked by the command policy." };
+        }
+
+        // Временный файл со скриптом — снимает проблемы экранирования и длины командной строки.
+        var tempScript = Path.Combine(Path.GetTempPath(), $"invait_{Guid.NewGuid():N}.sh");
+        try
+        {
+            // netstandard2.0 не имеет File.WriteAllTextAsync — используем синхронную запись.
+            File.WriteAllText(tempScript, bashScript, new UTF8Encoding(false));
+
+            // sh <файл> — скрипт передаётся через stdin файла, а не через аргументы.
+            var arguments = $"\"{tempScript}\"";
+            return await ExecuteAsync(shPath, arguments, workingDirectory, timeoutMs, outputLimit, cancellationToken, policy);
+        }
+        finally
+        {
+            try { File.Delete(tempScript); } catch { /* Игнорируем ошибку удаления временного файла */ }
+        }
+    }
+    private async Task<ProcessResult> RunProcessInternalAsync(
+        ProcessStartInfo startInfo,
+        int timeoutMs,
+        int outputLimit,
+        CancellationToken cancellationToken)
+    {
+        using var process = new Process { StartInfo = startInfo };
+
+        if (!process.Start())
+        {
+            return new ProcessResult { Success = false, Error = "Failed to start process." };
+        }
+
+        var processId = process.Id;
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        process.EnableRaisingEvents = true;
+        process.Exited += (s, e) => tcs.TrySetResult(true);
+
+        if (process.HasExited)
+        {
+            tcs.TrySetResult(true);
+        }
+
+        // Читаем потоки асинхронно, поблочно и с лимитом
+        var stdoutTask = ReadStreamLimitedAsync(process.StandardOutput, outputLimit, cancellationToken);
+        var stderrTask = ReadStreamLimitedAsync(process.StandardError, outputLimit, cancellationToken);
+
+        // Три независимых сигнала: выход процесса, таймаут, отмена.
+        // Таймаут НЕ связываем с токеном отмены, чтобы не путать отмену с таймаутом.
+        var exitTask = tcs.Task;
+        var timeoutTask = Task.Delay(timeoutMs, CancellationToken.None);
+        var cancelTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var cancelReg = cancellationToken.Register(() => cancelTcs.TrySetResult(true));
+        if (cancellationToken.IsCancellationRequested) cancelTcs.TrySetResult(true);
+        var cancelTask = cancelTcs.Task;
+
+        var completed = await Task.WhenAny(exitTask, timeoutTask, cancelTask);
+
+        var timedOut = completed == timeoutTask;
+        var cancelled = completed == cancelTask;
+        var wasKilled = false;
+
+        if (timedOut || cancelled)
+        {
+            wasKilled = true;
+            KillProcessTree(processId); // Жестко убиваем всё дерево процессов
+
+            await Task.WhenAny(exitTask, Task.Delay(1000, CancellationToken.None));
+        }
+
+        // Защищаем чтение стримов от вечного зависания зомби-процессов
+        var streamsTimeout = Task.Delay(2000, CancellationToken.None);
+        var readAllStreamsTask = Task.WhenAll(stdoutTask, stderrTask);
+
+        if (await Task.WhenAny(readAllStreamsTask, streamsTimeout) == streamsTimeout)
+        {
+            _logger.Log($"Process streams reading timed out for PID {processId}.", "WARNING");
+        }
+
+        var stdout = stdoutTask.Status == TaskStatus.RanToCompletion
+            ? stdoutTask.Result
+            : "[Stream reading timed out]";
+        var stderr = stderrTask.Status == TaskStatus.RanToCompletion
+            ? stderrTask.Result
+            : "[Stream reading timed out]";
+
+        var exitCode = -1;
+        try { exitCode = process.ExitCode; } catch { }
+
+        var suffix = wasKilled
+            ? (cancelled ? "\nProcess was cancelled by the caller." : $"\nCommand timed out after {timeoutMs}ms.")
+            : string.Empty;
+
+        var result = new ProcessResult
+        {
+            Success = exitCode == 0 && !wasKilled,
+            Output = stdout,
+            Error = string.Join("\n", stderr, suffix).Trim('\n'),
+            ExitCode = exitCode,
+            TimedOut = timedOut,
+            Cancelled = cancelled,
+            WasKilled = wasKilled
+        };
+
+        if (!result.Success && !wasKilled && !string.IsNullOrEmpty(stdout))
+        {
+            result.Error = string.Join("\n", stdout, stderr).Trim();
+        }
+
+        return result;
     }
 
     /// <summary>
-    /// Execute dotnet command
+    /// Потоковое поблочное чтение с лимитом для защиты памяти Visual Studio
     /// </summary>
-    public async Task<ProcessResult> ExecuteDotnetAsync(
-        string arguments,
-        string? workingDirectory = null,
-        int timeoutMs = 60000)
+    private static async Task<string> ReadStreamLimitedAsync(StreamReader reader, int outputLimit, CancellationToken cancellationToken)
     {
-        return await ExecuteAsync("dotnet", arguments, workingDirectory, timeoutMs);
+        var sb = new StringBuilder();
+        var buffer = new char[4096];
+        var totalCharsRead = 0;
+        var linesCount = 0;
+        int read;
+
+        while ((read = await reader.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0)
+        {
+            if (cancellationToken.IsCancellationRequested) break;
+
+            for (var i = 0; i < read; i++)
+            {
+                if (buffer[i] == '\n') linesCount++;
+            }
+
+            if (totalCharsRead + read > outputLimit || linesCount > MaxOutputLines)
+            {
+                var allowed = Math.Min(read, outputLimit - totalCharsRead);
+                if (allowed > 0)
+                {
+                    sb.Append(buffer, 0, allowed);
+                }
+
+                var truncatedMarker = $"\n[... Output truncated due to size/line limit ...]\n";
+                sb.Insert(0, truncatedMarker);
+                break;
+            }
+
+            sb.Append(buffer, 0, read);
+            totalCharsRead += read;
+        }
+
+        return sb.ToString();
     }
 
     /// <summary>
-    /// Execute git command
+    /// Кроссплатформенное убийство всего дерева процессов для .NET Standard 2.0
     /// </summary>
-    public async Task<ProcessResult> ExecuteGitAsync(
-        string arguments,
-        string? workingDirectory = null,
-        int timeoutMs = 30000)
+    private static void KillProcessTree(int pid)
     {
-        return await ExecuteAsync("git", arguments, workingDirectory, timeoutMs);
+        if (pid <= 0) return;
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            try
+            {
+                using var p = Process.Start(new ProcessStartInfo
+                {
+                    FileName = "taskkill",
+                    Arguments = $"/T /F /PID {pid}",
+                    CreateNoWindow = true,
+                    UseShellExecute = false
+                });
+                p?.WaitForExit(3000);
+            }
+            catch { }
+        }
+        else
+        {
+            try
+            {
+                using var p = Process.Start(new ProcessStartInfo
+                {
+                    FileName = "kill",
+                    Arguments = $"-9 -{pid}",
+                    CreateNoWindow = true,
+                    UseShellExecute = false
+                });
+                p?.WaitForExit(3000);
+            }
+            catch
+            {
+                try
+                {
+                    using var p = Process.Start(new ProcessStartInfo
+                    {
+                        FileName = "kill",
+                        Arguments = $"-9 {pid}",
+                        CreateNoWindow = true,
+                        UseShellExecute = false
+                    });
+                    p?.WaitForExit(3000);
+                }
+                catch { }
+            }
+        }
     }
 
     private class NullLogger : ILogger
