@@ -157,17 +157,6 @@
     color: var(--rz-text-color);
 }
 
-/* Mermaid diagrams */
-.mermaid {
-    text-align: center;
-    margin: 1em 0;
-}
-
-.mermaid svg {
-    max-width: 100%;
-    height: auto;
-}
-
 @media (prefers-color-scheme: dark) {
     .code-header {
         background-color: var(--rz-base-600);

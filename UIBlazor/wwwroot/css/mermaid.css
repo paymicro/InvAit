@@ -1,0 +1,132 @@
+/* Mermaid diagrams */
+.mermaid {
+    text-align: center;
+    margin: 1em 0;
+}
+
+.mermaid svg {
+    max-width: 100%;
+    height: auto;
+}
+
+/* ── Mermaid zoom container ───────────────────────────────────────── */
+
+.mermaid-zoom-wrapper {
+    position: relative;
+    margin: 1em 0;
+    border: 1px solid var(--rz-border-color);
+    border-radius: 6px;
+    overflow: hidden;
+    background-color: var(--rz-base-background-color);
+}
+
+.mermaid-zoom-toolbar {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 10;
+    display: flex;
+    gap: 4px;
+    background-color: var(--rz-secondary-lighter);
+    border: 1px solid var(--rz-on-secondary-lighter);
+    border-radius: 6px;
+    padding: 3px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.mermaid-zoom-wrapper:hover .mermaid-zoom-toolbar {
+    opacity: 1;
+}
+
+.mermaid-zoom-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--rz-text-color);
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0;
+    transition: all 0.15s ease;
+}
+
+    .mermaid-zoom-btn:hover {
+        background-color: var(--rz-secondary-lighter);
+        color: var(--rz-secondary);
+    }
+
+.mermaid-zoom-btn:active {
+    transform: scale(0.92);
+}
+
+.mermaid-zoom-viewport {
+    overflow: hidden;
+    max-height: 70vh;
+    text-align: center;
+    padding: 8px;
+}
+
+.mermaid-zoom-viewport.is-zoomed {
+    overflow-y: auto;
+    overflow-x: hidden;
+    cursor: grab;
+}
+
+.mermaid-zoom-viewport.is-zoomed.is-dragging {
+    cursor: grabbing;
+    user-select: none;
+}
+
+.mermaid-zoom-content {
+    display: block;
+    transform-origin: top left;
+    margin: 0 auto;          /* center when not zoomed */
+}
+
+.mermaid-zoom-content svg {
+    max-width: 100%;
+    height: auto;
+}
+
+
+/* ── Mermaid download menu (appended to body, position: fixed) ────── */
+
+.mermaid-download-menu {
+    position: fixed;
+    z-index: 10000;
+    background-color: var(--rz-secondary-lighter);
+    border: 1px solid var(--rz-on-secondary-lighter);
+    border-radius: 6px;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 140px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.mermaid-download-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--rz-text-color);
+    cursor: pointer;
+    font-size: 0.8rem;
+    padding: 6px 10px;
+    text-align: left;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+    .mermaid-download-item:hover {
+        background-color: var(--rz-secondary-lighter);
+        color: var(--rz-secondary);
+    }

@@ -203,14 +203,14 @@ function renderMarkdownToElement(elementId, text) {
                     if (cached.error) {
                         renderMermaidError(diagram, content, cached.errorMessage);
                     } else {
-                        diagram.innerHTML = cached.svg;
+                        wrapMermaidWithZoom(diagram, cached.svg);
                     }
                     return;
                 }
 
                 window.mermaid.render(renderId, content)
                     .then((result) => {
-                        diagram.innerHTML = result.svg;
+                        wrapMermaidWithZoom(diagram, result.svg);
                         mermaidCache.set(renderId, { code: content, svg: result.svg });
 
                         // Simple cleanup to prevent memory leaks
