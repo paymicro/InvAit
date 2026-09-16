@@ -1,0 +1,66 @@
+@inject ICommonSettingsProvider CommonSettingsProvider
+<RadzenStack Gap="1rem">
+    <RadzenText TextStyle="TextStyle.Caption" Style="color: var(--rz-warning);" Text="@SharedResource.ContentFilterDesc" />
+    <CheckBox Text="@SharedResource.ContentFilterEnable" @bind-Value="@Settings.IsEnabled" @bind-Value:after="Save" />
+
+    @if (Settings.IsEnabled)
+    {
+        <RadzenStack Gap="0.5rem" Style="padding-left: 1.5rem;">
+            <CheckBox Text="@SharedResource.ContentFilterStripComments" @bind-Value="@Settings.StripComments" @bind-Value:after="Save" />
+            <CheckBox Text="@SharedResource.ContentFilterStripBlankLines" @bind-Value="@Settings.StripBlankLines" @bind-Value:after="Save" />
+            <CheckBox Text="@SharedResource.ContentFilterTrimWhitespace" @bind-Value="@Settings.TrimWhitespace" @bind-Value:after="Save" />
+        </RadzenStack>
+
+        <RadzenText TextStyle="TextStyle.H6">@SharedResource.ContentFilterCustomRules</RadzenText>
+
+        <RadzenStack Gap="0.5rem">
+            @for (var i = 0; i < Settings.CustomRules.Count; i++)
+            {
+                var index = i;
+                var rule = Settings.CustomRules[index];
+                <RadzenCard Variant="Variant.Outlined" class="rz-p-2">
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.5rem">
+                        <RadzenCheckBox @bind-Value="@rule.IsEnabled" @bind-Value:after="Save" />
+                        <RadzenTextBox @bind-Value="@rule.Name" @bind-Value:after="Save" Style="flex: 1;" Placeholder="@SharedResource.ContentFilterRuleName" />
+                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Variant="Variant.Flat" Click="@(() => RemoveRule(index))" />
+                    </RadzenStack>
+                    <RadzenStack Orientation="Orientation.Vertical" AlignItems="AlignItems.Start" Gap="0.5rem" Wrap="FlexWrap.Wrap">
+                        <RadzenFormField Text="@SharedResource.ContentFilterPattern" Variant="Variant.Outlined" AllowFloatingLabel="false" Style="width: 100%;">
+                            <RadzenTextBox Disabled="@(!rule.IsEnabled)" @bind-Value="@rule.Pattern" @bind-Value:after="Save" Placeholder="\\s+" />
+                        </RadzenFormField>
+                        <RadzenFormField Text="@SharedResource.ContentFilterReplacement" Variant="Variant.Outlined" AllowFloatingLabel="false" Style="width: 100%;">
+                            <RadzenTextBox Disabled="@(!rule.IsEnabled)" @bind-Value="@rule.Replacement" @bind-Value:after="Save" Placeholder="" />
+                        </RadzenFormField>
+                        <RadzenFormField Text="@SharedResource.ContentFilterFilePattern" Variant="Variant.Outlined" AllowFloatingLabel="false" Style="width: 100%;">
+                            <RadzenTextBox Disabled="@(!rule.IsEnabled)" @bind-Value="@rule.FilePattern" @bind-Value:after="Save" Placeholder="*.*" />
+                        </RadzenFormField>
+                    </RadzenStack>
+                </RadzenCard>
+            }
+        </RadzenStack>
+
+        <RadzenButton Text="@SharedResource.ContentFilterCustomRules" Icon="add" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Small"
+                      Click="@AddRule" />
+    }
+</RadzenStack>
+
+@code {
+    private ContentFilterSettings Settings => CommonSettingsProvider.Current.ContentFilter;
+
+    private void Save() => CommonSettingsProvider.CallSaveTrigger();
+
+    private void AddRule()
+    {
+        Settings.CustomRules.Add(new ContentFilterRule());
+        Save();
+    }
+
+    private void RemoveRule(int index)
+    {
+        if (index >= 0 && index < Settings.CustomRules.Count)
+        {
+            Settings.CustomRules.RemoveAt(index);
+            Save();
+        }
+    }
+}

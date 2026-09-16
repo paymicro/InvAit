@@ -103,23 +103,12 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
         var sb = new StringBuilder();
         sb.AppendLine("## Available Skills");
         sb.AppendLine();
-        sb.AppendLine("You have access to the following skills. Skills are specialized instructions that you can activate by requesting them when relevant:");
-        sb.AppendLine();
+        sb.AppendLine($"You have access to the following skills. Skills are specialized instructions that you can activate by requesting them when relevant (tool `{BasicEnum.ReadSkillContent}`):");
 
         foreach (var skill in skills)
         {
-            sb.AppendLine();
-            sb.AppendLine($"""
-                           - **{skill.Name}**: {skill.Description}
-                           To read instructions:
-                           <function name="{BasicEnum.ReadSkillContent}">
-                           {skill.Name}
-                           </function>
-                           """);
-            sb.AppendLine();
+            sb.AppendLine($"- **{skill.Name}**: {skill.Description}");
         }
-
-        sb.AppendLine($"When you need detailed instructions from a skill, use `{BasicEnum.ReadSkillContent}` tool to load it.");
 
         return sb.ToString();
     }

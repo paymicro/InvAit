@@ -522,4 +522,43 @@
   <data name="Delete" xml:space="preserve">
     <value>Удалить</value>
   </data>
+  <data name="ContentFilter" xml:space="preserve">
+    <value>Фильтр контента</value>
+  </data>
+  <data name="ContentFilterEnable" xml:space="preserve">
+    <value>Включить фильтр контента</value>
+  </data>
+  <data name="ContentFilterStripComments" xml:space="preserve">
+    <value>Удалять комментарии</value>
+  </data>
+  <data name="ContentFilterStripBlankLines" xml:space="preserve">
+    <value>Удалять пустые строки</value>
+  </data>
+  <data name="ContentFilterTrimWhitespace" xml:space="preserve">
+    <value>Удалять лишние пробелы</value>
+  </data>
+  <data name="ContentFilterCustomRules" xml:space="preserve">
+    <value>Пользовательские regex-правила</value>
+  </data>
+  <data name="ContentFilterMinimized" xml:space="preserve">
+    <value>Минимизировано фильтром контента</value>
+  </data>
+  <data name="ContentFilterTest" xml:space="preserve">
+    <value>Тест</value>
+  </data>
+  <data name="ContentFilterRuleName" xml:space="preserve">
+    <value>Имя правила</value>
+  </data>
+  <data name="ContentFilterPattern" xml:space="preserve">
+    <value>Regex шаблон</value>
+  </data>
+  <data name="ContentFilterReplacement" xml:space="preserve">
+    <value>Замена</value>
+  </data>
+  <data name="ContentFilterFilePattern" xml:space="preserve">
+    <value>Шаблон файлов (glob)</value>
+  </data>
+  <data name="ContentFilterDesc" xml:space="preserve">
+    <value>⚠ Удаляет комментарии, пустые строки и применяет кастомные regex ко ВСЕМ результатам инструментов (включая MCP) перед отправкой в модель. Модель видит изменённый контент - это может привести к неверным правкам или галлюцинациям. Не рекомендуется включать без понимания последствий.</value>
+  </data>
 </root>

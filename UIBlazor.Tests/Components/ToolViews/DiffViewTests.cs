@@ -184,7 +184,7 @@ public class DiffViewTests : BunitContext
                                   "\nfinal-line-marker";
         for (var i = 1; i <= 6; i++)
         {
-            await Task.Delay(50);
+            await Task.Delay(50, TestContext.Current.CancellationToken);
             var text = i == 6
                 ? finalChunk
                 : baseChunk + $"\nstream-token-{i}-xxxxxxxxxxxxxxxxxxxx";
@@ -197,7 +197,7 @@ public class DiffViewTests : BunitContext
         // same values) -> ParseDiff sees no growth -> HasChanges=false
         cut.Render(parameters => parameters
             .Add(p => p.FilePath, "src\\Program.cs")
-            .Add(p => p.Edits, new[] { CreateEdit(null!, finalChunk) }));
+            .Add(p => p.Edits, [CreateEdit(null!, finalChunk)]));
 
         // Settle past the interval and assert the final line is displayed
         cut.WaitForAssertion(

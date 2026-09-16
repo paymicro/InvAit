@@ -522,4 +522,43 @@
   <data name="Delete" xml:space="preserve">
     <value>Delete</value>
   </data>
+  <data name="ContentFilter" xml:space="preserve">
+    <value>Content Filter</value>
+  </data>
+  <data name="ContentFilterEnable" xml:space="preserve">
+    <value>Enable content filter</value>
+  </data>
+  <data name="ContentFilterStripComments" xml:space="preserve">
+    <value>StripComments</value>
+  </data>
+  <data name="ContentFilterStripBlankLines" xml:space="preserve">
+    <value>Strip blank lines </value>
+  </data>
+  <data name="ContentFilterTrimWhitespace" xml:space="preserve">
+    <value>Trim whitespace</value>
+  </data>
+  <data name="ContentFilterCustomRules" xml:space="preserve">
+    <value>Custom regex rules</value>
+  </data>
+  <data name="ContentFilterMinimized" xml:space="preserve">
+    <value>Minimized by content filter</value>
+  </data>
+  <data name="ContentFilterTest" xml:space="preserve">
+    <value>Test</value>
+  </data>
+  <data name="ContentFilterRuleName" xml:space="preserve">
+    <value>Rule name</value>
+  </data>
+  <data name="ContentFilterPattern" xml:space="preserve">
+    <value>Regex pattern</value>
+  </data>
+  <data name="ContentFilterReplacement" xml:space="preserve">
+    <value>Replacement</value>
+  </data>
+  <data name="ContentFilterFilePattern" xml:space="preserve">
+    <value>File pattern (glob)</value>
+  </data>
+  <data name="ContentFilterDesc" xml:space="preserve">
+    <value>⚠ Strips comments, blank lines and applies custom regex to ALL tool results (including MCP) before sending to the model. The model sees modified content - this may cause incorrect edits or hallucinations. Not recommended unless you understand the risks.</value>
+  </data>
 </root>

@@ -1,5 +1,7 @@
 namespace UIBlazor.Models;
 
+using UIBlazor.Services;
+
 public class ConversationSession : BaseOptions
 {
     /// <summary>
@@ -171,7 +173,7 @@ public class ConversationSession : BaseOptions
     /// </summary>
     /// <param name="systemPrompt">The system prompt to include.</param>
     /// <returns>A list of message objects for the AI API.</returns>
-    public IEnumerable<object> GetFormattedMessages(string systemPrompt)
+    public IEnumerable<object> GetFormattedMessages(string systemPrompt, IContentFilter? contentFilter = null)
     {
         List<VisualChatMessage> snapshot;
         lock (_messagesLock)
@@ -183,14 +185,14 @@ public class ConversationSession : BaseOptions
             new { role = ChatMessageRole.System, content = systemPrompt }
         };
 
-        messages.AddRange(PrepareMessages(snapshot));
+        messages.AddRange(PrepareMessages(snapshot, contentFilter));
 
         return snapshot is [.., { IsStreaming: true }] // не отправлять последнее сообщение, если оно стримится
             ? messages.SkipLast(1)
             : messages;
     }
 
-    private IEnumerable<object> PrepareMessages(IEnumerable<VisualChatMessage> Input)
+    private IEnumerable<object> PrepareMessages(IEnumerable<VisualChatMessage> Input, IContentFilter? contentFilter = null)
     {
         var messages = new List<object>();
 
@@ -216,11 +218,25 @@ public class ConversationSession : BaseOptions
                 // Tool results stored nested must be sent as separate messages to the LLM
                 foreach (var toolCall in message.ToolCalls.Where(c => c.Result is not null && !string.IsNullOrEmpty(c.Id)))
                 {
+                    var toolContent = toolCall.Result!.Content;
+                    if (contentFilter is not null)
+                    {
+                        // Filter() always formats structured FileContent JSON into
+                        // human-readable text with line numbers, even when filtering is disabled.
+                        var filtered = contentFilter.Filter(toolContent, toolCall.Function.Name);
+                        if (!string.IsNullOrEmpty(filtered))
+                            toolContent = filtered;
+                    }
+                    else
+                    {
+                        // No filter available — format structured content with line numbers
+                        toolContent = FileContentFormatter.FormatContent(toolContent);
+                    }
                     messages.Add(new
                     {
                         role = ChatMessageRole.Tool,
                         tool_call_id = toolCall.Id,
-                        content = toolCall.Result!.Content
+                        content = toolContent
                     });
                 }
             }
@@ -233,7 +249,7 @@ public class ConversationSession : BaseOptions
         return messages;
     }
 
-    public (IEnumerable<object> Messages, VisualChatMessage? LastUserMessage) GetFormattedMessagesForCompress()
+    public (IEnumerable<object> Messages, VisualChatMessage? LastUserMessage) GetFormattedMessagesForCompress(IContentFilter? contentFilter = null)
     {
         List<VisualChatMessage> snapshot;
         lock (_messagesLock)
@@ -256,7 +272,7 @@ public class ConversationSession : BaseOptions
         var lastUserMessage = snapshot.TakeLast(2).FirstOrDefault(m => m.Role == ChatMessageRole.User);
         var compressedMessages = snapshot.SkipLast(lastUserMessage is null ? 1 : 2);
 
-        messages.AddRange(PrepareMessages(compressedMessages));
+        messages.AddRange(PrepareMessages(compressedMessages, contentFilter));
 
         messages.Add(new
         {

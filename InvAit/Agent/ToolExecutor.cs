@@ -122,41 +122,61 @@ public class ToolExecutor : IAsyncDisposable
         fileParamsList = [.. fileParamsList.GroupBy(x => x.Path).Select(g => g.First())]; // DistinctBy
 
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-        var sb = new StringBuilder();
-        var isSuccess = true;
 
-        for (var i = 0; i < fileParamsList.Count; i++)
+        // onlyContent mode (e.g. GetAgents) — return raw text, not structured JSON
+        if (onlyContent)
         {
-            var rp = fileParamsList[i];
+            var sb = new StringBuilder();
+            var isSuccess = true;
+            foreach (var rp in fileParamsList)
+            {
+                var absPath = GetAbsolutePath(rp.Path, solutionPath);
+                if (!File.Exists(absPath))
+                {
+                    sb.AppendLine($"File \"{rp.Path}\" doesn't exist.");
+                    isSuccess = false;
+                    continue;
+                }
+                try
+                {
+                    sb.Append(File.ReadAllText(absPath, Encoding.UTF8));
+                }
+                catch (Exception ex)
+                {
+                    await Logger.LogAsync($"Error reading file {rp.Path}: {ex.Message}", "ERROR");
+                    sb.AppendLine($"Error reading file {rp.Path}: {ex.Message}");
+                    isSuccess = false;
+                }
+            }
+            return new VsResponse
+            {
+                Success = isSuccess,
+                Payload = isSuccess ? sb.ToString() : null,
+                Error = isSuccess ? null : sb.ToString()
+            };
+        }
+
+        // Structured mode — return JSON array of FileContent.
+        // Success = true if at least one file was read successfully (partial success).
+        // Individual file errors are embedded in FileContent.Error fields.
+        var results = new List<FileContent>();
+        var hasAnySuccess = false;
+
+        foreach (var rp in fileParamsList)
+        {
             var absPath = GetAbsolutePath(rp.Path, solutionPath);
 
             if (!File.Exists(absPath))
             {
-                sb.AppendLine($"File \"{rp.Path}\" doesn't exist.");
-                isSuccess = false;
+                results.Add(new FileContent { Path = rp.Path, Error = $"File doesn't exist." });
                 continue;
-            }
-
-            if (i > 0)
-            {
-                sb.AppendLine();
-                sb.AppendLine("---");
-                sb.AppendLine();
             }
 
             try
             {
-                if (!onlyContent)
-                {
-                    sb.AppendLine($"### {rp.Path}");
-                    sb.AppendLine("```");
-                }
-
                 var allLines = File.ReadLines(absPath);
                 var totalLineCount = 0;
 
-                // Подсчитываем общее количество строк для определения необходимости обрезки
-                // (делаем это лениво — только если LineCount не задан явно)
                 var needsLimit = rp.LineCount <= 0;
                 List<string> materializedLines = null;
                 if (needsLimit)
@@ -178,47 +198,37 @@ public class ToolExecutor : IAsyncDisposable
                     lines = allLines.Skip(skipCount).Take(takeCount);
                 }
 
-                var currentLine = skipCount;
-                var renderedLines = 0;
+                var fileLines = lines.ToList();
+                var fc = new FileContent
+                {
+                    Path = rp.Path,
+                    Lines = fileLines,
+                    StartLine = skipCount > 0 ? skipCount + 1 : null
+                };
 
-                if (!onlyContent)
+                // Если файл был обрезан — сохраняем общее количество строк
+                if (needsLimit && totalLineCount > MaxFileLines && skipCount + fileLines.Count < totalLineCount)
                 {
-                    foreach (var line in lines)
-                    {
-                        sb.AppendLine($"{++currentLine} | {line}");
-                        renderedLines++;
-                    }
-                    sb.AppendLine("```");
-                }
-                else
-                {
-                    foreach (var line in lines)
-                    {
-                        sb.AppendLine(line);
-                        renderedLines++;
-                    }
+                    fc.TotalLines = totalLineCount;
                 }
 
-                // Если файл был обрезан — сообщаем LLM, чтобы он мог запросить следующую часть
-                if (needsLimit && totalLineCount > MaxFileLines && skipCount + renderedLines < totalLineCount)
-                {
-                    var nextLine = skipCount + renderedLines + 1;
-                    sb.AppendLine($"[... File has {totalLineCount} lines total. Showing lines {skipCount + 1}-{skipCount + renderedLines}. Use startLine={nextLine} to read the rest ...]");
-                }
+                results.Add(fc);
+                hasAnySuccess = true;
             }
             catch (Exception ex)
             {
                 await Logger.LogAsync($"Error reading file {rp.Path}: {ex.Message}", "ERROR");
-                sb.AppendLine($"Error reading file {rp.Path}: {ex.Message}");
-                isSuccess = false;
+                results.Add(new FileContent { Path = rp.Path, Error = ex.Message });
             }
         }
 
+        // Always return Success = true with structured results — even if all files failed.
+        // The LLM needs to see FileContent.Error fields to know which files don't exist.
+        // VsBridge throws on Success=false, which would discard the structured error info.
         return new VsResponse
         {
-            Success = isSuccess,
-            Payload = isSuccess ? sb.ToString() : null,
-            Error = isSuccess ? null : sb.ToString()
+            Success = true,
+            Payload = JsonSerializer.Serialize(results)
         };
     }
 

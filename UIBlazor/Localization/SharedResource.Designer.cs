@@ -223,6 +223,123 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Content Filter.
+        /// </summary>
+        public static string ContentFilter {
+            get {
+                return ResourceManager.GetString("ContentFilter", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Custom regex rules.
+        /// </summary>
+        public static string ContentFilterCustomRules {
+            get {
+                return ResourceManager.GetString("ContentFilterCustomRules", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to ⚠ Strips comments, blank lines and applies custom regex to ALL tool results (including MCP) before sending to the model. The model sees modified content - this may cause incorrect edits or hallucinations. Not recommended unless you understand the risks..
+        /// </summary>
+        public static string ContentFilterDesc {
+            get {
+                return ResourceManager.GetString("ContentFilterDesc", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Enable content filter.
+        /// </summary>
+        public static string ContentFilterEnable {
+            get {
+                return ResourceManager.GetString("ContentFilterEnable", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to File pattern (glob).
+        /// </summary>
+        public static string ContentFilterFilePattern {
+            get {
+                return ResourceManager.GetString("ContentFilterFilePattern", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Minimized by content filter.
+        /// </summary>
+        public static string ContentFilterMinimized {
+            get {
+                return ResourceManager.GetString("ContentFilterMinimized", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Regex pattern.
+        /// </summary>
+        public static string ContentFilterPattern {
+            get {
+                return ResourceManager.GetString("ContentFilterPattern", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Replacement.
+        /// </summary>
+        public static string ContentFilterReplacement {
+            get {
+                return ResourceManager.GetString("ContentFilterReplacement", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Rule name.
+        /// </summary>
+        public static string ContentFilterRuleName {
+            get {
+                return ResourceManager.GetString("ContentFilterRuleName", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Strip blank lines .
+        /// </summary>
+        public static string ContentFilterStripBlankLines {
+            get {
+                return ResourceManager.GetString("ContentFilterStripBlankLines", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to StripComments.
+        /// </summary>
+        public static string ContentFilterStripComments {
+            get {
+                return ResourceManager.GetString("ContentFilterStripComments", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Test.
+        /// </summary>
+        public static string ContentFilterTest {
+            get {
+                return ResourceManager.GetString("ContentFilterTest", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Trim whitespace.
+        /// </summary>
+        public static string ContentFilterTrimWhitespace {
+            get {
+                return ResourceManager.GetString("ContentFilterTrimWhitespace", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Context window.
         /// </summary>
         public static string ContextWindow {

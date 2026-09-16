@@ -9,6 +9,7 @@ public class ToolCallBlockTests : BunitContext
 {
     private readonly Mock<IToolManager> _mockToolManager;
     private readonly Mock<IToolCallHandler> _mockToolCallHandler;
+    private readonly Mock<IContentFilter> _mockContentFilter;
     private string? _capturedJsonArgs;
     private string? _capturedDiffFilePath;
     private int? _capturedEditCount;
@@ -20,9 +21,11 @@ public class ToolCallBlockTests : BunitContext
     {
         _mockToolManager = new Mock<IToolManager>();
         _mockToolCallHandler = new Mock<IToolCallHandler>();
+        _mockContentFilter = new Mock<IContentFilter>();
 
         Services.AddSingleton(_mockToolManager.Object);
         Services.AddSingleton(_mockToolCallHandler.Object);
+        Services.AddSingleton(_mockContentFilter.Object);
         Services.AddRadzenComponents();
         JSInterop.SetupVoid("Radzen.preventArrows", _ => true);
 
@@ -179,7 +182,7 @@ public class ToolCallBlockTests : BunitContext
             .Add(p => p.ToolCall, call));
 
         // Assert
-        Assert.Contains("~28 tokens", cut.Find(".tool-call-details .header").TextContent);
+        Assert.Contains("~28 tokens", cut.Find(".tool-call-details").TextContent);
     }
 
     [Fact]

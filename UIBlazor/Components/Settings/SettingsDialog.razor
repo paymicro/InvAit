@@ -96,7 +96,8 @@
                 <i class="fa-solid fa-screwdriver-wrench"></i>
             </Template>
             <ChildContent>
-            <RadzenStack Gap="1rem">
+            <TitleHr Text="@SharedResource.Tools" UseMargin=false />
+            <RadzenStack Gap="1rem" class="rz-pb-4">
                 @foreach (var category in _toolCategories)
                 {
                     var state = ToolManager.Current.CategoryStates.ContainsKey(category)
@@ -179,6 +180,10 @@
                     </RadzenStack>
                 </RadzenStack>
             </RadzenStack>
+
+            <TitleHr Text="@SharedResource.ContentFilter" />
+            <ContentFilterTab />
+            
             </ChildContent>
         </RadzenTabsItem>
 
@@ -187,6 +192,7 @@
                 <i class="fa-solid fa-plug"></i>
             </Template>
             <ChildContent>
+                <TitleHr Text="MCP" UseMargin=false />
                 <MCPSettingsTab />
             </ChildContent>
         </RadzenTabsItem>
@@ -197,9 +203,10 @@
             </Template>
             <ChildContent>
             <RadzenStack Gap="1rem">
+                <TitleHr Text="@SharedResource.SystemPrompt" UseMargin=false />
                 <SystemPromptSettings />
 
-                <RadzenText TextStyle="TextStyle.H2">@SharedResource.SettingsMisc</RadzenText>
+                <TitleHr Text="@SharedResource.SettingsMisc" />
 
                 <RadzenStack Gap="1rem">
                     <RadzenStack Gap="0.2rem">

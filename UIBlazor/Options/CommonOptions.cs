@@ -11,4 +11,6 @@ public class CommonOptions : BaseOptions
     public string Culture { get; set => SetIfChanged(ref field, value); } = CultureInfo.CurrentCulture.Name;
 
     public int MaxRetries { get; set => SetIfChanged(ref field, value); } = 10;
+
+    public ContentFilterSettings ContentFilter { get; set => SetIfChanged(ref field, value); } = new();
 }

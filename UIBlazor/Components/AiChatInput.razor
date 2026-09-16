@@ -155,6 +155,7 @@
     [Inject] private IVsCodeContextService VsCodeContextService { get; set; } = null!;
     [Inject] private IJSRuntime JsRuntime { get; set; } = null!;
     [Inject] private IVsBridge VsBridge { get; set; } = null!;
+    [Inject] private IContentFilter ContentFilter { get; set; } = null!;
     [Inject] private ICommonSettingsProvider CommonSettingsProvider { get; set; } = null!;
     [Inject] private IProfileManager ProfileManager { get; set; } = null!;
     [Inject] private ISkillService SkillService { get; set; } = null!;
@@ -408,7 +409,9 @@
                         ["files"] = new List<ReadFileParams> { new() { Path = fileToken.FilePath } }
                     }));
 
-                fileToken.FileContent = readFileTool.Result;
+                // Apply content filter: formats structured FileContent JSON into
+                // human-readable markdown with line numbers, and strips comments etc. if enabled.
+                fileToken.FileContent = ContentFilter.Filter(readFileTool.Result, BuiltInToolEnum.ReadFiles);
             }
         }
 

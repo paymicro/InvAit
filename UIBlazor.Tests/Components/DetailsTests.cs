@@ -232,7 +232,7 @@ public class DetailsTests : BunitContext
             .AddChildContent("content"));
 
         // Act - пользователь сворачивает...
-        cut.InvokeAsync(() => cut.Find(".header").Click()).Wait();
+        cut.InvokeAsync(() => cut.Find(".header").Click()).Wait(TestContext.Current.CancellationToken);
         Assert.DoesNotContain("is-expanded", cut.Find(".custom-details").ClassList);
 
         // ...а родитель перерендеривается, снова передавая IsExpanded=true (напр. стриминг)

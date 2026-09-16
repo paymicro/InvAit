@@ -53,7 +53,8 @@ public partial class ChatServiceTests
             Mock.Of<ISystemPromptBuilder>(),
             _localStorageMock.Object,
             new LoggerMock<IChatService>(),
-            _toolManagerMock.Object);
+            _toolManagerMock.Object,
+            Mock.Of<IContentFilter>());
     }
 
     [Fact]

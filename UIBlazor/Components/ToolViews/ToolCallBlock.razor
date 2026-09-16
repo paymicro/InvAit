@@ -1,5 +1,6 @@
 @inject IToolManager ToolManager
 @inject IToolCallHandler ToolCallHandler
+@inject IContentFilter ContentFilter
 @implements IDisposable
 
 @*
@@ -24,9 +25,6 @@
             {
                 <i class="fa-regular fa-hourglass fa-spin"></i> <span>@SharedResource.CallingToolAwait</span>
             }
-            <RadzenBadge BadgeStyle="BadgeStyle.Light" Variant="Variant.Text" title="Tokens for tool">
-                ~@ToolCall.Tokens tokens
-            </RadzenBadge>
         </HeaderTemplate>
         <ChildContent>
 
@@ -95,11 +93,32 @@
             }
             else if (ToolCall.Result is not null)
             {
-                <Details Text="@ToolCall.Result.DisplayName">
-                    @* Intentionally using <pre> instead of <MarkdownBlock> here.
-                       Tool results are typically plain text (file contents, command output, JSON),
-                       not markdown. Rendering as markdown would misformat raw text. *@
-                    <pre class="rz-p-2 rz-background-color-base-900 rz-color-white">@ToolCall.Result.Content</pre>
+                <Details>
+                    <HeaderTemplate>
+                        <span>@ToolCall.Result.DisplayName</span>
+                        @if (ContentFilter.IsActive)
+                        {
+                            <Tooltip Text="@SharedResource.ContentFilterMinimized">
+                                <RadzenBadge BadgeStyle="BadgeStyle.Warning" Variant="Variant.Text">
+                                    <i class="fa-solid fa-compress"></i> @SharedResource.ContentFilterMinimized
+                                </RadzenBadge>
+                            </Tooltip>
+                        }
+                        <Tooltip Text="Tokens for tool">
+                            <RadzenBadge BadgeStyle="BadgeStyle.Light" Variant="Variant.Text">
+                                ~@ToolCall.Tokens tokens
+                            </RadzenBadge>
+                        </Tooltip>
+                    </HeaderTemplate>
+                    
+                    <ChildContent>
+                        @* Intentionally using <pre> instead of <MarkdownBlock> here.
+                           Tool results are typically plain text (file contents, command output, JSON),
+                           not markdown. Rendering as markdown would misformat raw text.
+                           FileContentFormatter deserializes structured FileContent JSON (from read_files)
+                           and adds line numbers. Non-file tools fall back to raw text. *@
+                        <pre class="rz-p-2 rz-background-color-base-900 rz-color-white">@(FileContentFormatter.FormatContent(ToolCall.Result.Content))</pre>
+                    </ChildContent>
                 </Details>
             }
         }

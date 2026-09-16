@@ -48,6 +48,7 @@ public class SettingsDialogTests : BunitContext
         Services.AddSingleton(_mockProfileManager.Object);
         Services.AddSingleton(_mockCommonSettings.Object);
         Services.AddSingleton(new Mock<ISkillService>().Object);
+        Services.AddSingleton(new Mock<IContentFilter>().Object);
 
         Services.AddRadzenComponents();
 
@@ -82,6 +83,13 @@ public class SettingsDialogTests : BunitContext
         {
             builder.OpenElement(0, "div");
             builder.AddContent(1, "ExtraHeaderPicker Stub");
+            builder.CloseElement();
+        });
+
+        ComponentFactories.AddStub<ContentFilterTab>(builder =>
+        {
+            builder.OpenElement(0, "div");
+            builder.AddContent(1, "ContentFilterTab Stub");
             builder.CloseElement();
         });
     }
@@ -133,7 +141,7 @@ public class SettingsDialogTests : BunitContext
         // Arrange & Act
         var cut = Render<SettingsDialog>();
 
-        // Assert - prompt tab moved to the last position (after MCP)
+        // Assert - 4 tabs: General, Tools (includes Content Filter), MCP, Prompt+Misc
         var tabButtons = cut.FindAll(".rz-tabview-nav li button[role='tab']");
         Assert.Equal(SharedResource.SettingsGeneral, tabButtons[0].GetAttribute("title"));
         Assert.Equal(SharedResource.SettingsTools, tabButtons[1].GetAttribute("title"));

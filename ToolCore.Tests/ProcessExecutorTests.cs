@@ -11,8 +11,8 @@ public class ProcessExecutorTests
     {
         // Arrange
         var executor = new ProcessExecutor(_mockLogger.Object);
-        string command = EnvironmentHelpers.GetShellCommand();
-        string args = EnvironmentHelpers.GetEchoArgs("hello world");
+        var command = EnvironmentHelpers.GetShellCommand();
+        var args = EnvironmentHelpers.GetEchoArgs("hello world");
 
         // Act
         var result = await executor.ExecuteAsync(command, args, cancellationToken: TestContext.Current.CancellationToken);
@@ -27,10 +27,10 @@ public class ProcessExecutorTests
     public async Task ExecuteAsync_ShouldSetExitCode()
     {
         var executor = new ProcessExecutor(_mockLogger.Object);
-        string command = EnvironmentHelpers.GetShellCommand();
-        string args = EnvironmentHelpers.GetEchoArgs("test");
+        var command = EnvironmentHelpers.GetShellCommand();
+        var args = EnvironmentHelpers.GetEchoArgs("test");
 
-        var result = await executor.ExecuteAsync(command, args);
+        var result = await executor.ExecuteAsync(command, args, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.ExitCode);
     }
@@ -49,8 +49,8 @@ public class ProcessExecutorTests
     public async Task ExecuteAsync_ShouldRespectTimeout_WhenCommandTakesTooLong()
     {
         var executor = new ProcessExecutor(_mockLogger.Object);
-        string command = EnvironmentHelpers.GetSleepCommand();
-        string args = EnvironmentHelpers.GetSleepArgs();
+        var command = EnvironmentHelpers.GetSleepCommand();
+        var args = EnvironmentHelpers.GetSleepArgs();
 
         var result = await executor.ExecuteAsync(command, args, timeoutMs: 100, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -62,8 +62,8 @@ public class ProcessExecutorTests
     public async Task ExecuteAsync_ShouldReturnPartialOutput_WhenTimedOut()
     {
         var executor = new ProcessExecutor(_mockLogger.Object);
-        string command = EnvironmentHelpers.GetSleepCommand();
-        string args = EnvironmentHelpers.GetSleepArgs();
+        var command = EnvironmentHelpers.GetSleepCommand();
+        var args = EnvironmentHelpers.GetSleepArgs();
 
         var result = await executor.ExecuteAsync(command, args, timeoutMs: 100, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -77,8 +77,8 @@ public class ProcessExecutorTests
     {
         var executor = new ProcessExecutor(_mockLogger.Object);
         // Generate a lot of output
-        string command = EnvironmentHelpers.GetPrintCommand();
-        string args = EnvironmentHelpers.GetRepeatArgs("A", 5000);
+        var command = EnvironmentHelpers.GetPrintCommand();
+        var args = EnvironmentHelpers.GetRepeatArgs("A", 5000);
 
         var result = await executor.ExecuteAsync(command, args, timeoutMs: 10000, outputLimit: ProcessExecutor.DefaultOutputLimit, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -91,8 +91,8 @@ public class ProcessExecutorTests
     public async Task ExecuteAsync_ShouldSupportCancellation()
     {
         var executor = new ProcessExecutor(_mockLogger.Object);
-        string command = EnvironmentHelpers.GetSleepCommand();
-        string args = EnvironmentHelpers.GetSleepArgs();
+        var command = EnvironmentHelpers.GetSleepCommand();
+        var args = EnvironmentHelpers.GetSleepArgs();
 
         using var cts = new CancellationTokenSource();
         cts.CancelAfter(100);
@@ -106,7 +106,7 @@ public class ProcessExecutorTests
     public async Task ExecuteBashAsync_ShouldReturnSuccess_WhenCommandIsSuccessful()
     {
         var executor = new ProcessExecutor(_mockLogger.Object);
-        string command = "echo 'bash test'";
+        var command = "echo 'bash test'";
 
         var result = await executor.ExecuteBashAsync(command, timeoutMs: 5000, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -119,8 +119,8 @@ public class ProcessExecutorTests
     public async Task ExecuteAsync_ShouldPassArgumentsAsCommandLine_WhenCommandHasSpaces()
     {
         var executor = new ProcessExecutor(_mockLogger.Object);
-        string command = EnvironmentHelpers.GetShellCommand();
-        string args = EnvironmentHelpers.GetEchoArgs("hello world");
+        var command = EnvironmentHelpers.GetShellCommand();
+        var args = EnvironmentHelpers.GetEchoArgs("hello world");
 
         var result = await executor.ExecuteAsync(command, args, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -131,9 +131,9 @@ public class ProcessExecutorTests
     public async Task ExecuteAsync_ShouldSetErrorOnFailure()
     {
         var executor = new ProcessExecutor(_mockLogger.Object);
-        string command = EnvironmentHelpers.GetShellCommand();
+        var command = EnvironmentHelpers.GetShellCommand();
         // Use a command that fails
-        string args = EnvironmentHelpers.GetFalseArgs();
+        var args = EnvironmentHelpers.GetFalseArgs();
 
         var result = await executor.ExecuteAsync(command, args, timeoutMs: 5000, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -145,8 +145,8 @@ public class ProcessExecutorTests
     public async Task ExecuteAsync_Cancelled_ShouldHaveCancelledFlag()
     {
         var executor = new ProcessExecutor(_mockLogger.Object);
-        string command = EnvironmentHelpers.GetSleepCommand();
-        string args = EnvironmentHelpers.GetSleepArgs();
+        var command = EnvironmentHelpers.GetSleepCommand();
+        var args = EnvironmentHelpers.GetSleepArgs();
 
         using var cts = new CancellationTokenSource();
         cts.CancelAfter(50);
@@ -175,8 +175,8 @@ public class ProcessExecutorTests
         // Verify that arguments are passed via ProcessStartInfo.Arguments
         // and not appended to the command line after the executable name.
         var executor = new ProcessExecutor(_mockLogger.Object);
-        string command = EnvironmentHelpers.GetShellCommand();
-        string args = EnvironmentHelpers.GetEchoArgs("arg with spaces");
+        var command = EnvironmentHelpers.GetShellCommand();
+        var args = EnvironmentHelpers.GetEchoArgs("arg with spaces");
 
         var result = await executor.ExecuteAsync(command, args, timeoutMs: 5000, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -188,8 +188,8 @@ public class ProcessExecutorTests
     public async Task ExecuteAsync_ShouldLimitStderr()
     {
         var executor = new ProcessExecutor(_mockLogger.Object);
-        string command = EnvironmentHelpers.GetShellCommand();
-        string args = EnvironmentHelpers.GetPrintToStderrArgs("E", 1000);
+        var command = EnvironmentHelpers.GetShellCommand();
+        var args = EnvironmentHelpers.GetPrintToStderrArgs("E", 1000);
 
         var result = await executor.ExecuteAsync(command, args, timeoutMs: 10000, outputLimit: ProcessExecutor.DefaultOutputLimit, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -200,8 +200,8 @@ public class ProcessExecutorTests
     public async Task ExecuteAsync_ShouldReturnTimedOutFlag_WhenTimeoutOccurs()
     {
         var executor = new ProcessExecutor(_mockLogger.Object);
-        string command = EnvironmentHelpers.GetSleepCommand();
-        string args = EnvironmentHelpers.GetSleepArgs();
+        var command = EnvironmentHelpers.GetSleepCommand();
+        var args = EnvironmentHelpers.GetSleepArgs();
 
         var result = await executor.ExecuteAsync(command, args, timeoutMs: 100, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -212,8 +212,8 @@ public class ProcessExecutorTests
     public async Task ExecuteAsync_NullLogger_ShouldNotThrow()
     {
         var executor = new ProcessExecutor();
-        string command = EnvironmentHelpers.GetShellCommand();
-        string args = EnvironmentHelpers.GetEchoArgs("test");
+        var command = EnvironmentHelpers.GetShellCommand();
+        var args = EnvironmentHelpers.GetEchoArgs("test");
 
         var result = await executor.ExecuteAsync(command, args, timeoutMs: 5000, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -224,7 +224,7 @@ public class ProcessExecutorTests
     public async Task ExecuteAsync_PolicyDeny_ShouldBlockCommand()
     {
         var executor = new ProcessExecutor(_mockLogger.Object);
-        var policy = new CommandPolicy(new[] { CommandRule.DenyRule("*") });
+        var policy = new CommandPolicy([CommandRule.DenyRule("*")]);
 
         var result = await executor.ExecuteAsync("echo", "hello", policy: policy, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -235,13 +235,12 @@ public class ProcessExecutorTests
     [Fact]
     public async Task ExecuteAsync_PolicyDenyThenAllow_LastRuleWins()
     {
-        var executor = new ProcessExecutor(_mockLogger.Object);
         // Запрещено всё, но разрешено dotnet test * — последнее правило приоритетнее
-        var policy = new CommandPolicy(new[]
-        {
+        var policy = new CommandPolicy(
+        [
             CommandRule.DenyRule("*"),
             CommandRule.AllowRule("dotnet test *")
-        });
+        ]);
 
         Assert.True(policy.IsAllowed("dotnet test --filter X"));
         Assert.False(policy.IsAllowed("dotnet build"));
@@ -261,11 +260,11 @@ public class ProcessExecutorTests
     public void CommandPolicy_LastMatchingRuleWins()
     {
         // Сначала разрешено всё, потом запрещено всё — запрет выигрывает
-        var policy = new CommandPolicy(new[]
-        {
+        var policy = new CommandPolicy(
+        [
             CommandRule.AllowRule("*"),
             CommandRule.DenyRule("*")
-        });
+        ]);
 
         Assert.False(policy.IsAllowed("echo hi"));
     }
@@ -274,7 +273,7 @@ public class ProcessExecutorTests
     public async Task ExecuteBashAsync_ShouldSupportMultilineScript()
     {
         var executor = new ProcessExecutor(_mockLogger.Object);
-        string script = "echo 'line1'\necho 'line2'\n";
+        var script = "echo 'line1'\necho 'line2'\n";
 
         var result = await executor.ExecuteBashAsync(script, timeoutMs: 5000, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -287,7 +286,7 @@ public class ProcessExecutorTests
     public async Task ExecuteBashAsync_PolicyDeny_ShouldBlock()
     {
         var executor = new ProcessExecutor(_mockLogger.Object);
-        var policy = new CommandPolicy(new[] { CommandRule.DenyRule("*") });
+        var policy = new CommandPolicy([CommandRule.DenyRule("*")]);
 
         var result = await executor.ExecuteBashAsync("echo hi", policy: policy, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -317,7 +316,7 @@ internal static class EnvironmentHelpers
         {
             return $"/c echo {message}";
         }
-        return $"echo '{message}'";
+        return $"-c \"echo '{message}'\"";
     }
 
     public static string GetSleepCommand()
@@ -345,7 +344,7 @@ internal static class EnvironmentHelpers
         {
             return "cmd";
         }
-        return "python3";
+        return "sh";
     }
 
     public static string GetRepeatArgs(string text, int count)
@@ -355,7 +354,7 @@ internal static class EnvironmentHelpers
             // Use a PowerShell one-liner to repeat text
             return $"/c powershell -Command \"for($i=0;$i -lt {count};$i++){{ '{text}' }}\"";
         }
-        return $"-c \"for i in range({count}): print('{text}')\"";
+        return $"-c \"for i in $(seq 1 {count}); do echo '{text}'; done\"";
     }
 
     public static string GetFalseArgs()
@@ -364,7 +363,7 @@ internal static class EnvironmentHelpers
         {
             return "/c exit 1";
         }
-        return "exit 1";
+        return "-c \"exit 1\"";
     }
 
     public static string GetPrintToStderrArgs(string text, int count)
@@ -373,6 +372,6 @@ internal static class EnvironmentHelpers
         {
             return $"/c powershell -Command \"for($i=0;$i -lt {count};$i++){{ Write-Error '{text}' }}\"";
         }
-        return $"-c \"for i in range({count}): import sys; print('{text}', file=sys.stderr)\"";
+        return $"-c \"for i in $(seq 1 {count}); do echo '{text}' >&2; done\"";
     }
 }

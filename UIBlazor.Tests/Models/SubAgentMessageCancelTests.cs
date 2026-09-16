@@ -69,8 +69,8 @@ public class SubAgentMessageCancelTests
             msg.AddMessage(VisualChatMessage.CreateStreaming("partial"));
             msg.SetCancellationTokenSource(new CancellationTokenSource());
 
-            var cancelTask = Task.Run(() => msg.Cancel());
-            var releaseTask = Task.Run(() => msg.ReleaseMemory());
+            var cancelTask = Task.Run(msg.Cancel, TestContext.Current.CancellationToken);
+            var releaseTask = Task.Run(msg.ReleaseMemory, TestContext.Current.CancellationToken);
 
             // Any unhandled exception (e.g. ObjectDisposedException) fails the test
             await Task.WhenAll(cancelTask, releaseTask);

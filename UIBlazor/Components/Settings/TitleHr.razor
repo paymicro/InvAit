@@ -1,0 +1,12 @@
+<RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" class="@(UseMargin ? "rz-my-4" : "rz-mb-4")">
+    <div style="flex-grow: 1; border-top: 5px solid var(--rz-secondary); height: 0;"></div>
+    <RadzenText TextStyle="TextStyle.Caption" class="rz-m-0" Style="color: var(--rz-text-secondary-color); white-space: nowrap;">
+        @Text
+    </RadzenText>
+    <div style="flex-grow: 1; border-top: 5px solid var(--rz-secondary); height: 0;"></div>
+</RadzenStack>
+
+@code {
+    [Parameter] public string Text { get; set; } = string.Empty;
+    [Parameter] public bool UseMargin { get; set; } = true;
+}

@@ -44,6 +44,13 @@ public class ProcessExecutor(ILogger logger)
 
     public static string? FindGitSh()
     {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            // На Linux/macOS sh обычно в /bin/sh или /usr/bin/sh
+            var shPath = GetFullPathCommand("sh");
+            if (shPath != null) return shPath;
+        }
+
         if (GetFullPathCommand("sh.exe") != null)
             return "sh.exe";
 
@@ -89,7 +96,7 @@ public class ProcessExecutor(ILogger logger)
         var extensions = Environment.GetEnvironmentVariable("PATHEXT")?.Split(';')
             ?? [".exe", ".com", ".bat", ".cmd"];
 
-        var paths = Environment.GetEnvironmentVariable("PATH")?.Split(Path.PathSeparator) ?? Array.Empty<string>();
+        var paths = Environment.GetEnvironmentVariable("PATH")?.Split(Path.PathSeparator) ?? [];
 
         // Безопасность: Убираем текущую папку из приоритета поиска, сначала ищем в системе
         var searchPaths = paths.Concat([Directory.GetCurrentDirectory()]);
@@ -103,6 +110,12 @@ public class ProcessExecutor(ILogger logger)
             var fullPathWithOriginalName = Path.Combine(directory, commandName);
 
             if (hasExecutableExtension && File.Exists(fullPathWithOriginalName))
+            {
+                return fullPathWithOriginalName;
+            }
+
+            // На non-Windows исполняемые файлы не имеют расширения (.exe и т.д.)
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && File.Exists(fullPathWithOriginalName))
             {
                 return fullPathWithOriginalName;
             }
@@ -198,16 +211,17 @@ public class ProcessExecutor(ILogger logger)
         CancellationToken cancellationToken = default,
         CommandPolicy? policy = null)
     {
-        var shPath = FindGitSh();
-        if (shPath == null)
-        {
-            return new ProcessResult { Success = false, Error = "Git sh not found. Cannot execute bash commands." };
-        }
-
+        // Сначала проверяем policy — это должно работать даже если sh недоступен
         if (policy is not null && !policy.IsAllowed(bashScript))
         {
             _logger.Log("Bash command blocked by policy.", "WARNING");
             return new ProcessResult { Success = false, Error = "Bash command is blocked by the command policy." };
+        }
+
+        var shPath = FindGitSh();
+        if (shPath == null)
+        {
+            return new ProcessResult { Success = false, Error = "Git sh not found. Cannot execute bash commands." };
         }
 
         // Временный файл со скриптом — снимает проблемы экранирования и длины командной строки.

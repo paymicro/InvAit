@@ -14,7 +14,8 @@ public class ChatService(
     ISystemPromptBuilder systemPromptBuilder,
     ILocalStorageService localStorage,
     ILogger<IChatService> logger,
-    IToolManager toolManager
+    IToolManager toolManager,
+    IContentFilter contentFilter
     ) : IChatService
 {
     #pragma warning disable format
@@ -258,7 +259,7 @@ public class ChatService(
         CompletionsResult resultCapture,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var (Messages, LastUserMessage) = session.GetFormattedMessagesForCompress();
+        var (Messages, LastUserMessage) = session.GetFormattedMessagesForCompress(contentFilter);
 
         // Получаем сжатый текст от LLM
         var contentSb = new StringBuilder();
@@ -666,7 +667,7 @@ public class ChatService(
     public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(CompletionsResult resultCapture, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // Get formatted messages including conversation history
-        var messages = Session.GetFormattedMessages(await systemPromptBuilder.PrepareSystemPromptAsync(Session.Mode, cancellationToken)) ?? [];
+        var messages = Session.GetFormattedMessages(await systemPromptBuilder.PrepareSystemPromptAsync(Session.Mode, cancellationToken), contentFilter) ?? [];
 
         await foreach (var chatDelta in GetCompletionsAsync(messages, true, resultCapture, cancellationToken))
         {
@@ -687,7 +688,7 @@ public class ChatService(
         CompletionsResult resultCapture,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var messages = session.GetFormattedMessages(systemPrompt);
+        var messages = session.GetFormattedMessages(systemPrompt, contentFilter);
 
         await foreach (var chatDelta in GetCompletionsAsync(messages, true, session, enabledTools, resultCapture, cancellationToken))
         {

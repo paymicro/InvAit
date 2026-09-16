@@ -659,7 +659,7 @@ public partial class SubAgentExecutorTests
         {
             await Task.Delay(100);
             cts.Cancel();
-        });
+        }, TestContext.Current.CancellationToken);
 
         // Act
         var result = await _executor.ExecuteAsync(args, toolCall, cts.Token);

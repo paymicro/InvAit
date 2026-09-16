@@ -27,6 +27,7 @@ builder.Services
     .AddScoped<ISystemPromptBuilder, SystemPromptBuilder>()
     .AddScoped<IRetryHandler, RetryHandler>()
     .AddScoped<IToolCallHandler, ToolCallHandler>()
+    .AddScoped<IContentFilter, ContentFilterService>()
     .AddScoped(sp =>
     {
         var client = new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) };

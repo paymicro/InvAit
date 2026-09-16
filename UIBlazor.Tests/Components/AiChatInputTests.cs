@@ -15,6 +15,7 @@ public class AiChatInputTests : BunitContext
     private readonly Mock<IProfileManager> _mockProfileManager;
     private readonly Mock<IJSRuntime> _mockJsRuntime;
     private readonly Mock<ISkillService> _mockSkillService;
+    private readonly Mock<IContentFilter> _mockContentFilter;
     private readonly ConversationSession _session;
     private readonly ConnectionProfile _profile;
     private readonly VsCodeContext _vsCodeContext;
@@ -28,6 +29,7 @@ public class AiChatInputTests : BunitContext
         _mockProfileManager = new Mock<IProfileManager>();
         _mockJsRuntime = new Mock<IJSRuntime>();
         _mockSkillService = new Mock<ISkillService>();
+        _mockContentFilter = new Mock<IContentFilter>();
 
         // Setup session
         _session = new ConversationSession
@@ -63,10 +65,16 @@ public class AiChatInputTests : BunitContext
         _mockSkillService.Setup(x => x.GetSkillsMetadataAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
+        // Setup content filter mock — pass through content unchanged by default
+        _mockContentFilter.Setup(x => x.Filter(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns<string, string>((content, _) => content);
+        _mockContentFilter.Setup(x => x.IsActive).Returns(false);
+
         // Register services
         Services.AddSingleton(_mockChatService.Object);
         Services.AddSingleton(_mockVsCodeContextService.Object);
         Services.AddSingleton(_mockVsBridge.Object);
+        Services.AddSingleton(_mockContentFilter.Object);
         Services.AddSingleton(_mockCommonSettings.Object);
         Services.AddSingleton(_mockProfileManager.Object);
         Services.AddSingleton(_mockJsRuntime.Object);
@@ -1086,6 +1094,44 @@ public class AiChatInputTests : BunitContext
         var hintItems = cut.FindAll(".hint-item");
         Assert.Single(hintItems);
         Assert.Contains(SharedResource.CommandCompact, hintItems[0].TextContent);
+    }
+
+    [Fact]
+    public async Task OnSendClick_AppliesContentFilter_ToFileContent()
+    {
+        // Arrange
+        string? sentMessage = null;
+
+        var rawJson = "[{\"path\":\"test.cs\",\"lines\":[\"code line\"]}]";
+        var formattedContent = "### test.cs\n```\n1 | code line\n```\n";
+
+        _mockVsBridge.Setup(x => x.ExecuteToolAsync(
+                BuiltInToolEnum.ReadFiles,
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new VsToolResult { Result = rawJson });
+
+        // Mock filter: formats JSON into markdown with line numbers
+        _mockContentFilter.Setup(x => x.Filter(rawJson, BuiltInToolEnum.ReadFiles))
+            .Returns(formattedContent);
+
+        var cut = Render<AiChatInput>(parameters => parameters
+            .Add(p => p.SendMessage, EventCallback.Factory.Create<string>(this, msg => sentMessage = msg)));
+
+        var textarea = cut.Find("textarea.text-input");
+
+        // Add a file token
+        await cut.InvokeAsync(() => textarea.Input("@"));
+        await cut.InvokeAsync(() => textarea.KeyDown("Enter"));
+
+        // Act - send
+        await cut.InvokeAsync(() => textarea.KeyDown("Enter"));
+
+        // Assert - filter was called and formatted content was sent
+        _mockContentFilter.Verify(x => x.Filter(rawJson, BuiltInToolEnum.ReadFiles), Times.Once);
+        Assert.Contains("### test.cs", sentMessage);
+        Assert.Contains("1 | code line", sentMessage);
+        Assert.DoesNotContain(rawJson, sentMessage);
     }
 
     #endregion

@@ -1,8 +1,7 @@
 namespace UIBlazor.Tests.Utils;
 
-using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Rendering;
 using System.Reflection;
+using Microsoft.AspNetCore.Components.Rendering;
 using UIBlazor.Components;
 
 /// <summary>
@@ -104,14 +103,14 @@ public class ThrottledComponentBaseTests : BunitContext
         cut.Instance.Content = Version(6); // remember the final version
         for (var i = 1; i <= 6; i++)
         {
-            await Task.Delay(100);
+            await Task.Delay(100, TestContext.Current.CancellationToken);
             cut.Instance.Content = Version(i);
             cut.Instance.OnParametersPushed();
             cut.Render(parameters => { });
         }
 
         // Settle: wait past the interval for the trailing render
-        await Task.Delay(800);
+        await Task.Delay(800, TestContext.Current.CancellationToken);
 
         // Assert
         cut.WaitForAssertion(
@@ -139,7 +138,7 @@ public class ThrottledComponentBaseTests : BunitContext
         cut.Instance.Content = Version(6); // remember the final version
         for (var i = 1; i <= 6; i++)
         {
-            await Task.Delay(100);
+            await Task.Delay(100, TestContext.Current.CancellationToken);
             cut.Instance.Content = Version(i);
             cut.Instance.OnParametersPushed();
             cut.Render(parameters => { });
@@ -152,7 +151,7 @@ public class ThrottledComponentBaseTests : BunitContext
         cut.Render(parameters => { });
 
         // Settle: wait past the interval for the trailing render
-        await Task.Delay(800);
+        await Task.Delay(800, TestContext.Current.CancellationToken);
 
         // Assert - final content must appear despite the identical re-render
         cut.WaitForAssertion(
@@ -212,7 +211,7 @@ public class ThrottledComponentBaseTests : BunitContext
         Assert.Equal(2, cut.Instance.RenderCount);
 
         // Throttle path — schedules delayed render
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
         cut.Instance.MarkChanged();
         cut.Render(parameters => { });
         Assert.Equal(2, cut.Instance.RenderCount);
@@ -220,7 +219,7 @@ public class ThrottledComponentBaseTests : BunitContext
         Assert.False(cut.Instance.PendingCts.IsCancellationRequested);
 
         // Unthrottled render (elapsed >= interval)
-        await Task.Delay(450);
+        await Task.Delay(450, TestContext.Current.CancellationToken);
         cut.Instance.MarkChanged();
         cut.Render(parameters => { });
         Assert.Equal(3, cut.Instance.RenderCount);
@@ -245,13 +244,13 @@ public class ThrottledComponentBaseTests : BunitContext
         Assert.Equal(2, cut.Instance.RenderCount);
 
         // Throttle — schedule delayed render
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
         cut.Instance.MarkChanged();
         cut.Render(parameters => { });
         Assert.Equal(2, cut.Instance.RenderCount);
 
         // Unthrottled render (550 >= 500)
-        await Task.Delay(450);
+        await Task.Delay(450, TestContext.Current.CancellationToken);
         cut.Instance.MarkChanged();
         cut.Render(parameters => { });
         Assert.Equal(3, cut.Instance.RenderCount);
@@ -259,7 +258,7 @@ public class ThrottledComponentBaseTests : BunitContext
         var renderCountAfterUnthrottled = cut.Instance.RenderCount;
 
         // Wait past the delayed callback deadline
-        await Task.Delay(200);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
 
         // No redundant render should occur
         Assert.Equal(renderCountAfterUnthrottled, cut.Instance.RenderCount);

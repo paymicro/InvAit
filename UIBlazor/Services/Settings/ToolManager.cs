@@ -124,7 +124,10 @@ public class ToolManager(
     {
         return mode switch
         {
-            AppMode.Chat or AppMode.Plan => tool.Category is ToolCategory.ReadFiles or ToolCategory.ModeSwitch,
+            AppMode.Chat or AppMode.Plan
+                => tool.Category is ToolCategory.ReadFiles
+                                 or ToolCategory.ModeSwitch
+                                 or ToolCategory.Mcp,
             _ => true,
         };
     }

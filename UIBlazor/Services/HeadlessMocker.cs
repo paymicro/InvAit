@@ -163,7 +163,7 @@ public class HeadlessMocker
             {
                 Result = """
                             namespace UIBlazor.Components;
-
+                            // just comment for open file
                             public partial class AIChat : TestComponent
                             {
                                 private List<ChatMessage> Messages { get; set; } = [];
@@ -175,7 +175,7 @@ public class HeadlessMocker
                 Result = """
                             File content
                             1 |namespace UIBlazor.Components;
-                            2 |
+                            2 |// just comment for read file
                             3 |public partial class AIChat : TestComponent
                             4 |{
                             5 |    private List<ChatMessage> Messages { get; set; } = [];
