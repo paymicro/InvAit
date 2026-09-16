@@ -135,7 +135,8 @@ function adjustZoom(wrapper, delta) {
         const baseH = parseFloat(content.dataset.baseH || '0');
         if (baseH > 0 && viewport) {
             // 16px = top+bottom padding (8px each) on viewport
-            viewport.style.height = (baseH * zoom + 16).toFixed(0) + 'px';
+            // 10px = bottom scroolbar
+            viewport.style.height = (baseH * zoom + 16 + 10).toFixed(0) + 'px';
         }
         if (viewport) viewport.classList.add('is-zoomed');
     } else {

@@ -72,8 +72,8 @@
 }
 
 .mermaid-zoom-viewport.is-zoomed {
-    overflow-y: auto;
-    overflow-x: hidden;
+    overflow-y: hidden;
+    overflow-x: auto;
     cursor: grab;
 }
 
