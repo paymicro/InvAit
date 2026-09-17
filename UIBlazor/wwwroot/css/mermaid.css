@@ -2,6 +2,7 @@
 .mermaid {
     text-align: center;
     margin: 1em 0;
+    overflow-wrap: normal;
 }
 
 .mermaid svg {
@@ -17,7 +18,6 @@
     border: 1px solid var(--rz-border-color);
     border-radius: 6px;
     overflow: hidden;
-    background-color: var(--rz-base-background-color);
 }
 
 .mermaid-zoom-toolbar {
@@ -27,7 +27,7 @@
     z-index: 10;
     display: flex;
     gap: 4px;
-    background-color: var(--rz-secondary-lighter);
+    background-color: color-mix(in srgb, var(--rz-secondary) 60%, transparent);
     border: 1px solid var(--rz-on-secondary-lighter);
     border-radius: 6px;
     padding: 3px;
@@ -56,8 +56,8 @@
 }
 
     .mermaid-zoom-btn:hover {
-        background-color: var(--rz-secondary-lighter);
-        color: var(--rz-secondary);
+        background-color: var(--rz-primary);
+        color: var(--rz-on-secondary);
     }
 
 .mermaid-zoom-btn:active {
@@ -65,15 +65,12 @@
 }
 
 .mermaid-zoom-viewport {
-    overflow: hidden;
-    max-height: 70vh;
+    overflow: auto;
     text-align: center;
     padding: 8px;
 }
 
 .mermaid-zoom-viewport.is-zoomed {
-    overflow-y: hidden;
-    overflow-x: auto;
     cursor: grab;
 }
 
@@ -97,7 +94,7 @@
 /* ── Mermaid download menu (appended to body, position: fixed) ────── */
 
 .mermaid-download-menu {
-    position: fixed;
+    position: absolute;
     z-index: 10000;
     background-color: var(--rz-secondary-lighter);
     border: 1px solid var(--rz-on-secondary-lighter);
@@ -127,6 +124,6 @@
 }
 
     .mermaid-download-item:hover {
-        background-color: var(--rz-secondary-lighter);
-        color: var(--rz-secondary);
+        background-color: var(--rz-primary);
+        color: var(--rz-on-secondary);
     }

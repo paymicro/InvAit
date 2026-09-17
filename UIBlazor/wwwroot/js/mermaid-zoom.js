@@ -54,6 +54,10 @@ function wrapMermaidWithZoom(diagramEl, svgHtml) {
         // Don't start drag if clicking on the toolbar or its children
         if (e.target.closest('.mermaid-zoom-toolbar')) return;
 
+        if (!viewport.classList.contains("is-zoomed")) {
+            return; // для выделения текста, если не увеличено, то не надо и перетаскивать
+        }
+
         isDragging = true;
         dragMoved = false;
         dragStartX = e.clientX;
@@ -128,22 +132,31 @@ function adjustZoom(wrapper, delta) {
     zoom = Math.max(MERMAID_ZOOM_MIN, Math.min(MERMAID_ZOOM_MAX, zoom));
     content.dataset.zoom = zoom.toFixed(2);
     content.style.transform = `scale(${zoom})`;
+    content.style.height = '';
 
-    if (zoom > 1.01) {
+    if (!viewport) {
+        return;
+    }
+
+    if (zoom > 1.01 || zoom < 1) {
         // Set viewport HEIGHT (not content) for vertical scroll.
         // Content stays responsive; viewport grows to fit scaled SVG + padding.
         const baseH = parseFloat(content.dataset.baseH || '0');
-        if (baseH > 0 && viewport) {
+        if (baseH > 0) {
+            // 14px = bottom scroolbar
+            var contentH = baseH * zoom + 14;
             // 16px = top+bottom padding (8px each) on viewport
-            // 10px = bottom scroolbar
-            viewport.style.height = (baseH * zoom + 16 + 10).toFixed(0) + 'px';
+            viewport.style.height = (contentH + 16).toFixed(0) + 'px';
+            if (zoom < 1) {
+                content.style.height = contentH.toFixed(0) + 'px';
+                viewport.classList.remove('is-zoomed');
+            } else {
+                viewport.classList.add('is-zoomed');
+            }
         }
-        if (viewport) viewport.classList.add('is-zoomed');
     } else {
-        if (viewport) {
-            viewport.style.height = '';
-            viewport.classList.remove('is-zoomed');
-        }
+        viewport.classList.remove('is-zoomed');
+        viewport.style.height = '';
     }
 }
 
@@ -153,6 +166,7 @@ function resetZoom(wrapper) {
     content.dataset.zoom = '1';
     content.dataset.baseH = '';
     content.style.transform = 'scale(1)';
+    content.style.height = '';
     const viewport = wrapper.querySelector('.mermaid-zoom-viewport');
     if (viewport) {
         viewport.style.height = '';
@@ -217,15 +231,12 @@ function showDownloadMenu(wrapper, content) {
     // Position menu below the download button using fixed coordinates
     const btn = wrapper.querySelector('.mermaid-zoom-btn[title="Save as image"]');
     if (btn) {
-        const rect = btn.getBoundingClientRect();
-        menu.style.top = (rect.bottom + 4) + 'px';
-        menu.style.right = (window.innerWidth - rect.right) + 'px';
-    } else {
-        menu.style.top = '40px';
-        menu.style.right = '10px';
+        const rect = btn.parentElement.getBoundingClientRect();
+        menu.style.top = rect.height + 'px';
+        menu.style.right = 0;
     }
 
-    document.body.appendChild(menu);
+    btn.parentElement.appendChild(menu);
 
     // Close on outside click
     setTimeout(() => {
