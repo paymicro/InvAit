@@ -1,0 +1,103 @@
+{
+  "name": "invaitcode",
+  "displayName": "InvAit",
+  "description": "Local AI Chat and agent",
+  "version": "0.1.4",
+  "publisher": "invait",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/paymicro/invait"
+  },
+  "engines": {
+    "vscode": "^1.138.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "ai",
+    "chat",
+    "agent",
+    "mcp",
+    "copilot"
+  ],
+  "icon": "media/extension-icon.png",
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "invaitcode.chat",
+        "title": "Open InvAit chat",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "invaitcode.view",
+        "title": "Open InvAit",
+        "icon": "$(comment-discussion)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "invaitcode-sidebar",
+          "title": "InvAit",
+          "icon": "media/sidebar-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "invaitcode-sidebar": [
+        {
+          "type": "webview",
+          "id": "invaitcode.chatView",
+          "name": "Chat",
+          "icon": "$(comment-discussion)",
+          "contextualTitle": "InvAit"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "InvAit",
+      "properties": {
+        "invaitcode.mcphostPath": {
+          "type": "string",
+          "default": "",
+          "description": "Custom path to McpHost executable (if not bundled)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run bundle",
+    "vscode:createVsix": "npx @vscode/vsce package",
+    "compile": "tsc -p ./ --noEmit",
+    "bundle": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "24.x",
+    "@types/vscode": "^1.138.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.0.0",
+    "esbuild": "^0.25.12",
+    "eslint": "^10.5.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.1"
+  },
+  "overrides": {
+    "diff": "^8.0.4",
+    "serialize-javascript": "^7.0.6"
+  }
+}

@@ -68,7 +68,7 @@ public class SolutionStructure
         {
             foreach (var item in projects)
             {
-                if (item.Text is "bin" or "obj")
+                if (item.Text is "bin" or "obj" or "node_modules" or "out" or "TestResults")
                     continue;
 
                 result.Add($"{indentString}{VsCodeContext.DirPrefix} {item.FullPath}");

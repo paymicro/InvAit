@@ -13,7 +13,7 @@
     position: sticky;
     top: -8px;
     z-index: 1;
-    padding: 0.6rem 0.8rem;
+    padding: 0.5rem 0.8rem;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -61,7 +61,7 @@
 }
 
 .is-expanded > .header .arrow {
-    transform: rotate(180deg);
+    transform: rotate(90deg);
 }
 
 .arrow {

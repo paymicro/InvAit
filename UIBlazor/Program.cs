@@ -28,9 +28,15 @@ builder.Services
     .AddScoped<IRetryHandler, RetryHandler>()
     .AddScoped<IToolCallHandler, ToolCallHandler>()
     .AddScoped<IContentFilter, ContentFilterService>()
+    .AddTransient<DynamicEnvironmentHttpMessageHandler>()
     .AddScoped(sp =>
     {
-        var client = new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) };
+        var handler = sp.GetRequiredService<DynamicEnvironmentHttpMessageHandler>();
+        // В Blazor WASM стандартный сетевой стек работает на специальной обертке fetch:
+        // Мы создаем системный хендлер, который умеет делать реальные запросы в WebView2/браузере
+        // Связываем их в цепочку: DynamicHandler -> BrowserHandler
+        handler.InnerHandler = new HttpClientHandler();
+        var client = new HttpClient(handler) { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) };
         client.DefaultRequestHeaders.Add("X-Client-Name", "InvAit Visual Studio Plugin"); // Можно заменить в Extra Headers
         return client;
     })

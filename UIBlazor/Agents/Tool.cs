@@ -33,6 +33,12 @@ public class Tool
     public ToolCategory Category { get; init; } = ToolCategory.ReadFiles;
 
     /// <summary>
+    /// IDE types where this tool is available (e.g. "vs", "vscode").
+    /// If null or empty — tool is available in all IDEs (no filtering).
+    /// </summary>
+    public HashSet<string>? IdeAvailable { get; init; }
+
+    /// <summary>
     /// Function to execute the tool
     /// </summary>
     [JsonIgnore]

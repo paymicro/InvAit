@@ -1,59 +1,148 @@
-let vsBridgeHandler;
-
 // Функция для установки .NET обработчика UIBlazor
 window.setVsBridgeHandler = function (dotNetRef) {
-    vsBridgeHandler = dotNetRef;
+    window.vsBridgeHandler = dotNetRef;
     console.log('Visual Studio bridge handler initialized');
     return "OK";
 };
 
-// сообщение UIBlazor -> InvAit
-// msg - объект
+const isVSCode = window.parent !== window;
+
+// Глобальный флаг для C# (Blazor JS interop может не сохранять `this` при вызове методов объекта,
+// поэтому используем простую глобальную функцию вместо метода на объекте)
+window.isVsCodeEnv = function () {
+    console.log('[InvAit] isVsCodeEnv check, isVSCode =', isVSCode);
+    return isVSCode;
+};
+
+// VSCode localStorage proxy — must run BEFORE Blazor initializes
+if (isVSCode) {
+    // Initial storage injected by the static server into index.html
+    var initialStorage = window.__vscodeInitialStorage__
+        ? JSON.parse(window.__vscodeInitialStorage__)
+        : {};
+
+    // In-memory cache backed by globalState via postMessage
+    var storageCache = initialStorage;
+
+    // Persist a key to VSCode globalState asynchronously
+    function persistSet(key, value) {
+        window.parent.postMessage({
+            target: 'vscode-webview',
+            packet: {
+                command: 'StorageSet',
+                payload: { key: key, value: String(value) }
+            }
+        }, '*');
+    }
+    function persistRemove(key) {
+        window.parent.postMessage({
+            target: 'vscode-webview',
+            packet: {
+                command: 'StorageRemove',
+                payload: { key: key }
+            }
+        }, '*');
+    }
+
+    // Use a real JS Proxy so Object.keys(localStorage) returns storage keys,
+    // not method names. This is needed because LocalStorageService.cs calls
+    // eval("Object.keys(localStorage)") to enumerate keys.
+    var storageProxy = new Proxy({}, {
+        get: function(_target, prop) {
+            if (prop === 'getItem')
+                return function(key) { return storageCache[key] !== undefined ? storageCache[key] : null; };
+            if (prop === 'setItem')
+                return function(key, value) { storageCache[key] = String(value); persistSet(key, value); };
+            if (prop === 'removeItem')
+                return function(key) { delete storageCache[key]; persistRemove(key); };
+            if (prop === 'key')
+                return function(index) { var ks = Object.keys(storageCache); return ks[index] || null; };
+            if (prop === 'clear')
+                return function() { var ks = Object.keys(storageCache); for (var i = 0; i < ks.length; i++) { delete storageCache[ks[i]]; persistRemove(ks[i]); } };
+            if (prop === 'length')
+                return Object.keys(storageCache).length;
+            // Direct property access (e.g. localStorage['mykey'])
+            if (typeof prop === 'string' && prop in storageCache)
+                return storageCache[prop];
+            return undefined;
+        },
+        ownKeys: function() {
+            return Object.keys(storageCache);
+        },
+        getOwnPropertyDescriptor: function(_target, prop) {
+            if (typeof prop === 'string' && prop in storageCache) {
+                return { enumerable: true, configurable: true, writable: true, value: storageCache[prop] };
+            }
+            return undefined;
+        }
+    });
+
+    // Replace localStorage with our proxy
+    Object.defineProperty(window, 'localStorage', {
+        value: storageProxy,
+        writable: false,
+        configurable: true
+    });
+}
+
+// ОТПРАВКА: UIBlazor -> Бэкенд
 window.postVsMessage = msg => {
     if (window.chrome?.webview) {
+        // Код для Visual Studio 2026
         window.chrome.webview.postMessage(msg);
-        // TODO удалить логи или включать их опционально
-        console.log("VsRequest: ", msg);
+        console.log("Visual Studio Request: ", msg);
+        return "OK";
+    } else if (isVSCode) {
+        // Код для VS Code (отправляем родителю iframe)
+        window.parent.postMessage({ target: 'vscode-webview', packet: msg }, '*');
+        console.log("VSCode Request: ", msg);
         return "OK";
     } else {
-        console.warn("WebView2 API не обнаружен. Сообщение не отправлено:", msg);
+        console.warn("API связи не обнаружено. Сообщение не отправлено:", msg);
         return "FAIL";
     }
 };
 
-// Проверка, запущено ли приложение в WebView2
+// ПРИЕМ: Бэкенд -> UIBlazor
+// Универсальный обработчик входящих сообщений
+function handleIncomingMessage(data) {
+    if (!window.vsBridgeHandler) {
+        console.error('Visual Studio bridge handler is not initialized');
+        return;
+    }
+
+    switch (data.type) {
+        case 'VsResponse':
+            console.log("VsResponse: ", data.payload);
+            window.vsBridgeHandler.invokeMethodAsync('HandleVsResponse', data.payload)
+                .catch(err => console.error('Error invoking HandleVsResponse:', err));
+            break;
+        case 'VsMessage':
+            window.vsBridgeHandler.invokeMethodAsync('HandleVsMessage', data.payload)
+                .catch(err => console.error('Error invoking HandleVsMessage:', err));
+            break;
+        default:
+            console.warn("Неизвестный тип сообщения:", data.type);
+    }
+}
+
+// Подписываемся на события в зависимости от среды
 if (window.chrome && window.chrome.webview) {
-    // сообщение InvAit -> UIBlazor
-    // отправляются через webView.CoreWebView2.PostWebMessageAsJson
-    window.chrome.webview.addEventListener('message', ({ data }) => {
-        if (!vsBridgeHandler) {
-            console.error('Visual Studio bridge handler is not initialized');
-            return;
-        }
-
-        switch (data.type) {
-            case 'VsResponse':
-                // TODO удалить логи или включать их опционально
-                console.log("VsResponse: ", data.payload);
-
-                // вызов метода JSInvokable
-                vsBridgeHandler.invokeMethodAsync('HandleVsResponse', data.payload)
-                    .catch(err => console.error('Error invoking HandleVsResponse:', err));
-                break;
-            case 'VsMessage':
-                // TODO удалить логи или включать их опционально
-                // console.log("Message: ", data.payload);
-
-                // вызов метода JSInvokable
-                vsBridgeHandler.invokeMethodAsync('HandleVsMessage', data.payload)
-                    .catch(err => console.error('Error invoking HandleVsMessage:', err));
-                break;
-            default:
-                console.warn("Неизвестный тип сообщения:", data.type);
+    // Для Visual Studio
+    window.chrome.webview.addEventListener('message', ({ data }) => handleIncomingMessage(data));
+} else if (isVSCode) {
+    // Для VS Code (слушаем сообщения, пришедшие в iframe)
+    window.addEventListener('message', (event) => {
+        // Проверяем, что сообщение пришло от бэкенда VS Code
+        if (event.data && event.data.source === 'vscode-parent') {
+            const msgType = event.data.message?.type;
+            // VsStreamingPacket и StorageKeys обрабатываются отдельными слушателями
+            if (msgType === 'VsStreamingPacket' || msgType === 'StorageKeys') return;
+            handleIncomingMessage(event.data.message);
         }
     });
 } else {
-    console.warn("Приложение запущено без WebView2");
+    console.warn("Приложение запущено вне сред Visual Studio");
 }
 
 //определение темы
@@ -165,3 +254,47 @@ window.handleNavigationKey = function (key, isShift) {
         });
     }
 };
+
+// Module-level variable — НЕ используем `this` т.к. Blazor JS interop
+// может вызывать функцию без сохранения this контекста
+const _pendingNetworkRequests = new Map();
+
+window.vscodeInterop = {
+    sendNetworkRequest: function (requestId, url, method, headers, body, dotNetRef) {
+        console.log('[InvAit] sendNetworkRequest:', method, url);
+        _pendingNetworkRequests.set(requestId, dotNetRef);
+
+        window.parent.postMessage({
+            target: 'vscode-webview',
+            packet: {
+                command: 'NetworkProxyRequest',
+                payload: { requestId, url, method, headers, body }
+            }
+        }, '*');
+    },
+
+    // Обработка разных типов пакетов от VS Code
+    handleVsMessage: function (msg) {
+        const dotNetRef = _pendingNetworkRequests.get(msg.requestId);
+        if (!dotNetRef) return;
+
+        if (msg.type === 'headers') {
+            dotNetRef.invokeMethodAsync('ReceiveHeaders', msg.statusCode, msg.statusText || '');
+        }
+        else if (msg.type === 'chunk') {
+            dotNetRef.invokeMethodAsync('ReceiveChunk', msg.chunk);
+        }
+        else if (msg.type === 'end') {
+            dotNetRef.invokeMethodAsync('ReceiveEnd', msg.success, msg.error || null);
+            _pendingNetworkRequests.delete(msg.requestId);
+            dotNetRef.dispose();
+        }
+    }
+};
+
+// Слушаем сообщения из TS расширения VS Code
+window.addEventListener('message', (event) => {
+    if (event.data && event.data.source === 'vscode-parent' && event.data.message?.type === 'VsStreamingPacket') {
+        window.vscodeInterop.handleVsMessage(event.data.message.payload);
+    }
+});

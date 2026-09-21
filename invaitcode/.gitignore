@@ -1,0 +1,14 @@
+npm-debug.log
+Thumbs.db
+out/
+dist/
+.vs/
+tsconfig.lsif.json
+*.lsif
+*.db
+*.tsbuildinfo
+*.vsix
+.vscode-test
+
+# Don't check in API files. These should be pulled in during install
+vscode*.d.ts
