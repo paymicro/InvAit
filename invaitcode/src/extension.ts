@@ -1,11 +1,12 @@
 ﻿import * as vscode from 'vscode';
 import * as path from 'path';
 import { createStaticServer } from './staticServer';
-import { handleVsRequest, setOnUiReady, disposeMcpRegistry } from './toolDispatcher';
+import { setOnUiReady, disposeMcpRegistry } from './toolDispatcher';
 import { registerContextListeners, pushInitialContext, resetContextState, setActivePanel } from './contextPublisher';
-import { handleNetworkProxyRequest, setSkipSslValidation } from './networkProxy';
 import { ChatViewProvider } from './chatViewProvider';
 import { initLogger, disposeLogger, log } from './logger';
+import { handleWebviewMessage } from './webviewMessageHandler';
+import { getWebviewHtml } from './webviewHtml';
 
 let server: import('http').Server | null = null;
 let currentPort = 0;
@@ -90,7 +91,7 @@ function createWebviewEditor(port: number, context: vscode.ExtensionContext) {
         }
     );
 
-    panel.webview.html = getWebviewHtml(port);
+    panel.webview.html = getWebviewHtml({ staticServerPort: port });
 
     // Wire up context publisher
     setActivePanel(panel);
@@ -105,72 +106,9 @@ function createWebviewEditor(port: number, context: vscode.ExtensionContext) {
     // Route incoming messages from Blazor iframe
     panel.webview.onDidReceiveMessage(
         async (message: any) => {
-            // Network proxy requests (from DynamicEnvironmentHttpMessageHandler)
-            if (message.command === 'NetworkProxyRequest') {
-                await handleNetworkProxyRequest(panel, message.payload);
-                return;
-            }
-
-            // Storage persistence: proxy localStorage writes to globalState
-            if (message.command === 'StorageSet') {
-                await context.globalState.update(message.payload.key, message.payload.value);
-                return;
-            }
-            if (message.command === 'StorageRemove') {
-                await context.globalState.update(message.payload.key, undefined);
-                return;
-            }
-
-            // Skip SSL validation toggle (no correlationId — must be before VsRequest check)
-            if (message.action === 'skip_ssl_validation') {
-                const skip = message.payload === 'True' || message.payload === 'true';
-                setSkipSslValidation(skip);
-                return;
-            }
-
-            // Tool requests (VsRequest)
-            if (message.action && message.correlationId) {
-                handleVsRequest(panel, message);
-                return;
-            }
+            await handleWebviewMessage(message, { panel, context });
         },
         undefined,
         context.subscriptions
     );
-}
-
-function getWebviewHtml(port: number): string {
-    return `
-        <!DOCTYPE html>
-        <html lang="ru">
-        <head>
-            <meta charset="UTF-8">
-            <style>
-                body, iframe { margin: 0; padding: 0; width: 100%; height: 100vh; border: none; overflow: hidden; }
-            </style>
-        </head>
-        <body>
-            <iframe id="blazor-frame" src="http://127.0.0.1:${port}/index.html"></iframe>
-            <script>
-                const vscode = acquireVsCodeApi();
-                const iframe = document.getElementById('blazor-frame');
-
-                window.addEventListener('message', (event) => {
-                    // Message FROM Blazor iframe → forward to VS Code extension host
-                    if (event.data && event.data.target === 'vscode-webview') {
-                        vscode.postMessage(event.data.packet);
-                        return;
-                    }
-                    // Message FROM VS Code extension host → forward into Blazor iframe
-                    if (iframe && iframe.contentWindow) {
-                        iframe.contentWindow.postMessage({
-                            source: 'vscode-parent',
-                            message: event.data
-                        }, '*');
-                    }
-                });
-            </script>
-        </body>
-        </html>
-    `;
 }

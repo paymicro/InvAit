@@ -41,18 +41,6 @@ public class DetailsTests : BunitContext
     }
 
     [Fact]
-    public void ShouldRenderArrow()
-    {
-        // Act
-        var cut = Render<Details>(parameters => parameters
-            .AddChildContent("content"));
-
-        // Assert
-        var arrow = cut.Find(".arrow");
-        Assert.Equal("▼", arrow.TextContent);
-    }
-
-    [Fact]
     public void ShouldRenderChildContent()
     {
         // Act

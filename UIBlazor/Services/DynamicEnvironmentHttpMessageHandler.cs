@@ -67,12 +67,15 @@ public class DynamicEnvironmentHttpMessageHandler(IJSRuntime jsRuntime) : Delega
         var tcs = new TaskCompletionSource<HttpResponseMessage>();
         var responseBridge = new VscodeResponseBridge(requestId, tcs, jsRuntime);
         var dotNetRef = DotNetObjectReference.Create(responseBridge);
+        responseBridge.DotNetRef = dotNetRef;
 
-        cancellationToken.Register(() =>
+        // Dispose on cancellation — covers the case where the request is cancelled
+        // before headers or body arrive.
+        var cancellationRegistration = cancellationToken.Register(() =>
         {
             tcs.TrySetCanceled(cancellationToken);
             DynamicEnvironmentHttpMessageHandler.ActiveStreams.TryRemove(requestId, out _);
-            dotNetRef.Dispose();
+            try { dotNetRef.Dispose(); } catch { /* already disposed */ }
         });
 
         try
@@ -88,16 +91,26 @@ public class DynamicEnvironmentHttpMessageHandler(IJSRuntime jsRuntime) : Delega
         }
         catch (Exception ex)
         {
+            cancellationRegistration.Dispose();
+            try { dotNetRef.Dispose(); } catch { }
             await jsRuntime.InvokeVoidAsync("console.log", $"[InvAit C#] sendNetworkRequest JS call THREW: {ex.Message}");
             throw;
         }
 
         try
         {
+            // tcs.Task completes when ReceiveHeaders is called (headers received).
+            // The response body is streamed AFTER this via ReceiveChunk/ReceiveEnd,
+            // so dotNetRef must stay alive until ReceiveEnd disposes it.
             return await tcs.Task;
         }
         catch (Exception ex)
         {
+            // Only clean up on error/cancellation — on success, dotNetRef is
+            // disposed by VscodeResponseBridge.ReceiveEnd after the stream completes.
+            cancellationRegistration.Dispose();
+            DynamicEnvironmentHttpMessageHandler.ActiveStreams.TryRemove(requestId, out _);
+            try { dotNetRef.Dispose(); } catch { }
             await jsRuntime.InvokeVoidAsync("console.log", $"[InvAit C#] tcs.Task threw: {ex.Message}");
             throw;
         }
@@ -168,6 +181,12 @@ public class VscodeResponseBridge
     private readonly IJSRuntime _jsRuntime;
     private ChunkedStream? _stream;
 
+    /// <summary>
+    /// Set by the handler after creation so ReceiveEnd can dispose it
+    /// once the response stream is fully delivered.
+    /// </summary>
+    public DotNetObjectReference<VscodeResponseBridge>? DotNetRef { get; set; }
+
     public VscodeResponseBridge(string requestId, TaskCompletionSource<HttpResponseMessage> tcs, IJSRuntime jsRuntime)
     {
         _requestId = requestId;
@@ -221,5 +240,9 @@ public class VscodeResponseBridge
                 _tcs.TrySetException(new InvalidOperationException("Stream ended before headers received"));
             }
         }
+
+        // Clean up the DotNetObjectReference now that the stream is fully delivered.
+        // This is the normal disposal path — the JS side no longer needs to call us.
+        try { DotNetRef?.Dispose(); } catch { /* already disposed via cancellation */ }
     }
 }

@@ -287,7 +287,7 @@ window.vscodeInterop = {
         else if (msg.type === 'end') {
             dotNetRef.invokeMethodAsync('ReceiveEnd', msg.success, msg.error || null);
             _pendingNetworkRequests.delete(msg.requestId);
-            dotNetRef.dispose();
+            // dotNetRef is disposed by C# side in ReceiveEnd to avoid double-dispose
         }
     }
 };

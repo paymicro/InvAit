@@ -54,3 +54,25 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./coveragereport
+
+  mocha:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: invaitcode
+        run: npm ci
+
+      - name: Type-check
+        working-directory: invaitcode
+        run: npx tsc --noEmit -p tsconfig.test.json
+
+      - name: Run Mocha tests
+        working-directory: invaitcode
+        run: npm run test:unit

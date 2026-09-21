@@ -49,16 +49,8 @@ export function dispatchTool(action: string, payloadStr: string | undefined, wor
                 return gitDiff(params, workspaceRoot);
             case 'get_agents':
                 return getAgents(params, workspaceRoot);
-            case 'read_open_file':
-                return { success: false, error: 'read_open_file is not supported in VSCode extension' };
             case 'get_project_info':
                 return getProjectInfo(params, workspaceRoot);
-            case 'get_error_list':
-                return { success: true, payload: 'get_error_list not implemented in VSCode extension' };
-            case 'build':
-                return { success: false, error: 'Build not implemented in VSCode extension' };
-            case 'run_tests':
-                return { success: false, error: 'RunTests not implemented in VSCode extension' };
             case 'find_declarations':
                 return { success: false, error: 'FindDeclarations not implemented in VSCode extension' };
             case 'find_references':

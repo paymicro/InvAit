@@ -69,24 +69,23 @@ interface ManagedServer {
 
 /** A simple promise-based mutex that emulates C# SemaphoreSlim(1,1). */
 class Semaphore {
-    private _promise: Promise<void> = Promise.resolve();
-    private _resolve: (() => void) | null = null;
+    private _queue: (() => void)[] = [];
+    private _locked = false;
 
     async wait(): Promise<void> {
-        // If a lock is currently held, _promise will not resolve until
-        // release() is called. We chain our wait onto that promise.
-        const prev = this._promise;
-        this._promise = new Promise<void>((resolve) => {
-            this._resolve = resolve;
-        });
-        await prev;
+        if (!this._locked) {
+            this._locked = true;
+            return;
+        }
+        return new Promise<void>(resolve => this._queue.push(resolve));
     }
 
     release(): void {
-        if (this._resolve) {
-            const r = this._resolve;
-            this._resolve = null;
-            r();
+        const next = this._queue.shift();
+        if (next) {
+            next();
+        } else {
+            this._locked = false;
         }
     }
 }
@@ -538,22 +537,23 @@ export class McpClientRegistry {
 
         const isWindows = process.platform === 'win32';
 
-        // If the command contains a path separator, check if the file exists.
-        if (command.includes(path.sep) || command.includes('/')) {
+        // If the command is already rooted, check existence directly.
+        if (path.isAbsolute(command)) {
             try {
-                if (fs.existsSync(command)) {
-                    return path.resolve(command);
-                }
+                if (fs.existsSync(command)) return command;
             } catch {
                 // ignore
             }
             return null;
         }
 
-        // If the command is already rooted, check existence directly.
-        if (path.isAbsolute(command)) {
+        // If the command contains a path separator, check if the file exists
+        // relative to the current working directory.
+        if (command.includes(path.sep) || command.includes('/')) {
             try {
-                if (fs.existsSync(command)) return command;
+                if (fs.existsSync(command)) {
+                    return path.resolve(command);
+                }
             } catch {
                 // ignore
             }
