@@ -84,7 +84,8 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
     "test": "vscode-test",
-    "test:unit": "mocha --require ts-node/register src/test/**/*.test.ts --timeout 10000"
+    "test:unit": "mocha --require ts-node/register src/test/**/*.test.ts --timeout 10000",
+    "test:coverage": "c8 mocha --require ts-node/register src/test/**/*.test.ts --timeout 10000"
   },
   "devDependencies": {
     "@types/chai": "^4.3.20",
@@ -96,6 +97,7 @@
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.0.0",
     "chai": "^4.5.0",
+    "c8": "^11.0.0",
     "chai-as-promised": "^7.1.2",
     "esbuild": "^0.25.12",
     "eslint": "^10.5.0",
