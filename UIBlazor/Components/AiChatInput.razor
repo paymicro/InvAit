@@ -22,9 +22,10 @@
             class="text-input"
             placeholder="@ModePlaceholder"
             @bind="_currentInput"
-            @oninput="HandleInputAsync"
+            @oninput="HandleInput"
             @onkeydown="OnKeyDown"
             @onkeydown:preventDefault="_shouldPreventDefault"
+            @onblur="OnBlur"
             disabled="@IsLoading"/>
 
             <div class="misc">
@@ -113,7 +114,7 @@
                     var isSelected = index == _selectedIndex;
                     <li class="hint-item @(isSelected ? "selected" : "")"
                     @onclick="() => SendCommandAsync(cmd)">
-                        <span class="file-icon">@cmd.Icon</span>
+                        <i class="file-icon @cmd.Icon"></i>
                         <span class="file-name">@cmd.Name</span>
                         <span class="file-path">@cmd.Description</span>
                     </li>
@@ -135,7 +136,7 @@
                     var icon = GetFileIcon(fileName);
                     <li class="hint-item @(isSelected ? "selected" : "")"
                     @onclick="() => AddFileTokenAsync(file)">
-                        <span class="file-icon">@icon</span>
+                        <i class="file-icon @icon"></i>
                         <span class="file-name">@fileName</span>
                         <span class="file-path">@fileDir</span>
                     </li>
@@ -152,7 +153,7 @@
     [Parameter] public bool IsLoading { get; set; }
 
     [Inject] private IChatService ChatService { get; set; } = null!;
-    [Inject] private IVsCodeContextService VsCodeContextService { get; set; } = null!;
+    [Inject] private IContextService VsCodeContextService { get; set; } = null!;
     [Inject] private IJSRuntime JsRuntime { get; set; } = null!;
     [Inject] private IVsBridge VsBridge { get; set; } = null!;
     [Inject] private IContentFilter ContentFilter { get; set; } = null!;
@@ -199,7 +200,7 @@
         return !IsLoading && (!string.IsNullOrWhiteSpace(_currentInput) || _tokens.Any());
     }
 
-    private async Task HandleInputAsync(ChangeEventArgs e)
+    private void HandleInput(ChangeEventArgs e)
     {
         _currentInput = e.Value?.ToString() ?? string.Empty;
 
@@ -227,9 +228,8 @@
         else if (_currentInput.EndsWith(" @"))
         {
             // Показываем все файлы
-            var source = VsCodeContextService.CurrentContext?.SolutionFiles ??
-                         ["  📄 test1.cs", "    📄 C:\\asdtes\\t2aksjhdgj\\ahsghd hjagshjdg\\ajhsgdahjkg.cs"];
-            _filteredFiles = source.Where(f => f.Contains(VsCodeContext.FilePrefix)).Take(10).ToList();
+            var source = VsCodeContextService.CurrentContext?.SolutionFiles ?? [];
+            _filteredFiles = source.Take(10).ToList();
             _selectedIndex = 0;
         }
         else if (_currentInput.Contains('@'))
@@ -238,11 +238,9 @@
             var lastAtIndex = _currentInput.LastIndexOf('@');
             var query = _currentInput.Substring(lastAtIndex + 1);
 
-            var source = VsCodeContextService.CurrentContext?.SolutionFiles ??
-                         ["  📄 test1.cs", "     📄 C:\\asdtes\\t2aksjhdgj\\ahsghd hjagshjdg\\ajhsgdahjkg.cs"];
-
+            var source = VsCodeContextService.CurrentContext?.SolutionFiles ?? [];
             _filteredFiles = source
-                .Where(f => f.Contains(VsCodeContext.FilePrefix) && f.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .Where(f => f.Contains(query, StringComparison.OrdinalIgnoreCase))
                 .Take(10)
                 .ToList();
             _selectedIndex = 0;
@@ -261,7 +259,7 @@
     {
         foreach (var (name, description) in _availableCommands)
         {
-            yield return new CommandSuggestion(name, description, "⌘");
+            yield return new CommandSuggestion(name, description, "fa-solid fa-terminal");
         }
 
         foreach (var skill in _skills)
@@ -271,13 +269,13 @@
                 continue;
             }
 
-        yield return new CommandSuggestion(skill.Name, skill.Description, "✨", IsSkill: true);
+        yield return new CommandSuggestion(skill.Name, skill.Description, "fa-solid fa-wand-magic-sparkles", IsSkill: true);
         }
     }
 
     private async Task AddFileTokenAsync(string filePath)
     {
-        filePath = filePath.TrimStart($" {VsCodeContext.FilePrefix}".ToCharArray());
+        filePath = filePath.Trim();
         var fileName = Path.GetFileName(filePath.Replace('\\', '/'));
 
         // Удаляем @ и текст после него из currentInput
@@ -327,6 +325,17 @@
         // вызов команды (скиллы передаются с префиксом skill:)
         var command = suggestion.IsSkill ? $"{SkillCommandPrefix}{suggestion.Name}" : suggestion.Name;
         await CommandTriggered.InvokeAsync(command);
+    }
+
+    private async Task OnBlur()
+    {
+        // Delay to allow click events on suggestion items to fire first.
+        // This is the standard Blazor pattern for autocomplete/dropdown
+        // components where onblur and item-click race.
+        await Task.Delay(150);
+        _filteredFiles.Clear();
+        _filteredSuggestions.Clear();
+        _selectedIndex = 0;
     }
 
     private async Task FocusInputAsync()
@@ -441,25 +450,28 @@
         await SendMessage.InvokeAsync(message);
     }
 
+    /// <summary>
+    /// Returns a FontAwesome icon CSS class for the given file name based on its extension.
+    /// </summary>
     private string GetFileIcon(string fileName)
     {
         var extension = Path.GetExtension(fileName.Replace('\\', '/')).ToLowerInvariant();
         return extension switch
         {
-            ".cs" => "📄",
-            ".razor" => "⚡",
-            ".html" => "🌐",
-            ".css" => "🎨",
-            ".js" => "📜",
-            ".json" => "📋",
-            ".xml" => "📋",
-            ".txt" => "📝",
-            ".md" => "📖",
-            ".png" or ".jpg" or ".jpeg" or ".gif" or ".svg" => "🖼️",
-            ".dll" or ".exe" => "⚙️",
-            ".config" => "🔧",
-            ".csproj" or ".sln" => "📦",
-            _ => "📄"
+            ".cs" => "fa-solid fa-file-code",
+            ".razor" => "fa-solid fa-bolt",
+            ".html" or ".htm" => "fa-solid fa-globe",
+            ".css" => "fa-solid fa-palette",
+            ".js" or ".ts" or ".jsx" or ".tsx" => "fa-solid fa-file-code",
+            ".json" => "fa-solid fa-list-check",
+            ".xml" => "fa-solid fa-file-lines",
+            ".txt" => "fa-solid fa-file-lines",
+            ".md" => "fa-solid fa-book",
+            ".png" or ".jpg" or ".jpeg" or ".gif" or ".svg" or ".ico" or ".webp" => "fa-solid fa-image",
+            ".dll" or ".exe" => "fa-solid fa-gear",
+            ".config" => "fa-solid fa-wrench",
+            ".csproj" or ".sln" => "fa-solid fa-cube",
+            _ => "fa-solid fa-file"
         };
     }
 

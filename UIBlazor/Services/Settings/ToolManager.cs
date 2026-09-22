@@ -9,7 +9,7 @@ public class ToolManager(
     ICommonSettingsProvider commonSettingsProvider,
     IMcpSettingsProvider mcpSettingsProvider,
     IVsBridge vsBridge,
-    IVsCodeContextService vsCodeContextService)
+    IContextService contextService)
     : BaseSettingsProvider<ToolSettings>(localStorage, logger, "ToolSettings"), IToolManager
 {
     private readonly ConcurrentDictionary<string, Tool> _registeredTools = new();
@@ -105,7 +105,7 @@ public class ToolManager(
 
     public IEnumerable<Tool> GetEnabledTools(AppMode mode)
     {
-        var ideType = vsCodeContextService.IdeType;
+        var ideType = contextService.IdeType;
 
         var builtIn = _registeredTools.Values.Where(t =>
         {
@@ -153,7 +153,7 @@ public class ToolManager(
 
     public IEnumerable<Tool> GetAvailableBuiltInTools()
     {
-        var ideType = vsCodeContextService.IdeType;
+        var ideType = contextService.IdeType;
         return _registeredTools.Values.Where(t => IsAvailableInIde(t, ideType));
     }
 
@@ -175,7 +175,7 @@ public class ToolManager(
         if (_mcpToolsCache != null)
             return _mcpToolsCache;
 
-        _mcpToolsCache = BuildMcpTools().ToList();
+        _mcpToolsCache = [.. BuildMcpTools()];
         return _mcpToolsCache;
     }
 

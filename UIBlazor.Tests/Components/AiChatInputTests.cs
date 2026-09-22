@@ -9,7 +9,7 @@ using UIBlazor.Localization;
 public class AiChatInputTests : BunitContext
 {
     private readonly Mock<IChatService> _mockChatService;
-    private readonly Mock<IVsCodeContextService> _mockVsCodeContextService;
+    private readonly Mock<IContextService> _mockVsCodeContextService;
     private readonly Mock<IVsBridge> _mockVsBridge;
     private readonly Mock<ICommonSettingsProvider> _mockCommonSettings;
     private readonly Mock<IProfileManager> _mockProfileManager;
@@ -18,12 +18,12 @@ public class AiChatInputTests : BunitContext
     private readonly Mock<IContentFilter> _mockContentFilter;
     private readonly ConversationSession _session;
     private readonly ConnectionProfile _profile;
-    private readonly VsCodeContext _vsCodeContext;
+    private readonly VsContext _vsCodeContext;
 
     public AiChatInputTests()
     {
         _mockChatService = new Mock<IChatService>();
-        _mockVsCodeContextService = new Mock<IVsCodeContextService>();
+        _mockVsCodeContextService = new Mock<IContextService>();
         _mockVsBridge = new Mock<IVsBridge>();
         _mockCommonSettings = new Mock<ICommonSettingsProvider>();
         _mockProfileManager = new Mock<IProfileManager>();
@@ -45,15 +45,15 @@ public class AiChatInputTests : BunitContext
             SendSolutionStructure = true
         };
 
-        // Setup VS Code context with sample files
-        _vsCodeContext = new VsCodeContext
+        // Setup VS Code context with sample files (raw paths, no emojis)
+        _vsCodeContext = new VsContext
         {
             SolutionFiles =
             [
-                "  📄 TestFile.cs",
-                "  📄 AnotherFile.razor",
-                "  📄 Config.json",
-                "  📄 README.md"
+                "C:/TestProject/TestFile.cs",
+                "C:/TestProject/AnotherFile.razor",
+                "C:/TestProject/Config.json",
+                "C:/TestProject/README.md"
             ]
         };
 
@@ -343,7 +343,7 @@ public class AiChatInputTests : BunitContext
         var textarea = cut.Find("textarea.text-input");
 
         // Act - simulate input with @ and query (space + @ + query)
-        await cut.InvokeAsync(() => textarea.Input("Some text @Test"));
+        await cut.InvokeAsync(() => textarea.Input("Some text @TestFile"));
 
         // Assert - hints menu should show filtered files
         var hintItems = cut.FindAll(".hint-item");
@@ -369,19 +369,18 @@ public class AiChatInputTests : BunitContext
     }
 
     [Fact]
-    public async Task HandleInput_ShowsDefaultFiles_WhenNoContext()
+    public async Task HandleInput_ShowsNoFiles_WhenNoContext()
     {
         // Arrange
-        _mockVsCodeContextService.Setup(x => x.CurrentContext).Returns((VsCodeContext?)null);
+        _mockVsCodeContextService.Setup(x => x.CurrentContext).Returns((VsContext?)null);
         var cut = Render<AiChatInput>();
         var textarea = cut.Find("textarea.text-input");
 
         // Act
         await cut.InvokeAsync(() => textarea.Input("text @"));
 
-        // Assert - should show fallback files
-        var hintItems = cut.FindAll(".hint-item");
-        Assert.True(hintItems.Count > 0);
+        // Assert - no fallback files, hints menu should not appear
+        Assert.Throws<ElementNotFoundException>(() => cut.Find(".hints-menu"));
     }
 
     #endregion
@@ -448,7 +447,7 @@ public class AiChatInputTests : BunitContext
         var lastIndex = hintItems.Count - 1;
 
         // Move to last item
-        for (int i = 0; i < lastIndex; i++)
+        for (var i = 0; i < lastIndex; i++)
         {
             await cut.InvokeAsync(() => textarea.KeyDown("ArrowDown"));
         }
@@ -460,7 +459,7 @@ public class AiChatInputTests : BunitContext
         var selected = cut.Find(".hint-item.selected");
         var allItems = cut.FindAll(".hint-item");
         var selectedIndex = 0;
-        for (int i = 0; i < allItems.Count; i++)
+        for (var i = 0; i < allItems.Count; i++)
         {
             if (allItems[i] == selected)
             {
@@ -1139,28 +1138,28 @@ public class AiChatInputTests : BunitContext
     #region GetFileIcon Tests
 
     [Theory]
-    [InlineData(".cs", "📄")]
-    [InlineData(".razor", "⚡")]
-    [InlineData(".html", "🌐")]
-    [InlineData(".css", "🎨")]
-    [InlineData(".js", "📜")]
-    [InlineData(".json", "📋")]
-    [InlineData(".xml", "📋")]
-    [InlineData(".txt", "📝")]
-    [InlineData(".md", "📖")]
-    [InlineData(".png", "🖼️")]
-    [InlineData(".jpg", "🖼️")]
-    [InlineData(".dll", "⚙️")]
-    [InlineData(".exe", "⚙️")]
-    [InlineData(".config", "🔧")]
-    [InlineData(".csproj", "📦")]
-    [InlineData(".sln", "📦")]
-    [InlineData(".unknown", "📄")]
+    [InlineData(".cs", "fa-solid fa-file-code")]
+    [InlineData(".razor", "fa-solid fa-bolt")]
+    [InlineData(".html", "fa-solid fa-globe")]
+    [InlineData(".css", "fa-solid fa-palette")]
+    [InlineData(".js", "fa-solid fa-file-code")]
+    [InlineData(".json", "fa-solid fa-list-check")]
+    [InlineData(".xml", "fa-solid fa-file-lines")]
+    [InlineData(".txt", "fa-solid fa-file-lines")]
+    [InlineData(".md", "fa-solid fa-book")]
+    [InlineData(".png", "fa-solid fa-image")]
+    [InlineData(".jpg", "fa-solid fa-image")]
+    [InlineData(".dll", "fa-solid fa-gear")]
+    [InlineData(".exe", "fa-solid fa-gear")]
+    [InlineData(".config", "fa-solid fa-wrench")]
+    [InlineData(".csproj", "fa-solid fa-cube")]
+    [InlineData(".sln", "fa-solid fa-cube")]
+    [InlineData(".unknown", "fa-solid fa-file")]
     public async Task FileChip_ShowsCorrectIcon_ForFileExtension(string extension, string expectedIcon)
     {
         // Arrange
         var fileName = $"Test{extension}";
-        _vsCodeContext.SolutionFiles = [$"  📄 C:\\path\\{fileName}"];
+        _vsCodeContext.SolutionFiles = [$"C:\\path\\{fileName}"];
 
         var cut = Render<AiChatInput>();
         var textarea = cut.Find("textarea.text-input");

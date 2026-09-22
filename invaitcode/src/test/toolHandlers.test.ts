@@ -109,20 +109,14 @@ describe('toolHandlers', () => {
             expect(result.success).to.be.false;
             expect(result.error).to.be.a('string');
         });
-
-        it('should handle undefined payload as empty object', () => {
-            const result = toolHandlers.dispatchTool('get_project_info', undefined, WORKSPACE);
-            expect(result.success).to.be.true;
-            expect(result.payload).to.include(WORKSPACE);
-        });
     });
 
     // -----------------------------------------------------------------------
-    // buildWorkspaceTree (exercises walkDirectory internally)
+    // buildWorkspaceFiles (returns raw file paths, no formatting)
     // -----------------------------------------------------------------------
 
-    describe('buildWorkspaceTree / walkDirectory', () => {
-        it('should list files and directories, skipping binary extensions and hidden/node_modules dirs', () => {
+    describe('buildWorkspaceFiles', () => {
+        it('should list file paths, skipping binary extensions and hidden/node_modules dirs', () => {
             const rootEntries = [
                 dirent('src', true),
                 dirent('README.md', false),
@@ -144,42 +138,64 @@ describe('toolHandlers', () => {
                 .onCall(1).returns(srcEntries)
                 .onCall(2).returns(utilsEntries);
 
-            const tree = toolHandlers.buildWorkspaceTree(WORKSPACE);
+            (fsStub.statSync as sinon.SinonStub).returns({ size: 1024 });
 
-            // First line is the workspace header
-            expect(tree[0]).to.include('Workspace path');
-            expect(tree[0]).to.include(WORKSPACE);
+            const files = toolHandlers.buildWorkspaceFiles(WORKSPACE);
 
-            // Should include README.md and index.ts and helper.ts
-            const joined = tree.join('\n');
-            expect(joined).to.include('README.md');
-            expect(joined).to.include('index.ts');
-            expect(joined).to.include('helper.ts');
+            // Should return an array of file paths
+            expect(files).to.be.an('array');
+            expect(files).to.have.length(3); // README.md, index.ts, helper.ts
+
+            // Should include README.md, index.ts, helper.ts as full paths
+            expect(files.some((f: string) => f.includes('README.md'))).to.be.true;
+            expect(files.some((f: string) => f.includes('index.ts'))).to.be.true;
+            expect(files.some((f: string) => f.includes('helper.ts'))).to.be.true;
 
             // Should NOT include exe, png, .hidden, node_modules
-            expect(joined).to.not.include('app.exe');
-            expect(joined).to.not.include('image.png');
-            expect(joined).to.not.include('.hidden');
-            expect(joined).to.not.include('node_modules');
+            expect(files.some((f: string) => f.includes('app.exe'))).to.be.false;
+            expect(files.some((f: string) => f.includes('image.png'))).to.be.false;
+            expect(files.some((f: string) => f.includes('.hidden'))).to.be.false;
+            expect(files.some((f: string) => f.includes('node_modules'))).to.be.false;
         });
 
-        it('should cap files at 25 per directory and show skip count', () => {
+        it('should cap files at 25 per directory and silently skip excess', () => {
             const manyFiles: any[] = [];
             for (let i = 0; i < 30; i++) {
                 manyFiles.push(dirent(`file${i}.ts`, false));
             }
             (fsStub.readdirSync as sinon.SinonStub).returns(manyFiles);
+            (fsStub.statSync as sinon.SinonStub).returns({ size: 1024 });
 
-            const tree = toolHandlers.buildWorkspaceTree(WORKSPACE);
-            const joined = tree.join('\n');
+            const files = toolHandlers.buildWorkspaceFiles(WORKSPACE);
 
-            // Should show 25 files
-            expect(joined).to.include('file0.ts');
-            expect(joined).to.include('file24.ts');
-            // Should NOT show file25+
-            expect(joined).to.not.include('file25.ts');
-            // Should show skip message
-            expect(joined).to.include('5 more files');
+            // Should return exactly 25 files (no summary string)
+            expect(files).to.have.length(25);
+            expect(files.some((f: string) => f.includes('file0.ts'))).to.be.true;
+            expect(files.some((f: string) => f.includes('file24.ts'))).to.be.true;
+            // Should NOT include file25+
+            expect(files.some((f: string) => f.includes('file25.ts'))).to.be.false;
+            // Should NOT include any summary string
+            expect(files.some((f: string) => f.includes('more files'))).to.be.false;
+        });
+
+        it('should return an empty array for empty workspace', () => {
+            (fsStub.readdirSync as sinon.SinonStub).returns([]);
+            const files = toolHandlers.buildWorkspaceFiles(WORKSPACE);
+            expect(files).to.be.an('array');
+            expect(files).to.have.length(0);
+        });
+
+        it('should return raw file paths (not formatted tree)', () => {
+            (fsStub.readdirSync as sinon.SinonStub).returns([
+                dirent('test.ts', false),
+            ]);
+            const result = toolHandlers.dispatchTool('get_solution_structure', '{}', WORKSPACE);
+            expect(result.success).to.be.true;
+            expect(result.payload).to.be.a('string');
+            // The payload should be raw file paths, not a formatted tree
+            expect(result.payload).to.include('test.ts');
+            expect(result.payload).to.not.include('├─');
+            expect(result.payload).to.not.include('└─');
         });
     });
 

@@ -61,8 +61,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             DisplayName = SharedResource.ToolFindDeclarations,
             Category = ToolCategory.ReadFiles,
             NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.FindDeclarations)),
-            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.FindDeclarations, args, c),
-            IdeAvailable = [VsCodeContext.IdeTypeVS]
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.FindDeclarations, args, c)
         },
         new()
         {
@@ -70,8 +69,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             DisplayName = SharedResource.ToolFindReferences,
             Category = ToolCategory.ReadFiles,
             NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.FindReferences)),
-            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.FindReferences, args, c),
-            IdeAvailable = [VsCodeContext.IdeTypeVS]
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.FindReferences, args, c)
         },
         new()
         {

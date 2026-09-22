@@ -1,8 +1,8 @@
 namespace UIBlazor.Services.Interfaces
 {
-    public interface IVsCodeContextService
+    public interface IContextService
     {
-        VsCodeContext? CurrentContext { get; }
+        VsContext? CurrentContext { get; }
 
         /// <summary>
         /// Cached IDE type from context (e.g. "vs", "vscode").
@@ -12,6 +12,6 @@ namespace UIBlazor.Services.Interfaces
 
         event Action? OnContextChanged;
 
-        void UpdateContext(VsCodeContext context);
+        void UpdateContext(VsContext context);
     }
 }

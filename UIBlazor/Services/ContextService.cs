@@ -1,15 +1,15 @@
 namespace UIBlazor.Services;
 
-public class VsCodeContextService : IVsCodeContextService
+public class ContextService : IContextService
 {
-    public VsCodeContext? CurrentContext { get; private set; }
+    public VsContext? CurrentContext { get; private set; }
 
     /// <inheritdoc />
     public string? IdeType { get; private set; }
 
     public event Action? OnContextChanged;
 
-    public void UpdateContext(VsCodeContext context)
+    public void UpdateContext(VsContext context)
     {
         CurrentContext = context;
         IdeType = context.IdeType;

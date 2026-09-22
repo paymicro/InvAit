@@ -23,7 +23,7 @@ public partial class SystemPromptBuilderTests
             .Setup(s => s.FormatSkillsForSystemPrompt(skillsMetadata))
             .Returns("## Available Skills\n**TestSkill**: A test skill");
 
-        var context = new VsCodeContext
+        var context = new VsContext
         {
             SolutionPath = "B:\\TestSolution",
             ActiveFilePath = "B:\\TestSolution\\Program.cs",
@@ -32,7 +32,6 @@ public partial class SystemPromptBuilderTests
             ActiveFileContent = "class Program { }",
             SolutionFiles =
             [
-                $"  {VsCodeContext.DirPrefix} B:\\TestSolution\\src",
                 "B:\\TestSolution\\src\\Program.cs"
             ]
         };
@@ -77,7 +76,7 @@ public partial class SystemPromptBuilderTests
             .Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>()))
             .Returns(string.Empty);
 
-        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsCodeContext?)null);
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsContext?)null);
         _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
         _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
 
@@ -104,7 +103,7 @@ public partial class SystemPromptBuilderTests
 
         _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync(skillsMetadata);
         _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(skillsMetadata)).Returns("## Available Skills\n**Skill1**: Desc1");
-        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsCodeContext?)null);
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsContext?)null);
         _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
         _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
 
@@ -137,14 +136,14 @@ public partial class SystemPromptBuilderTests
             SendModeInstructions = true
         });
 
-        var context = new VsCodeContext
+        var context = new VsContext
         {
             SolutionPath = "B:\\TestSolution",
             ActiveFilePath = "B:\\TestSolution\\Program.cs",
             SelectionStartLine = 1,
             SelectionEndLine = 10,
             ActiveFileContent = "test content",
-            SolutionFiles = ["file1.cs", "file2.cs"]
+            SolutionFiles = ["B:\\TestSolution\\file1.cs", "B:\\TestSolution\\file2.cs"]
         };
         _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns(context);
 
@@ -181,14 +180,14 @@ public partial class SystemPromptBuilderTests
             SendModeInstructions = true
         });
 
-        var context = new VsCodeContext
+        var context = new VsContext
         {
             SolutionPath = "B:\\TestSolution",
             ActiveFilePath = "B:\\TestSolution\\Program.cs",
             SelectionStartLine = 1,
             SelectionEndLine = 10,
             ActiveFileContent = "test content",
-            SolutionFiles = ["file1.cs", "file2.cs"]
+            SolutionFiles = ["B:\\TestSolution\\file1.cs", "B:\\TestSolution\\file2.cs"]
         };
         _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns(context);
 
@@ -212,7 +211,7 @@ public partial class SystemPromptBuilderTests
     public async Task PrepareSystemPromptAsync_EmptyActiveFilePath_FileExcluded()
     {
         // Arrange
-        var context = new VsCodeContext
+        var context = new VsContext
         {
             SolutionPath = "B:\\TestSolution",
             ActiveFilePath = string.Empty,
@@ -243,7 +242,7 @@ public partial class SystemPromptBuilderTests
         // Arrange
         _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
         _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>())).Returns(string.Empty);
-        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsCodeContext?)null);
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsContext?)null);
         _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
         _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
 
@@ -276,7 +275,7 @@ public partial class SystemPromptBuilderTests
 
         _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
         _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>())).Returns(string.Empty);
-        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsCodeContext?)null);
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsContext?)null);
         _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync("# Test Rules\nThese are test rules.");
         _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
 
@@ -312,7 +311,7 @@ public partial class SystemPromptBuilderTests
         };
         _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync(skillsMetadata);
         _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(skillsMetadata)).Returns("## Available Skills\n**TestSkill**: A test skill");
-        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsCodeContext?)null);
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsContext?)null);
         _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
         _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
 
@@ -344,7 +343,7 @@ public partial class SystemPromptBuilderTests
 
         _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
         _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>())).Returns(string.Empty);
-        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsCodeContext?)null);
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsContext?)null);
         _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
         _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
 
@@ -379,7 +378,7 @@ public partial class SystemPromptBuilderTests
 
         _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
         _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>())).Returns(string.Empty);
-        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsCodeContext?)null);
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsContext?)null);
         _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
         _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
 
@@ -400,7 +399,7 @@ public partial class SystemPromptBuilderTests
         // Arrange
         _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
         _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>())).Returns(string.Empty);
-        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsCodeContext?)null);
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsContext?)null);
         _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
         _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
 
@@ -425,7 +424,7 @@ public partial class SystemPromptBuilderTests
 
         _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
         _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>())).Returns(string.Empty);
-        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsCodeContext?)null);
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsContext?)null);
         _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
         _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
 
@@ -446,7 +445,7 @@ public partial class SystemPromptBuilderTests
         // Arrange — delegate_task IS available (default setup in constructor)
         _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
         _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>())).Returns(string.Empty);
-        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsCodeContext?)null);
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsContext?)null);
         _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
         _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
 
@@ -471,7 +470,7 @@ public partial class SystemPromptBuilderTests
 
         _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
         _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>())).Returns(string.Empty);
-        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsCodeContext?)null);
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsContext?)null);
         _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
         _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
 

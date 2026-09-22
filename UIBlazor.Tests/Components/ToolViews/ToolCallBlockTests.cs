@@ -15,7 +15,6 @@ public class ToolCallBlockTests : BunitContext
     private int? _capturedEditCount;
     private (string FilePath, string Content)? _capturedCreateFile;
     private (string Args, string? Answer)? _capturedAskOptions;
-    private bool _askAnswered;
 
     public ToolCallBlockTests()
     {
@@ -79,7 +78,6 @@ public class ToolCallBlockTests : BunitContext
                     EventCallback.Factory.Create(this, async () =>
                     {
                         await callback.InvokeAsync("user chosen answer");
-                        _askAnswered = true;
                     }));
                 builder.AddContent(5, "answer");
                 builder.CloseElement();

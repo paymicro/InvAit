@@ -18,7 +18,7 @@ builder.Services
     .AddScoped<IVsBridge, VsBridge>()
     .AddScoped<ISkillService, SkillService>()
     .AddScoped<IRuleService, RuleService>()
-    .AddScoped<IVsCodeContextService, VsCodeContextService>()
+    .AddScoped<IContextService, ContextService>()
     .AddScoped<IMessageParser, MessageParser>()
     .AddScoped<IInternalExecutor, InternalExecutor>()
     .AddScoped<ISubAgentExecutor, SubAgentExecutor>()

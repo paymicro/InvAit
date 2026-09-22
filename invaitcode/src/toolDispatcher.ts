@@ -5,6 +5,7 @@ import * as os from 'os';
 import { exec, spawn } from 'child_process';
 import { dispatchTool, ToolResult } from './toolHandlers';
 import { McpClientRegistry } from './mcpClientRegistry';
+import { invalidateContextCache } from './contextPublisher';
 import { log, logError } from './logger';
 
 const mcpRegistry = new McpClientRegistry((msg: string) => log('[mcp] ' + msg));
@@ -262,12 +263,136 @@ export async function handleVsRequest(
         return;
     }
 
+    // find_declarations — use VS Code LSP workspace symbol provider
+    if (message.action === 'find_declarations') {
+        try {
+            const args = message.payload ? JSON.parse(message.payload) : {};
+            const symbol: string = args.symbol || '';
+            if (!symbol) {
+                sendResponse(panel, message.correlationId, false, undefined, 'Symbol name is required.');
+                return;
+            }
+
+            const symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
+                'vscode.executeWorkspaceSymbolProvider', symbol
+            );
+
+            if (!symbols || symbols.length === 0) {
+                sendResponse(panel, message.correlationId, false, undefined, `Symbol '${symbol}' isn't found.`);
+                return;
+            }
+
+            const maxResults = 50;
+            const limited = symbols.length > maxResults;
+            const header = limited
+                ? `Found ${symbols.length} declarations (showing first ${maxResults}):\n\n`
+                : `Found ${symbols.length} declarations:\n\n`;
+
+            const lines: string[] = [];
+            for (let i = 0; i < Math.min(symbols.length, maxResults); i++) {
+                const s = symbols[i];
+                const filePath = s.location.uri.fsPath;
+                const lineNum = s.location.range.start.line + 1;
+                const kind = vscode.SymbolKind[s.kind] || String(s.kind);
+                const container = s.containerName || '';
+                lines.push(`${s.name} | ${kind} | ${container} | ${filePath}:${lineNum}`);
+            }
+
+            if (limited) {
+                lines.push(`\n+${symbols.length - maxResults} more results. Limited to ${maxResults}.`);
+            }
+
+            sendResponse(panel, message.correlationId, true, header + lines.join('\n'));
+        } catch (e: any) {
+            sendResponse(panel, message.correlationId, false, undefined, e.message);
+        }
+        return;
+    }
+
+    // find_references — use VS Code LSP reference provider
+    if (message.action === 'find_references') {
+        try {
+            const args = message.payload ? JSON.parse(message.payload) : {};
+            const symbol: string = args.symbol || '';
+            if (!symbol) {
+                sendResponse(panel, message.correlationId, false, undefined, 'Symbol name is required.');
+                return;
+            }
+
+            // Step 1: Find the declaration via workspace symbol provider
+            const symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
+                'vscode.executeWorkspaceSymbolProvider', symbol
+            );
+
+            if (!symbols || symbols.length === 0) {
+                sendResponse(panel, message.correlationId, false, undefined, `Symbol '${symbol}' isn't found.`);
+                return;
+            }
+
+            // Use the first declaration found to locate references
+            const firstSymbol = symbols[0];
+            const uri = firstSymbol.location.uri;
+            const position = firstSymbol.location.range.start;
+
+            // Step 2: Find all references at the declaration position
+            const refs = await vscode.commands.executeCommand<vscode.Location[]>(
+                'vscode.executeReferenceProvider', uri, position
+            );
+
+            if (!refs || refs.length === 0) {
+                sendResponse(panel, message.correlationId, true, `No references found for '${symbol}'.`);
+                return;
+            }
+
+            const maxResults = 50;
+            const limited = refs.length > maxResults;
+            const header = limited
+                ? `Found ${refs.length} references (showing first ${maxResults}):\n\n`
+                : `Found ${refs.length} references:\n\n`;
+
+            const lines: string[] = [];
+            for (let i = 0; i < Math.min(refs.length, maxResults); i++) {
+                const ref = refs[i];
+                const filePath = ref.uri.fsPath;
+                const lineNum = ref.range.start.line + 1;
+
+                // Try to read the surrounding code line for context
+                let codeLine = '';
+                try {
+                    const doc = await vscode.workspace.openTextDocument(ref.uri);
+                    const lineText = doc.lineAt(Math.min(ref.range.start.line, doc.lineCount - 1)).text;
+                    codeLine = lineText.length > 200 ? lineText.substring(0, 200) : lineText;
+                } catch {
+                    // skip if file can't be read
+                }
+
+                lines.push(`${filePath}:${lineNum} | ${codeLine}`);
+            }
+
+            if (limited) {
+                lines.push(`\n+${refs.length - maxResults} more results. Limited to ${maxResults}.`);
+            }
+
+            sendResponse(panel, message.correlationId, true, header + lines.join('\n'));
+        } catch (e: any) {
+            sendResponse(panel, message.correlationId, false, undefined, e.message);
+        }
+        return;
+    }
+
     // All other tools — delegate to toolHandlers
     try {
         const result: ToolResult = dispatchTool(message.action, message.payload, workspaceRoot);
         sendResponse(panel, message.correlationId, result.success, result.payload, result.error);
     } catch (e: any) {
         sendResponse(panel, message.correlationId, false, undefined, e.message);
+    }
+
+    // Invalidate solution structure cache for filesystem-modifying tools
+    // so that subsequent get_solution_structure calls reflect the latest state.
+    const fsModifyingActions = ['create_file', 'edit_files', 'delete_file'];
+    if (fsModifyingActions.includes(message.action)) {
+        invalidateContextCache();
     }
 }
 

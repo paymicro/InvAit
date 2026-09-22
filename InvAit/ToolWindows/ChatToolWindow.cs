@@ -14,7 +14,7 @@ namespace InvAit.ToolWindows;
 
 public class ChatToolWindow : BaseToolWindow<ChatToolWindow>, IDisposable
 {
-    private VsCodeContextPublisher _contextPublisher;
+    private ContextPublisher _contextPublisher;
 
     private ChatControl _chatControl;
 
@@ -38,7 +38,7 @@ public class ChatToolWindow : BaseToolWindow<ChatToolWindow>, IDisposable
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         if (Shell.Package.GetGlobalService(typeof(DTE)) is DTE2 dte)
         {
-            _contextPublisher = await VsCodeContextPublisher.CreateAsync(dte, (WebView2)webView);
+            _contextPublisher = await ContextPublisher.CreateAsync(dte, (WebView2)webView);
         }
     }
 
@@ -46,7 +46,6 @@ public class ChatToolWindow : BaseToolWindow<ChatToolWindow>, IDisposable
     {
         _contextPublisher?.Dispose();
         _contextPublisher = null;
-        _chatControl?.Dispose();
         _chatControl = null;
     }
 }

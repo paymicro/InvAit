@@ -1,7 +1,7 @@
 ﻿import * as vscode from 'vscode';
 import * as fs from 'fs';
-import { buildWorkspaceTree } from './toolHandlers';
-import { log, logError } from './logger';
+import { buildWorkspaceFiles } from './toolHandlers';
+import { logError } from './logger';
 
 const CONTEXT_THROTTLE_MS = 500;
 
@@ -36,16 +36,17 @@ function buildContextJson(workspaceRoot: string): string {
     };
 
     // 1. Workspace structure (cached — only rebuild on structural changes)
+    //    Returns raw file paths; formatting is done on the UIBlazor side.
     try {
         if (workspaceRoot && fs.existsSync(workspaceRoot)) {
             if (_cachedSolutionFiles === null || workspaceRoot !== _cachedWorkspaceRoot) {
-                _cachedSolutionFiles = buildWorkspaceTree(workspaceRoot);
+                _cachedSolutionFiles = buildWorkspaceFiles(workspaceRoot);
                 _cachedWorkspaceRoot = workspaceRoot;
             }
-            context.solutionFiles = _cachedSolutionFiles;
+            context.solutionFiles = _cachedSolutionFiles ?? [];
         }
     } catch (e: any) {
-        logError('[InvAit Ext] Error building workspace tree: ' + e.message);
+        logError('[InvAit Ext] Error building workspace file list: ' + e.message);
     }
 
     // 2. Active document

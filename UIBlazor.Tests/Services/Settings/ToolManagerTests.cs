@@ -8,7 +8,7 @@ public partial class ToolManagerTests
     private readonly Mock<IMcpSettingsProvider> _mcpSettingsMock;
     private readonly Mock<ICommonSettingsProvider> _commonSettingsMock;
     private readonly Mock<IVsBridge> _vsBridgeMock;
-    private readonly Mock<IVsCodeContextService> _vsCodeContextMock;
+    private readonly Mock<IContextService> _vsCodeContextMock;
     private readonly McpOptions _mcpOptions;
     private readonly ILogger<ToolManager> _logger;
     private readonly NativeToolDefinition _nativeTool;
@@ -19,7 +19,7 @@ public partial class ToolManagerTests
         _mcpSettingsMock = new Mock<IMcpSettingsProvider>();
         _commonSettingsMock = new Mock<ICommonSettingsProvider>();
         _vsBridgeMock = new Mock<IVsBridge>();
-        _vsCodeContextMock = new Mock<IVsCodeContextService>();
+        _vsCodeContextMock = new Mock<IContextService>();
         _logger = new LoggerMock<ToolManager>();
 
         _vsCodeContextMock.SetupGet(x => x.IdeType).Returns((string?)null);

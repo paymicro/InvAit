@@ -1,5 +1,5 @@
 <div class="input-chip">
-    <span class="chip-icon">@Icon</span>
+    <i class="chip-icon @Icon"></i>
     <span class="chip-name">@Token.FileName</span>
     <Tooltip Text="@SharedResource.Delete">
         <button class="chip-remove" @onclick="OnRemove">×</button>
@@ -14,7 +14,7 @@
     public EventCallback<FileToken> OnRemoveClick { get; set; }
 
     [Parameter]
-    public string Icon { get; set; } = "📄";
+    public string Icon { get; set; } = "fa-solid fa-file";
 
     private async Task OnRemove()
     {
