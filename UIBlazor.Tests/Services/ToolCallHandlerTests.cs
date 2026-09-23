@@ -59,7 +59,8 @@ public partial class ToolCallHandlerTests
         // Arrange
         var list = CreateList(toolName, ToolApprovalStatus.Approved);
 
-        _toolManagerMock.Setup(t => t.GetTool(toolName)).Returns(new Tool {
+        _toolManagerMock.Setup(t => t.GetTool(toolName)).Returns(new Tool
+        {
             Name = toolName,
             Category = toolCategory,
             Enabled = enabled,

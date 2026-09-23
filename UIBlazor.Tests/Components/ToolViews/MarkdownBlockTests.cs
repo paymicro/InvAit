@@ -5,11 +5,11 @@ namespace UIBlazor.Tests.Components.ToolViews;
 /// </summary>
 public class MarkdownBlockTests : BunitContext
 {
-    private const string JsFunction = "renderMarkdownToElement";
+    private const string _jsFunction = "renderMarkdownToElement";
 
     public MarkdownBlockTests()
     {
-        JSInterop.SetupVoid(JsFunction, _ => true);
+        JSInterop.SetupVoid(_jsFunction, _ => true);
     }
 
     [Fact]
@@ -35,7 +35,7 @@ public class MarkdownBlockTests : BunitContext
             .Add(p => p.Content, "**bold text**"));
 
         // Assert - VerifyInvoke(name) returns the single invocation
-        var invocation = JSInterop.VerifyInvoke(JsFunction);
+        var invocation = JSInterop.VerifyInvoke(_jsFunction);
         Assert.True(invocation.Arguments.Count >= 2);
         var blockId = (string)invocation.Arguments[0];
         Assert.StartsWith("md-", blockId);
@@ -51,7 +51,7 @@ public class MarkdownBlockTests : BunitContext
         var cut = Render<MarkdownBlock>();
 
         // Assert - VerifyInvoke throws when the function was never called
-        Assert.Throws<JSInvokeCountExpectedException>(() => JSInterop.VerifyInvoke(JsFunction));
+        Assert.Throws<JSInvokeCountExpectedException>(() => JSInterop.VerifyInvoke(_jsFunction));
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public class MarkdownBlockTests : BunitContext
         await cut.InvokeAsync(() => { });
 
         // Assert - VerifyInvoke(name, 2) checks total count and returns all invocations
-        var invocations = JSInterop.VerifyInvoke(JsFunction, 2);
+        var invocations = JSInterop.VerifyInvoke(_jsFunction, 2);
         Assert.Equal(2, invocations.Count);
         Assert.Equal("second", invocations[1].Arguments[1]);
     }
@@ -86,7 +86,7 @@ public class MarkdownBlockTests : BunitContext
         await cut.InvokeAsync(() => { });
 
         // Assert - still exactly one invocation
-        var invocations = JSInterop.VerifyInvoke(JsFunction, 1);
+        var invocations = JSInterop.VerifyInvoke(_jsFunction, 1);
         Assert.Single(invocations);
     }
 
@@ -94,7 +94,7 @@ public class MarkdownBlockTests : BunitContext
     public void ShouldSwallowJsException()
     {
         // Arrange - simulate disposed element / JS failure via handler exception
-        JSInterop.SetupVoid(JsFunction, _ => true)
+        JSInterop.SetupVoid(_jsFunction, _ => true)
             .SetException(new JSException("element is disposed"));
 
         // Act & Assert - must not throw during render lifecycle

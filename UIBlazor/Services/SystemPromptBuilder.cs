@@ -6,7 +6,7 @@ public class SystemPromptBuilder : ISystemPromptBuilder
     private readonly IToolManager _toolManager;
     private readonly ISkillService _skillService;
     private readonly IRuleService _ruleService;
-    private readonly IContextService _vsCodeContextService;
+    private readonly IContextService _сontextService;
 
     /// <summary>
     /// Cached formatted solution tree. Invalidated when <see cref="IContextService.OnContextChanged"/>
@@ -19,15 +19,15 @@ public class SystemPromptBuilder : ISystemPromptBuilder
         IToolManager toolManager,
         ISkillService skillService,
         IRuleService ruleService,
-        IContextService vsCodeContextService)
+        IContextService сontextService)
     {
         _profileManager = profileManager;
         _toolManager = toolManager;
         _skillService = skillService;
         _ruleService = ruleService;
-        _vsCodeContextService = vsCodeContextService;
+        _сontextService = сontextService;
 
-        vsCodeContextService.OnContextChanged += InvalidateSolutionTreeCache;
+        сontextService.OnContextChanged += InvalidateSolutionTreeCache;
     }
 
     private void InvalidateSolutionTreeCache() => _cachedSolutionTree = null;
@@ -136,7 +136,7 @@ public class SystemPromptBuilder : ISystemPromptBuilder
     private string BuildContextSection(bool includeActiveFile)
     {
         var profile = _profileManager.ActiveProfile;
-        var currentContext = _vsCodeContextService.CurrentContext;
+        var currentContext = _сontextService.CurrentContext;
         if (currentContext == null)
             return string.Empty;
 

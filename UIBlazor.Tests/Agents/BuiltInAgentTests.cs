@@ -8,7 +8,7 @@ public class BuiltInAgentTests
     public BuiltInAgentTests()
     {
         _vsBridgeMock = new Mock<IVsBridge>();
-        _agent = new BuiltInAgent(_vsBridgeMock.Object, Mock.Of<ISkillService>(), Mock.Of<IInternalExecutor>());
+        _agent = new BuiltInAgent(_vsBridgeMock.Object, Mock.Of<ISkillService>(), Mock.Of<IInternalExecutor>(), Mock.Of<IContextService>());
     }
 
     [Fact]

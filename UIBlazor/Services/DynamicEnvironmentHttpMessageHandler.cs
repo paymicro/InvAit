@@ -8,7 +8,7 @@ namespace UIBlazor.Services;
 public class DynamicEnvironmentHttpMessageHandler(IJSRuntime jsRuntime) : DelegatingHandler
 {
     private bool? _isVsCode;
-    
+
     // Храним активные потоки ответов по их Request ID
     public static readonly ConcurrentDictionary<string, ChunkedStream> ActiveStreams = new();
 

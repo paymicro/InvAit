@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Text;
-using UIBlazor.Models;
 
 namespace UIBlazor.Services;
 
@@ -19,8 +17,8 @@ public static class SolutionTreeFormatter
 {
     private const string BranchMid = "├─ ";
     private const string BranchEnd = "└─ ";
-    private const string PipeCont  = "│  ";
-    private const string SpaceCont  = "   ";
+    private const string PipeCont = "│  ";
+    private const string SpaceCont = "   ";
 
     /// <summary>
     /// Formats the root entry and its children as a tree string.
@@ -54,7 +52,7 @@ public static class SolutionTreeFormatter
         for (var i = 0; i < children.Count; i++)
         {
             var isLast = i == children.Count - 1;
-            var entry  = children[i];
+            var entry = children[i];
 
             sb.Append(prefix);
             sb.Append(isLast ? BranchEnd : BranchMid);

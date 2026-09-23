@@ -48,7 +48,7 @@ public partial class ToolManagerTests
             NativeTool = _nativeTool,
             ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true, Result = "test result" })
         };
-        _builtInAgent = new BuiltInAgent(_vsBridgeMock.Object, Mock.Of<ISkillService>(), Mock.Of<IInternalExecutor>()) { Tools = [tool] };
+        _builtInAgent = new BuiltInAgent(_vsBridgeMock.Object, Mock.Of<ISkillService>(), Mock.Of<IInternalExecutor>(), Mock.Of<IContextService>()) { Tools = [tool] };
 
         _toolManager = new ToolManager(_builtInAgent, _logger, _localStorageMock.Object, _commonSettingsMock.Object, _mcpSettingsMock.Object, _vsBridgeMock.Object, _vsCodeContextMock.Object);
     }

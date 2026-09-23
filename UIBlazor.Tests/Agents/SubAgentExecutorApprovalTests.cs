@@ -35,7 +35,7 @@ public partial class SubAgentExecutorTests
             }
         };
 
-        _toolManagerMock.Setup(x => x.GetEnabledTools(AppMode.Agent)).Returns(new List<Tool> { execTool });
+        _toolManagerMock.Setup(x => x.GetEnabledTools(AppMode.Agent)).Returns([execTool]);
         _toolManagerMock.Setup(x => x.GetTool(toolName)).Returns(execTool);
         _toolManagerMock.Setup(x => x.GetApprovalModeByToolName(toolName)).Returns(ToolApprovalMode.Ask);
 
@@ -127,7 +127,7 @@ public partial class SubAgentExecutorTests
         await subAgent.ToolCallHandler!.HandleApprovalAsync("tc1", approved: true);
 
         // The tool now runs; unblock it and finish the loop
-        await toolExecuted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await toolExecuted.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         releaseTool.TrySetResult();
 
         var result = await runTask;

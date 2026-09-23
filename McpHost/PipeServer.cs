@@ -1,6 +1,6 @@
 using System.IO.Pipes;
-using System.Text.Json;
 using System.Text.Encodings.Web;
+using System.Text.Json;
 using System.Threading.Channels;
 using Shared.Contracts.McpHost;
 using Shared.Ipc;

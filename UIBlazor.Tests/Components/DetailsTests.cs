@@ -212,7 +212,7 @@ public class DetailsTests : BunitContext
     }
 
     [Fact]
-    public void IsExpanded_IsInitialValueOnly_ParentRerenderDoesNotResetUserToggle()
+    public async Task IsExpanded_IsInitialValueOnly_ParentRerenderDoesNotResetUserToggle()
     {
         // Arrange - развернут изначально
         var cut = Render<Details>(parameters => parameters
@@ -220,7 +220,7 @@ public class DetailsTests : BunitContext
             .AddChildContent("content"));
 
         // Act - пользователь сворачивает...
-        cut.InvokeAsync(() => cut.Find(".header").Click()).Wait(TestContext.Current.CancellationToken);
+        await cut.InvokeAsync(() => cut.Find(".header").Click());
         Assert.DoesNotContain("is-expanded", cut.Find(".custom-details").ClassList);
 
         // ...а родитель перерендеривается, снова передавая IsExpanded=true (напр. стриминг)

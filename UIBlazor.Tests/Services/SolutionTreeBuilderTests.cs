@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Tests.Services;
+namespace UIBlazor.Tests.Services;
 
 public class SolutionTreeBuilderTests
 {

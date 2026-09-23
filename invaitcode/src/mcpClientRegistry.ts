@@ -496,17 +496,17 @@ export class McpClientRegistry {
     static buildFingerprint(params: McpServerLaunchInfo): string {
         const env = params.env
             ? Object.keys(params.env)
-                  .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
-                  .map((k) => `${k}=${params.env![k]}`)
-                  .join(';')
+                .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+                .map((k) => `${k}=${params.env![k]}`)
+                .join(';')
             : '';
 
         const headers =
             params.url && params.headers
                 ? Object.keys(params.headers)
-                      .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
-                      .map((k) => `${k.toLowerCase()}=${params.headers![k]}`)
-                      .join(';')
+                    .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+                    .map((k) => `${k.toLowerCase()}=${params.headers![k]}`)
+                    .join(';')
                 : '';
 
         return [

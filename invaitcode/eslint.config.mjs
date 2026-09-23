@@ -1,10 +1,12 @@
 import typescriptEslint from "typescript-eslint";
+import stylistic from '@stylistic/eslint-plugin';
 
 export default [{
     files: ["**/*.ts"],
 }, {
     plugins: {
         "@typescript-eslint": typescriptEslint.plugin,
+        '@stylistic': stylistic,
     },
 
     languageOptions: {
@@ -14,14 +16,15 @@ export default [{
     },
 
     rules: {
-        "@typescript-eslint/naming-convention": ["warn", {
-            selector: "import",
-            format: ["camelCase", "PascalCase"],
-        }],
-
-        curly: "warn",
-        eqeqeq: "warn",
-        "no-throw-literal": "warn",
-        semi: "warn",
+      '@stylistic/indent': ['error', 4],
+      '@stylistic/semi': ['error', 'always'],
+      '@stylistic/no-trailing-spaces' : ['error'],
+      '@stylistic/eol-last' : 'error',
+      '@stylistic/max-len' : [2, 300, {
+          ignoreUrls : true,
+          ignoreTrailingComments : true,
+          ignoreRegExpLiterals : true,
+        },
+      ],
     },
 }];

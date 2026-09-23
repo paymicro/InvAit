@@ -51,7 +51,7 @@
     <Compile Include="Agent\SolutionStructure.cs" />
     <Compile Include="Agent\McpHostRuntime.cs" />
     <Compile Include="Agent\ToolExecutor.cs" />
-    <Compile Include="Agent\VsCodeContextPublisher.cs" />
+    <Compile Include="Agent\ContextPublisher.cs" />
     <Compile Include="Agent\VsLogger.cs" />
     <Compile Include="Commands\ChatWindowCommand.cs" />
     <Compile Include="Utils\Logger.cs" />

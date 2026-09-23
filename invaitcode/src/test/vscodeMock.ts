@@ -6,7 +6,7 @@
  * from 'vscode'` resolves to this mock instead of the real extension.
  */
 import * as sinon from 'sinon';
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+
 
 const mockOutputChannel = {
     appendLine: sinon.stub(),

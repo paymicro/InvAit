@@ -8,6 +8,18 @@ public class SystemPromptSettingsTests : BunitContext
     private readonly Mock<IProfileManager> _mockProfileManager;
     private readonly ConnectionProfile _profile;
 
+    private static readonly string[] _allLabels =
+    [
+        SharedResource.PromptSectionActiveFile,
+        SharedResource.PromptSectionSolutionStructure,
+        SharedResource.PromptSectionCurrentDate,
+        SharedResource.PromptSectionMermaid,
+        SharedResource.PromptSectionRules,
+        SharedResource.PromptSectionAgents,
+        SharedResource.PromptSectionSkills,
+        SharedResource.PromptSectionModeInstructions
+    ];
+
     public SystemPromptSettingsTests()
     {
         _mockProfileManager = new Mock<IProfileManager>();
@@ -35,18 +47,6 @@ public class SystemPromptSettingsTests : BunitContext
         return Render<SystemPromptSettings>();
     }
 
-    private static readonly string[] AllLabels =
-    [
-        SharedResource.PromptSectionActiveFile,
-        SharedResource.PromptSectionSolutionStructure,
-        SharedResource.PromptSectionCurrentDate,
-        SharedResource.PromptSectionMermaid,
-        SharedResource.PromptSectionRules,
-        SharedResource.PromptSectionAgents,
-        SharedResource.PromptSectionSkills,
-        SharedResource.PromptSectionModeInstructions
-    ];
-
     #region Rendering Tests
 
     [Fact]
@@ -58,7 +58,7 @@ public class SystemPromptSettingsTests : BunitContext
         // Assert
         var items = cut.FindComponents<RadzenCheckBoxListItem<int>>();
         Assert.Equal(8, items.Count);
-        foreach (var label in AllLabels)
+        foreach (var label in _allLabels)
         {
             Assert.Contains(label, cut.Markup);
         }

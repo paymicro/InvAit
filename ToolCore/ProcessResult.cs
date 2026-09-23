@@ -1,4 +1,4 @@
-﻿namespace ToolCore;
+namespace ToolCore;
 
 /// <summary>
 /// Result of process execution

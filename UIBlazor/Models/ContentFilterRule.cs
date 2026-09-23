@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Models;
+namespace UIBlazor.Models;
 
 /// <summary>
 /// A single custom regex-based content filter rule.

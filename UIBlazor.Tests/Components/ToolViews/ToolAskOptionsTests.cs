@@ -13,7 +13,7 @@ public class ToolAskOptionsTests : BunitContext
         JSInterop.SetupVoid("Radzen.preventArrows", _ => true);
     }
 
-    private const string AskArgs = """
+    private const string _askArgs = """
                                   {
                                     "question": "Which database should we use?",
                                     "options": ["PostgreSQL", "SQLite"]
@@ -27,7 +27,7 @@ public class ToolAskOptionsTests : BunitContext
     {
         // Act
         var cut = Render<ToolAskOptions>(parameters => parameters
-            .Add(p => p.Args, AskArgs));
+            .Add(p => p.Args, _askArgs));
 
         // Assert
         Assert.Contains("Which database should we use?", cut.Find(".tool-ask-question").TextContent);
@@ -42,7 +42,7 @@ public class ToolAskOptionsTests : BunitContext
     {
         // Act
         var cut = Render<ToolAskOptions>(parameters => parameters
-            .Add(p => p.Args, AskArgs));
+            .Add(p => p.Args, _askArgs));
 
         // Assert
         var input = cut.Find(".tool-ask-custom input");
@@ -55,7 +55,7 @@ public class ToolAskOptionsTests : BunitContext
     {
         // Act
         var cut = Render<ToolAskOptions>(parameters => parameters
-            .Add(p => p.Args, AskArgs)
+            .Add(p => p.Args, _askArgs)
             .Add(p => p.Answer, "SQLite"));
 
         // Assert
@@ -89,7 +89,7 @@ public class ToolAskOptionsTests : BunitContext
         string? received = null;
 
         var cut = Render<ToolAskOptions>(parameters => parameters
-            .Add(p => p.Args, AskArgs)
+            .Add(p => p.Args, _askArgs)
             .Add(p => p.OnOptionSelectedCallback,
                 EventCallback.Factory.Create<string>(this, v => received = v)));
 
@@ -114,7 +114,7 @@ public class ToolAskOptionsTests : BunitContext
         string? received = null;
 
         var cut = Render<ToolAskOptions>(parameters => parameters
-            .Add(p => p.Args, AskArgs)
+            .Add(p => p.Args, _askArgs)
             .Add(p => p.OnOptionSelectedCallback,
                 EventCallback.Factory.Create<string>(this, v => received = v)));
 
@@ -136,7 +136,7 @@ public class ToolAskOptionsTests : BunitContext
         string? received = null;
 
         var cut = Render<ToolAskOptions>(parameters => parameters
-            .Add(p => p.Args, AskArgs)
+            .Add(p => p.Args, _askArgs)
             .Add(p => p.OnOptionSelectedCallback,
                 EventCallback.Factory.Create<string>(this, v => received = v)));
 
@@ -153,7 +153,7 @@ public class ToolAskOptionsTests : BunitContext
     {
         // Arrange & Act
         var cut = Render<ToolAskOptions>(parameters => parameters
-            .Add(p => p.Args, AskArgs));
+            .Add(p => p.Args, _askArgs));
 
         var sendButtonInstance = cut.FindComponents<RadzenButton>()
             .First(b => b.Instance.Icon == "send");

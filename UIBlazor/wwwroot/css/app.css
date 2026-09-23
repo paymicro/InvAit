@@ -837,6 +837,12 @@ code.hljs {
         white-space: pre !important;
     }
 
+@media (max-width: 750px) {
+    .hide-750 {
+        display: none;
+    }
+}
+
 @media (max-width: 500px) {
     .hide-500 {
         display: none;
