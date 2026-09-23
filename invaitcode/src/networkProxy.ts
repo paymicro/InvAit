@@ -1,4 +1,4 @@
-﻿import * as vscode from 'vscode';
+import * as vscode from 'vscode';
 import * as https from 'https';
 import * as http from 'http';
 import { log, logError } from './logger';
@@ -10,10 +10,25 @@ import { log, logError } from './logger';
 let skipSslValidation = false;
 
 /**
+ * User-Agent string injected into every proxied HTTP request.
+ * Set once during activate() from vscode.version and extension version.
+ * Format: VSCode/{vscodeVersion} (InvAit/{extVersion})
+ */
+let extensionUserAgent = '';
+
+/**
  * Cached https.Agent with rejectUnauthorized=false.
  * Created lazily on first HTTPS request when skipSslValidation is enabled.
  */
 let sslSkipAgent: https.Agent | null = null;
+
+/**
+ * Set the User-Agent string for all proxied HTTP requests.
+ * Called once during activate().
+ */
+export function setExtensionUserAgent(value: string): void {
+    extensionUserAgent = value;
+}
 
 /**
  * Set whether HTTPS requests should skip SSL certificate validation.
@@ -135,12 +150,18 @@ function httpRequest(
         const isHttps = parsedUrl.protocol === 'https:';
         const lib = isHttps ? https : http;
 
+        // Inject User-Agent header (analogous to VS WebView2 Settings.UserAgent)
+        const finalHeaders: Record<string, string> = { ...headers };
+        if (extensionUserAgent) {
+            finalHeaders['User-Agent'] = extensionUserAgent;
+        }
+
         const options: https.RequestOptions = {
             hostname: parsedUrl.hostname,
             port: parsedUrl.port || (isHttps ? 443 : 80),
             path: parsedUrl.pathname + parsedUrl.search,
             method: method,
-            headers: headers,
+            headers: finalHeaders,
         };
 
         // Custom agent for skipping SSL validation

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * esbuild bundling configuration for VS Code extension.
  *
  * Bundles all TypeScript sources + production dependencies into a single
@@ -11,11 +11,11 @@ const buildOptions = {
     entryPoints: ['src/extension.ts'],
     bundle: true,
     outfile: 'dist/extension.js',
-    external: ['vscode'],              // vscode is provided by the host
+    external: ['vscode'],               // vscode is provided by the host
     format: 'cjs',                      // CommonJS for VS Code extension host
     platform: 'node',
     target: 'node18',
-    sourcemap: false,
+    sourcemap: true,
     minify: false,                      // keep readable for debugging
     logLevel: 'info',
 };

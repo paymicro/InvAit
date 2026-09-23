@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Unit tests for networkProxy.ts
  *
  * Tests setSkipSslValidation, httpRequest (via handleNetworkProxyRequest),
@@ -111,7 +111,7 @@ Module._load = function (request: string, parent: any, isMain: boolean) {
     return originalLoad.call(this, request, parent, isMain);
 };
 
-import { setSkipSslValidation, handleNetworkProxyRequest } from '../networkProxy';
+import { setSkipSslValidation, setExtensionUserAgent, handleNetworkProxyRequest } from '../networkProxy';
 
 Module._load = originalLoad;
 
@@ -170,6 +170,8 @@ describe('networkProxy', () => {
         httpsStub.Agent.resetHistory();
         // Reset SSL to default
         setSkipSslValidation(false);
+        // Reset User-Agent to default
+        setExtensionUserAgent('');
     });
 
     // -----------------------------------------------------------------------
@@ -434,6 +436,91 @@ describe('networkProxy', () => {
 
             // Agent should NOT have been created for HTTP
             expect(httpsStub.Agent.called).to.be.false;
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // httpRequest — User-Agent injection
+    // -----------------------------------------------------------------------
+
+    describe('httpRequest with User-Agent', () => {
+        it('should inject User-Agent header when extensionUserAgent is set', async () => {
+            setExtensionUserAgent('VSCode/1.138.0 (InvAit/0.1.4)');
+
+            const fakeReq = new FakeClientRequest();
+            const fakeRes = new FakeIncomingMessage();
+            fakeRes.headers = { 'content-type': 'text/plain' };
+
+            httpStub.request.callsFake((options: any, cb: Function) => {
+                expect(options.headers['User-Agent']).to.equal('VSCode/1.138.0 (InvAit/0.1.4)');
+                process.nextTick(() => cb(fakeRes));
+                setImmediate(() => fakeRes.emit('end'));
+                return fakeReq;
+            });
+
+            const postMessageStub = sinon.stub();
+            const fakePanel: any = {
+                webview: { postMessage: postMessageStub },
+            };
+
+            await handleNetworkProxyRequest(fakePanel, {
+                requestId: 'req-ua',
+                url: 'http://localhost:3000/api',
+                method: 'GET',
+                headers: {},
+            });
+        });
+
+        it('should override existing User-Agent header from caller', async () => {
+            setExtensionUserAgent('VSCode/1.138.0 (InvAit/0.1.4)');
+
+            const fakeReq = new FakeClientRequest();
+            const fakeRes = new FakeIncomingMessage();
+            fakeRes.headers = { 'content-type': 'text/plain' };
+
+            httpStub.request.callsFake((options: any, cb: Function) => {
+                expect(options.headers['User-Agent']).to.equal('VSCode/1.138.0 (InvAit/0.1.4)');
+                process.nextTick(() => cb(fakeRes));
+                setImmediate(() => fakeRes.emit('end'));
+                return fakeReq;
+            });
+
+            const postMessageStub = sinon.stub();
+            const fakePanel: any = {
+                webview: { postMessage: postMessageStub },
+            };
+
+            await handleNetworkProxyRequest(fakePanel, {
+                requestId: 'req-ua-override',
+                url: 'http://localhost:3000/api',
+                method: 'GET',
+                headers: { 'User-Agent': 'something-else' },
+            });
+        });
+
+        it('should NOT inject User-Agent when extensionUserAgent is empty', async () => {
+            const fakeReq = new FakeClientRequest();
+            const fakeRes = new FakeIncomingMessage();
+            fakeRes.headers = { 'content-type': 'text/plain' };
+
+            httpStub.request.callsFake((options: any, cb: Function) => {
+                expect(options.headers['User-Agent']).to.be.undefined;
+                process.nextTick(() => cb(fakeRes));
+                setImmediate(() => fakeRes.emit('end'));
+                return fakeReq;
+            });
+
+            const postMessageStub = sinon.stub();
+            const fakePanel: any = {
+                webview: { postMessage: postMessageStub },
+            };
+
+            await handleNetworkProxyRequest(fakePanel, {
+                requestId: 'req-no-ua',
+                url: 'http://localhost:3000/api',
+                method: 'GET',
+                headers: {},
+            });
         });
     });
 

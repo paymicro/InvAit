@@ -1,4 +1,4 @@
-﻿import * as vscode from 'vscode';
+import * as vscode from 'vscode';
 import * as path from 'path';
 import { createStaticServer } from './staticServer';
 import { setOnUiReady, disposeMcpRegistry } from './toolDispatcher';
@@ -7,12 +7,23 @@ import { ChatViewProvider } from './chatViewProvider';
 import { initLogger, disposeLogger, log } from './logger';
 import { handleWebviewMessage } from './webviewMessageHandler';
 import { getWebviewHtml } from './webviewHtml';
+import { setExtensionUserAgent } from './networkProxy';
 
 let server: import('http').Server | null = null;
 let currentPort = 0;
 
+/**
+ * Cached promise so concurrent callers don't create multiple servers.
+ * Set when creation starts, cleared only on shutdown.
+ */
+let serverPromise: Promise<number> | null = null;
+
 export function activate(context: vscode.ExtensionContext) {
     initLogger();
+
+    // Set User-Agent for all proxied HTTP requests (analogous to VS WebView2 Settings.UserAgent)
+    const extVersion = context.extension.packageJSON?.version ?? '0.0.0';
+    setExtensionUserAgent(`VSCode/${vscode.version} (InvAit/${extVersion})`);
 
     // --- Sidebar view (Activity Bar icon) ---
     const chatViewProvider = new ChatViewProvider(context);
@@ -33,19 +44,8 @@ export function activate(context: vscode.ExtensionContext) {
 
     // --- Command: open as editor tab (legacy fallback) ---
     let editorCmd = vscode.commands.registerCommand('invaitcode.view', async () => {
-        const wwwrootPath = path.join(context.extensionPath, 'wwwroot');
-
-        if (!server) {
-            server = await createStaticServer(wwwrootPath, context);
-            const address = server.address();
-            if (address && typeof address !== 'string') {
-                log(`Blazor WASM Static Server running on http://127.0.0.1:${address.port}`);
-                currentPort = address.port;
-                createWebviewEditor(address.port, context);
-            }
-        } else {
-            createWebviewEditor(currentPort, context);
-        }
+        const port = await ensureServer(context);
+        createWebviewEditor(port, context);
     });
 
     context.subscriptions.push(editorCmd);
@@ -53,19 +53,24 @@ export function activate(context: vscode.ExtensionContext) {
 
 /**
  * Ensure the static server is running and return its port.
- * Called by ChatViewProvider when the sidebar view is resolved.
+ * Uses a cached promise so concurrent callers (sidebar + editor tab)
+ * never create duplicate servers — eliminating the race condition that
+ * caused MaxListenersExceededWarning.
  */
 export async function ensureServer(context: vscode.ExtensionContext): Promise<number> {
-    if (!server) {
+    if (!serverPromise) {
         const wwwrootPath = path.join(context.extensionPath, 'wwwroot');
-        server = await createStaticServer(wwwrootPath, context);
-        const address = server.address();
-        if (address && typeof address !== 'string') {
-            currentPort = address.port;
-            log(`Blazor WASM Static Server running on http://127.0.0.1:${currentPort}`);
-        }
+        serverPromise = createStaticServer(wwwrootPath, context).then(srv => {
+            server = srv;
+            const address = srv.address();
+            if (address && typeof address !== 'string') {
+                currentPort = address.port;
+                log(`Blazor WASM Static Server running on http://127.0.0.1:${currentPort}`);
+            }
+            return currentPort;
+        });
     }
-    return currentPort;
+    return serverPromise;
 }
 
 export async function deactivate() {
@@ -76,6 +81,7 @@ export async function deactivate() {
         server.close();
         server = null;
     }
+    serverPromise = null;
 
     disposeLogger();
 }

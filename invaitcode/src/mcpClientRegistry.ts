@@ -1,4 +1,4 @@
-﻿/**
+/**
  * McpClientRegistry — TypeScript port of the C# McpClientRegistry.
  *
  * Manages a pool of lazily-started MCP client connections (stdio or HTTP),

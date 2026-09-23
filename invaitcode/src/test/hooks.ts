@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ts-node require hooks for mocha.
  *
  * Intercepts `require('vscode')` and returns our mock so that source

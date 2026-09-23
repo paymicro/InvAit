@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Test setup — runs before all test files.
  *
  * Provides a minimal `vscode` module mock so that modules importing

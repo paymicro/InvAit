@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Shared HTML template for the Blazor WASM webview.
  *
  * Used by both `extension.ts` (editor tab) and `chatViewProvider.ts` (sidebar)

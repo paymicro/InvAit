@@ -1,4 +1,4 @@
-﻿import * as vscode from 'vscode';
+import * as vscode from 'vscode';
 import { handleVsRequest } from './toolDispatcher';
 import { handleNetworkProxyRequest, setSkipSslValidation } from './networkProxy';
 import { log } from './logger';

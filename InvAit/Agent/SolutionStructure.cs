@@ -33,7 +33,7 @@ public class SolutionStructure
                     continue;
 
                 var ext = Path.GetExtension(item.Text).ToLower();
-                if (ext is ".zip" or ".bin" or ".dll" or ".exe" or ".png" or ".jpg" or ".obj" or ".pdb")
+                if (ext is ".zip" or ".bin" or ".dll" or ".exe" or ".png" or ".jpg" or ".obj" or ".pdb" or ".wasm" or ".gr" or ".bz")
                     continue;
 
                 if (fileIndex++ < _maxFilesInFolder)

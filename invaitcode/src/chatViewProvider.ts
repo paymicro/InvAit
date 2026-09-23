@@ -1,4 +1,4 @@
-﻿import * as vscode from 'vscode';
+import * as vscode from 'vscode';
 import { setOnUiReady } from './toolDispatcher';
 import { registerContextListeners, pushInitialContext, resetContextState, setActivePanel } from './contextPublisher';
 import { ensureServer } from './extension';

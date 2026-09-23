@@ -1,4 +1,4 @@
-﻿import * as path from 'path';
+import * as path from 'path';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as vscode from 'vscode';
@@ -95,7 +95,16 @@ export function createStaticServer(
             }
         });
 
-        server.listen(0, '127.0.0.1', () => resolve(server));
-        server.on('error', reject);
+        // Raise the listener ceiling so Node.js doesn't warn when many
+        // concurrent Blazor WASM requests accumulate internal error listeners.
+        server.setMaxListeners(20);
+
+        const onError = (err: Error) => reject(err);
+
+        server.listen(0, '127.0.0.1', () => {
+            server.removeListener('error', onError);
+            resolve(server);
+        });
+        server.on('error', onError);
     });
 }

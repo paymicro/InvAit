@@ -90,7 +90,7 @@ window.postVsMessage = msg => {
     if (window.chrome?.webview) {
         // Код для Visual Studio 2026
         window.chrome.webview.postMessage(msg);
-        console.log("Visual Studio Request: ", msg);
+        console.log("VS Request: ", msg);
         return "OK";
     } else if (isVSCode) {
         // Код для VS Code (отправляем родителю iframe)

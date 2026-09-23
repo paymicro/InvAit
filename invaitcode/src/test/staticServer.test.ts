@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Unit tests for staticServer.ts
  *
  * Tests path traversal protection, MIME type mapping, index file serving,

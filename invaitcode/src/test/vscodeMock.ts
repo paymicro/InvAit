@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Minimal vscode API mock.
  *
  * This file is registered as the 'vscode' module via ts-node's

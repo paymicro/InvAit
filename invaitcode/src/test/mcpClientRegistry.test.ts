@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Unit tests for mcpClientRegistry.ts
  *
  * Tests the Semaphore class, McpClientRegistry.resolveCommand(),
@@ -554,6 +554,981 @@ describe('mcpClientRegistry', () => {
             // close should have been called for the old client
             expect(mockClientInstance.close.calledOnce).to.be.true;
 
+            await registry.dispose();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // listTools
+    // -----------------------------------------------------------------------
+
+    describe('listTools', () => {
+        it('should list tools with name, description, and inputSchema from client.listTools result', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.listTools.resolves({
+                tools: [
+                    {
+                        name: 'tool1',
+                        description: 'First tool',
+                        inputSchema: { type: 'object', properties: { x: { type: 'string' } } },
+                    },
+                    {
+                        name: 'tool2',
+                        description: 'Second tool',
+                        inputSchema: { type: 'object', properties: {} },
+                    },
+                ],
+            });
+
+            const result = await registry.listTools({
+                serverId: 'srv-list',
+                command: 'echo',
+            }) as any;
+
+            expect(result.tools).to.have.length(2);
+            expect(result.tools[0].name).to.equal('tool1');
+            expect(result.tools[0].description).to.equal('First tool');
+            expect(result.tools[0].inputSchema).to.deep.equal({
+                type: 'object',
+                properties: { x: { type: 'string' } },
+            });
+            expect(result.tools[1].name).to.equal('tool2');
+            expect(result.tools[1].description).to.equal('Second tool');
+
+            await registry.dispose();
+        });
+
+        it('should return empty tools array when server returns no tools', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.listTools.resolves({ tools: [] });
+
+            const result = await registry.listTools({
+                serverId: 'srv-empty',
+                command: 'echo',
+            }) as any;
+
+            expect(result.tools).to.have.length(0);
+            expect(result.tools).to.deep.equal([]);
+
+            await registry.dispose();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // withRecovery (transport death recovery)
+    // -----------------------------------------------------------------------
+
+    describe('withRecovery (transport death recovery)', () => {
+        it('should retry once when transport death error occurs (ECONNRESET), then succeed on retry', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.close.resolves(undefined);
+
+            const connResetError = new Error('Connection reset');
+            (connResetError as any).code = 'ECONNRESET';
+
+            let callCount = 0;
+            mockClientInstance.listTools.callsFake(async () => {
+                callCount++;
+                if (callCount === 1) {
+                    throw connResetError;
+                }
+                return { tools: [{ name: 'recovered', description: 'd', inputSchema: {} }] };
+            });
+
+            const result = await registry.listTools({
+                serverId: 'srv-recovery',
+                command: 'echo',
+            }) as any;
+
+            expect(result.tools).to.have.length(1);
+            expect(result.tools[0].name).to.equal('recovered');
+            // listTools called twice: first failed, second succeeded
+            expect(mockClientInstance.listTools.callCount).to.equal(2);
+            // close called once for the dead server
+            expect(mockClientInstance.close.calledOnce).to.be.true;
+
+            await registry.dispose();
+        });
+
+        it('should NOT retry for McpError (protocol error) - error propagates', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+
+            const mcpError = new Error('Protocol error');
+            mcpError.name = 'McpError';
+            mockClientInstance.listTools.rejects(mcpError);
+
+            try {
+                await registry.listTools({
+                    serverId: 'srv-mcp',
+                    command: 'echo',
+                });
+                expect.fail('Should have thrown');
+            } catch (e: any) {
+                expect(e.name).to.equal('McpError');
+            }
+
+            // listTools should only have been called once (no retry)
+            expect(mockClientInstance.listTools.callCount).to.equal(1);
+            // close should NOT have been called (no recovery)
+            expect(mockClientInstance.close.called).to.be.false;
+
+            await registry.dispose();
+        });
+
+        it('should NOT retry for AbortError - error propagates', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+
+            const abortError = new Error('Aborted');
+            abortError.name = 'AbortError';
+            mockClientInstance.listTools.rejects(abortError);
+
+            try {
+                await registry.listTools({
+                    serverId: 'srv-abort',
+                    command: 'echo',
+                });
+                expect.fail('Should have thrown');
+            } catch (e: any) {
+                expect(e.name).to.equal('AbortError');
+            }
+
+            expect(mockClientInstance.listTools.callCount).to.equal(1);
+            expect(mockClientInstance.close.called).to.be.false;
+
+            await registry.dispose();
+        });
+
+        it('should NOT retry for TypeError - error propagates', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+
+            const typeError = new TypeError('Bad argument');
+            mockClientInstance.listTools.rejects(typeError);
+
+            try {
+                await registry.listTools({
+                    serverId: 'srv-type',
+                    command: 'echo',
+                });
+                expect.fail('Should have thrown');
+            } catch (e: any) {
+                expect(e).to.be.instanceOf(TypeError);
+            }
+
+            expect(mockClientInstance.listTools.callCount).to.equal(1);
+            expect(mockClientInstance.close.called).to.be.false;
+
+            await registry.dispose();
+        });
+
+        it('should propagate error if retry also fails (ECONNREFUSED on both attempts)', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.close.resolves(undefined);
+
+            const connRefusedError = new Error('Connection refused');
+            (connRefusedError as any).code = 'ECONNREFUSED';
+            mockClientInstance.listTools.rejects(connRefusedError);
+
+            try {
+                await registry.listTools({
+                    serverId: 'srv-double-fail',
+                    command: 'echo',
+                });
+                expect.fail('Should have thrown');
+            } catch (e: any) {
+                expect(e.message).to.include('Connection refused');
+            }
+
+            // listTools called twice: first failure triggers retry, second also fails
+            expect(mockClientInstance.listTools.callCount).to.equal(2);
+            // close called once for the first dead server
+            expect(mockClientInstance.close.calledOnce).to.be.true;
+
+            await registry.dispose();
+        });
+
+        it('should retry when error message contains "exited unexpectedly"', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.close.resolves(undefined);
+
+            const exitError = new Error('Server process exited unexpectedly');
+            let callCount = 0;
+            mockClientInstance.listTools.callsFake(async () => {
+                callCount++;
+                if (callCount === 1) {
+                    throw exitError;
+                }
+                return { tools: [] };
+            });
+
+            const result = await registry.listTools({
+                serverId: 'srv-exit',
+                command: 'echo',
+            }) as any;
+
+            expect(result.tools).to.deep.equal([]);
+            expect(mockClientInstance.listTools.callCount).to.equal(2);
+            expect(mockClientInstance.close.calledOnce).to.be.true;
+
+            await registry.dispose();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // HTTP transport start
+    // -----------------------------------------------------------------------
+
+    describe('HTTP transport start', () => {
+        it('should create StreamableHTTPClientTransport with URL when url is provided', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.listTools.resolves({ tools: [] });
+
+            await registry.listTools({
+                serverId: 'srv-http',
+                command: '',
+                url: 'http://localhost:3000/mcp',
+            });
+
+            // StreamableHTTPClientTransport should have been called
+            expect(MockStreamableHTTPTransport.calledOnce).to.be.true;
+            const args = MockStreamableHTTPTransport.firstCall.args;
+            // First arg should be a URL object
+            expect(args[0]).to.be.instanceOf(URL);
+            expect((args[0] as URL).href).to.equal('http://localhost:3000/mcp');
+
+            // Stdio transport should NOT have been used
+            expect(MockStdioTransport.called).to.be.false;
+
+            await registry.dispose();
+        });
+
+        it('should pass headers to StreamableHTTPClientTransport when provided', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.listTools.resolves({ tools: [] });
+
+            const headers = { Authorization: 'Bearer mytoken', 'X-Custom': 'val' };
+            await registry.listTools({
+                serverId: 'srv-http-headers',
+                command: '',
+                url: 'http://localhost:3000/mcp',
+                headers,
+            });
+
+            expect(MockStreamableHTTPTransport.calledOnce).to.be.true;
+            const args = MockStreamableHTTPTransport.firstCall.args;
+            // Second arg is options with requestInit.headers
+            const opts = args[1];
+            expect(opts.requestInit.headers).to.deep.equal(headers);
+
+            await registry.dispose();
+        });
+
+        it('should use stdio transport when command is provided (no url)', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.listTools.resolves({ tools: [] });
+
+            await registry.listTools({
+                serverId: 'srv-stdio',
+                command: 'echo',
+            });
+
+            // StdioClientTransport should have been called
+            expect(MockStdioTransport.calledOnce).to.be.true;
+            // StreamableHTTPClientTransport should NOT have been used
+            expect(MockStreamableHTTPTransport.called).to.be.false;
+
+            await registry.dispose();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // withTimeout
+    // -----------------------------------------------------------------------
+
+    describe('withTimeout', () => {
+        let clock: sinon.SinonFakeTimers;
+
+        beforeEach(() => {
+            clock = sinon.useFakeTimers();
+        });
+
+        afterEach(() => {
+            clock.restore();
+        });
+
+        it('should timeout listTools if it takes too long', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            // listTools returns a promise that never resolves
+            mockClientInstance.listTools.returns(new Promise(() => {}));
+
+            const promise = registry.listTools({
+                serverId: 'srv-timeout-list',
+                command: 'echo',
+            });
+
+            // Advance past LIST_TOOLS_TIMEOUT_MS (120000ms) using tickAsync
+            // so that microtasks (promise rejections) are processed.
+            await clock.tickAsync(120001);
+
+            try {
+                await promise;
+                expect.fail('Should have timed out');
+            } catch (e: any) {
+                expect(e.message).to.include('timed out');
+                expect(e.message).to.include('120000');
+            }
+
+            await registry.dispose();
+        });
+
+        it('should timeout callTool with custom timeoutMs', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            // callTool returns a promise that never resolves
+            mockClientInstance.callTool.returns(new Promise(() => {}));
+
+            const promise = registry.callTool({
+                serverId: 'srv-timeout-call',
+                command: 'echo',
+                toolName: 'slowTool',
+                timeoutMs: 5000,
+            });
+
+            // Advance past the custom 5000ms timeout using tickAsync
+            // so that microtasks (promise rejections) are processed.
+            await clock.tickAsync(5001);
+
+            try {
+                await promise;
+                expect.fail('Should have timed out');
+            } catch (e: any) {
+                expect(e.message).to.include('timed out');
+                expect(e.message).to.include('5000');
+            }
+
+            await registry.dispose();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // buildArguments (tested via callTool)
+    // -----------------------------------------------------------------------
+
+    describe('buildArguments (via callTool)', () => {
+        it('should return empty object for null/undefined arguments', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.callTool.resolves({ content: [], isError: false });
+
+            // Test with undefined arguments
+            await registry.callTool({
+                serverId: 'srv-null-args',
+                command: 'echo',
+                toolName: 'doThing',
+            });
+
+            expect(mockClientInstance.callTool.calledOnce).to.be.true;
+            const callArgs = mockClientInstance.callTool.firstCall.args[0] as any;
+            expect(callArgs.arguments).to.deep.equal({});
+
+            await registry.dispose();
+        });
+
+        it('should return empty object for array arguments', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.callTool.resolves({ content: [], isError: false });
+
+            await registry.callTool({
+                serverId: 'srv-array-args',
+                command: 'echo',
+                toolName: 'doThing',
+                arguments: ['a', 'b', 'c'],
+            });
+
+            expect(mockClientInstance.callTool.calledOnce).to.be.true;
+            const callArgs = mockClientInstance.callTool.firstCall.args[0] as any;
+            expect(callArgs.arguments).to.deep.equal({});
+
+            await registry.dispose();
+        });
+
+        it('should return the object as-is for object arguments', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.callTool.resolves({ content: [], isError: false });
+
+            const args = { key1: 'val1', key2: 42, nested: { a: true } };
+            await registry.callTool({
+                serverId: 'srv-obj-args',
+                command: 'echo',
+                toolName: 'doThing',
+                arguments: args,
+            });
+
+            expect(mockClientInstance.callTool.calledOnce).to.be.true;
+            const callArgs = mockClientInstance.callTool.firstCall.args[0] as any;
+            expect(callArgs.arguments).to.deep.equal(args);
+
+            await registry.dispose();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // toBase64 (tested via callTool)
+    // -----------------------------------------------------------------------
+
+    describe('toBase64 (via callTool)', () => {
+        it('should serialize audio content blocks to base64 (Uint8Array data)', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+
+            const audioData = new Uint8Array([1, 2, 3, 4, 5]);
+            mockClientInstance.callTool.resolves({
+                content: [{ type: 'audio', data: audioData, mimeType: 'audio/wav' }],
+                isError: false,
+            });
+
+            const result = await registry.callTool({
+                serverId: 'srv-audio',
+                command: 'echo',
+                toolName: 'getAudio',
+            }) as any;
+
+            expect(result.content[0].type).to.equal('audio');
+            expect(result.content[0].mimeType).to.equal('audio/wav');
+            // base64 of [1,2,3,4,5]
+            expect(result.content[0].data).to.equal(Buffer.from(audioData).toString('base64'));
+
+            await registry.dispose();
+        });
+
+        it('should handle ArrayBuffer data in image blocks', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+
+            const buffer = new ArrayBuffer(5);
+            const view = new Uint8Array(buffer);
+            view[0] = 72; view[1] = 101; view[2] = 108; view[3] = 108; view[4] = 111; // "Hello"
+            mockClientInstance.callTool.resolves({
+                content: [{ type: 'image', data: buffer, mimeType: 'image/png' }],
+                isError: false,
+            });
+
+            const result = await registry.callTool({
+                serverId: 'srv-arraybuf',
+                command: 'echo',
+                toolName: 'getImage',
+            }) as any;
+
+            expect(result.content[0].type).to.equal('image');
+            // base64 of "Hello"
+            expect(result.content[0].data).to.equal('SGVsbG8=');
+
+            await registry.dispose();
+        });
+
+        it('should handle string data (already base64) without conversion', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+
+            const base64String = 'SGVsbG8=';
+            mockClientInstance.callTool.resolves({
+                content: [{ type: 'image', data: base64String, mimeType: 'image/png' }],
+                isError: false,
+            });
+
+            const result = await registry.callTool({
+                serverId: 'srv-str-data',
+                command: 'echo',
+                toolName: 'getImage',
+            }) as any;
+
+            expect(result.content[0].type).to.equal('image');
+            expect(result.content[0].data).to.equal(base64String);
+
+            await registry.dispose();
+        });
+
+        it('should handle unknown block types by serializing raw', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+
+            const unknownBlock = { type: 'custom', foo: 'bar', num: 42 };
+            mockClientInstance.callTool.resolves({
+                content: [unknownBlock],
+                isError: false,
+            });
+
+            const result = await registry.callTool({
+                serverId: 'srv-unknown',
+                command: 'echo',
+                toolName: 'customTool',
+            }) as any;
+
+            expect(result.content[0]).to.deep.equal(unknownBlock);
+            expect(result.content[0].type).to.equal('custom');
+            expect(result.content[0].foo).to.equal('bar');
+
+            await registry.dispose();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // serializeToolResult
+    // -----------------------------------------------------------------------
+
+    describe('serializeToolResult (via callTool)', () => {
+        it('should return isError=false when result has no isError field', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.callTool.resolves({
+                content: [{ type: 'text', text: 'ok' }],
+                // No isError field
+            });
+
+            const result = await registry.callTool({
+                serverId: 'srv-no-iserror',
+                command: 'echo',
+                toolName: 'doThing',
+            }) as any;
+
+            expect(result.isError).to.be.false;
+            expect(result.content[0].text).to.equal('ok');
+
+            await registry.dispose();
+        });
+
+        it('should handle empty content array', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.callTool.resolves({
+                content: [],
+                isError: false,
+            });
+
+            const result = await registry.callTool({
+                serverId: 'srv-empty-content',
+                command: 'echo',
+                toolName: 'doThing',
+            }) as any;
+
+            expect(result.content).to.have.length(0);
+            expect(result.isError).to.be.false;
+
+            await registry.dispose();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // reapIdle
+    // -----------------------------------------------------------------------
+
+    describe('reapIdle', () => {
+        let clock: sinon.SinonFakeTimers;
+
+        beforeEach(() => {
+            clock = sinon.useFakeTimers();
+        });
+
+        afterEach(() => {
+            clock.restore();
+        });
+
+        it('should stop servers idle longer than 10 minutes', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.close.resolves(undefined);
+            mockClientInstance.listTools.resolves({ tools: [] });
+
+            // Start a server
+            await registry.listTools({ serverId: 'srv-idle', command: 'echo' });
+
+            // Server should be running
+            expect(registry.describeServers()).to.have.length(1);
+
+            // Advance time by 11 minutes (660000ms) — past IDLE_LIFETIME_MS (600000ms)
+            // This also triggers the reaper interval (every 60s) multiple times.
+            await clock.tickAsync(660000);
+
+            // Server should have been reaped
+            expect(registry.describeServers()).to.have.length(0);
+            expect(mockClientInstance.close.called).to.be.true;
+
+            await registry.dispose();
+        });
+
+        it('should NOT stop servers that are still fresh', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.close.resolves(undefined);
+            mockClientInstance.listTools.resolves({ tools: [] });
+
+            // Start a server
+            await registry.listTools({ serverId: 'srv-fresh', command: 'echo' });
+
+            expect(registry.describeServers()).to.have.length(1);
+
+            // Advance time by only 5 minutes (300000ms) — less than IDLE_LIFETIME_MS
+            await clock.tickAsync(300000);
+
+            // Server should still be running
+            expect(registry.describeServers()).to.have.length(1);
+            // close should NOT have been called by the reaper
+            expect(mockClientInstance.close.called).to.be.false;
+
+            await registry.dispose();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // dispose
+    // -----------------------------------------------------------------------
+
+    describe('dispose', () => {
+        it('should clear the reaper timer and stop all servers', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.close.resolves(undefined);
+            mockClientInstance.listTools.resolves({ tools: [] });
+
+            // Start two servers
+            await registry.listTools({ serverId: 'srv-a', command: 'echo' });
+            await registry.listTools({ serverId: 'srv-b', command: 'cat' });
+
+            expect(registry.describeServers()).to.have.length(2);
+
+            await registry.dispose();
+
+            // All servers should be stopped
+            expect(registry.describeServers()).to.have.length(0);
+            // close should have been called for both servers
+            expect(mockClientInstance.close.callCount).to.equal(2);
+        });
+
+        it('should be safe to call dispose twice', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.close.resolves(undefined);
+            mockClientInstance.listTools.resolves({ tools: [] });
+
+            await registry.listTools({ serverId: 'srv-double', command: 'echo' });
+
+            // First dispose
+            await registry.dispose();
+            expect(registry.describeServers()).to.have.length(0);
+
+            // Second dispose should not throw
+            await registry.dispose();
+            expect(registry.describeServers()).to.have.length(0);
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // disposeClient error handling (via stopServer with failing close)
+    // -----------------------------------------------------------------------
+
+    describe('disposeClient error handling', () => {
+        it('should log warning when client.close() throws during stopServer', async () => {
+            const logs: string[] = [];
+            const registry = new McpClientRegistry((msg: string) => logs.push(msg));
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.listTools.resolves({ tools: [] });
+            mockClientInstance.close.rejects(new Error('close failed'));
+
+            await registry.listTools({ serverId: 'srv-close-err', command: 'echo' });
+
+            // stopServer should still return true even if close fails
+            const stopped = await registry.stopServer('srv-close-err');
+            expect(stopped).to.be.true;
+
+            // Warning should have been logged
+            expect(logs.some(l => l.includes('WARN') && l.includes('close failed'))).to.be.true;
+
+            await registry.dispose();
+        });
+
+        it('should log warning when client.close() throws during reapIdle', async () => {
+            const logs: string[] = [];
+            const clock = sinon.useFakeTimers();
+            const registry = new McpClientRegistry((msg: string) => logs.push(msg));
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.close.rejects(new Error('reap close error'));
+            mockClientInstance.listTools.resolves({ tools: [] });
+
+            await registry.listTools({ serverId: 'srv-reap-err', command: 'echo' });
+
+            // Advance past idle lifetime to trigger reaper
+            await clock.tickAsync(660000);
+
+            // Warning should have been logged
+            expect(logs.some(l => l.includes('WARN') && l.includes('reap close error'))).to.be.true;
+
+            clock.restore();
+            await registry.dispose();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // errorMessage / isMcpProtocolError edge cases (via callTool)
+    // -----------------------------------------------------------------------
+
+    describe('errorMessage and isMcpProtocolError edge cases', () => {
+        it('should handle non-Error thrown values in callTool (string error)', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            // Reject with a plain string (not an Error) using callsFake
+            // because sinon.rejects(string) wraps it in new Error(string)
+            mockClientInstance.callTool.callsFake(async () => {
+                throw 'plain string error';
+            });
+
+            try {
+                await registry.callTool({
+                    serverId: 'srv-str-err',
+                    command: 'echo',
+                    toolName: 'doThing',
+                });
+                expect.fail('Should have thrown');
+            } catch (e: any) {
+                // The string error is not an McpError, not transport death,
+                // so it propagates as-is
+                expect(e).to.equal('plain string error');
+            }
+
+            await registry.dispose();
+        });
+
+        it('should handle non-Error thrown values in callTool (number error)', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            // Throw a number (not an Error)
+            mockClientInstance.callTool.callsFake(async () => {
+                throw 42;
+            });
+
+            try {
+                await registry.callTool({
+                    serverId: 'srv-num-err',
+                    command: 'echo',
+                    toolName: 'doThing',
+                });
+                expect.fail('Should have thrown');
+            } catch (e: any) {
+                expect(e).to.equal(42);
+            }
+
+            await registry.dispose();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // toBase64 edge cases (via callTool)
+    // -----------------------------------------------------------------------
+
+    describe('toBase64 edge cases (via callTool)', () => {
+        it('should handle ArrayBufferView (Int32Array) data in image blocks', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+
+            // Int32Array is an ArrayBufferView but not Uint8Array
+            const int32Data = new Int32Array([0x41414141, 0x42424242]);
+            mockClientInstance.callTool.resolves({
+                content: [{ type: 'image', data: int32Data, mimeType: 'image/png' }],
+                isError: false,
+            });
+
+            const result = await registry.callTool({
+                serverId: 'srv-int32',
+                command: 'echo',
+                toolName: 'getImage',
+            }) as any;
+
+            expect(result.content[0].type).to.equal('image');
+            // Should be base64 encoded
+            expect(result.content[0].data).to.be.a('string');
+            expect(result.content[0].data).to.equal(
+                Buffer.from(int32Data.buffer as ArrayBuffer, int32Data.byteOffset, int32Data.byteLength).toString('base64'),
+            );
+
+            await registry.dispose();
+        });
+
+        it('should JSON-stringify unknown data types in toBase64 fallback', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+
+            // Pass an object that is not string, Uint8Array, ArrayBuffer, or ArrayBufferView
+            const objData = { nested: 'object' };
+            mockClientInstance.callTool.resolves({
+                content: [{ type: 'image', data: objData, mimeType: 'image/png' }],
+                isError: false,
+            });
+
+            const result = await registry.callTool({
+                serverId: 'srv-obj-data',
+                command: 'echo',
+                toolName: 'getImage',
+            }) as any;
+
+            expect(result.content[0].type).to.equal('image');
+            // Fallback: JSON.stringify
+            expect(result.content[0].data).to.equal(JSON.stringify(objData));
+
+            await registry.dispose();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // Start failure
+    // -----------------------------------------------------------------------
+
+    describe('start failure', () => {
+        it('should throw when client.connect() fails', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.rejects(new Error('Connection refused by server'));
+
+            try {
+                await registry.listTools({
+                    serverId: 'srv-connect-fail',
+                    command: 'echo',
+                });
+                expect.fail('Should have thrown');
+            } catch (e: any) {
+                expect(e.message).to.include('Failed to start or initialize');
+                expect(e.message).to.include('Connection refused by server');
+            }
+
+            await registry.dispose();
+        });
+
+        it('should throw when resolveCommand returns null for stdio transport', async () => {
+            const registry = new McpClientRegistry(() => {});
+            // resolveCommand is stubbed in beforeEach to return '/usr/bin/echo'
+            // Override it to return null
+            resolveCommandStub!.restore();
+            resolveCommandStub = sinon.stub(McpClientRegistry, 'resolveCommand').returns(null);
+
+            try {
+                await registry.listTools({
+                    serverId: 'srv-not-found',
+                    command: 'nonexistent-command',
+                });
+                expect.fail('Should have thrown');
+            } catch (e: any) {
+                expect(e.message).to.include('Failed to find');
+                expect(e.message).to.include('nonexistent-command');
+            }
+
+            await registry.dispose();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // isTransportDeath edge cases (via listTools)
+    // -----------------------------------------------------------------------
+
+    describe('isTransportDeath edge cases', () => {
+        it('should retry on EPIPE error code', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.close.resolves(undefined);
+
+            const pipeError = new Error('Broken pipe');
+            (pipeError as any).code = 'EPIPE';
+            let callCount = 0;
+            mockClientInstance.listTools.callsFake(async () => {
+                callCount++;
+                if (callCount === 1) throw pipeError;
+                return { tools: [] };
+            });
+
+            const result = await registry.listTools({
+                serverId: 'srv-pipe',
+                command: 'echo',
+            }) as any;
+
+            expect(result.tools).to.deep.equal([]);
+            expect(mockClientInstance.listTools.callCount).to.equal(2);
+
+            await registry.dispose();
+        });
+
+        it('should retry on ERR_STREAM_DESTROYED error code', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.close.resolves(undefined);
+
+            const destroyedError = new Error('Stream destroyed');
+            (destroyedError as any).code = 'ERR_STREAM_DESTROYED';
+            let callCount = 0;
+            mockClientInstance.listTools.callsFake(async () => {
+                callCount++;
+                if (callCount === 1) throw destroyedError;
+                return { tools: [] };
+            });
+
+            await registry.listTools({
+                serverId: 'srv-destroyed',
+                command: 'echo',
+            });
+
+            expect(mockClientInstance.listTools.callCount).to.equal(2);
+            await registry.dispose();
+        });
+
+        it('should retry on ERR_CLOSED error code', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+            mockClientInstance.close.resolves(undefined);
+
+            const closedError = new Error('Connection closed');
+            (closedError as any).code = 'ERR_CLOSED';
+            let callCount = 0;
+            mockClientInstance.listTools.callsFake(async () => {
+                callCount++;
+                if (callCount === 1) throw closedError;
+                return { tools: [] };
+            });
+
+            await registry.listTools({
+                serverId: 'srv-closed',
+                command: 'echo',
+            });
+
+            expect(mockClientInstance.listTools.callCount).to.equal(2);
+            await registry.dispose();
+        });
+
+        it('should NOT retry for RangeError', async () => {
+            const registry = new McpClientRegistry(() => {});
+            mockClientInstance.connect.resolves(undefined);
+
+            const rangeError = new RangeError('Out of range');
+            mockClientInstance.listTools.rejects(rangeError);
+
+            try {
+                await registry.listTools({
+                    serverId: 'srv-range',
+                    command: 'echo',
+                });
+                expect.fail('Should have thrown');
+            } catch (e: any) {
+                expect(e).to.be.instanceOf(RangeError);
+            }
+
+            expect(mockClientInstance.listTools.callCount).to.equal(1);
             await registry.dispose();
         });
     });

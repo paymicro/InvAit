@@ -21,7 +21,6 @@ public class DynamicEnvironmentHttpMessageHandler(IJSRuntime jsRuntime) : Delega
             {
                 // Используем eval вместо вызова функции — не зависит от загрузки app.js
                 _isVsCode = await jsRuntime.InvokeAsync<bool>("eval", "window.parent !== window");
-                await jsRuntime.InvokeVoidAsync("console.log", $"[InvAit C#] isVsCode check (eval): {_isVsCode.Value}");
             }
             catch (Exception ex)
             {
@@ -36,11 +35,9 @@ public class DynamicEnvironmentHttpMessageHandler(IJSRuntime jsRuntime) : Delega
         // Мы НЕ в VS Code (например, обычный WebView2, Chrome, Safari)
         if (!_isVsCode.Value)
         {
-            await jsRuntime.InvokeVoidAsync("console.log", $"[InvAit C#] NOT VSCode — using base.SendAsync: {method} {url}");
             return await base.SendAsync(request, cancellationToken);
         }
 
-        await jsRuntime.InvokeVoidAsync("console.log", $"[InvAit C#] VSCode proxy — SendViaVsCodeProxyAsync: {method} {url}");
         return await SendViaVsCodeProxyAsync(request, cancellationToken);
     }
 

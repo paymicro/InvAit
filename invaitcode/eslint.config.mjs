@@ -16,15 +16,15 @@ export default [{
     },
 
     rules: {
-      '@stylistic/indent': ['error', 4],
-      '@stylistic/semi': ['error', 'always'],
-      '@stylistic/no-trailing-spaces' : ['error'],
-      '@stylistic/eol-last' : 'error',
-      '@stylistic/max-len' : [2, 300, {
-          ignoreUrls : true,
-          ignoreTrailingComments : true,
-          ignoreRegExpLiterals : true,
-        },
-      ],
-    },
+        'unicode-bom': ['error', 'never'],
+        '@stylistic/indent': ['error', 4],
+        '@stylistic/semi': ['error', 'always'],
+        '@stylistic/no-trailing-spaces' : ['error'],
+        '@stylistic/eol-last' : 'error',
+        '@stylistic/max-len' : [2, 300, {
+            ignoreUrls : true,
+            ignoreTrailingComments : true,
+            ignoreRegExpLiterals : true,
+        }]
+    }
 }];
