@@ -142,18 +142,10 @@ public class ProcessExecutor(ILogger logger)
         string? workingDirectory = null,
         int timeoutMs = 30000,
         int outputLimit = DefaultOutputLimit,
-        CancellationToken cancellationToken = default,
-        CommandPolicy? policy = null)
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            // Политика применяется к полной командной строке (команда + аргументы)
-            if (policy is not null && !policy.IsAllowed($"{command} {arguments}"))
-            {
-                _logger.Log($"Command blocked by policy: {command}", "WARNING");
-                return new ProcessResult { Success = false, Error = $"Command '{command}' is blocked by the command policy." };
-            }
-
             _logger.Log($"Executing command: {command} (arguments redacted)");
 
             string? fullCommand;
@@ -208,16 +200,8 @@ public class ProcessExecutor(ILogger logger)
         string? workingDirectory = null,
         int timeoutMs = 120_000,
         int outputLimit = DefaultOutputLimit,
-        CancellationToken cancellationToken = default,
-        CommandPolicy? policy = null)
+        CancellationToken cancellationToken = default)
     {
-        // Сначала проверяем policy — это должно работать даже если sh недоступен
-        if (policy is not null && !policy.IsAllowed(bashScript))
-        {
-            _logger.Log("Bash command blocked by policy.", "WARNING");
-            return new ProcessResult { Success = false, Error = "Bash command is blocked by the command policy." };
-        }
-
         var shPath = FindGitSh();
         if (shPath == null)
         {
@@ -237,7 +221,7 @@ public class ProcessExecutor(ILogger logger)
 
             // sh <файл> — скрипт передаётся через stdin файла, а не через аргументы.
             var arguments = $"\"{tempScript}\"";
-            return await ExecuteAsync(shPath, arguments, workingDirectory, timeoutMs, outputLimit, cancellationToken, policy);
+            return await ExecuteAsync(shPath, arguments, workingDirectory, timeoutMs, outputLimit, cancellationToken);
         }
         finally
         {

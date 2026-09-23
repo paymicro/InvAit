@@ -133,7 +133,7 @@
     <value>Удаление файлов</value>
   </data>
   <data name="CategoryExecution" xml:space="preserve">
-    <value>Выполнение</value>
+    <value>Терминал</value>
   </data>
   <data name="CategoryModeSwitch" xml:space="preserve">
     <value>Смена режима</value>
@@ -560,5 +560,35 @@
   </data>
   <data name="ContentFilterDesc" xml:space="preserve">
     <value>⚠ Удаляет комментарии, пустые строки и применяет кастомные regex ко ВСЕМ результатам инструментов (включая MCP) перед отправкой в модель. Модель видит изменённый контент - это может привести к неверным правкам или галлюцинациям. Не рекомендуется включать без понимания последствий.</value>
+  </data>
+  <data name="BashSafePatterns" xml:space="preserve">
+    <value>Безопасные паттерны команд</value>
+  </data>
+  <data name="BashSafePatternsDesc" xml:space="preserve">
+    <value>Regex-паттерны для команд, которые выполняются автоматически без подтверждения. Добавляются к встроенным (git status, ls, cat, ...).</value>
+  </data>
+  <data name="BashSafePatternsPlaceholder" xml:space="preserve">
+    <value>^dotnet build(\s|$)</value>
+  </data>
+  <data name="BashSafePatternsAdd" xml:space="preserve">
+    <value>Добавить безопасный паттерн</value>
+  </data>
+  <data name="BashSafePatternsEmpty" xml:space="preserve">
+    <value>Нет пользовательских безопасных паттернов. Встроенные (git status, ls, cat, ...) всегда активны.</value>
+  </data>
+  <data name="BashDenyPatterns" xml:space="preserve">
+    <value>Деструктивные паттерны команд</value>
+  </data>
+  <data name="BashDenyPatternsDesc" xml:space="preserve">
+    <value>Regex-паттерны для команд, которые всегда авто-отклоняются (без запроса). Приоритет выше всех других классификаций.</value>
+  </data>
+  <data name="BashDenyPatternsPlaceholder" xml:space="preserve">
+    <value>^docker rm(\s|$)</value>
+  </data>
+  <data name="BashDenyPatternsAdd" xml:space="preserve">
+    <value>Добавить деструктивный паттерн</value>
+  </data>
+  <data name="BashDenyPatternsEmpty" xml:space="preserve">
+    <value>Нет пользовательских деструктивных паттернов. Встроенные (rm -rf /, format, shutdown, ...) всегда активны.</value>
   </data>
 </root>

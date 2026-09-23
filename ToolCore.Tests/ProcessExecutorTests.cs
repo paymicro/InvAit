@@ -221,55 +221,6 @@ public class ProcessExecutorTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_PolicyDeny_ShouldBlockCommand()
-    {
-        var executor = new ProcessExecutor(_mockLogger.Object);
-        var policy = new CommandPolicy([CommandRule.DenyRule("*")]);
-
-        var result = await executor.ExecuteAsync("echo", "hello", policy: policy, cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.False(result.Success);
-        Assert.Contains("blocked", result.Error);
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_PolicyDenyThenAllow_LastRuleWins()
-    {
-        // Запрещено всё, но разрешено dotnet test * — последнее правило приоритетнее
-        var policy = new CommandPolicy(
-        [
-            CommandRule.DenyRule("*"),
-            CommandRule.AllowRule("dotnet test *")
-        ]);
-
-        Assert.True(policy.IsAllowed("dotnet test --filter X"));
-        Assert.False(policy.IsAllowed("dotnet build"));
-        Assert.False(policy.IsAllowed("rm -rf /"));
-    }
-
-    [Fact]
-    public void CommandPolicy_AllowAll_WhenNoRules()
-    {
-        var policy = new CommandPolicy();
-
-        Assert.True(policy.IsAllowed("anything"));
-        Assert.True(policy.IsEmpty);
-    }
-
-    [Fact]
-    public void CommandPolicy_LastMatchingRuleWins()
-    {
-        // Сначала разрешено всё, потом запрещено всё — запрет выигрывает
-        var policy = new CommandPolicy(
-        [
-            CommandRule.AllowRule("*"),
-            CommandRule.DenyRule("*")
-        ]);
-
-        Assert.False(policy.IsAllowed("echo hi"));
-    }
-
-    [Fact]
     public async Task ExecuteBashAsync_ShouldSupportMultilineScript()
     {
         var executor = new ProcessExecutor(_mockLogger.Object);
@@ -280,18 +231,6 @@ public class ProcessExecutorTests
         Assert.True(result.Success, result.Error);
         Assert.Contains("line1", result.Output);
         Assert.Contains("line2", result.Output);
-    }
-
-    [Fact]
-    public async Task ExecuteBashAsync_PolicyDeny_ShouldBlock()
-    {
-        var executor = new ProcessExecutor(_mockLogger.Object);
-        var policy = new CommandPolicy([CommandRule.DenyRule("*")]);
-
-        var result = await executor.ExecuteBashAsync("echo hi", policy: policy, cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.False(result.Success);
-        Assert.Contains("blocked", result.Error);
     }
 }
 

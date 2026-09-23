@@ -97,6 +97,96 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Destructive command patterns.
+        /// </summary>
+        public static string BashDenyPatterns {
+            get {
+                return ResourceManager.GetString("BashDenyPatterns", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Add destructive pattern.
+        /// </summary>
+        public static string BashDenyPatternsAdd {
+            get {
+                return ResourceManager.GetString("BashDenyPatternsAdd", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Regex patterns for commands that are always auto-rejected (denied without asking). These take priority over all other classifications..
+        /// </summary>
+        public static string BashDenyPatternsDesc {
+            get {
+                return ResourceManager.GetString("BashDenyPatternsDesc", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to No custom destructive patterns. Built-in patterns (rm -rf /, format, shutdown, ...) are always active..
+        /// </summary>
+        public static string BashDenyPatternsEmpty {
+            get {
+                return ResourceManager.GetString("BashDenyPatternsEmpty", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to ^docker rm(\s|$).
+        /// </summary>
+        public static string BashDenyPatternsPlaceholder {
+            get {
+                return ResourceManager.GetString("BashDenyPatternsPlaceholder", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Safe command patterns.
+        /// </summary>
+        public static string BashSafePatterns {
+            get {
+                return ResourceManager.GetString("BashSafePatterns", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Add safe pattern.
+        /// </summary>
+        public static string BashSafePatternsAdd {
+            get {
+                return ResourceManager.GetString("BashSafePatternsAdd", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Regex patterns for commands that auto-execute without approval. Added to built-in patterns (git status, ls, cat, ...)..
+        /// </summary>
+        public static string BashSafePatternsDesc {
+            get {
+                return ResourceManager.GetString("BashSafePatternsDesc", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to No custom safe patterns. Built-in patterns (git status, ls, cat, ...) are always active..
+        /// </summary>
+        public static string BashSafePatternsEmpty {
+            get {
+                return ResourceManager.GetString("BashSafePatternsEmpty", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to ^dotnet build(\s|$).
+        /// </summary>
+        public static string BashSafePatternsPlaceholder {
+            get {
+                return ResourceManager.GetString("BashSafePatternsPlaceholder", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Tool.
         /// </summary>
         public static string CallingTool {
@@ -133,7 +223,7 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Execution.
+        ///   Looks up a localized string similar to Terminal.
         /// </summary>
         public static string CategoryExecution {
             get {

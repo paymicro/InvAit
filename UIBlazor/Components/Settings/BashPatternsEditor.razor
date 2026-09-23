@@ -1,0 +1,72 @@
+﻿<RadzenStack Gap="0.3rem" class="rz-pl-4">
+    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.4rem" AlignItems="AlignItems.Center">
+        <i class="fa-solid @IconClass" style="@IconStyle"></i>
+        <RadzenText TextStyle="TextStyle.Subtitle1">@Title</RadzenText>
+    </RadzenStack>
+    <RadzenText TextStyle="TextStyle.Caption" Style="color: var(--rz-text-secondary);">
+        @Description
+    </RadzenText>
+
+    @for (var i = 0; i < Patterns.Count; i++)
+    {
+        var index = i;
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+            <RadzenTextBox @bind-Value="@Patterns[index]"
+                           Change="@Save"
+                           Placeholder="@Placeholder"
+                           Style="width: 100%; font-family: monospace;" />
+            <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Variant="Variant.Flat"
+                          Click="@(() => RemovePattern(index))" />
+        </RadzenStack>
+    }
+
+    @if (Patterns.Count == 0)
+    {
+        <RadzenText TextStyle="TextStyle.Caption" Style="color: var(--rz-text-disabled); font-style: italic;">
+            @EmptyText
+        </RadzenText>
+    }
+
+    <RadzenButton Icon="add" Text="@AddButtonText" ButtonStyle="@AddButtonStyle"
+                  Size="ButtonSize.Small" Variant="Variant.Flat" Click="AddPattern" />
+</RadzenStack>
+
+@code {
+    [Inject] IToolManager ToolManager { get; set; } = null!;
+
+    [Parameter] public bool IsDeny { get; set; }
+
+    private List<string> Patterns => IsDeny
+        ? (ToolManager.Current.BashSettings ??= new()).DenyPatterns
+        : (ToolManager.Current.BashSettings ??= new()).AllowPatterns;
+
+    private string Title => IsDeny ? SharedResource.BashDenyPatterns : SharedResource.BashSafePatterns;
+    private string Description => IsDeny ? SharedResource.BashDenyPatternsDesc : SharedResource.BashSafePatternsDesc;
+    private string Placeholder => IsDeny ? SharedResource.BashDenyPatternsPlaceholder : SharedResource.BashSafePatternsPlaceholder;
+
+    private string AddButtonText => IsDeny ? SharedResource.BashDenyPatternsAdd : SharedResource.BashSafePatternsAdd;
+    private string EmptyText => IsDeny ? SharedResource.BashDenyPatternsEmpty : SharedResource.BashSafePatternsEmpty;
+
+    private string IconClass => IsDeny ? "fa-triangle-exclamation" : "fa-shield-halved";
+    private string IconStyle => IsDeny
+        ? "color: var(--rz-danger, #f3214f); font-size: 0.9rem;"
+        : "color: var(--rz-success, #4caf50); font-size: 0.9rem;";
+    private ButtonStyle AddButtonStyle => IsDeny ? ButtonStyle.Danger : ButtonStyle.Success;
+
+    private void Save() => ToolManager.CallSaveTrigger();
+
+    private void AddPattern()
+    {
+        Patterns.Add("");
+        ToolManager.CallSaveTrigger();
+    }
+
+    private void RemovePattern(int index)
+    {
+        if (index >= 0 && index < Patterns.Count)
+        {
+            Patterns.RemoveAt(index);
+            ToolManager.CallSaveTrigger();
+        }
+    }
+}

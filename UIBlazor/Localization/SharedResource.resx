@@ -133,7 +133,7 @@
     <value>Delete files</value>
   </data>
   <data name="CategoryExecution" xml:space="preserve">
-    <value>Execution</value>
+    <value>Terminal</value>
   </data>
   <data name="CategoryModeSwitch" xml:space="preserve">
     <value>Mode switch</value>
@@ -560,5 +560,35 @@
   </data>
   <data name="ContentFilterDesc" xml:space="preserve">
     <value>⚠ Strips comments, blank lines and applies custom regex to ALL tool results (including MCP) before sending to the model. The model sees modified content - this may cause incorrect edits or hallucinations. Not recommended unless you understand the risks.</value>
+  </data>
+  <data name="BashSafePatterns" xml:space="preserve">
+    <value>Safe command patterns</value>
+  </data>
+  <data name="BashSafePatternsDesc" xml:space="preserve">
+    <value>Regex patterns for commands that auto-execute without approval. Added to built-in patterns (git status, ls, cat, ...).</value>
+  </data>
+  <data name="BashSafePatternsPlaceholder" xml:space="preserve">
+    <value>^dotnet build(\s|$)</value>
+  </data>
+  <data name="BashSafePatternsAdd" xml:space="preserve">
+    <value>Add safe pattern</value>
+  </data>
+  <data name="BashSafePatternsEmpty" xml:space="preserve">
+    <value>No custom safe patterns. Built-in patterns (git status, ls, cat, ...) are always active.</value>
+  </data>
+  <data name="BashDenyPatterns" xml:space="preserve">
+    <value>Destructive command patterns</value>
+  </data>
+  <data name="BashDenyPatternsDesc" xml:space="preserve">
+    <value>Regex patterns for commands that are always auto-rejected (denied without asking). These take priority over all other classifications.</value>
+  </data>
+  <data name="BashDenyPatternsPlaceholder" xml:space="preserve">
+    <value>^docker rm(\s|$)</value>
+  </data>
+  <data name="BashDenyPatternsAdd" xml:space="preserve">
+    <value>Add destructive pattern</value>
+  </data>
+  <data name="BashDenyPatternsEmpty" xml:space="preserve">
+    <value>No custom destructive patterns. Built-in patterns (rm -rf /, format, shutdown, ...) are always active.</value>
   </data>
 </root>

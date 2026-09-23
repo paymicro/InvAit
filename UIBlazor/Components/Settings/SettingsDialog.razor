@@ -133,6 +133,14 @@
                                     </RadzenAccordion>
                                 }
 
+                                if (category is ToolCategory.Execution && state.ApprovalMode is not ToolApprovalMode.Deny)
+                                {
+                                    <RadzenStack Gap="1rem">
+                                        <BashPatternsEditor />
+                                        <BashPatternsEditor IsDeny="true" />
+                                    </RadzenStack>
+                                }
+
                                 if (category is ToolCategory.SubAgent)
                                 {
                                     <RadzenAccordion>

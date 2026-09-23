@@ -7,6 +7,98 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
 {
     private readonly ConcurrentDictionary<string, ApprovalWaiter> _approvalWaiters = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<string>> _askUserWaiters = new();
+    private BashCommandClassifier? _bashClassifier;
+
+    /// <summary>
+    /// Лениво создаёт классификатор bash-команд на основе текущих настроек.
+    /// </summary>
+    private BashCommandClassifier GetBashClassifier()
+    {
+        var settings = toolManager.Current?.BashSettings ?? new BashCommandSettings();
+        if (_bashClassifier is null || _bashClassifier.SettingsHash != ComputeSettingsHash(settings))
+        {
+            _bashClassifier = new BashCommandClassifier(settings);
+            _bashClassifier.SettingsHash = ComputeSettingsHash(settings);
+        }
+        return _bashClassifier;
+    }
+
+    private static string ComputeSettingsHash(BashCommandSettings settings)
+    {
+        // Use control chars as separators to avoid collision with comma-containing regex patterns
+        return $"{string.Join("\x1f", settings.AllowPatterns ?? [])}\x1e{string.Join("\x1f", settings.DenyPatterns ?? [])}";
+    }
+
+    /// <summary>
+    /// Определяет approval mode для bash-команды.
+    /// <para>
+    /// Классификатор всегда активен и определяет тип команды
+    /// (Safe/Unknown/Destructive/UserDenied).
+    /// Category mode (Allow/Ask/Deny) задаёт «потолок доверия».
+    /// </para>
+    /// <list type="table">
+    /// <listheader>
+    /// <term>Category</term><term>Safe</term><term>Unknown</term>
+    /// <term>Destructive</term><term>UserDenied</term>
+    /// </listheader>
+    /// <item><term>Allow</term><term>Allow</term><term>Allow</term><term>Ask</term><term>Deny</term></item>
+    /// <item><term>Ask</term><term>Allow</term><term>Ask</term><term>Ask</term><term>Deny</term></item>
+    /// <item><term>Deny</term><term>Deny</term><term>Deny</term><term>Deny</term><term>Deny</term></item>
+    /// </list>
+    /// <para>
+    /// UserDenied (пользовательские deny-паттерны) → всегда Deny (авто-отклонение).
+    /// Destructive (встроенные паттерны) → Ask (подтверждение, но не отклонение).
+    /// </para>
+    /// </summary>
+    private ToolApprovalMode GetBashApprovalMode(string argumentsJson)
+    {
+        var categoryMode = toolManager.GetApprovalModeByToolName(BuiltInToolEnum.Bash);
+
+        // Category Deny — everything denied, classifier irrelevant
+        if (categoryMode == ToolApprovalMode.Deny)
+            return ToolApprovalMode.Deny;
+
+        var command = ExtractCommand(argumentsJson);
+        var classifier = GetBashClassifier();
+        var classification = classifier.Classify(command);
+
+        // User-specified deny patterns → always auto-reject, regardless of category
+        if (classification == BashCommandClassification.UserDenied)
+            return ToolApprovalMode.Deny;
+
+        // Map classification → approval mode based on category
+        return (categoryMode, classification) switch
+        {
+            // Category Allow: trust more — safe + unknown auto-execute, destructive asks
+            (ToolApprovalMode.Allow, BashCommandClassification.Safe)        => ToolApprovalMode.Allow,
+            (ToolApprovalMode.Allow, BashCommandClassification.Unknown)     => ToolApprovalMode.Allow,
+            (ToolApprovalMode.Allow, BashCommandClassification.Destructive) => ToolApprovalMode.Ask,
+
+            // Category Ask: safe auto-execute, unknown + destructive ask
+            (ToolApprovalMode.Ask, BashCommandClassification.Safe)          => ToolApprovalMode.Allow,
+            (ToolApprovalMode.Ask, BashCommandClassification.Unknown)       => ToolApprovalMode.Ask,
+            (ToolApprovalMode.Ask, BashCommandClassification.Destructive)   => ToolApprovalMode.Ask,
+
+            // Deny already handled above, UserDenied already handled above
+            _ => ToolApprovalMode.Ask,
+        };
+    }
+
+    private static string? ExtractCommand(string? argumentsJson)
+    {
+        if (string.IsNullOrWhiteSpace(argumentsJson))
+            return null;
+
+        try
+        {
+            var args = JsonUtils.DeserializeParameters(argumentsJson);
+            return args.GetString("command");
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     /// <inheritdoc />
     public event Action<string>? ApprovalRequired;
@@ -33,7 +125,9 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
                 continue;
             }
 
-            var approvalMode = toolManager.GetApprovalModeByToolName(toolCall.Function.Name);
+            var approvalMode = toolCall.Function.Name == BuiltInToolEnum.Bash
+                ? GetBashApprovalMode(toolCall.Function.Arguments)
+                : toolManager.GetApprovalModeByToolName(toolCall.Function.Name);
             switch (approvalMode)
             {
                 case ToolApprovalMode.Ask:
