@@ -229,7 +229,7 @@ public class ProcessExecutor(ILogger logger)
         try
         {
             // netstandard2.0 не имеет File.WriteAllTextAsync — используем синхронную запись.
-            File.WriteAllText(tempScript, bashScript, Encoding.UTF8);
+            File.WriteAllText(tempScript, bashScript, new UTF8Encoding(false));
 
             await Task.Delay(100); // чуть ожидаем, а то файл не всегда создается
             if (!File.Exists(tempScript))
