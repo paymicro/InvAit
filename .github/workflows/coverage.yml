@@ -54,3 +54,43 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./coveragereport
+
+  vscode_test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        working-directory: invaitcode
+        run: npm ci
+
+      - name: Type-check
+        working-directory: invaitcode
+        run: npx tsc --noEmit -p tsconfig.test.json
+
+      - name: Run Mocha tests with Coverage
+        working-directory: invaitcode
+        run: |
+          npm run test:coverage 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tee coverage-output.txt
+
+      - name: Publish coverage to Step Summary
+        if: always()
+        working-directory: invaitcode
+        run: |
+          echo "## VS Code Extension Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat coverage-output.txt | grep -A 50 "File" | head -60 >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload lcov artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-lcov
+          path: invaitcode/coverage/lcov.info

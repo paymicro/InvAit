@@ -1,0 +1,6 @@
+{
+  "reporter": ["text", "text-summary", "lcov"],
+  "all": true,
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/test/**", "src/**/*.d.ts"]
+}

@@ -19,5 +19,8 @@ public interface ISystemPromptBuilder
     /// <param name="cancellationToken">Cancellation token.</param>
     Task<string> PrepareSubAgentSystemPromptAsync(string customPrompt, CancellationToken cancellationToken);
 
-    string BuildSolutionFiles(VsCodeContext currentContext, bool compress);
+    /// <summary>
+    /// Builds a formatted solution tree from raw file paths in <paramref name="currentContext"/>.
+    /// </summary>
+    string BuildSolutionFiles(VsContext currentContext);
 }

@@ -300,11 +300,9 @@ public class ProcessExecutor(ILogger logger)
         }
 
         var stdout = stdoutTask.Status == TaskStatus.RanToCompletion
-            ? stdoutTask.Result
-            : "[Stream reading timed out]";
+            ? await stdoutTask : "[Stream reading timed out]";
         var stderr = stderrTask.Status == TaskStatus.RanToCompletion
-            ? stderrTask.Result
-            : "[Stream reading timed out]";
+            ? await stderrTask : "[Stream reading timed out]";
 
         var exitCode = -1;
         try { exitCode = process.ExitCode; } catch { }

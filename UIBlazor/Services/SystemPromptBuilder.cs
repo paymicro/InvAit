@@ -1,21 +1,46 @@
 namespace UIBlazor.Services;
 
-public class SystemPromptBuilder(
-    IProfileManager profileManager,
-    IToolManager toolManager,
-    ISkillService skillService,
-    IRuleService ruleService,
-    IVsCodeContextService vsCodeContextService) : ISystemPromptBuilder
+public class SystemPromptBuilder : ISystemPromptBuilder
 {
-    public ConnectionProfile Options => profileManager.ActiveProfile;
+    private readonly IProfileManager _profileManager;
+    private readonly IToolManager _toolManager;
+    private readonly ISkillService _skillService;
+    private readonly IRuleService _ruleService;
+    private readonly IContextService _сontextService;
+
+    /// <summary>
+    /// Cached formatted solution tree. Invalidated when <see cref="IContextService.OnContextChanged"/>
+    /// fires, so the tree is only rebuilt when the IDE pushes new context (e.g. after file changes).
+    /// </summary>
+    private string? _cachedSolutionTree;
+
+    public SystemPromptBuilder(
+        IProfileManager profileManager,
+        IToolManager toolManager,
+        ISkillService skillService,
+        IRuleService ruleService,
+        IContextService сontextService)
+    {
+        _profileManager = profileManager;
+        _toolManager = toolManager;
+        _skillService = skillService;
+        _ruleService = ruleService;
+        _сontextService = сontextService;
+
+        сontextService.OnContextChanged += InvalidateSolutionTreeCache;
+    }
+
+    private void InvalidateSolutionTreeCache() => _cachedSolutionTree = null;
+
+    public ConnectionProfile Options => _profileManager.ActiveProfile;
 
     public async Task<string> PrepareSystemPromptAsync(AppMode mode, CancellationToken cancellationToken)
     {
-        var profile = profileManager.ActiveProfile;
+        var profile = _profileManager.ActiveProfile;
 
         // Delegation instructions are only included if delegate_task is actually available
         var canDelegate = profile.SendModeInstructions &&
-            toolManager.GetEnabledTools(mode).Any(t => t.Name == BuiltInToolEnum.DelegateTask);
+            _toolManager.GetEnabledTools(mode).Any(t => t.Name == BuiltInToolEnum.DelegateTask);
 
         return await BuildPromptAsync(
             new PromptSpec(
@@ -68,7 +93,7 @@ public class SystemPromptBuilder(
     /// </summary>
     private async Task<string> BuildPromptAsync(PromptSpec spec, CancellationToken cancellationToken)
     {
-        var profile = profileManager.ActiveProfile;
+        var profile = _profileManager.ActiveProfile;
 
         List<string?> systemPromptBlocks =
         [
@@ -77,7 +102,7 @@ public class SystemPromptBuilder(
             profile.SendModeInstructions ? BuildModeInstructions(spec.Mode, spec.CanDelegate) : string.Empty,
             await BuildSkillsSectionAsync(cancellationToken),
             BuildContextSection(spec.IncludeActiveFile),
-            profile.SendRules ? await ruleService.GetRulesAsync(cancellationToken) : null,
+            profile.SendRules ? await _ruleService.GetRulesAsync(cancellationToken) : null,
             await BuildAgentsMdSectionAsync(cancellationToken),
             profile.SendCurrentDate ? $"Current date: {DateTime.Now:dd-MM-yyyy}" : null
         ];
@@ -96,12 +121,12 @@ public class SystemPromptBuilder(
     /// </summary>
     private async Task<string> BuildSkillsSectionAsync(CancellationToken cancellationToken)
     {
-        var profile = profileManager.ActiveProfile;
+        var profile = _profileManager.ActiveProfile;
         if (!profile.SendSkills)
             return string.Empty;
 
-        var skillsMetadata = await skillService.GetSkillsMetadataAsync(cancellationToken);
-        return skillService.FormatSkillsForSystemPrompt(skillsMetadata);
+        var skillsMetadata = await _skillService.GetSkillsMetadataAsync(cancellationToken);
+        return _skillService.FormatSkillsForSystemPrompt(skillsMetadata);
     }
 
     /// <summary>
@@ -110,8 +135,8 @@ public class SystemPromptBuilder(
     /// </summary>
     private string BuildContextSection(bool includeActiveFile)
     {
-        var profile = profileManager.ActiveProfile;
-        var currentContext = vsCodeContextService.CurrentContext;
+        var profile = _profileManager.ActiveProfile;
+        var currentContext = _сontextService.CurrentContext;
         if (currentContext == null)
             return string.Empty;
 
@@ -121,7 +146,7 @@ public class SystemPromptBuilder(
             codeContext.Add($"""
                             Solution structure:
                             ```
-                            {BuildSolutionFiles(currentContext, true)}
+                            {BuildSolutionFiles(currentContext)}
                             ```
                             """);
         }
@@ -156,11 +181,11 @@ public class SystemPromptBuilder(
     /// </summary>
     private async Task<string?> BuildAgentsMdSectionAsync(CancellationToken cancellationToken)
     {
-        var profile = profileManager.ActiveProfile;
+        var profile = _profileManager.ActiveProfile;
         if (!profile.SendAgentsMd)
             return null;
 
-        var agents = await ruleService.GetAgentsMdAsync(cancellationToken);
+        var agents = await _ruleService.GetAgentsMdAsync(cancellationToken);
         return string.IsNullOrEmpty(agents) ? null : $"# Agents instructions\n{agents}";
     }
 
@@ -213,66 +238,22 @@ public class SystemPromptBuilder(
         return sb.ToString();
     }
 
-    public string BuildSolutionFiles(VsCodeContext currentContext, bool compress)
+    /// <summary>
+    /// Builds a formatted solution tree from raw file paths in <paramref name="currentContext"/>.
+    /// Uses <see cref="SolutionTreeBuilder"/> to construct the tree and
+    /// <see cref="SolutionTreeFormatter"/> to render it as ASCII art.
+    /// The result is cached and invalidated when the IDE pushes new context.
+    /// </summary>
+    public string BuildSolutionFiles(VsContext currentContext)
     {
-        var sb = new StringBuilder();
-        var lastDir = string.Empty;
-        var difPrefix = VsCodeContext.DirPrefix.AsSpan();
-        foreach (var item in currentContext.SolutionFiles)
-        {
-            if (compress)
-            {
-                var itemSpan = item.AsSpan();
-                var pathIndex = -1;
-                if (item.StartsWith("Project"))
-                {
-                    lastDir = currentContext.SolutionPath;
-                }
-                else
-                {
-                    pathIndex = item.IndexOf(VsCodeContext.DirPrefix, StringComparison.Ordinal);
-                }
+        if (_cachedSolutionTree != null)
+            return _cachedSolutionTree;
 
-                if (pathIndex != -1)
-                {
-                    // Берем часть после префикса и обрезаем пробелы без создания строк
-                    var pathPart = itemSpan[(pathIndex + difPrefix.Length)..].TrimStart();
-                    lastDir = pathPart.ToString();
-                    // В строке с префиксом (папкой) выводим item целиком
-                    sb.Append(item).Append('\n');
-                }
-                else
-                {
-                    var simplified = false;
-                    if (!string.IsNullOrEmpty(lastDir))
-                    {
-                        // Ищем, где в строке файла начинается путь. 
-                        // Если формат файла похож на папку (есть какой-то отступ/префикс),
-                        // нужно найти индекс начала пути. Допустим, он всегда после какого-то символа 
-                        // или просто ищем вхождение lastDir.
-                        var dirPos = item.IndexOf(lastDir, StringComparison.Ordinal);
-                        if (dirPos != -1)
-                        {
-                            // Пишем всё ДО пути + сам файл ПОСЛЕ пути
-                            sb.Append(itemSpan[..dirPos])
-                              .Append(itemSpan[(dirPos + lastDir.Length + (lastDir[^1] == '\\' ? 0 : 1))..])
-                              .Append('\n');
-                            simplified = true;
-                        }
-                    }
-
-                    if (!simplified)
-                    {
-                        sb.Append(item).Append('\n');
-                    }
-                }
-            }
-            else
-            {
-                sb.Append(item).Append('\n');
-            }
-        }
-
-        return sb.ToString();
+        var tree = SolutionTreeBuilder.Build(
+            currentContext.SolutionFiles,
+            currentContext.SolutionProjects,
+            currentContext.SolutionPath);
+        _cachedSolutionTree = SolutionTreeFormatter.Format(tree);
+        return _cachedSolutionTree;
     }
 }

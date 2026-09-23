@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Services.Interfaces;
+namespace UIBlazor.Services.Interfaces;
 
 /// <summary>
 /// Provides content filtering/minimization for tool results to reduce token usage.

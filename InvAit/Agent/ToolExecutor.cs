@@ -17,7 +17,6 @@ using Shared.Contracts;
 using Shared.Contracts.McpHost;
 using ToolCore;
 using ToolCore.McpHost;
-using IAsyncDisposable = Microsoft.VisualStudio.Threading.IAsyncDisposable;
 using Process = System.Diagnostics.Process;
 using Shell = Microsoft.VisualStudio.Shell;
 using Toolkit = Community.VisualStudio.Toolkit;
@@ -25,7 +24,7 @@ using VS = Community.VisualStudio.Toolkit.VS;
 
 namespace InvAit.Agent;
 
-public class ToolExecutor : IAsyncDisposable
+public class ToolExecutor
 {
     private readonly ProcessExecutor _processExecutor = new(new VsLogger());
     private readonly Dictionary<string, string> _skillPathByName = [];
@@ -160,7 +159,6 @@ public class ToolExecutor : IAsyncDisposable
         // Success = true if at least one file was read successfully (partial success).
         // Individual file errors are embedded in FileContent.Error fields.
         var results = new List<FileContent>();
-        var hasAnySuccess = false;
 
         foreach (var rp in fileParamsList)
         {
@@ -181,7 +179,7 @@ public class ToolExecutor : IAsyncDisposable
                 List<string> materializedLines = null;
                 if (needsLimit)
                 {
-                    materializedLines = allLines.ToList();
+                    materializedLines = [.. allLines];
                     totalLineCount = materializedLines.Count;
                 }
 
@@ -213,7 +211,6 @@ public class ToolExecutor : IAsyncDisposable
                 }
 
                 results.Add(fc);
-                hasAnySuccess = true;
             }
             catch (Exception ex)
             {
@@ -534,7 +531,8 @@ public class ToolExecutor : IAsyncDisposable
     private async Task<VsResponse> ListDirectoryAsync(IReadOnlyDictionary<string, object> args)
     {
         var solutionPath = await GetSolutionPathAsync();
-        var dirPath = GetAbsolutePath(args.GetString("path"), solutionPath);
+        var path = args.GetString("path");
+        var dirPath = GetAbsolutePath(path, solutionPath);
         var recursive = args.GetBool("recursive");
 
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -542,7 +540,7 @@ public class ToolExecutor : IAsyncDisposable
             return new VsResponse
             {
                 Success = false,
-                Error = $"Directory {args.GetString("dirPath")} doesn't exist",
+                Error = $"Directory {path} doesn't exist",
             };
 
         var searchOption = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
@@ -602,7 +600,6 @@ public class ToolExecutor : IAsyncDisposable
 
         try
         {
-            var tempFile = Path.Combine(Path.GetTempPath(), Path.GetFileName(filepath));
             await _fileUtils.SaveFileAsync(filepath, lines, fileData.Encoding, fileData.Separator, fileData.HasFinalNewLine);
             await OpenEditorAsync(filepath);
             await Logger.LogAsync($"{totalReplacements} changes successfully applied to {inputFileName}.");
@@ -629,25 +626,6 @@ public class ToolExecutor : IAsyncDisposable
     public async Task OpenEditorAsync(string filepath)
     {
         await VS.Documents.OpenAsync(filepath);
-    }
-
-    public int FindSubarrayIndex(List<string> bigArray, List<string> smallArray)
-    {
-        if (bigArray == null || smallArray == null || bigArray.Count < smallArray.Count)
-        {
-            return -1;
-        }
-
-        for (var i = 0; i <= bigArray.Count - smallArray.Count; i++)
-        {
-            // Берем часть bigArray, начиная с i, длиной как smallArray
-            // и сравниваем её с smallArray
-            if (bigArray.Skip(i).Take(smallArray.Count).SequenceEqual(smallArray))
-            {
-                return i; // Нашли, возвращаем индекс
-            }
-        }
-        return -1; // Не нашли
     }
 
     private async Task<VsResponse> BuildSolutionAsync()
@@ -857,13 +835,12 @@ public class ToolExecutor : IAsyncDisposable
     {
         return new VsResponse
         {
-            Payload = string.Join("\n", await SolutionStructure.BuildStructureAsync(fullPath: false))
+            Payload = string.Join("\n", await SolutionStructure.BuildStructureAsync())
         };
     }
 
     private async Task<VsResponse> GetProjectInfoAsync()
     {
-        var solutionPath = await GetSolutionPathAsync();
         var projectInfoList = new List<string>();
 
         await Shell.ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -1514,11 +1491,6 @@ public class ToolExecutor : IAsyncDisposable
             Arguments = toolArgs as JsonElement?,
             TimeoutMs = timeoutMs,
         }, TimeSpan.FromMilliseconds(timeoutMs) + TimeSpan.FromSeconds(30));
-    }
-
-    public Task DisposeAsync()
-    {
-        return Task.CompletedTask;
     }
 
     private class SearchFileInfo

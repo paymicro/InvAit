@@ -67,7 +67,7 @@ public static class BuiltInToolDefs
     { }
 
     [DisplayName(BuiltInToolEnum.Build)]
-    [Description("Rebuild solution in Visual Studio")]
+    [Description("Rebuild solution")]
     public static void Build()
     { }
 

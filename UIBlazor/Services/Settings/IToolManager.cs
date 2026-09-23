@@ -12,6 +12,11 @@ public interface IToolManager : IBaseSettingsProvider
 
     IEnumerable<Tool> GetBuiltInTools();
 
+    /// <summary>
+    /// Returns built-in tools available in the current IDE (filtered by IdeAvailable).
+    /// </summary>
+    IEnumerable<Tool> GetAvailableBuiltInTools();
+
     IEnumerable<Tool> GetMcpTools();
 
     Tool? GetTool(string name);

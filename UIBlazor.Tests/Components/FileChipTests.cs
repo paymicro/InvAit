@@ -44,12 +44,12 @@ public class FileChipTests : BunitContext
         // Act
         var cut = Render<FileChip>(parameters => parameters
             .Add(p => p.Token, token)
-            .Add(p => p.Icon, "📄"));
+            .Add(p => p.Icon, "fa-solid fa-file-code"));
 
         // Assert
         var iconSpan = cut.Find(".chip-icon");
         Assert.NotNull(iconSpan);
-        Assert.Equal("📄", iconSpan.TextContent);
+        Assert.Contains("fa-file-code", iconSpan.GetAttribute("class"));
     }
 
     [Fact]
@@ -86,9 +86,9 @@ public class FileChipTests : BunitContext
         var cut = Render<FileChip>(parameters => parameters
             .Add(p => p.Token, token));
 
-        // Assert - should use default icon "📄"
+        // Assert - should use default FA icon "fa-solid fa-file"
         var iconSpan = cut.Find(".chip-icon");
-        Assert.Equal("📄", iconSpan.TextContent);
+        Assert.Contains("fa-file", iconSpan.GetAttribute("class"));
     }
 
     [Fact]
@@ -104,11 +104,11 @@ public class FileChipTests : BunitContext
         // Act
         var cut = Render<FileChip>(parameters => parameters
             .Add(p => p.Token, token)
-            .Add(p => p.Icon, "⚡"));
+            .Add(p => p.Icon, "fa-solid fa-bolt"));
 
         // Assert
         var iconSpan = cut.Find(".chip-icon");
-        Assert.Equal("⚡", iconSpan.TextContent);
+        Assert.Contains("fa-bolt", iconSpan.GetAttribute("class"));
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public class FileChipTests : BunitContext
         // Act
         var cut = Render<FileChip>(parameters => parameters
             .Add(p => p.Token, token)
-            .Add(p => p.Icon, "📄"));
+            .Add(p => p.Icon, "fa-solid fa-file-code"));
 
         // Assert - verify all elements are present
         var chip = cut.Find(".input-chip");
@@ -262,20 +262,20 @@ public class FileChipTests : BunitContext
 
         var cut = Render<FileChip>(parameters => parameters
             .Add(p => p.Token, token)
-            .Add(p => p.Icon, "📄"));
+            .Add(p => p.Icon, "fa-solid fa-file-code"));
 
         // Assert initial icon
         var iconSpan = cut.Find(".chip-icon");
-        Assert.Equal("📄", iconSpan.TextContent);
+        Assert.Contains("fa-file-code", iconSpan.GetAttribute("class"));
 
         // Act - change icon
         cut.Render(parameters => parameters
             .Add(p => p.Token, token)
-            .Add(p => p.Icon, "⚡"));
+            .Add(p => p.Icon, "fa-solid fa-bolt"));
 
         // Assert - should display new icon
         iconSpan = cut.Find(".chip-icon");
-        Assert.Equal("⚡", iconSpan.TextContent);
+        Assert.Contains("fa-bolt", iconSpan.GetAttribute("class"));
     }
 
     #endregion
@@ -425,7 +425,7 @@ public class FileChipTests : BunitContext
             .Add(p => p.Token, token));
 
         // Assert
-        var iconSpan = cut.Find("span.chip-icon");
+        var iconSpan = cut.Find("i.chip-icon");
         Assert.NotNull(iconSpan);
     }
 
@@ -472,17 +472,17 @@ public class FileChipTests : BunitContext
     #region Icon Variations Tests
 
     [Theory]
-    [InlineData("📄", "document")]
-    [InlineData("⚡", "razor")]
-    [InlineData("🌐", "html")]
-    [InlineData("🎨", "css")]
-    [InlineData("📜", "javascript")]
-    [InlineData("📋", "json")]
-    [InlineData("📝", "text")]
-    [InlineData("📖", "markdown")]
-    [InlineData("🖼️", "image")]
-    [InlineData("⚙️", "config")]
-    [InlineData("📦", "project")]
+    [InlineData("fa-solid fa-file", "document")]
+    [InlineData("fa-solid fa-bolt", "razor")]
+    [InlineData("fa-solid fa-globe", "html")]
+    [InlineData("fa-solid fa-palette", "css")]
+    [InlineData("fa-solid fa-file-code", "javascript")]
+    [InlineData("fa-solid fa-list-check", "json")]
+    [InlineData("fa-solid fa-file-lines", "text")]
+    [InlineData("fa-solid fa-book", "markdown")]
+    [InlineData("fa-solid fa-image", "image")]
+    [InlineData("fa-solid fa-gear", "config")]
+    [InlineData("fa-solid fa-cube", "project")]
     public void ShouldRenderVariousIcons(string icon, string description)
     {
         // Arrange
@@ -499,7 +499,7 @@ public class FileChipTests : BunitContext
 
         // Assert
         var iconSpan = cut.Find(".chip-icon");
-        Assert.Equal(icon, iconSpan.TextContent);
+        Assert.Contains(icon, iconSpan.GetAttribute("class"));
     }
 
     #endregion

@@ -112,14 +112,14 @@ public class McpHostSupervisorIntegrationTests
     public async Task ExternalKill_ThenEnsureStarted_RestartsNewProcess()
     {
         await using var supervisor = new McpHostSupervisor(CreateOptions(), new SilentLogger());
-        await supervisor.EnsureStartedAsync();
+        await supervisor.EnsureStartedAsync(TestContext.Current.CancellationToken);
         var firstPid = await GetHostPid(supervisor);
 
         KillHostProcess(supervisor);
         Assert.True(WaitForCondition(() => !supervisor.IsConnected, TimeSpan.FromSeconds(5)),
             "Contact should be lost after external kill.");
 
-        await supervisor.EnsureStartedAsync();
+        await supervisor.EnsureStartedAsync(TestContext.Current.CancellationToken);
         var secondPid = await GetHostPid(supervisor);
 
         Assert.NotEqual(firstPid, secondPid);
@@ -169,13 +169,13 @@ public class McpHostSupervisorIntegrationTests
         await supervisor.EnsureStartedAsync(TestContext.Current.CancellationToken);
 
         await Assert.ThrowsAsync<TimeoutException>(() => supervisor.SendRequestAsync(McpHostMethods.CallTool, new McpCallToolParams
-            {
-                ServerId = "sleepy",
-                Command = TestAssetLocator.GetAssetExePath("EchoMcpServer", "EchoMcpServer.exe"),
-                ToolName = "sleep",
-                Arguments = JsonSerializer.SerializeToElement(new { ms = 4000 }),
-                TimeoutMs = 8000,
-            }, TimeSpan.FromMilliseconds(700), TestContext.Current.CancellationToken));
+        {
+            ServerId = "sleepy",
+            Command = TestAssetLocator.GetAssetExePath("EchoMcpServer", "EchoMcpServer.exe"),
+            ToolName = "sleep",
+            Arguments = JsonSerializer.SerializeToElement(new { ms = 4000 }),
+            TimeoutMs = 8000,
+        }, TimeSpan.FromMilliseconds(700), TestContext.Current.CancellationToken));
 
         var ping = await supervisor.PingAsync(TestContext.Current.CancellationToken);
         Assert.True(ping.Pid > 0);

@@ -1,0 +1,117 @@
+{
+  "name": "invaitcode",
+  "displayName": "InvAit",
+  "description": "Local AI Chat and agent",
+  "version": "0.1.4",
+  "publisher": "invait",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/paymicro/invait"
+  },
+  "engines": {
+    "vscode": "^1.138.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "ai",
+    "chat",
+    "agent",
+    "mcp",
+    "copilot"
+  ],
+  "icon": "media/extension-icon.png",
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@stylistic/eslint-plugin": "^5.10.0"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "invaitcode.chat",
+        "title": "Open InvAit chat",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "invaitcode.view",
+        "title": "Open InvAit",
+        "icon": "$(comment-discussion)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "invaitcode-sidebar",
+          "title": "InvAit",
+          "icon": "media/sidebar-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "invaitcode-sidebar": [
+        {
+          "type": "webview",
+          "id": "invaitcode.chatView",
+          "name": "Chat",
+          "icon": "$(comment-discussion)",
+          "contextualTitle": "InvAit"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "InvAit",
+      "properties": {
+        "invaitcode.mcphostPath": {
+          "type": "string",
+          "default": "",
+          "description": "Custom path to McpHost executable (if not bundled)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run bundle",
+    "vscode:createVsix": "npx @vscode/vsce package",
+    "compile": "tsc -p ./ --noEmit",
+    "bundle": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
+    "test": "vscode-test",
+    "test:unit": "mocha --require ts-node/register src/test/**/*.test.ts --timeout 10000",
+    "test:coverage": "c8 mocha --require ts-node/register src/test/**/*.test.ts --timeout 10000"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.3.20",
+    "@types/chai-as-promised": "^7.1.8",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "24.x",
+    "@types/sinon": "^22.0.0",
+    "@types/vscode": "^1.138.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.0.0",
+    "c8": "^11.0.0",
+    "chai": "^4.5.0",
+    "chai-as-promised": "^7.1.2",
+    "esbuild": "^0.25.12",
+    "eslint": "^10.5.0",
+    "mocha": "^12.0.2",
+    "sinon": "^22.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.1",
+    "@stylistic/eslint-plugin": "^5.10.0"
+  },
+  "overrides": {
+    "diff": "^8.0.4",
+    "serialize-javascript": "^7.0.6"
+  }
+}

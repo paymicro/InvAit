@@ -33,7 +33,7 @@ VS Extension (VSIX) embedding Blazor WebAssembly UI in WebView2.
 - **`ToolCore`** (netstandard2.0) — Reusable tool logic: `FileUtils`, `UniversalDiffParser` (fuzzy diff), `RoslynSearchService`, `McpHostSupervisor` (McpHost lifecycle), `ProcessExecutor`. `McpProcessManager` is obsolete (Standalone CLI only).
 - **`Shared`** — Contracts: `VsRequest`/`VsResponse`/`VsMessage`, `BuiltInToolEnum`, `BasicEnum`, `AppMode`, `ToolMetadata`, `DiffEdit`, `ReadFileParams`, MCP models (`Contracts/Mcp`), McpHost wire protocol (`Contracts/McpHost`) + `Ipc.FrameCodec`.
 - **`McpHost`** (net10 exe, `InvAit.McpHost.exe`) — Out-of-process MCP client host on official `ModelContextProtocol` SDK. Named-pipe IPC (length-prefixed JSON): `ping/status/list_tools/call_tool/stop_server/stop_all/shutdown`. Registry lazily starts stdio or HTTP/SSE servers by fingerprint; idle-reap 10 min. One host per VS instance.
-- **`ToolCore.Standalone`** — CLI for testing MCP/exec without VS.
+- **`invaitcode`** — VS Code extension (TypeScript). Hosts the same Blazor WASM UI in a webview panel via a local static HTTP server. `extension.ts` handles tool dispatch, context publishing, and network proxy (streaming SSE through `postMessage`). `toolHandlers.ts` implements file/git/bash tools in Node.js. `DynamicEnvironmentHttpMessageHandler` (in UIBlazor) routes HTTP requests through the extension host when running inside VS Code. localStorage is proxied to `globalState` for persistence.
 
 ## Communication
 

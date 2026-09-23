@@ -1,5 +1,7 @@
 namespace UIBlazor.Tests.Agents;
 
+#pragma warning disable xUnit1013 // Public method should be marked as test
+#pragma warning disable CA1822 // Mark members as static
 public partial class BuiltInToolDefsTests
 {
     // Метод без параметров

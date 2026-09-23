@@ -9,7 +9,7 @@ public partial class SystemPromptBuilderTests
     private readonly Mock<IToolManager> _toolManagerMock;
     private readonly Mock<ISkillService> _skillServiceMock;
     private readonly Mock<IRuleService> _ruleServiceMock;
-    private readonly Mock<IVsCodeContextService> _vsCodeContextServiceMock;
+    private readonly Mock<IContextService> _vsCodeContextServiceMock;
 
     public SystemPromptBuilderTests()
     {
@@ -17,7 +17,7 @@ public partial class SystemPromptBuilderTests
         _toolManagerMock = new Mock<IToolManager>();
         _skillServiceMock = new Mock<ISkillService>();
         _ruleServiceMock = new Mock<IRuleService>();
-        _vsCodeContextServiceMock = new Mock<IVsCodeContextService>();
+        _vsCodeContextServiceMock = new Mock<IContextService>();
 
         // Setup default profile with all prompt sections enabled
         _profileManagerMock.SetupGet(p => p.ActiveProfile).Returns(new ConnectionProfile

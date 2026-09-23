@@ -8,7 +8,8 @@ public class ToolManager(
     ILocalStorageService localStorage,
     ICommonSettingsProvider commonSettingsProvider,
     IMcpSettingsProvider mcpSettingsProvider,
-    IVsBridge vsBridge)
+    IVsBridge vsBridge,
+    IContextService contextService)
     : BaseSettingsProvider<ToolSettings>(localStorage, logger, "ToolSettings"), IToolManager
 {
     private readonly ConcurrentDictionary<string, Tool> _registeredTools = new();
@@ -104,13 +105,15 @@ public class ToolManager(
 
     public IEnumerable<Tool> GetEnabledTools(AppMode mode)
     {
+        var ideType = contextService.IdeType;
+
         var builtIn = _registeredTools.Values.Where(t =>
         {
             if (Current.CategoryStates.TryGetValue(t.Category, out var state))
             {
-                return state.IsEnabled && t.Enabled && EnableInMode(t, mode);
+                return state.IsEnabled && t.Enabled && EnableInMode(t, mode) && IsAvailableInIde(t, ideType);
             }
-            return t.Enabled && EnableInMode(t, mode);
+            return t.Enabled && EnableInMode(t, mode) && IsAvailableInIde(t, ideType);
         });
 
         var mcp = mcpSettingsProvider.Current.Enabled
@@ -132,7 +135,27 @@ public class ToolManager(
         };
     }
 
+    /// <summary>
+    /// Checks if a tool is available in the current IDE.
+    /// If <paramref name="ideType"/> is null/empty, no filtering is applied (tool is available).
+    /// If <see cref="Tool.IdeAvailable"/> is null/empty, tool is available in all IDEs.
+    /// </summary>
+    public static bool IsAvailableInIde(Tool tool, string? ideType)
+    {
+        if (string.IsNullOrEmpty(ideType))
+            return true;
+        if (tool.IdeAvailable is null or { Count: 0 })
+            return true;
+        return tool.IdeAvailable.Contains(ideType);
+    }
+
     public IEnumerable<Tool> GetBuiltInTools() => _registeredTools.Values;
+
+    public IEnumerable<Tool> GetAvailableBuiltInTools()
+    {
+        var ideType = contextService.IdeType;
+        return _registeredTools.Values.Where(t => IsAvailableInIde(t, ideType));
+    }
 
     public IEnumerable<Tool> GetAllTools()
     {
@@ -152,7 +175,7 @@ public class ToolManager(
         if (_mcpToolsCache != null)
             return _mcpToolsCache;
 
-        _mcpToolsCache = BuildMcpTools().ToList();
+        _mcpToolsCache = [.. BuildMcpTools()];
         return _mcpToolsCache;
     }
 

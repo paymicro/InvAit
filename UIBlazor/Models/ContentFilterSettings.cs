@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Models;
+namespace UIBlazor.Models;
 
 /// <summary>
 /// Content filter settings stored in <see cref="CommonOptions"/>.

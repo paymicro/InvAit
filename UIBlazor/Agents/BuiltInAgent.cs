@@ -1,7 +1,9 @@
 namespace UIBlazor.Agents;
 
-public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInternalExecutor internalExecutor)
+public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInternalExecutor internalExecutor, IContextService contextService)
 {
+    private readonly IContextService _contextService = contextService;
+
     public IReadOnlyList<Tool> Tools =
     [
         // File operations
@@ -119,7 +121,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             DisplayName = SharedResource.ToolGetSolutionStructure,
             Category = ToolCategory.ReadFiles,
             NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.GetSolutionStructure)),
-            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetSolutionStructure, null, c)
+            ExecuteAsync = (_, c) => GetSolutionStructureAsync(contextService, vsBridge, c)
         },
         
         // Execution
@@ -197,4 +199,37 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             ExecuteWithContextAsync = (args, toolCall, c) => internalExecutor.ExecuteToolAsync(BuiltInToolEnum.DelegateTask, args, toolCall, c)
         }
     ];
+
+    /// <summary>
+    /// Returns the solution structure as a formatted ASCII tree.
+    /// Uses <see cref="SolutionTreeBuilder"/> + <see cref="SolutionTreeFormatter"/>
+    /// on data from <see cref="IContextService.CurrentContext"/> — the same source
+    /// used by <see cref="SystemPromptBuilder.BuildSolutionFiles"/>.
+    /// Falls back to the VS bridge (flat path list) when context is not yet available.
+    /// </summary>
+    private static async Task<VsToolResult> GetSolutionStructureAsync(
+        IContextService contextService,
+        IVsBridge vsBridge,
+        CancellationToken c)
+    {
+        var context = contextService.CurrentContext;
+
+        if (context is null || context.SolutionFiles.Count == 0)
+        {
+            return await vsBridge.ExecuteToolAsync(BuiltInToolEnum.GetSolutionStructure, null, c);
+        }
+
+        var tree = SolutionTreeBuilder.Build(
+            context.SolutionFiles,
+            context.SolutionProjects,
+            context.SolutionPath);
+        var formatted = SolutionTreeFormatter.Format(tree);
+
+        return new VsToolResult
+        {
+            Name = BuiltInToolEnum.GetSolutionStructure,
+            Result = formatted,
+            Success = true
+        };
+    }
 }

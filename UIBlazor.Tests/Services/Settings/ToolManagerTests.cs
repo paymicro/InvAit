@@ -8,6 +8,7 @@ public partial class ToolManagerTests
     private readonly Mock<IMcpSettingsProvider> _mcpSettingsMock;
     private readonly Mock<ICommonSettingsProvider> _commonSettingsMock;
     private readonly Mock<IVsBridge> _vsBridgeMock;
+    private readonly Mock<IContextService> _vsCodeContextMock;
     private readonly McpOptions _mcpOptions;
     private readonly ILogger<ToolManager> _logger;
     private readonly NativeToolDefinition _nativeTool;
@@ -18,7 +19,10 @@ public partial class ToolManagerTests
         _mcpSettingsMock = new Mock<IMcpSettingsProvider>();
         _commonSettingsMock = new Mock<ICommonSettingsProvider>();
         _vsBridgeMock = new Mock<IVsBridge>();
+        _vsCodeContextMock = new Mock<IContextService>();
         _logger = new LoggerMock<ToolManager>();
+
+        _vsCodeContextMock.SetupGet(x => x.IdeType).Returns((string?)null);
 
         _mcpOptions = new McpOptions { Enabled = true };
         _mcpSettingsMock.Setup(m => m.Current).Returns(_mcpOptions);
@@ -44,9 +48,9 @@ public partial class ToolManagerTests
             NativeTool = _nativeTool,
             ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Success = true, Result = "test result" })
         };
-        _builtInAgent = new BuiltInAgent(_vsBridgeMock.Object, Mock.Of<ISkillService>(), Mock.Of<IInternalExecutor>()) { Tools = [tool] };
+        _builtInAgent = new BuiltInAgent(_vsBridgeMock.Object, Mock.Of<ISkillService>(), Mock.Of<IInternalExecutor>(), Mock.Of<IContextService>()) { Tools = [tool] };
 
-        _toolManager = new ToolManager(_builtInAgent, _logger, _localStorageMock.Object, _commonSettingsMock.Object, _mcpSettingsMock.Object, _vsBridgeMock.Object);
+        _toolManager = new ToolManager(_builtInAgent, _logger, _localStorageMock.Object, _commonSettingsMock.Object, _mcpSettingsMock.Object, _vsBridgeMock.Object, _vsCodeContextMock.Object);
     }
 
     [Fact]

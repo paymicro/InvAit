@@ -7,14 +7,14 @@ public class VsBridge : IVsBridge, IDisposable
 {
     private readonly IJSRuntime _jsRuntime;
     private readonly ICommonSettingsProvider _commonOptions;
-    private readonly IVsCodeContextService _vsCodeContextService;
+    private readonly IContextService _vsCodeContextService;
     private DotNetObjectReference<VsBridge> _dotNetRef;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<VsResponse>> _pendingRequests;
     private bool _isInitialized;
 
     public VsBridge(IJSRuntime jsRuntime,
          ICommonSettingsProvider commonSettingsProvider,
-         IVsCodeContextService vsCodeContextService)
+         IContextService vsCodeContextService)
     {
         _jsRuntime = jsRuntime;
         _commonOptions = commonSettingsProvider;
@@ -122,7 +122,7 @@ public class VsBridge : IVsBridge, IDisposable
                 {
                     try
                     {
-                        var context = JsonUtils.Deserialize<VsCodeContext>(message.Payload);
+                        var context = JsonUtils.Deserialize<VsContext>(message.Payload);
                         if (context != null)
                         {
                             _vsCodeContextService.UpdateContext(context);

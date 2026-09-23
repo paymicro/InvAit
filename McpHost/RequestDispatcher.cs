@@ -1,6 +1,6 @@
 using System.Diagnostics;
-using System.Text.Json;
 using System.Text.Encodings.Web;
+using System.Text.Json;
 using Shared.Contracts.McpHost;
 
 namespace McpHost;
