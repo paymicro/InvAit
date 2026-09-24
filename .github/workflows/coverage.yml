@@ -85,7 +85,7 @@ jobs:
           echo "## VS Code Extension Coverage" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          cat coverage-output.txt | grep -A 50 "File" | head -60 >> $GITHUB_STEP_SUMMARY
+          cat coverage-output.txt | grep -A 50 "File" | tail -60 >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload lcov artifact

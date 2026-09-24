@@ -2,8 +2,8 @@
   "name": "invaitcode",
   "displayName": "InvAit",
   "description": "Local AI Chat and agent",
-  "version": "0.1.4",
-  "publisher": "invait",
+  "version": "0.1.5",
+  "publisher": "paymicro",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -76,7 +76,8 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run bundle",
+    "recreate:wwwroot": "rimraf wwwroot && cpr ../InvAit/UI/wwwroot wwwroot --overwrite",
+    "vscode:prepublish": "npm run bundle && recreate:wwwroot",
     "vscode:createVsix": "npx @vscode/vsce package",
     "compile": "tsc -p ./ --noEmit",
     "bundle": "node esbuild.js",
@@ -89,6 +90,7 @@
     "test:coverage": "c8 mocha --require ts-node/register src/test/**/*.test.ts --timeout 10000"
   },
   "devDependencies": {
+    "@stylistic/eslint-plugin": "^5.10.0",
     "@types/chai": "^4.3.20",
     "@types/chai-as-promised": "^7.1.8",
     "@types/mocha": "^10.0.10",
@@ -100,14 +102,15 @@
     "c8": "^11.0.0",
     "chai": "^4.5.0",
     "chai-as-promised": "^7.1.2",
+    "cpr": "^3.0.1",
     "esbuild": "^0.25.12",
     "eslint": "^10.5.0",
     "mocha": "^12.0.2",
+    "rimraf": "^6.1.3",
     "sinon": "^22.1.0",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.61.1",
-    "@stylistic/eslint-plugin": "^5.10.0"
+    "typescript-eslint": "^8.61.1"
   },
   "overrides": {
     "diff": "^8.0.4",

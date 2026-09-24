@@ -164,13 +164,4 @@
   <Target Name="RemoveMcpHost" BeforeTargets="Clean">
     <RemoveDir Directories="MCPHost" />
   </Target>
-  <!-- Копия папки UI\wwwroot в invaitcode\wwwroot -->
-  <Target Name="CopyUIBlazorInVSCode" AfterTargets="IncludeUIBlazorInVsix;Build">
-	<ItemGroup>
-	  <UiFiles Include="UI\wwwroot\**\*.*" />
-	</ItemGroup>
-	<Copy SourceFiles="@(UiFiles)"
-      DestinationFiles="@(UiFiles->'$(ProjectDir)..\invaitcode\wwwroot\%(RecursiveDir)%(Filename)%(Extension)')"
-      SkipUnchangedFiles="true" />
-  </Target>
 </Project>
