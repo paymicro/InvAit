@@ -10,6 +10,7 @@ public class VsBridge : IVsBridge, IDisposable
     private readonly IContextService _vsCodeContextService;
     private DotNetObjectReference<VsBridge> _dotNetRef;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<VsResponse>> _pendingRequests;
+    private readonly SemaphoreSlim _initLock = new(1, 1);
     private bool _isInitialized;
 
     public VsBridge(IJSRuntime jsRuntime,
@@ -24,8 +25,17 @@ public class VsBridge : IVsBridge, IDisposable
 
     public async Task InitializeAsync()
     {
-        if (!_isInitialized)
+        // Fast path — already initialized
+        if (_isInitialized)
+            return;
+
+        await _initLock.WaitAsync();
+        try
         {
+            // Double-check inside the lock
+            if (_isInitialized)
+                return;
+
             _dotNetRef = DotNetObjectReference.Create(this);
             var result = await _jsRuntime.InvokeAsync<string>("setVsBridgeHandler", _dotNetRef);
             _isInitialized = result == "OK";
@@ -35,6 +45,10 @@ public class VsBridge : IVsBridge, IDisposable
                 // Notify Host that we are ready to receive messages (e.g. initial context)
                 await _jsRuntime.InvokeVoidAsync("postVsMessage", new VsRequest { Action = BasicEnum.UIReady });
             }
+        }
+        finally
+        {
+            _initLock.Release();
         }
     }
 
@@ -179,15 +193,13 @@ public class VsBridge : IVsBridge, IDisposable
 
     private async Task EnsureInitializedAsync()
     {
-        if (!_isInitialized)
-        {
-            await InitializeAsync();
-        }
+        await InitializeAsync();
     }
 
     public void Dispose()
     {
         _dotNetRef?.Dispose();
+        _initLock.Dispose();
 
         // Отменяем все ожидающие запросы
         foreach (var tcs in _pendingRequests.Values)
