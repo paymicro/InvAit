@@ -75,23 +75,28 @@
             <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.25rem" class="rz-chat-message-actions">
                 @if (!Message.IsStreaming)
                 {
-                    <Tooltip Text="@SharedResource.MessageEdit">
-                        <RadzenButton
-                            Icon="edit"
-                            Variant="Variant.Text"
-                            ButtonStyle="ButtonStyle.Base"
-                            Size="ButtonSize.ExtraSmall"
-                            Click="@(() => OnEdit.InvokeAsync(Message))" />
-                    </Tooltip>
-                    <Tooltip Text="@SharedResource.MessageDelete">
-                        <RadzenButton
-                            Icon="delete"
-                            Variant="Variant.Text"
-                            ButtonStyle="ButtonStyle.Base"
-                            Size="ButtonSize.ExtraSmall"
-                            Click="@(() => OnDelete.InvokeAsync(Message))" />
-                    </Tooltip>
-                    @if (!IsLoading && IsLast && Message.Role == ChatMessageRole.Assistant)
+                    var lastAssistantDone = IsLast && !IsLoading && Message.Role is ChatMessageRole.Assistant;
+                    var showEditAndDel = !IsLast || lastAssistantDone || Message.Role is not ChatMessageRole.Assistant;
+                    if (showEditAndDel)
+                    {
+                        <Tooltip Text="@SharedResource.MessageEdit">
+                            <RadzenButton
+                                Icon="edit"
+                                Variant="Variant.Text"
+                                ButtonStyle="ButtonStyle.Base"
+                                Size="ButtonSize.ExtraSmall"
+                                Click="@(() => OnEdit.InvokeAsync(Message))" />
+                        </Tooltip>
+                        <Tooltip Text="@SharedResource.MessageDelete">
+                            <RadzenButton
+                                Icon="delete"
+                                Variant="Variant.Text"
+                                ButtonStyle="ButtonStyle.Base"
+                                Size="ButtonSize.ExtraSmall"
+                                Click="@(() => OnDelete.InvokeAsync(Message))" />
+                        </Tooltip>
+                    }
+                    @if (lastAssistantDone)
                     {
                         <Tooltip Text="@SharedResource.MessageRegenerate">
                             <RadzenButton

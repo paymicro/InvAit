@@ -369,6 +369,9 @@
   <data name="ToolRequestTimeoutSec" xml:space="preserve">
     <value>Request timeout</value>
   </data>
+  <data name="HttpTimeoutSec" xml:space="preserve">
+    <value>Request timeout</value>
+  </data>
   <data name="ExtraHeaders" xml:space="preserve">
     <value>Extra headers</value>
   </data>
@@ -590,5 +593,44 @@
   </data>
   <data name="BashDenyPatternsEmpty" xml:space="preserve">
     <value>No custom destructive patterns. Built-in patterns (rm -rf /, format, shutdown, ...) are always active.</value>
+  </data>
+  <data name="BashPatternTest" xml:space="preserve">
+    <value>Test</value>
+  </data>
+  <data name="BashPatternTestTitle" xml:space="preserve">
+    <value>Bash Pattern Tester</value>
+  </data>
+  <data name="BashPatternTestCommand" xml:space="preserve">
+    <value>Test command</value>
+  </data>
+  <data name="BashPatternTestRun" xml:space="preserve">
+    <value>Test</value>
+  </data>
+  <data name="BashPatternTestResult" xml:space="preserve">
+    <value>Result</value>
+  </data>
+  <data name="BashPatternTestAllowPatterns" xml:space="preserve">
+    <value>Allow patterns (safe)</value>
+  </data>
+  <data name="BashPatternTestDenyPatterns" xml:space="preserve">
+    <value>Deny patterns (destructive)</value>
+  </data>
+  <data name="BashPatternTestMatchedPattern" xml:space="preserve">
+    <value>Matched pattern</value>
+  </data>
+  <data name="BashPatternTestMatchSource" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="BashPatternTestChainParts" xml:space="preserve">
+    <value>Chain parts</value>
+  </data>
+  <data name="BashPatternTestPlaceholder" xml:space="preserve">
+    <value>git status &amp;&amp; rm -rf /</value>
+  </data>
+  <data name="BashPatternTestBuiltIn" xml:space="preserve">
+    <value>Built-in</value>
+  </data>
+  <data name="BashPatternTestCustom" xml:space="preserve">
+    <value>Custom</value>
   </data>
 </root>

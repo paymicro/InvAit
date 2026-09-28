@@ -1,0 +1,139 @@
+@inject IToolManager ToolManager
+
+<RadzenStack Gap="1rem">
+    <RadzenStack Gap="0.5rem">
+        <RadzenLabel Text="@SharedResource.BashPatternTestCommand" />
+        <RadzenTextArea @bind-Value="_testCommand"
+                        Placeholder="@SharedResource.BashPatternTestPlaceholder"
+                        Rows="3"
+                        Style="width: 100%; font-family: monospace;" />
+        <RadzenButton Text="@SharedResource.BashPatternTestRun"
+                      Icon="science"
+                      ButtonStyle="ButtonStyle.Primary"
+                      Click="@RunTest" />
+    </RadzenStack>
+
+    @if (_result is not null)
+    {
+        <RadzenStack Gap="0.5rem">
+            <RadzenText TextStyle="TextStyle.Overline" Text="@SharedResource.BashPatternTestResult" />
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                <RadzenBadge Text="@_result.Classification.ToString()"
+                             BadgeStyle="@GetBadgeStyle(_result.Classification)" />
+                <RadzenText TextStyle="TextStyle.Body2">
+                    <strong>@SharedResource.BashPatternTestMatchSource:</strong> @_result.MatchSource
+                </RadzenText>
+            </RadzenStack>
+            @if (_result.MatchedPattern is not null)
+            {
+                <RadzenText TextStyle="TextStyle.Body2">
+                    <strong>@SharedResource.BashPatternTestMatchedPattern:</strong>
+                    <code style="font-family: monospace;">@_result.MatchedPattern</code>
+                </RadzenText>
+            }
+        </RadzenStack>
+
+        @if (_chainParts.Count > 1)
+        {
+            <RadzenStack Gap="0.3rem">
+                <RadzenText TextStyle="TextStyle.Overline" Text="@SharedResource.BashPatternTestChainParts" />
+                @foreach (var part in _chainParts)
+                {
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                        <RadzenBadge Text="@part.Result.Classification.ToString()"
+                                     BadgeStyle="@GetBadgeStyle(part.Result.Classification)" />
+                        <RadzenText TextStyle="TextStyle.Body2" Style="font-family: monospace;">
+                            @part.Part
+                        </RadzenText>
+                        <RadzenText TextStyle="TextStyle.Caption" Style="color: var(--rz-text-secondary);">
+                            (@part.Result.MatchSource)
+                        </RadzenText>
+                    </RadzenStack>
+                }
+            </RadzenStack>
+        }
+    }
+
+    <Details Text="@SharedResource.BashPatternTestAllowPatterns" IsRounded>
+        <RadzenStack Gap="0.2rem">
+            <RadzenText TextStyle="TextStyle.Caption">
+                @SharedResource.BashPatternTestBuiltIn
+            </RadzenText>
+            <div>
+                @foreach (var pattern in BashCommandClassifier.DefaultSafePatterns)
+                {
+                    <RadzenBadge Text="@pattern" BadgeStyle="BadgeStyle.Base" Variant="Variant.Filled" class="rz-ml-4" />
+                }
+            </div>
+            <div>
+                @if (AllowPatterns.Count > 0)
+                {
+                    <RadzenText TextStyle="TextStyle.Caption">
+                        @SharedResource.BashPatternTestCustom
+                    </RadzenText>                    
+                    <div>
+                    @foreach (var pattern in AllowPatterns)
+                    {
+                        <RadzenBadge Text="@pattern" BadgeStyle="BadgeStyle.Base" Variant="Variant.Filled" class="rz-ml-4" />
+                    }
+                    </div>
+                }
+            </div>
+        </RadzenStack>
+    </Details>
+
+    <Details Text="@SharedResource.BashPatternTestDenyPatterns" IsRounded>
+        <RadzenStack Gap="0.2rem" >
+            <RadzenText TextStyle="TextStyle.Caption">
+                @SharedResource.BashPatternTestBuiltIn
+            </RadzenText>
+            <div>
+                @foreach (var pattern in BashCommandClassifier.DefaultDestructivePatterns)
+                {
+                    <RadzenBadge Text="@pattern" BadgeStyle="BadgeStyle.Base" Variant="Variant.Filled" class="rz-ml-4" />
+                }
+            </div>
+            <div>
+                @if (DenyPatterns.Count > 0)
+                {
+                    <RadzenText TextStyle="TextStyle.Caption">
+                        @SharedResource.BashPatternTestCustom
+                    </RadzenText>
+                    <div>
+                    @foreach (var pattern in DenyPatterns)
+                    {
+                        <RadzenBadge Text="@pattern" BadgeStyle="BadgeStyle.Base" Variant="Variant.Filled" class="rz-ml-4" />
+                    }
+                    </div>
+                }
+            </div>
+        </RadzenStack>
+    </Details>
+</RadzenStack>
+
+@code {
+    private string _testCommand = string.Empty;
+    private BashClassificationResult? _result;
+    private List<(string Part, BashClassificationResult Result)> _chainParts = [];
+
+    private List<string> AllowPatterns => ToolManager.Current.BashSettings.AllowPatterns;
+    private List<string> DenyPatterns => ToolManager.Current.BashSettings.DenyPatterns;
+
+    private void RunTest()
+    {
+        var settings = ToolManager.Current.BashSettings;
+        var classifier = new BashCommandClassifier(settings);
+
+        _result = classifier.ClassifyDetailed(_testCommand);
+        _chainParts = classifier.ClassifyDetailedParts(_testCommand);
+    }
+
+    private static BadgeStyle GetBadgeStyle(BashCommandClassification classification) => classification switch
+    {
+        BashCommandClassification.Safe => BadgeStyle.Success,
+        BashCommandClassification.Unknown => BadgeStyle.Base,
+        BashCommandClassification.Destructive => BadgeStyle.Warning,
+        BashCommandClassification.UserDenied => BadgeStyle.Danger,
+        _ => BadgeStyle.Base,
+    };
+}

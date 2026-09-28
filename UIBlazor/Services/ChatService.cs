@@ -15,7 +15,8 @@ public class ChatService(
     ILocalStorageService localStorage,
     ILogger<IChatService> logger,
     IToolManager toolManager,
-    IContentFilter contentFilter
+    IContentFilter contentFilter,
+    ICommonSettingsProvider commonSettingsProvider
     ) : IChatService
 {
     #pragma warning disable format
@@ -465,6 +466,8 @@ public class ChatService(
         {
             request.Headers.TryAddWithoutValidation(header.Name, header.Value);
         }
+
+        httpClient.Timeout = TimeSpan.FromSeconds(commonSettingsProvider.Current.HttpTimeoutSec);
 
         using var response = await httpClient.SendAsync(request, Options.Stream ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead, cancellationToken);
 

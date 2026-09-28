@@ -29,6 +29,25 @@ public enum BashCommandClassification
 }
 
 /// <summary>
+/// Результат детальной классификации bash-команды.
+/// Содержит не только уровень опасности, но и информацию о том,
+/// какой паттерн сработал и откуда он (встроенный или пользовательский).
+/// </summary>
+/// <param name="Classification">Уровень опасности команды.</param>
+/// <param name="MatchedPattern">Паттерн, который сработал (null, если ничего не match).</param>
+/// <param name="MatchSource">Источник срабатывания: "Built-in safe", "Custom safe",
+/// "Built-in destructive", "Custom deny", "Substitution detected", "No match".</param>
+public record BashClassificationResult(
+    BashCommandClassification Classification,
+    string? MatchedPattern,
+    string MatchSource);
+
+/// <summary>
+/// Внутренняя запись для отслеживания источника паттерна.
+/// </summary>
+internal record PatternInfo(Regex Regex, string Pattern, bool IsCustom);
+
+/// <summary>
 /// Классифицирует bash-команды по содержимому.
 /// <para>
 /// Для цепочек команд (разделённых &amp;&amp;, ||, ;, |, \n) берётся
@@ -80,6 +99,11 @@ public class BashCommandClassifier
     private readonly Regex[] _destructiveRegexes;
     private readonly Regex[] _userDeniedRegexes;
 
+    // Parallel lists for detailed classification — track original pattern strings and source
+    private readonly PatternInfo[] _safeInfos;
+    private readonly PatternInfo[] _destructiveInfos;
+    private readonly PatternInfo[] _deniedInfos;
+
     /// <summary>
     /// Detects command/process substitution: <c>$(cmd)</c> (but not arithmetic <c>$((expr))</c>),
     /// <c>&lt;(cmd)</c>, and backticks. Presence downgrades Safe → Unknown.
@@ -100,16 +124,52 @@ public class BashCommandClassifier
     public BashCommandClassifier(BashCommandSettings? settings = null)
     {
         var safePatterns = DefaultSafePatterns;
+        var customSafePatterns = Array.Empty<string>();
 
         if (settings is { AllowPatterns.Count: > 0 })
+        {
+            customSafePatterns = [.. settings.AllowPatterns];
             safePatterns = [.. DefaultSafePatterns, .. settings.AllowPatterns];
+        }
 
         _safeRegexes = CompilePatterns(safePatterns);
         _destructiveRegexes = CompilePatterns(DefaultDestructivePatterns);
 
-        _userDeniedRegexes = settings is { DenyPatterns.Count: > 0 }
-            ? CompilePatterns(settings.DenyPatterns)
+        var denyPatterns = settings is { DenyPatterns.Count: > 0 }
+            ? settings.DenyPatterns
             : [];
+
+        _userDeniedRegexes = CompilePatterns(denyPatterns);
+
+        // Build pattern info arrays for detailed classification
+        _safeInfos = [.. BuildPatternInfos(DefaultSafePatterns, false), .. BuildPatternInfos(customSafePatterns, true)];
+        _destructiveInfos = BuildPatternInfos(DefaultDestructivePatterns, false);
+        _deniedInfos = BuildPatternInfos(denyPatterns, true);
+    }
+
+    /// <summary>
+    /// Компилирует паттерны в массив PatternInfo, пропуская пустые и невалидные.
+    /// </summary>
+    private static PatternInfo[] BuildPatternInfos(IEnumerable<string> patterns, bool isCustom)
+    {
+        var infos = new List<PatternInfo>();
+        foreach (var pattern in patterns)
+        {
+            if (string.IsNullOrWhiteSpace(pattern))
+                continue;
+            try
+            {
+                infos.Add(new PatternInfo(
+                    new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.Compiled),
+                    pattern,
+                    isCustom));
+            }
+            catch (ArgumentException)
+            {
+                // Skip invalid regex pattern
+            }
+        }
+        return [.. infos];
     }
 
     /// <summary>
@@ -202,6 +262,136 @@ public class BashCommandClassifier
 
         // Default fallback
         return BashCommandClassification.Unknown;
+    }
+
+    /// <summary>
+    /// Детально классифицирует одну команду (без разделителей цепочки).
+    /// Возвращает не только уровень опасности, но и какой паттерн сработал и откуда.
+    /// </summary>
+    private BashClassificationResult ClassifySingleDetailed(string command)
+    {
+        // Check user-specified deny patterns first — auto-reject
+        foreach (var info in _deniedInfos)
+        {
+            if (info.Regex.IsMatch(command))
+                return new BashClassificationResult(
+                    BashCommandClassification.UserDenied,
+                    info.Pattern,
+                    "Custom deny");
+        }
+
+        // Check built-in destructive patterns — ask
+        foreach (var info in _destructiveInfos)
+        {
+            if (info.Regex.IsMatch(command))
+                return new BashClassificationResult(
+                    BashCommandClassification.Destructive,
+                    info.Pattern,
+                    "Built-in destructive");
+        }
+
+        // Check safe
+        foreach (var info in _safeInfos)
+        {
+            if (info.Regex.IsMatch(command))
+            {
+                // Command/process substitution can hide destructive commands inside
+                // safe-looking commands, e.g. echo $(rm -rf /) or cat `rm -rf /`.
+                // $((expr)) arithmetic expansion is excluded (safe, just math).
+                // Downgrade to Unknown so the user is asked in Ask mode.
+                if (_substitutionRegex.IsMatch(command))
+                    return new BashClassificationResult(
+                        BashCommandClassification.Unknown,
+                        info.Pattern,
+                        "Substitution detected");
+                return new BashClassificationResult(
+                    BashCommandClassification.Safe,
+                    info.Pattern,
+                    info.IsCustom ? "Custom safe" : "Built-in safe");
+            }
+        }
+
+        // Default fallback
+        return new BashClassificationResult(
+            BashCommandClassification.Unknown,
+            null,
+            "No match");
+    }
+
+    /// <summary>
+    /// Детально классифицирует bash-команду.
+    /// <para>
+    /// Аналог <see cref="Classify"/>, но дополнительно возвращает информацию о том,
+    /// какой паттерн сработал и откуда он (встроенный или пользовательский).
+    /// </para>
+    /// <para>
+    /// Для цепочек команд возвращает результат для наиболее опасной части.
+    /// </para>
+    /// </summary>
+    public BashClassificationResult ClassifyDetailed(string? command)
+    {
+        if (string.IsNullOrWhiteSpace(command))
+            return new BashClassificationResult(
+                BashCommandClassification.Unknown,
+                null,
+                "No match");
+
+        var parts = SplitCommandChain(command);
+
+        if (parts.Length == 0)
+            return new BashClassificationResult(
+                BashCommandClassification.Unknown,
+                null,
+                "No match");
+
+        BashClassificationResult? maxResult = null;
+        var anyClassified = false;
+
+        foreach (var part in parts)
+        {
+            var trimmed = part.Trim();
+            if (string.IsNullOrWhiteSpace(trimmed))
+                continue;
+
+            var partResult = ClassifySingleDetailed(trimmed);
+            anyClassified = true;
+
+            // Take maximum danger level: Safe (0) < Unknown (1) < Destructive (2) < UserDenied (3)
+            if (maxResult is null || (int)partResult.Classification > (int)maxResult.Classification)
+                maxResult = partResult;
+        }
+
+        return anyClassified
+            ? maxResult!
+            : new BashClassificationResult(
+                BashCommandClassification.Unknown,
+                null,
+                "No match");
+    }
+
+    /// <summary>
+    /// Детально классифицирует каждую часть цепочки команд по отдельности.
+    /// Возвращает список (текст части, результат классификации) для каждой непустой части.
+    /// </summary>
+    public List<(string Part, BashClassificationResult Result)> ClassifyDetailedParts(string? command)
+    {
+        var results = new List<(string Part, BashClassificationResult Result)>();
+
+        if (string.IsNullOrWhiteSpace(command))
+            return results;
+
+        var parts = SplitCommandChain(command);
+
+        foreach (var part in parts)
+        {
+            var trimmed = part.Trim();
+            if (string.IsNullOrWhiteSpace(trimmed))
+                continue;
+
+            results.Add((trimmed, ClassifySingleDetailed(trimmed)));
+        }
+
+        return results;
     }
 
     /// <summary>

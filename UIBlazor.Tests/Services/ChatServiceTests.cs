@@ -13,6 +13,7 @@ public partial class ChatServiceTests
     private readonly Mock<IToolManager> _toolManagerMock;
     private readonly Mock<ILocalStorageService> _localStorageMock;
     private readonly Mock<ISkillService> _skillServiceMock;
+    private readonly Mock<ICommonSettingsProvider> _commonSettingsProvider;
 
     public ChatServiceTests()
     {
@@ -20,6 +21,7 @@ public partial class ChatServiceTests
         _toolManagerMock = new Mock<IToolManager>();
         _localStorageMock = new Mock<ILocalStorageService>();
         _skillServiceMock = new Mock<ISkillService>();
+        _commonSettingsProvider = new Mock<ICommonSettingsProvider>();
 
         // Setup default options
         var options = new ProfileOptions
@@ -43,6 +45,8 @@ public partial class ChatServiceTests
 
         // Default setup for session listing
         _localStorageMock.Setup(ls => ls.GetAllKeysAsync()).ReturnsAsync([]);
+
+        _commonSettingsProvider.Setup(s => s.Current).Returns(new CommonOptions());
     }
 
     private ChatService CreateChatService(HttpClient? httpClient = null)
@@ -54,7 +58,8 @@ public partial class ChatServiceTests
             _localStorageMock.Object,
             new LoggerMock<IChatService>(),
             _toolManagerMock.Object,
-            Mock.Of<IContentFilter>());
+            Mock.Of<IContentFilter>(),
+            _commonSettingsProvider.Object);
     }
 
     [Fact]

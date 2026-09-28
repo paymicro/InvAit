@@ -1,7 +1,13 @@
-﻿<RadzenStack Gap="0.3rem" class="rz-pl-4">
-    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.4rem" AlignItems="AlignItems.Center">
-        <i class="fa-solid @IconClass" style="@IconStyle"></i>
-        <RadzenText TextStyle="TextStyle.Subtitle1">@Title</RadzenText>
+<RadzenStack Gap="0.3rem" class="rz-pl-4">
+    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.4rem" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.4rem" AlignItems="AlignItems.Center">
+            <i class="fa-solid @IconClass" style="@IconStyle"></i>
+            <RadzenText TextStyle="TextStyle.Subtitle1">@Title</RadzenText>
+        </RadzenStack>
+        <RadzenButton
+            Icon="science" Text="@SharedResource.BashPatternTest"
+            ButtonStyle="ButtonStyle.Info" Size="ButtonSize.Small" Variant="Variant.Flat"
+            Click="@OpenTestDialog" />
     </RadzenStack>
     <RadzenText TextStyle="TextStyle.Caption" Style="color: var(--rz-text-secondary);">
         @Description
@@ -33,6 +39,7 @@
 
 @code {
     [Inject] IToolManager ToolManager { get; set; } = null!;
+    [Inject] DialogService DialogService { get; set; } = null!;
 
     [Parameter] public bool IsDeny { get; set; }
 
@@ -68,5 +75,20 @@
             Patterns.RemoveAt(index);
             ToolManager.CallSaveTrigger();
         }
+    }
+
+    private async Task OpenTestDialog()
+    {
+        await DialogService.OpenAsync<BashPatternTestRun>(
+            SharedResource.BashPatternTestTitle,
+            [],
+            new DialogOptions
+            {
+                Resizable = true,
+                Icon = "science",
+                Top = "1em",
+                Width = "50em"
+            }
+        );
     }
 }

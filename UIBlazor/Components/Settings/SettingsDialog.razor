@@ -80,9 +80,17 @@
                     </RadzenStack>
                 </RadzenStack>
 
-                    <RadzenFormField Text="@SharedResource.ExtraPayload" Variant="Variant.Outlined" AllowFloatingLabel="false">
-                        <RadzenTextArea @bind-Value="@ProfileManager.ActiveProfile.ExtraPayload" Style="min-height: 96px" Placeholder="@_extraPayloadPlaceholder" />
-                    </RadzenFormField>
+                <RadzenStack Gap="0.2rem">
+                    <RadzenLabel Text="@SharedResource.HttpTimeoutSec" />
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                        <RadzenSlider @bind-Value="@CommonSettingsProvider.Current.HttpTimeoutSec" Min="10" Max="3600" Step="10" Style="width: 100%; height: 20px;" />
+                        <RadzenLabel Text="@FormatTimeout(CommonSettingsProvider.Current.HttpTimeoutSec * 1000)" Style="text-align: right; width: 80px;" />
+                    </RadzenStack>
+                </RadzenStack>
+
+                <RadzenFormField Text="@SharedResource.ExtraPayload" Variant="Variant.Outlined" AllowFloatingLabel="false">
+                    <RadzenTextArea @bind-Value="@ProfileManager.ActiveProfile.ExtraPayload" Style="min-height: 96px" Placeholder="@_extraPayloadPlaceholder" />
+                </RadzenFormField>
 
                 <ExtraHeaderPicker />
 
@@ -135,10 +143,16 @@
 
                                 if (category is ToolCategory.Execution && state.ApprovalMode is not ToolApprovalMode.Deny)
                                 {
-                                    <RadzenStack Gap="1rem">
-                                        <BashPatternsEditor />
-                                        <BashPatternsEditor IsDeny="true" />
-                                    </RadzenStack>
+                                    <RadzenAccordion>
+                                        <Items>
+                                            <RadzenAccordionItem Text="@SharedResource.BashSafePatterns">
+                                                <BashPatternsEditor />
+                                            </RadzenAccordionItem>
+                                            <RadzenAccordionItem Text="@SharedResource.BashDenyPatterns">
+                                                <BashPatternsEditor IsDeny="true" />
+                                            </RadzenAccordionItem>
+                                        </Items>
+                                    </RadzenAccordion>
                                 }
 
                                 if (category is ToolCategory.SubAgent)

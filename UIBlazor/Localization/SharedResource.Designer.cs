@@ -142,6 +142,123 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Test.
+        /// </summary>
+        public static string BashPatternTest {
+            get {
+                return ResourceManager.GetString("BashPatternTest", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Allow patterns (safe).
+        /// </summary>
+        public static string BashPatternTestAllowPatterns {
+            get {
+                return ResourceManager.GetString("BashPatternTestAllowPatterns", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Built-in.
+        /// </summary>
+        public static string BashPatternTestBuiltIn {
+            get {
+                return ResourceManager.GetString("BashPatternTestBuiltIn", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Chain parts.
+        /// </summary>
+        public static string BashPatternTestChainParts {
+            get {
+                return ResourceManager.GetString("BashPatternTestChainParts", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Test command.
+        /// </summary>
+        public static string BashPatternTestCommand {
+            get {
+                return ResourceManager.GetString("BashPatternTestCommand", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Custom.
+        /// </summary>
+        public static string BashPatternTestCustom {
+            get {
+                return ResourceManager.GetString("BashPatternTestCustom", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Deny patterns (destructive).
+        /// </summary>
+        public static string BashPatternTestDenyPatterns {
+            get {
+                return ResourceManager.GetString("BashPatternTestDenyPatterns", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Matched pattern.
+        /// </summary>
+        public static string BashPatternTestMatchedPattern {
+            get {
+                return ResourceManager.GetString("BashPatternTestMatchedPattern", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Source.
+        /// </summary>
+        public static string BashPatternTestMatchSource {
+            get {
+                return ResourceManager.GetString("BashPatternTestMatchSource", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to git status &amp;&amp; rm -rf /.
+        /// </summary>
+        public static string BashPatternTestPlaceholder {
+            get {
+                return ResourceManager.GetString("BashPatternTestPlaceholder", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Result.
+        /// </summary>
+        public static string BashPatternTestResult {
+            get {
+                return ResourceManager.GetString("BashPatternTestResult", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Test.
+        /// </summary>
+        public static string BashPatternTestRun {
+            get {
+                return ResourceManager.GetString("BashPatternTestRun", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Bash Pattern Tester.
+        /// </summary>
+        public static string BashPatternTestTitle {
+            get {
+                return ResourceManager.GetString("BashPatternTestTitle", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Safe command patterns.
         /// </summary>
         public static string BashSafePatterns {
@@ -606,6 +723,15 @@ namespace UIBlazor.Localization {
         public static string Header {
             get {
                 return ResourceManager.GetString("Header", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Request timeout.
+        /// </summary>
+        public static string HttpTimeoutSec {
+            get {
+                return ResourceManager.GetString("HttpTimeoutSec", resourceCulture);
             }
         }
         

@@ -625,7 +625,14 @@ public class ToolExecutor
     /// </summary>
     public async Task OpenEditorAsync(string filepath)
     {
-        await VS.Documents.OpenAsync(filepath);
+        try
+        {
+            await VS.Documents.OpenAsync(filepath);
+        }
+        catch (Exception)
+        {
+            // иногда бывает - игнорим
+        }
     }
 
     private async Task<VsResponse> BuildSolutionAsync()

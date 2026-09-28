@@ -6,6 +6,8 @@ public class CommonOptions : BaseOptions
 {
     public int ToolTimeoutMs { get; set => SetIfChanged(ref field, value); } = 120_000;
 
+    public int HttpTimeoutSec { get; set => SetIfChanged(ref field, value); } = 100;
+
     public bool ShowMessageTimings { get; set => SetIfChanged(ref field, value); } = true;
 
     public string Culture { get; set => SetIfChanged(ref field, value); } = CultureInfo.CurrentCulture.Name;

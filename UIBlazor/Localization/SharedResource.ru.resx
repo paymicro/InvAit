@@ -369,6 +369,9 @@
   <data name="ToolRequestTimeoutSec" xml:space="preserve">
     <value>Тайм-аут запроса</value>
   </data>
+  <data name="HttpTimeoutSec" xml:space="preserve">
+    <value>Тайм-аут запроса</value>
+  </data>
   <data name="ExtraHeaders" xml:space="preserve">
     <value>Дополнительные заголовки</value>
   </data>
@@ -590,5 +593,44 @@
   </data>
   <data name="BashDenyPatternsEmpty" xml:space="preserve">
     <value>Нет пользовательских деструктивных паттернов. Встроенные (rm -rf /, format, shutdown, ...) всегда активны.</value>
+  </data>
+  <data name="BashPatternTest" xml:space="preserve">
+    <value>Тест</value>
+  </data>
+  <data name="BashPatternTestTitle" xml:space="preserve">
+    <value>Тестер bash-паттернов</value>
+  </data>
+  <data name="BashPatternTestCommand" xml:space="preserve">
+    <value>Тестовая команда</value>
+  </data>
+  <data name="BashPatternTestRun" xml:space="preserve">
+    <value>Тест</value>
+  </data>
+  <data name="BashPatternTestResult" xml:space="preserve">
+    <value>Результат</value>
+  </data>
+  <data name="BashPatternTestAllowPatterns" xml:space="preserve">
+    <value>Разрешённые паттерны (безопасные)</value>
+  </data>
+  <data name="BashPatternTestDenyPatterns" xml:space="preserve">
+    <value>Запрещённые паттерны (деструктивные)</value>
+  </data>
+  <data name="BashPatternTestMatchedPattern" xml:space="preserve">
+    <value>Сработавший паттерн</value>
+  </data>
+  <data name="BashPatternTestMatchSource" xml:space="preserve">
+    <value>Источник</value>
+  </data>
+  <data name="BashPatternTestChainParts" xml:space="preserve">
+    <value>Части цепочки</value>
+  </data>
+  <data name="BashPatternTestPlaceholder" xml:space="preserve">
+    <value>git status &amp;&amp; rm -rf /</value>
+  </data>
+  <data name="BashPatternTestBuiltIn" xml:space="preserve">
+    <value>Встроенные</value>
+  </data>
+  <data name="BashPatternTestCustom" xml:space="preserve">
+    <value>Пользовательские</value>
   </data>
 </root>
