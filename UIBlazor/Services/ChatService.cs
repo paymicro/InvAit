@@ -467,9 +467,13 @@ public class ChatService(
             request.Headers.TryAddWithoutValidation(header.Name, header.Value);
         }
 
-        httpClient.Timeout = TimeSpan.FromSeconds(commonSettingsProvider.Current.HttpTimeoutSec);
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(commonSettingsProvider.Current.HttpTimeoutSec));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
-        using var response = await httpClient.SendAsync(request, Options.Stream ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead, cancellationToken);
+        // TODO проверять на OperationCanceledException
+        using var response = await httpClient.SendAsync(request,
+            Options.Stream ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead,
+            linkedCts.Token);
 
         if (!response.IsSuccessStatusCode)
         {

@@ -1,0 +1,77 @@
+@typeparam T where T : struct
+
+<RadzenStack Gap="0.2rem">
+    <RadzenLabel Text="@Label" />
+    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+        <RadzenSlider TValue="T"
+            Value="@Value"
+            Change="@OnLinearChange"
+            Min="@Min"
+            Max="@Max"
+            Step="@Step"
+            Style="@($"width: 100%; height: 20px;{ExtraStyle}")" />
+        <RadzenLabel Text="@DisplayText" Style="@($"text-align: right; width: {ValueWidth};")" />
+    </RadzenStack>
+</RadzenStack>
+
+@code {
+    [Parameter] public string Label { get; set; } = string.Empty;
+    [Parameter] public T Value { get; set; }
+    [Parameter] public EventCallback<T> ValueChanged { get; set; }
+
+    /// <summary> Минимум (общий для линейного и геометрического режима). </summary>
+    [Parameter] public decimal Min { get; set; }
+    /// <summary> Максимум (общий для линейного и геометрического режима). </summary>
+    [Parameter] public decimal Max { get; set; } = 100;
+    /// <summary> Линейный режим: шаг. </summary>
+    [Parameter] public string Step { get; set; } = "1";
+
+    /// <summary> Кастомный форматтер отображаемого значения. </summary>
+    [Parameter] public Func<double, string>? ValueFormatter { get; set; }
+
+    /// <summary> Показывать ∞ когда Value равно нулю. </summary>
+    [Parameter] public bool ShowInfinityAtZero { get; set; }
+
+    /// <summary> Ширина поля значения. </summary>
+    [Parameter] public string ValueWidth { get; set; } = "50px";
+
+    /// <summary> Дополнительный CSS для слайдера. </summary>
+    [Parameter] public string? ExtraStyle { get; set; }
+
+    // ── Внутреннее состояние ──
+
+    // Кешированные double-значения Min/Max для математики
+    private double _minDouble;
+    private double _maxDouble;
+
+    protected override void OnParametersSet()
+    {
+        _minDouble = (double)Min;
+        _maxDouble = (double)Max;
+    }
+
+    private async Task OnLinearChange(T newValue)
+    {
+        await ValueChanged.InvokeAsync(newValue);
+    }
+
+    private string DisplayText
+    {
+        get
+        {
+            var d = ToDouble(Value);
+
+            if (ShowInfinityAtZero && d == 0)
+                return "∞";
+
+            if (ValueFormatter is not null)
+                return ValueFormatter(d);
+
+            return d.ToString("0.##", CultureInfo.InvariantCulture);
+        }
+    }
+
+    // ── Конвертация T ↔ double ──
+
+    private static double ToDouble(T value) => Convert.ToDouble(value, CultureInfo.InvariantCulture);
+}

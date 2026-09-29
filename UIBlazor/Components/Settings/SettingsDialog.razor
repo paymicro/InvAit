@@ -48,45 +48,32 @@
 
                 <CheckBox Text="@SharedResource.UseStream" @bind-Value=@ProfileManager.ActiveProfile.Stream />
 
-                <RadzenStack Gap="0.2rem">
-                    <RadzenLabel Text="@SharedResource.MaxTokens" />
-                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                        <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.MaxTokens" Min=0 Max=30000 Step="1000" Style="width: 100%; height: 20px;" />
-                        <RadzenLabel Text="@(ProfileManager.ActiveProfile.MaxTokens > 0 ? ProfileManager.ActiveProfile.MaxTokens.ToString() : "∞")" Style="text-align: right; width: 50px;" />
-                    </RadzenStack>
-                </RadzenStack>
+                <SliderField Label="@SharedResource.MaxTokens"
+                             @bind-Value="@ProfileManager.ActiveProfile.MaxTokens"
+                             Min="0" Max="30000" Step="1000"
+                             ShowInfinityAtZero="true" />
 
-                <RadzenStack Gap="0.2rem">
-                    <RadzenLabel Text="@SharedResource.ContextWindow" />
-                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                        <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.ContextWindow" Min=5000 Max=256000 Step="1000" Style="width: 100%; height: 20px;" />
-                        <RadzenLabel Text="@($"{ProfileManager.ActiveProfile.ContextWindow / 1000}K")" Style="text-align: right; width: 50px;" />
-                    </RadzenStack>
-                </RadzenStack>
+                <SliderField Label="@SharedResource.ContextWindow"
+                             @bind-Value="@ProfileManager.ActiveProfile.ContextWindow"
+                             Min="5000" Max="512000" Step="1000"
+                             ValueFormatter="@(v => $"{(int)(v / 1000)}K")" />
 
-                <RadzenStack Gap="0.2rem">
-                    <RadzenLabel Text="@SharedResource.Temperature" />
-                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                        <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.Temperature" Min="0" Max="2" Step="0.1" Style="width: 100%; height: 20px;" />
-                        <RadzenLabel Text="@Math.Abs(ProfileManager.ActiveProfile.Temperature).ToString("0.0")" Style="text-align: right; width: 50px;" />
-                    </RadzenStack>
-                </RadzenStack>
+                <SliderField Label="@SharedResource.Temperature"
+                             @bind-Value="@ProfileManager.ActiveProfile.Temperature"
+                             Min="0m" Max="2m" Step="0.1"
+                             ValueFormatter="@(v => Math.Abs(v).ToString("0.0", CultureInfo.InvariantCulture))" />
 
-                <RadzenStack Gap="0.2rem">
-                    <RadzenLabel Text="@SharedResource.CompressionTokenThreshold" />
-                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                        <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.TokensToCompress" Min=0 Max=256000 Step="1000" Style="width: 100%; height: 20px;" />
-                        <RadzenLabel Text="@(ProfileManager.ActiveProfile.TokensToCompress > 0 ? $"{ProfileManager.ActiveProfile.TokensToCompress / 1000}K" : "∞")" Style="text-align: right; width: 50px;" />
-                    </RadzenStack>
-                </RadzenStack>
+                <SliderField Label="@SharedResource.CompressionTokenThreshold"
+                             @bind-Value="@ProfileManager.ActiveProfile.TokensToCompress"
+                             Min="0" Max="512000" Step="1000"
+                             ShowInfinityAtZero="true"
+                             ValueFormatter="@(v => $"{v / 1000}K")" />
 
-                <RadzenStack Gap="0.2rem">
-                    <RadzenLabel Text="@SharedResource.HttpTimeoutSec" />
-                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                        <RadzenSlider @bind-Value="@CommonSettingsProvider.Current.HttpTimeoutSec" Min="10" Max="3600" Step="10" Style="width: 100%; height: 20px;" />
-                        <RadzenLabel Text="@FormatTimeout(CommonSettingsProvider.Current.HttpTimeoutSec * 1000)" Style="text-align: right; width: 80px;" />
-                    </RadzenStack>
-                </RadzenStack>
+                <SliderField Label="@SharedResource.HttpTimeoutSec"
+                             @bind-Value="@CommonSettingsProvider.Current.HttpTimeoutSec"
+                             Min="10" Max="1200" Step="10"
+                             ValueWidth="80px"
+                             ValueFormatter="@(v => FormatTimeout((int)(v * 1000)))" />
 
                 <RadzenFormField Text="@SharedResource.ExtraPayload" Variant="Variant.Outlined" AllowFloatingLabel="false">
                     <RadzenTextArea @bind-Value="@ProfileManager.ActiveProfile.ExtraPayload" Style="min-height: 96px" Placeholder="@_extraPayloadPlaceholder" />
@@ -161,29 +148,23 @@
                                         <Items>
                                             <RadzenAccordionItem Text="@SharedResource.SubagentRestrinctions" Icon="timer">
                                                 <RadzenStack Gap="1rem" Style="padding-left: 1.5rem">
-                                                    <RadzenStack Gap="0.2rem">
-                                                        <RadzenLabel Text="@SharedResource.MaxTokensPerSubAgent" />
-                                                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                                                            <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.MaxTokensPerSubAgent" Min=0 Max=256000 Step="1000" Style="width: 100%; height: 20px;" />
-                                                            <RadzenLabel Text="@(ProfileManager.ActiveProfile.MaxTokensPerSubAgent > 0 ? $"{ProfileManager.ActiveProfile.MaxTokensPerSubAgent / 1000}K" : "∞")" Style="text-align: right; width: 50px;" />
-                                                        </RadzenStack>
-                                                    </RadzenStack>
+                                                    <SliderField Label="@SharedResource.MaxTokensPerSubAgent"
+                                                                 @bind-Value="@ProfileManager.ActiveProfile.MaxTokensPerSubAgent"
+                                                                 Min="0" Max="256000" Step="1000"
+                                                                 ShowInfinityAtZero="true"
+                                                                 ValueFormatter="@(v => $"{v / 1000}K")" />
 
-                                                    <RadzenStack Gap="0.2rem">
-                                                        <RadzenLabel Text="@SharedResource.MaxIterationsPerSubAgent" />
-                                                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                                                            <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.MaxIterationsPerSubAgent" Min=0 Max=100 Step="1" Style="width: 100%; height: 20px;" />
-                                                            <RadzenLabel Text="@(ProfileManager.ActiveProfile.MaxIterationsPerSubAgent > 0 ? ProfileManager.ActiveProfile.MaxIterationsPerSubAgent.ToString() : "∞")" Style="text-align: right; width: 50px;" />
-                                                        </RadzenStack>
-                                                    </RadzenStack>
+                                                    <SliderField Label="@SharedResource.MaxIterationsPerSubAgent"
+                                                                 @bind-Value="@ProfileManager.ActiveProfile.MaxIterationsPerSubAgent"
+                                                                 Min="0" Max="100" Step="1"
+                                                                 ShowInfinityAtZero="true" />
 
-                                                    <RadzenStack Gap="0.2rem">
-                                                        <RadzenLabel Text="@SharedResource.MaxExecutionTimePerSubAgent" />
-                                                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                                                            <RadzenSlider @bind-Value="@ProfileManager.ActiveProfile.MaxExecutionTimePerSubAgent" Min=0 Max=3600 Step="20" Style="width: 100%; height: 20px;" />
-                                                            <RadzenLabel Text="@(ProfileManager.ActiveProfile.MaxExecutionTimePerSubAgent > 0 ? FormatTimeout(ProfileManager.ActiveProfile.MaxExecutionTimePerSubAgent * 1000) : "∞")" Style="text-align: right; width: 80px;" />
-                                                        </RadzenStack>
-                                                    </RadzenStack>
+                                                    <SliderField Label="@SharedResource.MaxExecutionTimePerSubAgent"
+                                                                 @bind-Value="@ProfileManager.ActiveProfile.MaxExecutionTimePerSubAgent"
+                                                                 Min="0" Max="3600" Step="20"
+                                                                 ShowInfinityAtZero="true"
+                                                                 ValueWidth="80px"
+                                                                 ValueFormatter="@(v => FormatTimeout((int)(v * 1000)))" />
                                                 </RadzenStack>
                                             </RadzenAccordionItem>
                                         </Items>
@@ -194,13 +175,11 @@
                     </RadzenStack>
                 }
 
-                <RadzenStack Gap="0.2rem">
-                    <RadzenLabel Text="@SharedResource.ToolRequestTimeoutSec" />
-                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                        <RadzenSlider @bind-Value="@CommonSettingsProvider.Current.ToolTimeoutMs" Min="20000" Max="1800000" Step="1000" Style="width: 100%; height: 20px;" />
-                        <RadzenLabel Text="@FormatTimeout(CommonSettingsProvider.Current.ToolTimeoutMs)" Style="text-align: right; width: 80px;" />
-                    </RadzenStack>
-                </RadzenStack>
+                <SliderField Label="@SharedResource.ToolRequestTimeoutSec"
+                             @bind-Value="@CommonSettingsProvider.Current.ToolTimeoutMs"
+                             Min="20000" Max="1800000" Step="1000"
+                             ValueWidth="80px"
+                             ValueFormatter="@(v => FormatTimeout((int)v))" />
             </RadzenStack>
 
             <TitleHr Text="@SharedResource.ContentFilter" />
@@ -231,13 +210,9 @@
                 <TitleHr Text="@SharedResource.SettingsMisc" />
 
                 <RadzenStack Gap="1rem">
-                    <RadzenStack Gap="0.2rem">
-                        <RadzenLabel Text="@SharedResource.MaxRetries" />
-                        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                            <RadzenSlider @bind-Value="@CommonSettingsProvider.Current.MaxRetries" Min="0" Max="50" Step="1" Style="width: 100%; height: 20px;" />
-                            <RadzenLabel Text="@CommonSettingsProvider.Current.MaxRetries.ToString()" Style="text-align: right; width: 50px;" />
-                        </RadzenStack>
-                    </RadzenStack>
+                    <SliderField Label="@SharedResource.MaxRetries"
+                                 @bind-Value="@CommonSettingsProvider.Current.MaxRetries"
+                                 Min="0" Max="50" Step="1" />
 
                     <CheckBox Text="@SharedResource.ShowMessageTimings" @bind-Value="@CommonSettingsProvider.Current.ShowMessageTimings" />
 

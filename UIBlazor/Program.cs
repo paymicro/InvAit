@@ -38,6 +38,8 @@ builder.Services
         handler.InnerHandler = new HttpClientHandler();
         var client = new HttpClient(handler) { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) };
         client.DefaultRequestHeaders.Add("X-Client-Name", "InvAit Visual Studio Plugin"); // Можно заменить в Extra Headers
+        // максимальный таймаут. Можно только уменьшать в отдельных запросах
+        client.Timeout = TimeSpan.FromMinutes(30); 
         return client;
     })
     .AddLocalization();
