@@ -156,21 +156,9 @@ public class HeadlessMocker
 
                              1. Verify that skills metadata is loaded.
                              2. Verify that skill content activation works via slash command.
-                             """
+                             """,
+                    Files = ["references/api-spec.md", "scripts/build.sh"]
                 })
-            },
-            BasicEnum.ReadSkillReference => new VsToolResult
-            {
-                Result = """
-                        # API Specification Reference
-
-                        This is a mock reference file for headless UI testing.
-
-                        ## Endpoints
-
-                        - GET /api/items
-                        - POST /api/items
-                        """
             },
             BuiltInToolEnum.ReadOpenFile => new VsToolResult
             {

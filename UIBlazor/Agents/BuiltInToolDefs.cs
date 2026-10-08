@@ -125,14 +125,8 @@ public static class BuiltInToolDefs
     [DisplayName(BasicEnum.ReadSkillContent)]
     [Description("Load the full content of a skill when you need detailed instructions.")]
     public static void ReadSkillContent(
-        [Description("Skill name")] string skillName)
-    { }
-
-    [DisplayName(BasicEnum.ReadSkillReference)]
-    [Description("Load a reference file from a skill's references/ folder. Use this to access supplementary materials (API specs, style guides, etc.) associated with a skill.")]
-    public static void ReadSkillReference(
         [Description("Skill name")] string skillName,
-        [Description("File name in the skill's references/ folder (e.g. 'api-spec.md')")] string fileName)
+        [Description("Relative path to a file within the skill folder (e.g. 'references/api-spec.md', 'scripts/build.sh'). If omitted, returns the skill's SKILL.md content and a list of available files.")] string? fileName)
     { }
 
     [DisplayName(BuiltInToolEnum.DeleteFile)]

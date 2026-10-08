@@ -104,7 +104,7 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
         sb.AppendLine("## Available Skills");
         sb.AppendLine();
         sb.AppendLine($"You have access to the following skills. Skills are specialized instructions that you can activate by requesting them when relevant (tool `{BasicEnum.ReadSkillContent}`).");
-        sb.AppendLine($"Some skills may include reference materials in a `references/` subfolder — load them on demand with tool `{BasicEnum.ReadSkillReference}`.");
+        sb.AppendLine($"Some skills may include reference materials or scripts — load them on demand by passing the optional `fileName` parameter (relative path within the skill folder, e.g. 'references/api-spec.md').");
 
         foreach (var skill in skills)
         {
@@ -127,38 +127,6 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
 
     public async Task<VsToolResult> LoadSkillContentMarkDownAsync(string args, CancellationToken cancellationToken)
     {
-        var skillName = JsonUtils.DeserializeParameters(args).GetString("skillName");
-        if (string.IsNullOrEmpty(skillName))
-        {
-            return new VsToolResult
-            {
-                Success = false,
-                ErrorMessage = "Skill name is missing"
-            };
-        }
-        var skillContent = await LoadSkillContentAsync(skillName, cancellationToken);
-
-        if (skillContent == null)
-        {
-            return new VsToolResult
-            {
-                Success = false,
-                ErrorMessage = "<empty>"
-            };
-        }
-        var sb = new StringBuilder();
-        sb.AppendLine();
-        sb.AppendLine($"## Skill {skillName}");
-        sb.AppendLine(skillContent.Content);
-
-        return new VsToolResult { Result = sb.ToString() };
-    }
-
-    /// <summary>
-    /// Загрузить референсный файл из папки references/ скилла
-    /// </summary>
-    public async Task<VsToolResult> LoadSkillReferenceMarkDownAsync(string args, CancellationToken cancellationToken)
-    {
         var argsDict = JsonUtils.DeserializeParameters(args);
         var skillName = argsDict?.GetString("skillName");
         var fileName = argsDict?.GetString("fileName");
@@ -172,30 +140,53 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
             };
         }
 
-        if (string.IsNullOrEmpty(fileName))
+        // If fileName is provided, read a specific file from the skill folder via vsBridge
+        if (!string.IsNullOrEmpty(fileName))
+        {
+            var requestArgs = JsonUtils.SerializeCompact(new { skillName, fileName });
+            var result = await vsBridge.ExecuteToolAsync(BasicEnum.ReadSkillContent, requestArgs, cancellationToken);
+#if DEBUG
+            result = HeadlessMocker.GetVsToolResult(result);
+#endif
+            if (!result.Success)
+            {
+                return result;
+            }
+
+            var sb = new StringBuilder();
+            sb.AppendLine();
+            sb.AppendLine($"## File: {fileName} (skill: {skillName})");
+            sb.AppendLine(result.Result);
+
+            return new VsToolResult { Result = sb.ToString() };
+        }
+
+        // No fileName — load SKILL.md content (with caching)
+        var skillContent = await LoadSkillContentAsync(skillName, cancellationToken);
+
+        if (skillContent == null)
         {
             return new VsToolResult
             {
                 Success = false,
-                ErrorMessage = "File name is missing"
+                ErrorMessage = "<empty>"
             };
         }
+        var sb2 = new StringBuilder();
+        sb2.AppendLine();
+        sb2.AppendLine($"## Skill {skillName}");
+        sb2.AppendLine(skillContent.Content);
 
-        var requestArgs = JsonUtils.SerializeCompact(new { skillName, fileName });
-        var result = await vsBridge.ExecuteToolAsync(BasicEnum.ReadSkillReference, requestArgs, cancellationToken);
-#if DEBUG
-        result = HeadlessMocker.GetVsToolResult(result);
-#endif
-        if (!result.Success)
+        if (skillContent.Files.Count > 0)
         {
-            return result;
+            sb2.AppendLine();
+            sb2.AppendLine("### Available files in skill folder:");
+            foreach (var file in skillContent.Files)
+            {
+                sb2.AppendLine($"- `{file}`");
+            }
         }
 
-        var sb = new StringBuilder();
-        sb.AppendLine();
-        sb.AppendLine($"## Reference: {fileName} (skill: {skillName})");
-        sb.AppendLine(result.Result);
-
-        return new VsToolResult { Result = sb.ToString() };
+        return new VsToolResult { Result = sb2.ToString() };
     }
 }

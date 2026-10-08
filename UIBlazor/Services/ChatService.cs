@@ -307,10 +307,7 @@ public class ChatService(
                     {
                         toolCall.Result = new ToolResult
                         {
-                            Content = $"""
-                                The long result ({toolCall.Result.Content.Length} chars) was removed after compression." +
-                                Recall the {toolCall.Function.Name} to retrieve the full result.
-                                """,
+                            Content = $"The long result ({toolCall.Result.Content.Length} chars) was removed after compression.",
                             Name = toolCall.Function.Name,
                             DisplayName = toolCall.Result.DisplayName,
                             Success = toolCall.Result.Success,

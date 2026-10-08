@@ -177,6 +177,76 @@ public class SkillServiceTests
         Assert.Contains("## Available Skills", result);
         Assert.Contains("**SkillA**: DescA", result);
         Assert.Contains(BasicEnum.ReadSkillContent, result);
+        // Should NOT contain the old read_skill_reference tool name
+        Assert.DoesNotContain("read_skill_reference", result);
+        // Should mention the optional fileName parameter
+        Assert.Contains("fileName", result);
+    }
+
+    [Fact]
+    public async Task LoadSkillContentMarkDownAsync_WithFileName_CallsReadSkillContent()
+    {
+        // Arrange — when fileName is provided, the service should call ReadSkillContent
+        // (not ReadSkillReference which no longer exists)
+        var rawFileContent = "Raw reference file content";
+        _vsBridgeMock
+            .Setup(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.Is<string>(s => s.Contains("\"fileName\":")), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new VsToolResult { Success = true, Result = rawFileContent });
+
+        // Act
+        var args = JsonUtils.SerializeCompact(new { skillName = "test-skill", fileName = "references/api.md" });
+        var result = await _skillService.LoadSkillContentMarkDownAsync(args, CancellationToken.None);
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.Contains(rawFileContent, result.Result);
+        Assert.Contains("references/api.md", result.Result);
+        // Verify ReadSkillContent was called (not ReadSkillReference)
+        _vsBridgeMock.Verify(
+            x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.Is<string>(s => s.Contains("fileName")), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task LoadSkillContentMarkDownAsync_WithoutFileName_LoadsSkillContent()
+    {
+        // Arrange — when fileName is NOT provided, should load SKILL.md content via cache
+        var jsonResponse = JsonUtils.Serialize(new SkillContent
+        {
+            Name = "TestSkill",
+            Description = "Desc",
+            Content = "# Skill Content",
+            Files = ["references/api.md", "scripts/build.sh"]
+        });
+
+        _vsBridgeMock
+            .Setup(x => x.ExecuteToolAsync(BasicEnum.ReadSkillContent, It.Is<string>(s => !s.Contains("fileName")), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new VsToolResult { Success = true, Result = jsonResponse });
+
+        // Act
+        var args = JsonUtils.SerializeCompact(new { skillName = "TestSkill" });
+        var result = await _skillService.LoadSkillContentMarkDownAsync(args, CancellationToken.None);
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.Contains("# Skill Content", result.Result);
+        // Should list available files
+        Assert.Contains("references/api.md", result.Result);
+        Assert.Contains("scripts/build.sh", result.Result);
+    }
+
+    [Fact]
+    public async Task LoadSkillContentMarkDownAsync_WithMissingSkillName_ReturnsError()
+    {
+        // Arrange
+        var args = "{}";
+
+        // Act
+        var result = await _skillService.LoadSkillContentMarkDownAsync(args, CancellationToken.None);
+
+        // Assert
+        Assert.False(result.Success);
+        Assert.Contains("Skill name is missing", result.ErrorMessage);
     }
 
     [Fact]

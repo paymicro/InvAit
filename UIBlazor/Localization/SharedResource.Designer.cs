@@ -1528,15 +1528,6 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Read skill reference.
-        /// </summary>
-        public static string ToolReadSkillReference {
-            get {
-                return ResourceManager.GetString("ToolReadSkillReference", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to Request timeout.
         /// </summary>
         public static string ToolRequestTimeoutSec {

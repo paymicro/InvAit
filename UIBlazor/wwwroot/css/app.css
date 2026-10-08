@@ -29,7 +29,8 @@
     --diff-modification-highlight: #ffc833;
     --diff-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     --diff-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.15);
-    --message-block-border: 1px solid var(--rz-base-300);
+    --badge-background-color: var(--rz-base-300);
+    --message-block-border: 1px solid var(--rz-base-500);
     --message-block-border-none: 1px solid transparent;
     --message-block-color: var(--rz-chat-message-assistant-color);
     --message-block-background-color: var(--rz-base);
@@ -48,6 +49,7 @@
         --diff-modification-highlight: #7d5200;
         --diff-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
         --diff-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.4);
+        --badge-background-color: var(--rz-base-500);
         --message-block-border: 1px solid var(--rz-base-600);
         --message-block-background-color: var(--rz-base-700);
     }
@@ -78,7 +80,6 @@ code.hljs {
 }
 
 .rz-chat-send-btn {
-
 }
 
 .rz-chat-messages {
@@ -184,6 +185,11 @@ code.hljs {
     .rz-data-row .rz-cell-data input:not(:focus) {
         border: 1px solid transparent;
     }
+
+.rz-badge-light {
+    color: var(--rz-text-color);
+    background-color: var(--badge-background-color);
+}
 
 /* Settings */
 .settings li {
@@ -548,7 +554,6 @@ code.hljs {
 
 /* DelegateTaskView - structured display for delegate_task arguments */
 .subagent-info {
-    background: var(--rz-base);
     border-radius: 6px;
     display: flex;
     flex-direction: column;
@@ -573,17 +578,16 @@ code.hljs {
 
 .subagent-info-value {
     font-size: 0.78rem;
-    color: var(--rz-base);
     word-break: break-word;
     white-space: pre-wrap;
     padding: 0.3rem 0.5rem;
 }
 
 .subagent-info-value--long {
-    max-height: 100px;
+    max-height: 250px;
     overflow-y: auto;
-    background: var(--rz-base-dark);
     border-radius: 4px;
+    border: 1px solid var(--rz-base);
     padding: 0.3rem 0.5rem;
     font-family: Consolas, "Courier New", monospace;
 }

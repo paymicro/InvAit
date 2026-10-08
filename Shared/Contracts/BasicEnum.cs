@@ -9,7 +9,6 @@ public static class BasicEnum
     // Skills operations
     public const string GetSkillsMetadata   = "get_skills_metadata";   // Только метаданные (кеш)
     public const string ReadSkillContent    = "read_skill_content";    // Полное содержимое по требованию
-    public const string ReadSkillReference  = "read_skill_reference";  // Референсы из папки references/ скилла
 
     // Read agents.md
     public const string GetAgents           = "get_agents";

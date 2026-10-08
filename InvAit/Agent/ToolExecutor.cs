@@ -59,7 +59,6 @@ public class ToolExecutor
                 BasicEnum.OpenFolder => await OpenFolderInExplorerAsync(vsRequest.Payload),
                 BasicEnum.GetSkillsMetadata => await GetSkillsMetadataAsync(),
                 BasicEnum.ReadSkillContent => await ReadSkillContentAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BasicEnum.ReadSkillReference => await ReadSkillReferenceAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BasicEnum.GetRules => await GetRulesAsync(),
                 BasicEnum.GetAgents => await ReadFileAsync(new List<ReadFileParams> { { new ReadFileParams { Path = "agents.md" } } }, onlyContent: true),
                 // MCP
@@ -1127,10 +1126,12 @@ public class ToolExecutor
 
     /// <summary>
     /// Читать полное содержимое скилла (вызывается только при активации)
+    /// Если указан fileName — читает конкретный файл из папки скилла
     /// </summary>
     private async Task<VsResponse> ReadSkillContentAsync(IReadOnlyDictionary<string, object> args)
     {
         var skillName = args.GetString("skillName");
+        var fileName = args.GetString("fileName");
 
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         if (!_skillPathByName.TryGetValue(skillName, out var fullPath))
@@ -1151,17 +1152,85 @@ public class ToolExecutor
             };
         }
 
+        var skillFolder = Path.GetDirectoryName(fullPath);
+        if (string.IsNullOrEmpty(skillFolder))
+        {
+            return new VsResponse
+            {
+                Success = false,
+                Error = $"Cannot determine skill folder for: {skillName}"
+            };
+        }
+
+        // If fileName is provided — read a specific file from the skill folder
+        if (!string.IsNullOrEmpty(fileName))
+        {
+            // Security: resolve path relative to skill folder and verify it stays within
+            var canonicalSkillFolder = Path.GetFullPath(skillFolder);
+            var targetPath = Path.GetFullPath(Path.Combine(skillFolder, fileName));
+
+            if (!targetPath.StartsWith(canonicalSkillFolder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            {
+                return new VsResponse
+                {
+                    Success = false,
+                    Error = $"Invalid file path: '{fileName}' escapes the skill folder."
+                };
+            }
+
+            if (!File.Exists(targetPath))
+            {
+                return new VsResponse
+                {
+                    Success = false,
+                    Error = $"File '{fileName}' not found in skill '{skillName}'."
+                };
+            }
+
+            try
+            {
+                var content = File.ReadAllText(targetPath, Encoding.UTF8);
+                return new VsResponse { Payload = content };
+            }
+            catch (Exception ex)
+            {
+                return new VsResponse
+                {
+                    Success = false,
+                    Error = $"Error reading file '{fileName}': {ex.Message}"
+                };
+            }
+        }
+
+        // No fileName — return SKILL.md content + list of all files in skill folder
         try
         {
             var contentLines = File.ReadAllLines(fullPath, Encoding.UTF8);
             var (name, description, headerLines) = ParseYamlFrontmatter(contentLines);
             var markdownContent = string.Join("\n", contentLines.Skip(headerLines));
 
+            // Recursively scan skill folder for all files except SKILL.md itself
+            var files = new List<string>();
+            var skillFileName = Path.GetFileName(fullPath);
+            if (Directory.Exists(skillFolder))
+            {
+                foreach (var file in Directory.EnumerateFiles(skillFolder, "*", SearchOption.AllDirectories))
+                {
+                    // Compute relative path manually (Path.GetRelativePath may not be available in all target frameworks)
+                    var relativePath = file.Substring(skillFolder.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                    // Skip SKILL.md itself (case-insensitive)
+                    if (relativePath.Equals(skillFileName, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    files.Add(relativePath.Replace('\\', '/'));
+                }
+            }
+
             var skillContent = new SkillContent
             {
                 Name = name,
                 Description = description,
-                Content = markdownContent
+                Content = markdownContent,
+                Files = files
             };
 
             return new VsResponse
@@ -1175,89 +1244,6 @@ public class ToolExecutor
             {
                 Success = false,
                 Error = $"Error reading skill content: {ex.Message}"
-            };
-        }
-    }
-
-    /// <summary>
-    /// Читать референсный файл из папки references/ скилла
-    /// </summary>
-    private async Task<VsResponse> ReadSkillReferenceAsync(IReadOnlyDictionary<string, object> args)
-    {
-        var skillName = args.GetString("skillName");
-        var fileName = args.GetString("fileName");
-
-        if (string.IsNullOrEmpty(skillName))
-        {
-            return new VsResponse { Success = false, Error = "Skill name is required." };
-        }
-
-        if (string.IsNullOrEmpty(fileName))
-        {
-            return new VsResponse { Success = false, Error = "File name is required." };
-        }
-
-        // Защита от path traversal — имя файла не должно содержать разделители путей или ..
-        if (fileName.Contains("..") || fileName.Contains(Path.DirectorySeparatorChar) || fileName.Contains(Path.AltDirectorySeparatorChar))
-        {
-            return new VsResponse { Success = false, Error = "Invalid file name. Only simple file names are allowed." };
-        }
-
-        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-
-        if (!_skillPathByName.TryGetValue(skillName, out var skillFilePath))
-        {
-            return new VsResponse
-            {
-                Success = false,
-                Error = $"Skill not found: {skillName}. Make sure skill metadata has been loaded first."
-            };
-        }
-
-        // Папка скилла = родительская папка SKILL.md
-        var skillFolder = Path.GetDirectoryName(skillFilePath);
-        if (string.IsNullOrEmpty(skillFolder))
-        {
-            return new VsResponse { Success = false, Error = $"Cannot determine skill folder for: {skillName}" };
-        }
-
-        var referencePath = Path.Combine(skillFolder, "references", fileName);
-
-        if (!File.Exists(referencePath))
-        {
-            // Перечислить доступные референсы, если папка существует
-            var referencesDir = Path.Combine(skillFolder, "references");
-            if (Directory.Exists(referencesDir))
-            {
-                var available = Directory.GetFiles(referencesDir, "*.md")
-                    .Select(Path.GetFileName)
-                    .Where(n => n != null);
-                var list = string.Join(", ", available);
-                return new VsResponse
-                {
-                    Success = false,
-                    Error = $"Reference file '{fileName}' not found in skill '{skillName}'. Available: {list}"
-                };
-            }
-
-            return new VsResponse
-            {
-                Success = false,
-                Error = $"Skill '{skillName}' has no 'references' folder."
-            };
-        }
-
-        try
-        {
-            var content = File.ReadAllText(referencePath, Encoding.UTF8);
-            return new VsResponse { Payload = content };
-        }
-        catch (Exception ex)
-        {
-            return new VsResponse
-            {
-                Success = false,
-                Error = $"Error reading reference file: {ex.Message}"
             };
         }
     }

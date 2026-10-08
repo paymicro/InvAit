@@ -128,13 +128,45 @@ export function getSkillsMetadata(params: any, workspaceRoot: string): ToolResul
 export function readSkillContent(params: any, workspaceRoot: string): ToolResult {
     try {
         const skillName: string = params.skillName;
-        const skillFiles = findSkillFiles(workspaceRoot);
+        const fileName: string | undefined = params.fileName;
 
+        if (!skillName) {
+            return { success: false, error: 'Skill name is required.' };
+        }
+
+        const skillFiles = findSkillFiles(workspaceRoot);
         const skill = skillFiles.find(s => s.name === skillName);
         if (!skill) {
             return { success: false, error: `Skill file not found: ${skillName}` };
         }
 
+        const skillFolder = path.dirname(skill.filePath);
+        if (!skillFolder) {
+            return { success: false, error: `Cannot determine skill folder for: ${skillName}` };
+        }
+
+        // If fileName is provided — read a specific file from the skill folder
+        if (fileName) {
+            // Security: resolve path relative to skill folder and verify it stays within
+            const resolved = path.resolve(skillFolder, fileName);
+            const canonicalSkillFolder = path.resolve(skillFolder);
+            if (!resolved.startsWith(canonicalSkillFolder + path.sep)) {
+                return { success: false, error: `Invalid file path: '${fileName}' escapes the skill folder.` };
+            }
+
+            if (!fs.existsSync(resolved)) {
+                return { success: false, error: `File '${fileName}' not found in skill '${skillName}'.` };
+            }
+
+            try {
+                const content = fs.readFileSync(resolved, 'utf-8');
+                return { success: true, payload: content };
+            } catch (e: any) {
+                return { success: false, error: `Error reading file '${fileName}': ${e.message ?? String(e)}` };
+            }
+        }
+
+        // No fileName — return SKILL.md content + list of all files in skill folder
         const content = fs.readFileSync(skill.filePath, 'utf-8');
         const lines = content.split(/\r\n|\r|\n/);
         const { name, description, headerLines } = parseYamlFrontmatter(lines);
@@ -142,79 +174,30 @@ export function readSkillContent(params: any, workspaceRoot: string): ToolResult
         const bodyLines = lines.slice(headerLines);
         const bodyContent = bodyLines.join('\n');
 
+        // Recursively scan skill folder for all files except SKILL.md itself
+        const files: string[] = [];
+        const skillFileName = path.basename(skill.filePath);
+        if (fs.existsSync(skillFolder) && fs.statSync(skillFolder).isDirectory()) {
+            const allFiles = walkFiles(skillFolder);
+            for (const file of allFiles) {
+                const relativePath = path.relative(skillFolder, file);
+                // Skip SKILL.md itself (case-insensitive)
+                if (relativePath.toLowerCase() === skillFileName.toLowerCase())
+                    continue;
+                files.push(relativePath.split(path.sep).join('/'));
+            }
+        }
+
         return {
             success: true,
-            payload: JSON.stringify({ name, description, content: bodyContent })
+            payload: JSON.stringify({ name, description, content: bodyContent, files })
         };
     } catch (e: any) {
         return { success: false, error: e.message ?? String(e) };
     }
 }
 
-// 10. read_skill_reference
-export function readSkillReference(params: any, workspaceRoot: string): ToolResult {
-    try {
-        const skillName: string = params.skillName;
-        const fileName: string = params.fileName;
-
-        if (!skillName) {
-            return { success: false, error: 'Skill name is required.' };
-        }
-
-        if (!fileName) {
-            return { success: false, error: 'File name is required.' };
-        }
-
-        // Path traversal protection — file name must not contain path separators or ..
-        if (fileName.includes('..') || fileName.includes('/') || fileName.includes('\\')) {
-            return { success: false, error: 'Invalid file name. Only simple file names are allowed.' };
-        }
-
-        const skillFiles = findSkillFiles(workspaceRoot);
-        const skill = skillFiles.find(s => s.name === skillName);
-        if (!skill) {
-            return { success: false, error: `Skill not found: ${skillName}. Make sure skill metadata has been loaded first.` };
-        }
-
-        // Skill folder = parent folder of SKILL.md
-        const skillFolder = path.dirname(skill.filePath);
-        if (!skillFolder) {
-            return { success: false, error: `Cannot determine skill folder for: ${skillName}` };
-        }
-
-        const referencePath = path.join(skillFolder, 'references', fileName);
-
-        if (!fs.existsSync(referencePath)) {
-            // List available references if the folder exists
-            const referencesDir = path.join(skillFolder, 'references');
-            if (fs.existsSync(referencesDir) && fs.statSync(referencesDir).isDirectory()) {
-                const available = fs.readdirSync(referencesDir)
-                    .filter(f => f.toLowerCase().endsWith('.md'));
-                const list = available.join(', ');
-                return {
-                    success: false,
-                    error: `Reference file '${fileName}' not found in skill '${skillName}'. Available: ${list}`
-                };
-            }
-
-            return {
-                success: false,
-                error: `Skill '${skillName}' has no 'references' folder.`
-            };
-        }
-
-        try {
-            const content = fs.readFileSync(referencePath, 'utf-8');
-            return { success: true, payload: content };
-        } catch (e: any) {
-            return { success: false, error: `Error reading reference file: ${e.message ?? String(e)}` };
-        }
-    } catch (e: any) {
-        return { success: false, error: e.message ?? String(e) };
-    }
-}
-
-// 11. get_rules
+// 10. get_rules
 export function getRules(params: any, workspaceRoot: string): ToolResult {
     try {
         const globalRulesPath = path.join(os.homedir(), '.agents', 'rules.md');
