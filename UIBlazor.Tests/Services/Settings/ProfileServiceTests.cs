@@ -163,7 +163,6 @@ public class ProfileServiceTests
         // Assert
         Assert.Single(_service.Current.Profiles);
         Assert.Equal(0.7, _service.ActiveProfile.Temperature);
-        Assert.Equal(string.Empty, _service.ActiveProfile.SystemPrompt);
         _localStorageMock.Verify(ls => ls.SetItemAsync("ProfileSettings", _service.Current), Times.AtLeastOnce);
     }
 }

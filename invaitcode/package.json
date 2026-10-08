@@ -67,8 +67,9 @@
   },
   "scripts": {
     "recreate:wwwroot": "rimraf wwwroot && cpr ../InvAit/UI/wwwroot wwwroot --overwrite",
-    "vscode:prepublish": "npm run bundle && recreate:wwwroot",
+    "vscode:prepublish": "npm run bundle && npm run recreate:wwwroot",
     "vscode:createVsix": "npx @vscode/vsce package",
+    "installVsix": "code --install-extension invaitcode-0.1.5.vsix",
     "compile": "tsc -p ./ --noEmit",
     "bundle": "node esbuild.js",
     "watch": "node esbuild.js --watch",
