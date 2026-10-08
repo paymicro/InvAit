@@ -327,6 +327,9 @@
   <data name="ToolReadSkillContent" xml:space="preserve">
     <value>Чтение скилла</value>
   </data>
+  <data name="ToolReadSkillReference" xml:space="preserve">
+    <value>Чтение референса скилла</value>
+  </data>
   <data name="ToolDeleteFile" xml:space="preserve">
     <value>Удаление файла</value>
   </data>

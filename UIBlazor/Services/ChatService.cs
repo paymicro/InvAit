@@ -298,6 +298,27 @@ public class ChatService(
             if (msg.Id == LastUserMessage?.Id)
                 continue;
 
+            // Убираем результаты тулзов в сообщениях
+            if (msg.ToolCalls is { Count: > 0 })
+            {
+                foreach (var toolCall in msg.ToolCalls)
+                {
+                    if (toolCall.Result is { Content.Length: > 4000 }) // магическое числоооо где-то ~100 строк кода
+                    {
+                        toolCall.Result = new ToolResult
+                        {
+                            Content = $"""
+                                The long result ({toolCall.Result.Content.Length} chars) was removed after compression." +
+                                Recall the {toolCall.Function.Name} to retrieve the full result.
+                                """,
+                            Name = toolCall.Function.Name,
+                            DisplayName = toolCall.Result.DisplayName,
+                            Success = toolCall.Result.Success,
+                        };
+                    }
+                }
+            }
+
             // Первые сообщения
             if (i < windowSize)
             {

@@ -105,7 +105,7 @@
                             </Tooltip>
                         }
                         <Tooltip Text="Tokens for tool">
-                            <RadzenBadge BadgeStyle="BadgeStyle.Light" Variant="Variant.Text">
+                            <RadzenBadge BadgeStyle="BadgeStyle.Base" Variant="Variant.Text">
                                 ~@ToolCall.Tokens tokens
                             </RadzenBadge>
                         </Tooltip>
@@ -117,7 +117,7 @@
                            not markdown. Rendering as markdown would misformat raw text.
                            FileContentFormatter deserializes structured FileContent JSON (from read_files)
                            and adds line numbers. Non-file tools fall back to raw text. *@
-                        <pre class="rz-p-2 rz-background-color-base-900 rz-color-white">@(FileContentFormatter.FormatContent(ToolCall.Result.Content))</pre>
+                        <pre class="rz-p-2">@(FileContentFormatter.FormatContent(ToolCall.Result.Content))</pre>
                     </ChildContent>
                 </Details>
             }

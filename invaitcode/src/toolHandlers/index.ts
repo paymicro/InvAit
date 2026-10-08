@@ -8,7 +8,7 @@
 import { ToolResult } from './types';
 import { readFiles, createFile, editFiles, deleteFile, dir } from './fileOps';
 import { searchFiles, grep } from './search';
-import { getSkillsMetadata, readSkillContent, getRules, getAgents } from './skills';
+import { getSkillsMetadata, readSkillContent, readSkillReference, getRules, getAgents } from './skills';
 import { bash, gitLog, gitDiff } from './bash';
 import { getSolutionStructure, getProjectInfo, buildWorkspaceFiles } from './projectInfo';
 
@@ -37,6 +37,8 @@ export function dispatchTool(action: string, payloadStr: string | undefined, wor
                 return getSkillsMetadata(params, workspaceRoot);
             case 'read_skill_content':
                 return readSkillContent(params, workspaceRoot);
+            case 'read_skill_reference':
+                return readSkillReference(params, workspaceRoot);
             case 'get_rules':
                 return getRules(params, workspaceRoot);
             case 'get_solution_structure':

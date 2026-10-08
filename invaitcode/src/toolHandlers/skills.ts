@@ -151,7 +151,70 @@ export function readSkillContent(params: any, workspaceRoot: string): ToolResult
     }
 }
 
-// 10. get_rules
+// 10. read_skill_reference
+export function readSkillReference(params: any, workspaceRoot: string): ToolResult {
+    try {
+        const skillName: string = params.skillName;
+        const fileName: string = params.fileName;
+
+        if (!skillName) {
+            return { success: false, error: 'Skill name is required.' };
+        }
+
+        if (!fileName) {
+            return { success: false, error: 'File name is required.' };
+        }
+
+        // Path traversal protection — file name must not contain path separators or ..
+        if (fileName.includes('..') || fileName.includes('/') || fileName.includes('\\')) {
+            return { success: false, error: 'Invalid file name. Only simple file names are allowed.' };
+        }
+
+        const skillFiles = findSkillFiles(workspaceRoot);
+        const skill = skillFiles.find(s => s.name === skillName);
+        if (!skill) {
+            return { success: false, error: `Skill not found: ${skillName}. Make sure skill metadata has been loaded first.` };
+        }
+
+        // Skill folder = parent folder of SKILL.md
+        const skillFolder = path.dirname(skill.filePath);
+        if (!skillFolder) {
+            return { success: false, error: `Cannot determine skill folder for: ${skillName}` };
+        }
+
+        const referencePath = path.join(skillFolder, 'references', fileName);
+
+        if (!fs.existsSync(referencePath)) {
+            // List available references if the folder exists
+            const referencesDir = path.join(skillFolder, 'references');
+            if (fs.existsSync(referencesDir) && fs.statSync(referencesDir).isDirectory()) {
+                const available = fs.readdirSync(referencesDir)
+                    .filter(f => f.toLowerCase().endsWith('.md'));
+                const list = available.join(', ');
+                return {
+                    success: false,
+                    error: `Reference file '${fileName}' not found in skill '${skillName}'. Available: ${list}`
+                };
+            }
+
+            return {
+                success: false,
+                error: `Skill '${skillName}' has no 'references' folder.`
+            };
+        }
+
+        try {
+            const content = fs.readFileSync(referencePath, 'utf-8');
+            return { success: true, payload: content };
+        } catch (e: any) {
+            return { success: false, error: `Error reading reference file: ${e.message ?? String(e)}` };
+        }
+    } catch (e: any) {
+        return { success: false, error: e.message ?? String(e) };
+    }
+}
+
+// 11. get_rules
 export function getRules(params: any, workspaceRoot: string): ToolResult {
     try {
         const globalRulesPath = path.join(os.homedir(), '.agents', 'rules.md');

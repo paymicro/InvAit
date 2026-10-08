@@ -103,7 +103,8 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
         var sb = new StringBuilder();
         sb.AppendLine("## Available Skills");
         sb.AppendLine();
-        sb.AppendLine($"You have access to the following skills. Skills are specialized instructions that you can activate by requesting them when relevant (tool `{BasicEnum.ReadSkillContent}`):");
+        sb.AppendLine($"You have access to the following skills. Skills are specialized instructions that you can activate by requesting them when relevant (tool `{BasicEnum.ReadSkillContent}`).");
+        sb.AppendLine($"Some skills may include reference materials in a `references/` subfolder — load them on demand with tool `{BasicEnum.ReadSkillReference}`.");
 
         foreach (var skill in skills)
         {
@@ -149,6 +150,51 @@ public class SkillService(IVsBridge vsBridge) : ISkillService
         sb.AppendLine();
         sb.AppendLine($"## Skill {skillName}");
         sb.AppendLine(skillContent.Content);
+
+        return new VsToolResult { Result = sb.ToString() };
+    }
+
+    /// <summary>
+    /// Загрузить референсный файл из папки references/ скилла
+    /// </summary>
+    public async Task<VsToolResult> LoadSkillReferenceMarkDownAsync(string args, CancellationToken cancellationToken)
+    {
+        var argsDict = JsonUtils.DeserializeParameters(args);
+        var skillName = argsDict?.GetString("skillName");
+        var fileName = argsDict?.GetString("fileName");
+
+        if (string.IsNullOrEmpty(skillName))
+        {
+            return new VsToolResult
+            {
+                Success = false,
+                ErrorMessage = "Skill name is missing"
+            };
+        }
+
+        if (string.IsNullOrEmpty(fileName))
+        {
+            return new VsToolResult
+            {
+                Success = false,
+                ErrorMessage = "File name is missing"
+            };
+        }
+
+        var requestArgs = JsonUtils.SerializeCompact(new { skillName, fileName });
+        var result = await vsBridge.ExecuteToolAsync(BasicEnum.ReadSkillReference, requestArgs, cancellationToken);
+#if DEBUG
+        result = HeadlessMocker.GetVsToolResult(result);
+#endif
+        if (!result.Success)
+        {
+            return result;
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine();
+        sb.AppendLine($"## Reference: {fileName} (skill: {skillName})");
+        sb.AppendLine(result.Result);
 
         return new VsToolResult { Result = sb.ToString() };
     }

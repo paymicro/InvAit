@@ -99,7 +99,7 @@ public static class BuiltInToolDefs
     [Description("""
         To run a shell command (Git Bash). The shell is stateless.
         Do NOT perform actions requiring special/admin privileges.
-        Working directory is current project solution.
+        Working directory is current project solution. Avoid 'cd /user/project'
         """)]
     public static void Bash(
         [Description("Shell command to execute. Multi line sh script.")] string command)
@@ -126,6 +126,13 @@ public static class BuiltInToolDefs
     [Description("Load the full content of a skill when you need detailed instructions.")]
     public static void ReadSkillContent(
         [Description("Skill name")] string skillName)
+    { }
+
+    [DisplayName(BasicEnum.ReadSkillReference)]
+    [Description("Load a reference file from a skill's references/ folder. Use this to access supplementary materials (API specs, style guides, etc.) associated with a skill.")]
+    public static void ReadSkillReference(
+        [Description("Skill name")] string skillName,
+        [Description("File name in the skill's references/ folder (e.g. 'api-spec.md')")] string fileName)
     { }
 
     [DisplayName(BuiltInToolEnum.DeleteFile)]

@@ -59,7 +59,11 @@ public class ConnectionProfile : BaseOptions
 
     public bool SkipSSL { get; set => SetIfChanged(ref field, value); } = false;
 
-    public string SystemPrompt { get; set => SetIfChanged(ref field, value); } = string.Empty;
+    public string SystemPrompt { get; set => SetIfChanged(ref field, value); } =
+        """
+        You are an autonomous AI Agent operating under the principles of TRIZ (Theory of Inventive Problem Solving).
+        Your goal is to solve tasks efficiently by eliminating contradictions and maximizing system resources.
+        """;
 
     public bool SendCurrentDate { get; set => SetIfChanged(ref field, value); } = true;
 

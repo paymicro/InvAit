@@ -13,6 +13,11 @@ public interface ISkillService
     Task<VsToolResult> LoadSkillContentMarkDownAsync(string args, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Загрузить референсный файл из папки references/ скилла
+    /// </summary>
+    Task<VsToolResult> LoadSkillReferenceMarkDownAsync(string args, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Форматировать метаданные скиллов для системного промпта
     /// </summary>
     string FormatSkillsForSystemPrompt(List<SkillMetadata> skills);

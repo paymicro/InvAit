@@ -18,7 +18,7 @@ public class ToolResult
     public string DisplayName { get; set; } = string.Empty;
 
     /// <summary>
-    /// Полное содержание ответа включая теги <tool_result></tool_result>
+    /// Полное содержание ответа включая теги
     /// </summary>
     [JsonPropertyName("content")]
     public string Content { get; init; } = string.Empty;
@@ -51,7 +51,7 @@ public class ToolResult
         };
     }
 
-    private static string TruncateContent(string content)
+    public static string TruncateContent(string content)
     {
         if (string.IsNullOrEmpty(content) || content.Length <= MaxContentLength)
             return content;

@@ -344,6 +344,13 @@ public partial class AiChat : RadzenComponent
             {
                 toolCall.IsReady = true;
                 toolCall.ApprovalStatus = ToolApprovalStatus.Rejected;
+                toolCall.Result ??= new ToolResult
+                {
+                    Success = false,
+                    Content = string.Empty,
+                    Name = toolCall.Function.Name,
+                    DisplayName = "❌ Cancelled"
+                };
             }
         }
     }

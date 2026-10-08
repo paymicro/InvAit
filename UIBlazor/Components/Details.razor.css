@@ -19,8 +19,8 @@
     align-items: center;
     justify-content: space-between;
     user-select: none;
-    background-color: var(--rz-chat-message-assistant-background-color);
-    color: var(--rz-chat-message-assistant-color);
+    background-color: var(--rz-base-dark);
+    color: var(--rz-on-base-dark);
     border-left: 4px solid var(--rz-info);
 }
 
@@ -61,9 +61,11 @@
 }
 
 .is-expanded > .header .arrow {
+    opacity: 0.7;
     transform: rotate(90deg);
 }
 
 .arrow {
-    transition: transform 0.3s;
+    opacity: 0.1;
+    transition: all .3s ease-in-out;
 }

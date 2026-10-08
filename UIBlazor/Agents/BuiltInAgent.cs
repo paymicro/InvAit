@@ -171,6 +171,14 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
         },
         new()
         {
+            Name = BasicEnum.ReadSkillReference,
+            DisplayName = SharedResource.ToolReadSkillReference,
+            Category = ToolCategory.ReadFiles,
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.ReadSkillReference)),
+            ExecuteAsync = skillService.LoadSkillReferenceMarkDownAsync
+        },
+        new()
+        {
             Name = BuiltInToolEnum.DeleteFile,
             DisplayName = SharedResource.ToolDeleteFile,
             Category = ToolCategory.DeleteFiles,
