@@ -66,21 +66,21 @@ jobs:
           node-version: '24'
 
       - name: Install dependencies
-        working-directory: invaitcode
+        working-directory: VSCode
         run: npm ci
 
       - name: Type-check
-        working-directory: invaitcode
+        working-directory: VSCode
         run: npx tsc --noEmit -p tsconfig.test.json
 
       - name: Run Mocha tests with Coverage
-        working-directory: invaitcode
+        working-directory: VSCode
         run: |
           npm run test:coverage 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tee coverage-output.txt
 
       - name: Publish coverage to Step Summary
         if: always()
-        working-directory: invaitcode
+        working-directory: VSCode
         run: |
           echo "## VS Code Extension Coverage" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -93,4 +93,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: vscode-lcov
-          path: invaitcode/coverage/lcov.info
+          path: VSCode/coverage/lcov.info
