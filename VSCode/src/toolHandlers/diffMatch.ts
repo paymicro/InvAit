@@ -1,5 +1,5 @@
 /**
- * Diff matching utilities for edit_files tool.
+ * Diff matching utilities for edit_file tool.
  * Port from UniversalDiffParser.cs.
  */
 

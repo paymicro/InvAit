@@ -1,6 +1,15 @@
 namespace UIBlazor.Agents;
 
 /// <summary>
+/// Shared wording for delegate_task surface errors (InternalExecutor placeholder call
+/// and branch-local tool creation).
+/// </summary>
+public static class SubAgentErrors
+{
+    public const string ToolCallContextRequired = "delegate_task requires a tool call context.";
+}
+
+/// <summary>
 /// Executes sub-agent tasks delegated by the main agent via the delegate_task tool.
 /// </summary>
 public interface ISubAgentExecutor

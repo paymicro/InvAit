@@ -615,6 +615,31 @@ code.hljs {
     border-bottom: 1px solid var(--rz-base);
     color: #e6e6e6;
     white-space: pre-wrap;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+/* Open file in IDE button (DiffView tool-file-header) */
+.tool-file-header .tool-file-path {
+    flex-grow: 1;
+}
+
+.tool-file-header .tool-file-open-btn {
+    background: transparent;
+    border: none;
+    color: #e6e6e6;
+    cursor: pointer;
+    padding: 0 0.2rem;
+    font-size: 0.85rem;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+
+.tool-file-header .tool-file-open-btn:hover {
+    opacity: 1;
+    color: #fff;
 }
 
 .tool-file-content {

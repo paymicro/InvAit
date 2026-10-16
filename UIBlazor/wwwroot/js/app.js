@@ -273,6 +273,21 @@ window.vscodeInterop = {
         }, '*');
     },
 
+    // Пользователь отменил запрос: C#-мост уже уничтожен, сообщаем расширению
+    // прервать соединение (destroy underlying request mid-stream)
+    cancelNetworkRequest: function (requestId) {
+        console.log('[InvAit] cancelNetworkRequest:', requestId);
+        _pendingNetworkRequests.delete(requestId);
+
+        window.parent.postMessage({
+            target: 'vscode-webview',
+            packet: {
+                command: 'NetworkProxyCancel',
+                payload: { requestId }
+            }
+        }, '*');
+    },
+
     // Обработка разных типов пакетов от VS Code
     handleVsMessage: function (msg) {
         const dotNetRef = _pendingNetworkRequests.get(msg.requestId);

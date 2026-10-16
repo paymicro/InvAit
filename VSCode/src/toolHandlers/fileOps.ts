@@ -1,5 +1,5 @@
 /**
- * File operation tools: read_files, create_file, edit_files, delete_file, dir.
+ * File operation tools: read_files, create_file, edit_file, delete_file, dir.
  */
 
 import * as fs from 'fs';
@@ -82,7 +82,7 @@ export function createFile(params: any, workspaceRoot: string): ToolResult {
     }
 }
 
-// 3. edit_files
+// 3. edit_file
 export function editFiles(params: any, workspaceRoot: string): ToolResult {
     try {
         const filePath: string = params.filePath;
@@ -100,13 +100,17 @@ export function editFiles(params: any, workspaceRoot: string): ToolResult {
             lines.pop();
         }
 
-        // Sort edits by approximateLine DESCENDING (null treated as -1)
-        const sortedEdits = [...edits].sort((a, b) => (b.approximateLine ?? -1) - (a.approximateLine ?? -1));
+        // Sort edits by approximateLine DESCENDING (null treated as -1).
+        // Original indices are preserved: the model re-sends only failed edits
+        // by their position in ITS request, not in the sorted copy.
+        const sortedEdits = edits
+            .map((edit, index) => ({ edit, index }))
+            .sort((a, b) => (b.edit.approximateLine ?? -1) - (a.edit.approximateLine ?? -1));
 
         let totalReplacements = 0;
         const failures: string[] = [];
 
-        for (const edit of sortedEdits) {
+        for (const { edit, index } of sortedEdits) {
             const search = (edit.oldStr || '').replace(/\r/g, '').split('\n');
             const replace = (edit.newStr || '').replace(/\r/g, '').split('\n');
             const hint = edit.approximateLine ?? -1;
@@ -114,7 +118,7 @@ export function editFiles(params: any, workspaceRoot: string): ToolResult {
             const actualStart = findInFile(lines, search, hint, 5);
 
             if (actualStart === -1) {
-                failures.push(`Failed to find match for edit at line ${hint}`);
+                failures.push(`edit #${index} (line ${hint}): oldStr not found`);
                 continue;
             }
 
@@ -122,15 +126,31 @@ export function editFiles(params: any, workspaceRoot: string): ToolResult {
             totalReplacements++;
         }
 
+        // Per-edit report: the model sees WHICH edit failed and why — it can
+        // re-send only the failed ones instead of the whole batch.
+        const report = failures.length === 0
+            ? ''
+            : '\nFailed edits:\n - ' + failures.join('\n - ');
+
+        // Dry run: edits are applied to in-memory lines (subsequent searches see
+        // shifted lines) but the file is NOT written — checks that all oldStr
+        // fragments are findable.
+        if (params.dryRun === true) {
+            return {
+                success: true,
+                payload: `Dry run on ${filePath}: ${totalReplacements}/${edits.length} edits would apply.${report}`
+            };
+        }
+
         if (totalReplacements === 0) {
-            return { success: false, error: 'No valid replacements found.' };
+            return { success: false, error: 'No valid replacements found.' + report };
         }
 
         fs.writeFileSync(absPath, lines.join(lineEnding), 'utf-8');
 
         return {
             success: true,
-            payload: `Changes successfully applied to ${filePath}. ${totalReplacements}/${edits.length}.`
+            payload: `Changes successfully applied to ${filePath}. ${totalReplacements}/${edits.length}.${report}`
         };
     } catch (e: any) {
         return { success: false, error: e.message ?? String(e) };

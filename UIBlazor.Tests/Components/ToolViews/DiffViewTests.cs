@@ -4,15 +4,20 @@ using DiffPlex;
 using DiffPlex.Chunkers;
 using DiffPlex.DiffBuilder;
 using DiffPlex.DiffBuilder.Model;
+using Moq;
+using UIBlazor.VS;
 
 /// <summary>
 /// Tests for <see cref="DiffView"/>, <see cref="DiffViewSection"/> and <see cref="DiffViewLine"/>
 /// </summary>
 public class DiffViewTests : BunitContext
 {
+    private readonly Mock<IVsBridge> _vsBridgeMock = new();
+
     public DiffViewTests()
     {
         Services.AddRadzenComponents();
+        Services.AddSingleton(_vsBridgeMock.Object);
     }
 
     private static DiffEdit CreateEdit(string? oldStr, string newStr, int? approximateLine = null)
@@ -57,8 +62,8 @@ public class DiffViewTests : BunitContext
             .Add(p => p.FilePath, "src\\Program.cs")
             .Add(p => p.Edits, [CreateEdit(null!, "new code")]));
 
-        // Assert
-        Assert.Equal("src\\Program.cs", cut.Find(".tool-file-header").TextContent);
+        // Assert - path text lives in the .tool-file-path span (header also holds the open button)
+        Assert.Equal("src\\Program.cs", cut.Find(".tool-file-path").TextContent);
     }
 
     [Fact]
@@ -71,6 +76,85 @@ public class DiffViewTests : BunitContext
 
         // Assert
         Assert.Throws<ElementNotFoundException>(() => cut.Find(".tool-file-header"));
+    }
+
+    [Fact]
+    public void ShouldRenderOpenFileButton_WhenFilePathProvided()
+    {
+        // Act
+        var cut = Render<DiffView>(parameters => parameters
+            .Add(p => p.FilePath, "src\\Program.cs")
+            .Add(p => p.Edits, [CreateEdit(null!, "new code")]));
+
+        // Assert
+        Assert.NotNull(cut.Find(".tool-file-open-btn"));
+    }
+
+    [Fact]
+    public async Task OpenFileButton_Click_ExecutesOpenFileTool()
+    {
+        // Arrange - success result: no notification
+        _vsBridgeMock
+            .Setup(b => b.ExecuteToolAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UIBlazor.Agents.VsToolResult { Success = true });
+
+        var cut = Render<DiffView>(parameters => parameters
+            .Add(p => p.FilePath, "src\\Program.cs")
+            .Add(p => p.Edits, [CreateEdit(null!, "new code")]));
+
+        // Act
+        await cut.InvokeAsync(() => cut.Find(".tool-file-open-btn").Click());
+
+        // Assert - open_file executed with the file path as payload
+        _vsBridgeMock.Verify(b => b.ExecuteToolAsync(
+            Shared.Contracts.BasicEnum.OpenFile,
+            "src\\Program.cs",
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task OpenFileButton_Click_BridgeThrows_DoesNotCrash()
+    {
+        // Arrange - bridge failure must not crash the UI (and shows the error notification)
+        _vsBridgeMock
+            .Setup(b => b.ExecuteToolAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("bridge down"));
+
+        var cut = Render<DiffView>(parameters => parameters
+            .Add(p => p.FilePath, "src\\Program.cs")
+            .Add(p => p.Edits, [CreateEdit(null!, "new code")]));
+
+        // Act + Assert - no exception escapes the click handler
+        await cut.InvokeAsync(() => cut.Find(".tool-file-open-btn").Click());
+        _vsBridgeMock.Verify(b => b.ExecuteToolAsync(
+            It.IsAny<string>(),
+            It.IsAny<string?>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        var notification = cut.Services.GetRequiredService<Radzen.NotificationService>();
+        Assert.Single(notification.Messages);
+    }
+
+    [Fact]
+    public async Task OpenFileButton_Click_BridgeFails_ShowsNotification()
+    {
+        // Arrange - host failure (file not found) must be visible to the user
+        _vsBridgeMock
+            .Setup(b => b.ExecuteToolAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(UIBlazor.Agents.VsToolResult.Failed(
+                Shared.Contracts.BasicEnum.OpenFile, "File not found"));
+
+        var cut = Render<DiffView>(parameters => parameters
+            .Add(p => p.FilePath, "src\\Program.cs")
+            .Add(p => p.Edits, [CreateEdit(null!, "new code")]));
+
+        // Act
+        await cut.InvokeAsync(() => cut.Find(".tool-file-open-btn").Click());
+
+        // Assert - error notification shown
+        var notification = cut.Services.GetRequiredService<Radzen.NotificationService>();
+        Assert.Single(notification.Messages);
+        Assert.Equal(Radzen.NotificationSeverity.Error, notification.Messages[0].Severity);
     }
 
     [Fact]
@@ -203,6 +287,57 @@ public class DiffViewTests : BunitContext
         cut.WaitForAssertion(
             () => Assert.Contains("final-line-marker", cut.Markup),
             TimeSpan.FromSeconds(3));
+    }
+
+    [Fact]
+    public async Task FilePathChange_WithIdenticalEdits_IsRendered()
+    {
+        // Reproduces production bug: FilePath does NOT contribute to the sum-of-chars
+        // change detection. When the final update brings the file path while Edits stay
+        // identical (the path arrives as the last chunk of streaming args), the old code
+        // kept _changed=false → ShouldRender vetoed → the header with the file path was
+        // never displayed.
+        var edits = new[]
+        {
+            CreateEdit("old", "new")
+        };
+
+        var cut = Render<DiffView>(parameters => parameters
+            .Add(p => p.FilePath, string.Empty)
+            .Add(p => p.Edits, edits));
+        Assert.Throws<ElementNotFoundException>(() => cut.Find(".tool-file-header"));
+
+        // Pause past the throttle window: the final push must get a leading render
+        // (deterministic — no dependence on the deferred trailing render).
+        await Task.Delay(600, TestContext.Current.CancellationToken);
+
+        // Final update: identical Edits payload (new array instance, same values) + FilePath.
+        // Without the fix: _changed stays false → render vetoed → no header.
+        cut.Render(parameters => parameters
+            .Add(p => p.FilePath, "src\\Program.cs")
+            .Add(p => p.Edits, edits));
+
+        Assert.Equal("src\\Program.cs", cut.Find(".tool-file-path").TextContent);
+    }
+
+    [Fact]
+    public async Task FilePathChange_WithGrownEdits_RendersBoth()
+    {
+        // FilePath changes AND Edits grow in the same update: both the header and the
+        // new diff content must be rendered (pending parse is scheduled for the growth).
+        var cut = Render<DiffView>(parameters => parameters
+            .Add(p => p.FilePath, "a.cs")
+            .Add(p => p.Edits, [CreateEdit("old", "new")]));
+
+        // Pause past the throttle window: the final push must get a leading render.
+        await Task.Delay(600, TestContext.Current.CancellationToken);
+
+        cut.Render(parameters => parameters
+            .Add(p => p.FilePath, "b.cs")
+            .Add(p => p.Edits, [CreateEdit("old", "new"), CreateEdit("x", "y")]));
+
+        Assert.Equal("b.cs", cut.Find(".tool-file-path").TextContent);
+        Assert.Equal(2, cut.FindAll("table.diff").Count());
     }
 
     #endregion

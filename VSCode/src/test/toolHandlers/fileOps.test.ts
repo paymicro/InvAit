@@ -144,7 +144,7 @@ describe('fileOps', () => {
                     approximateLine: 1
                 }]
             });
-            const result = toolHandlers.dispatchTool('edit_files', payload, WORKSPACE);
+            const result = toolHandlers.dispatchTool('edit_file', payload, WORKSPACE);
 
             expect(result.success).to.be.true;
             expect(result.payload).to.include('1/1');
@@ -167,7 +167,7 @@ describe('fileOps', () => {
                     approximateLine: 1
                 }]
             });
-            const result = toolHandlers.dispatchTool('edit_files', payload, WORKSPACE);
+            const result = toolHandlers.dispatchTool('edit_file', payload, WORKSPACE);
 
             expect(result.success).to.be.true;
             const written = (fsStub.writeFileSync as sinon.SinonStub).getCall(0).args[1];
@@ -189,7 +189,7 @@ describe('fileOps', () => {
                     { oldStr: 'line C', newStr: 'CC', approximateLine: 3 },
                 ]
             });
-            const result = toolHandlers.dispatchTool('edit_files', payload, WORKSPACE);
+            const result = toolHandlers.dispatchTool('edit_file', payload, WORKSPACE);
 
             expect(result.success).to.be.true;
             expect(result.payload).to.include('2/2');
@@ -210,7 +210,7 @@ describe('fileOps', () => {
                     approximateLine: 1
                 }]
             });
-            const result = toolHandlers.dispatchTool('edit_files', payload, WORKSPACE);
+            const result = toolHandlers.dispatchTool('edit_file', payload, WORKSPACE);
 
             expect(result.success).to.be.true;
         });
@@ -227,7 +227,7 @@ describe('fileOps', () => {
                     approximateLine: 1
                 }]
             });
-            const result = toolHandlers.dispatchTool('edit_files', payload, WORKSPACE);
+            const result = toolHandlers.dispatchTool('edit_file', payload, WORKSPACE);
 
             expect(result.success).to.be.false;
             expect(result.error).to.include('No valid replacements');
@@ -240,10 +240,79 @@ describe('fileOps', () => {
                 filePath: 'missing.ts',
                 edits: [{ oldStr: 'a', newStr: 'b' }]
             });
-            const result = toolHandlers.dispatchTool('edit_files', payload, WORKSPACE);
+            const result = toolHandlers.dispatchTool('edit_file', payload, WORKSPACE);
 
             expect(result.success).to.be.false;
             expect(result.error).to.include("doesn't exist");
+        });
+
+        it('should include per-edit failure report in payload on partial success', () => {
+            (fsStub.existsSync as sinon.SinonStub).returns(true);
+            (fsStub.readFileSync as sinon.SinonStub).returns('line A\nline B');
+            (fsStub.writeFileSync as sinon.SinonStub).returns(undefined);
+
+            const payload = JSON.stringify({
+                filePath: 'test.ts',
+                edits: [
+                    { oldStr: 'line A', newStr: 'AA', approximateLine: 1 },
+                    { oldStr: 'nonexistent', newStr: 'whatever', approximateLine: 2 }
+                ]
+            });
+            const result = toolHandlers.dispatchTool('edit_file', payload, WORKSPACE);
+
+            // Partial success: applied edits are NOT rolled back, but the report
+            // names the failed edit (original index + hint + reason) so the model
+            // can re-send only the failed one.
+            expect(result.success).to.be.true;
+            expect(result.payload).to.include('1/2');
+            expect(result.payload).to.include('Failed edits:');
+            expect(result.payload).to.include('edit #1');
+            expect(result.payload).to.include('oldStr not found');
+            const written = (fsStub.writeFileSync as sinon.SinonStub).getCall(0).args[1];
+            expect(written).to.equal('AA\nline B');
+        });
+
+        it('should report original edit index, not sorted position', () => {
+            (fsStub.existsSync as sinon.SinonStub).returns(true);
+            (fsStub.readFileSync as sinon.SinonStub).returns('line A\nline B');
+            (fsStub.writeFileSync as sinon.SinonStub).returns(undefined);
+
+            // Edit #0 (approximateLine 5) sorts AFTER edit #1 (approximateLine 1)
+            // in the descending pass — the failure must still report #0.
+            const payload = JSON.stringify({
+                filePath: 'test.ts',
+                edits: [
+                    { oldStr: 'missing-zero', newStr: 'x', approximateLine: 5 },
+                    { oldStr: 'line B', newStr: 'BB', approximateLine: 1 }
+                ]
+            });
+            const result = toolHandlers.dispatchTool('edit_file', payload, WORKSPACE);
+
+            expect(result.success).to.be.true;
+            expect(result.payload).to.include('edit #0');
+            expect(result.payload).to.not.include('edit #1');
+        });
+
+        it('should not write the file on dryRun and report would-apply count', () => {
+            (fsStub.existsSync as sinon.SinonStub).returns(true);
+            (fsStub.readFileSync as sinon.SinonStub).returns('line A\nline B');
+            (fsStub.writeFileSync as sinon.SinonStub).returns(undefined);
+
+            const payload = JSON.stringify({
+                filePath: 'test.ts',
+                dryRun: true,
+                edits: [
+                    { oldStr: 'line A', newStr: 'AA', approximateLine: 1 },
+                    { oldStr: 'nonexistent', newStr: 'x', approximateLine: 2 }
+                ]
+            });
+            const result = toolHandlers.dispatchTool('edit_file', payload, WORKSPACE);
+
+            expect(result.success).to.be.true;
+            expect(result.payload).to.include('Dry run on test.ts');
+            expect(result.payload).to.include('1/2');
+            expect(result.payload).to.include('Failed edits:');
+            expect((fsStub.writeFileSync as sinon.SinonStub).called).to.be.false;
         });
     });
 
@@ -367,7 +436,7 @@ describe('fileOps', () => {
                     approximateLine: 6  // actual is line 5, within tolerance
                 }]
             });
-            const result = toolHandlers.dispatchTool('edit_files', payload, WORKSPACE);
+            const result = toolHandlers.dispatchTool('edit_file', payload, WORKSPACE);
 
             expect(result.success).to.be.true;
             const written = (fsStub.writeFileSync as sinon.SinonStub).getCall(0).args[1];
@@ -392,7 +461,7 @@ describe('fileOps', () => {
                     approximateLine: 7  // way off, but full search should find at line 1
                 }]
             });
-            const result = toolHandlers.dispatchTool('edit_files', payload, WORKSPACE);
+            const result = toolHandlers.dispatchTool('edit_file', payload, WORKSPACE);
 
             expect(result.success).to.be.true;
             const written = (fsStub.writeFileSync as sinon.SinonStub).getCall(0).args[1];

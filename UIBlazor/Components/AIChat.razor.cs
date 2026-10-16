@@ -21,6 +21,14 @@ public partial class AiChat : RadzenComponent
 
     private bool _callSettings;
 
+    /// <summary>
+    /// True while the agent loop is actively running (ProcessStreamAsync in progress),
+    /// false during compression and idle. Gates interjects: a user message sent during
+    /// the stream is added to the session and picked up by the loop at the next turn
+    /// boundary; during compression it is rejected (SetMessages would drop it).
+    /// </summary>
+    private bool _acceptInterjects;
+
     [Inject] private NotificationService NotificationService { get; set; } = null!;
     [Inject] private DialogService DialogService { get; set; } = null!;
     [Inject] private IChatService ChatService { get; set; } = null!;
@@ -44,18 +52,28 @@ public partial class AiChat : RadzenComponent
 
     public async Task SendMessageAsync(string content)
     {
-        if (string.IsNullOrWhiteSpace(content) || IsLoading)
+        if (string.IsNullOrWhiteSpace(content))
             return;
 
-        var userMessage = new VisualChatMessage
-        {
-            Content = content,
-            Role = ChatMessageRole.User,
-            IsExpanded = IsShortMessage(content)
-        };
+        // Во время сжатия interject отклоняется — компрессия перезаписывает историю из
+        // снапшота и молча потеряла бы сообщение.
+        if (IsLoading && !_acceptInterjects)
+            return;
+
+        var userMessage = VisualChatMessage.CreateUser(content, IsShortMessage(content));
 
         ChatService.Session.AddMessage(userMessage);
         await ScrollToBottomAsync();
+
+        if (IsLoading)
+        {
+            // Interject во время стрима: сообщение уже добавлено в сессию сразу после
+            // стримящегося сообщения; агентный цикл подхватит его на границе туров
+            // (после завершения текущего tool-тура, до следующего LLM-вызова).
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
         await GetAiResponseAsync();
     }
 
@@ -232,45 +250,89 @@ public partial class AiChat : RadzenComponent
         }
 
         var assistantMessage = VisualChatMessage.CreateStreaming();
+
         ChatService.Session.AddMessage(assistantMessage);
         await ChatService.SaveSessionAsync();
         await InvokeAsync(StateHasChanged);
 
         var completions = new CompletionsResult();
 
+        // Agent-loop run: a single stream may span several assistant turns.
+        // Every callback must target the *current* turn's message, not the first one.
+        var currentMessage = assistantMessage;
+
         try
         {
+            // Interject-окно: пока цикл стримит, пользовательские сообщения добавляются в сессию
+            // и подхватываются циклом на границе туров (AfAgentLoop.TakeNewUserMessages).
+            _acceptInterjects = true;
+
             await ChatService.ProcessStreamAsync(
                 assistantMessage,
                 ChatService.GetCompletionsAsync(completions, cancellationToken),
-                onContentUpdate: content => MessageParser.UpdateSegments(content, assistantMessage),
+                onContentUpdate: content => MessageParser.UpdateSegments(content, currentMessage),
                 onToolCallsUpdate: toolCalls =>
                 {
-                    assistantMessage.ToolCalls = toolCalls;
-                    assistantMessage.IsShouldRender = true;
+                    currentMessage.ToolCalls = toolCalls;
+                    currentMessage.IsShouldRender = true;
                 },
                 onStateChange: () =>
                 {
-                    assistantMessage.Model ??= completions.Model;
+                    currentMessage.Model ??= completions.Model;
                     InvokeAsync(StateHasChanged);
                 },
                 completions,
-                cancellationToken);
-            await HandleStreamCompletionAsync(assistantMessage, completions, cancellationToken);
+                cancellationToken,
+                onNewTurn: () =>
+                {
+                    // ChatClientAgent loop: every new assistant turn is its own message
+                    // (the tool calls of the previous turn stay rendered on it).
+                    var nextMessage = VisualChatMessage.CreateStreaming();
+                    ChatService.Session.AddMessage(nextMessage);
+                    currentMessage = nextMessage;
+                    _ = InvokeAsync(StateHasChanged);
+                    return nextMessage;
+                });
+            await HandleStreamCompletionAsync(currentMessage, completions, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            HandleCancellation(assistantMessage);
+            HandleCancellation(currentMessage);
         }
         catch (Exception ex)
         {
-            await HandleErrorAsync(assistantMessage, ex, ++retryCount,
+            // currentMessage (не assistantMessage): onNewTurn мог создать следующие туры —
+            // финальная ошибка относится к последнему стримившемуся сообщению.
+            var attempt = ++retryCount;
+            var maxRetries = CommonSettingsProvider.Current.MaxRetries;
+
+            // Ретраебельная ошибка: удаляется ТОЛЬКО незавершённый хвост (currentMessage —
+            // его удалит HandleErrorAsync перед retryAction). Завершённые туры рана
+            // (1..N-1) остаются в сессии: их tool calls имеют результаты (результаты
+            // добавляются до IsStartOfTurn), wire-история консистентна — ретрай
+            // ПРОДОЛЖАЕТ с них, а не начинает заного (перетирание всей цепочки после
+            // пользовательского сообщения теряло выполненную работу). Interject-сообщения
+            // пользователя (Role=User) тоже остаются — новый прогон увидит их через
+            // GetFormattedMessages. При финальной ошибке ничего не удаляется — частичный
+            // прогресс остаётся как история попытки.
+            await HandleErrorAsync(currentMessage, ex, attempt,
                 async () => await GetAiResponseInternalAsync(retryCount, cancellationToken),
                 cancellationToken);
         }
         finally
         {
+            _acceptInterjects = false;
             assistantMessage.IsStreaming = false;
+            // onNewTurn may have created streaming messages that the
+            // loop never streamed into (cancelled / failed mid-turn) - close them all.
+            foreach (var openMessage in ChatService.Session.GetMessagesSnapshot())
+            {
+                if (openMessage.IsStreaming)
+                {
+                    openMessage.IsStreaming = false;
+                    openMessage.IsShouldRender = true;
+                }
+            }
             IsLoading = false;
             await InvokeAsync(StateHasChanged);
         }
@@ -284,6 +346,13 @@ public partial class AiChat : RadzenComponent
 
         // Handle native tool_calls from the API response
         message.ToolCalls = result.AccumulatedToolCalls;
+        if (result.ToolsExecutedByAgent)
+        {
+            // tools were already executed inside the loop
+            // (approval + Result per toolCall); the UI must not re-process them.
+            return;
+        }
+
         if (message.ToolCalls is { Count: > 0 })
         {
             ToolCallHandler.PrepareToolsForApprovals(message.ToolCalls);
@@ -342,7 +411,6 @@ public partial class AiChat : RadzenComponent
         {
             foreach (var toolCall in message.ToolCalls)
             {
-                toolCall.IsReady = true;
                 toolCall.ApprovalStatus = ToolApprovalStatus.Rejected;
                 toolCall.Result ??= new ToolResult
                 {
@@ -359,8 +427,6 @@ public partial class AiChat : RadzenComponent
         int retryCount, Func<Task> retryAction, CancellationToken cancellationToken)
     {
         var maxRetries = CommonSettingsProvider.Current.MaxRetries;
-        message.Content = $"Error: {ex.Message} [{retryCount}/{maxRetries}]";
-        MessageParser.UpdateSegments(message.Content, message);
         Logger.LogError(ex, "Getting response error");
 
         NotificationService.Notify(new NotificationMessage
@@ -374,6 +440,12 @@ public partial class AiChat : RadzenComponent
 
         if (retryCount >= maxRetries)
         {
+            // Финал: перезаписываем контент текстом ошибки. При ретраебельной ошибке контент
+            // НЕ трогаем — сообщение будет удалено перед retryAction, перезапись + перестройка
+            // сегментов здесь была бы мёртвой работой (и затирала бы частичный ответ модели).
+            message.Content = $"Error: {ex.Message} [{retryCount}/{maxRetries}]";
+            message.Segments.Clear();
+            MessageParser.UpdateSegments(message.Content, message);
             return;
         }
 

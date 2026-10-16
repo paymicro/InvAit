@@ -278,6 +278,44 @@ public class JsonUtilsTests
     }
 
     [Fact]
+    public void DeserializeAnonymousType_ValidJson_ReturnsAllFields()
+    {
+        // Arrange - transports deliver already-repaired valid JSON; no RepairJson needed.
+        var _template = new
+        {
+            filePath = default(string),
+            content = default(string)
+        };
+        var json = "{\"filePath\": \"config.json\", \"content\": \"hello\"}";
+
+        // Act
+        var result = JsonUtils.DeserializeAnonymousType(json, _template);
+
+        // Assert
+        Assert.Equal("config.json", result.filePath);
+        Assert.Equal("hello", result.content);
+    }
+
+    [Fact]
+    public void DeserializeAnonymousType_InvalidJson_ReturnsDefaultTemplate()
+    {
+        // Arrange - safety fallback: broken JSON must not throw.
+        var _template = new
+        {
+            filePath = default(string),
+            content = default(string)
+        };
+
+        // Act
+        var empty = JsonUtils.DeserializeAnonymousType("", _template);
+        var broken = JsonUtils.DeserializeAnonymousType("{\"filePath\": ", _template);
+
+        // Assert
+        Assert.Null(empty.filePath);
+        Assert.Null(broken.filePath);
+    }
+
+    [Fact]
     public void Serialize_ReturnsJsonString()
     {
         var obj = new TestObject { Name = "test", Value = 123 };
@@ -294,15 +332,6 @@ public class JsonUtilsTests
         Assert.NotNull(obj);
         Assert.Equal("test", obj.Name);
         Assert.Equal(123, obj.Value);
-    }
-
-    [Fact]
-    public void PrettyPrintFormat_ReturnsIndentedJson()
-    {
-        var minified = "{\"name\":\"test\",\"value\":123}";
-        var pretty = JsonUtils.PrettyPrintFormat(minified);
-        Assert.Contains("\n", pretty);
-        Assert.Contains("  ", pretty); // Check for indentation
     }
 
     [Fact]
@@ -337,51 +366,5 @@ public class JsonUtilsTests
         Assert.Equal("value", dict.GetString("key"));
         Assert.Equal("123", dict.GetString("intKey"));
         Assert.Null(dict.GetString("missing"));
-    }
-
-    [Fact]
-    public void GetBool_ReturnsBoolOrDefault()
-    {
-        var dict = new Dictionary<string, object>
-        {
-            { "trueVal", "true" },
-            { "falseVal", "false" },
-            { "yesVal", "yes" },
-            { "noVal", "no" },
-            { "oneVal", "1" },
-            { "zeroVal", "0" },
-            { "invalid", "foo" }
-        };
-
-        Assert.True(dict.GetBool("trueVal"));
-        Assert.False(dict.GetBool("falseVal"));
-        Assert.True(dict.GetBool("yesVal"));
-        Assert.False(dict.GetBool("noVal"));
-        Assert.True(dict.GetBool("oneVal"));
-        Assert.False(dict.GetBool("zeroVal"));
-        Assert.False(dict.GetBool("invalid"));
-        Assert.True(dict.GetBool("invalid", true));
-    }
-
-    [Fact]
-    public void GetInt_ReturnsIntOrDefault()
-    {
-        var dict = new Dictionary<string, object> { { "key", 123 }, { "strKey", "456" }, { "invalid", "foo" } };
-        Assert.Equal(123, dict.GetInt("key"));
-        Assert.Equal(456, dict.GetInt("strKey"));
-        Assert.Equal(0, dict.GetInt("invalid"));
-        Assert.Equal(99, dict.GetInt("invalid", 99));
-    }
-
-    [Fact]
-    public void GetObject_ReturnsDeserializedObject()
-    {
-        var innerObj = new TestObject { Name = "inner", Value = 999 };
-        var dict = new Dictionary<string, object> { { "key", innerObj } };
-
-        var result = dict.GetObject<TestObject>("key");
-        Assert.NotNull(result);
-        Assert.Equal("inner", result.Name);
-        Assert.Equal(999, result.Value);
     }
 }

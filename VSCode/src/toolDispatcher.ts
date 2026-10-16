@@ -390,7 +390,7 @@ export async function handleVsRequest(
 
     // Invalidate solution structure cache for filesystem-modifying tools
     // so that subsequent get_solution_structure calls reflect the latest state.
-    const fsModifyingActions = ['create_file', 'edit_files', 'delete_file'];
+    const fsModifyingActions = ['create_file', 'edit_file', 'delete_file'];
     if (fsModifyingActions.includes(message.action)) {
         invalidateContextCache();
     }

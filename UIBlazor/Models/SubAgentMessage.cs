@@ -1,18 +1,6 @@
 namespace UIBlazor.Models;
 
 /// <summary>
-/// Status of a sub-agent execution.
-/// </summary>
-public enum SubAgentStatus
-{
-    Pending,
-    Running,
-    Completed,
-    Cancelled,
-    Failed
-}
-
-/// <summary>
 /// Represents a sub-agent execution context and its conversation.
 /// Attached to the parent assistant message that triggered the delegate_task tool call.
 /// </summary>
@@ -69,7 +57,31 @@ public class SubAgentMessage
     /// the session becomes an automatically-synced mirror used only for LLM API calls.
     /// </summary>
     /// <param name="session">The session to attach. Must not be null.</param>
-    public void AttachSession(ConversationSession session) => _session = session;
+    public void AttachSession(ConversationSession session)
+    {
+        _session = session;
+
+        // Reverse sync: context compression rewrites the session history directly via
+        // SetMessages (bypassing the Add/Remove/Set wrapper methods), so the UI-side
+        // _messages copy would go stale — the user would see the uncompressed history
+        // while the model receives the compressed one. Listen to the session event and
+        // update the local copy WITHOUT propagating back into the session (no recursion).
+        session.MessagesReplaced += OnSessionMessagesReplaced;
+    }
+
+    /// <summary>
+    /// Handler for <see cref="ConversationSession.MessagesReplaced"/>: replaces the local
+    /// _messages copy with the compressed history. Writes only to the local list — the
+    /// session is already updated (this is the event source).
+    /// </summary>
+    private void OnSessionMessagesReplaced(List<VisualChatMessage> messages)
+    {
+        lock (_messagesLock)
+        {
+            _messages.Clear();
+            _messages.AddRange(messages);
+        }
+    }
 
     /// <summary>
     /// The conversation messages of the sub-agent (for UI display).
@@ -94,6 +106,31 @@ public class SubAgentMessage
                 _messages.AddRange(value);
             }
         }
+    }
+
+    /// <summary>
+    /// Adds a user interject message to the RUNNING sub-agent conversation ("write to the
+    /// branch while it works"). The message lands in the UI history and the attached session
+    /// immediately; the branch's <c>AfAgentLoop</c> picks it up at the next turn boundary
+    /// (after the current tool turn completes, before the next LLM call).
+    /// Rejected when the branch is not running or is compressing (compression rewrites the
+    /// session history from a snapshot and would silently drop the interject).
+    /// </summary>
+    /// <returns>True when the interject was accepted.</returns>
+    public bool TryAddInterject(string text)
+    {
+        if (Status != SubAgentStatus.Running || IsCompressing)
+            return false;
+
+        var trimmed = text.Trim();
+        if (trimmed.Length == 0)
+            return false;
+
+        var message = VisualChatMessage.CreateUser(trimmed);
+        message.IsInterject = true;
+        AddMessage(message); // writes _messages + the attached session
+        NotifyStateChanged();
+        return true;
     }
 
     /// <summary>
@@ -177,11 +214,6 @@ public class SubAgentMessage
     }
 
     /// <summary>
-    /// The final result returned by the sub-agent to the main agent.
-    /// </summary>
-    public string Result { get; set; } = string.Empty;
-
-    /// <summary>
     /// Current status of the sub-agent execution.
     /// </summary>
     public SubAgentStatus Status { get; set; } = SubAgentStatus.Pending;
@@ -257,14 +289,14 @@ public class SubAgentMessage
     /// <summary>
     /// CancellationTokenSource linked to the parent token, allowing independent
     /// cancellation of this sub-agent without cancelling the entire chat.
-    /// Set by <c>SubAgentExecutor</c> via <see cref="SetCancellationTokenSource"/>.
+    /// Set by <c>AfSubAgentOrchestrator</c> via <see cref="SetCancellationTokenSource"/>.
     /// </summary>
     [JsonIgnore]
     private CancellationTokenSource? _cancelSource;
 
     /// <summary>
     /// Sets the linked CancellationTokenSource so the sub-agent can be cancelled independently.
-    /// Called by <c>SubAgentExecutor</c> after creating the linked token.
+    /// Called by <c>AfSubAgentOrchestrator</c> after creating the linked token.
     /// Uses <see cref="Volatile.Write"/> to ensure the assignment is immediately visible
     /// to other threads (UI thread calling <see cref="Cancel"/>).
     /// </summary>
@@ -288,13 +320,25 @@ public class SubAgentMessage
         if (cts is null)
             return;
 
+        // The branch's `using var timeoutCts` may dispose this CTS concurrently on the
+        // branch thread (race window between Exchange and using-dispose).
         try
         {
             cts.Cancel();
         }
+        catch (ObjectDisposedException)
+        {
+            // Already disposed by the branch ending - nothing to signal.
+        }
         finally
         {
-            cts.Dispose();
+            try
+            {
+                cts.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
         }
     }
 
@@ -358,7 +402,7 @@ public class SubAgentMessage
     /// Releases heavy runtime resources that are no longer needed after the sub-agent
     /// has finished (Completed / Cancelled / Failed).
     ///
-    /// This method is called by <c>SubAgentExecutor</c> in its <c>finally</c> block,
+    /// This method is called by <c>AfSubAgentOrchestrator</c> in its <c>finally</c> block,
     /// AFTER <c>CancelPendingApprovals</c> has already cancelled all waiters.
     ///
     /// What is cleaned up:

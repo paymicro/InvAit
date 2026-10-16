@@ -15,6 +15,20 @@ public sealed class CompletionsResult
     public List<ToolCall>? AccumulatedToolCalls { get; set; }
 
     /// <summary>
+    /// true when the agent loop already executed tools
+    /// through ToolCallHandler (approval + execution + Result stored on toolCall).
+    /// Callers must NOT re-process AccumulatedToolCalls in that case.
+    /// </summary>
+    public bool ToolsExecutedByAgent { get; set; }
+
+    /// <summary>
+    /// Responses API: ID of the last response (e.g. "resp_...").
+    /// Stored for potential future use with previous_response_id.
+    /// Null for Chat Completions API.
+    /// </summary>
+    public string? ResponseId { get; set; }
+
+    /// <summary>
     /// Полный вывод модели: из <see cref="UsageInfo.CompletionTokens"/> или приблизительный подсчет во время стрима.
     /// Включает размышления — для места в контексте используйте <see cref="VisibleCompletionTokens"/>.
     /// </summary>
@@ -39,9 +53,23 @@ public sealed class CompletionsResult
     {
         Model = null;
         Error = null;
-        Usage = null;
         FinishReason = null;
         AccumulatedToolCalls = null;
+        ToolsExecutedByAgent = false;
+        ResetPerTurnCounters();
+    }
+
+    /// <summary>
+    /// Resets the PER-TURN counters (token estimate + usage) without touching the run-wide
+    /// state (Model, FinishReason, AccumulatedToolCalls). Called at the start of every LLM
+    /// turn: the agent loop reuses one <see cref="CompletionsResult"/> across the whole
+    /// multi-turn run, and without the reset the next turn's badge duplicates the previous
+    /// message's count (the heuristic kept adding to the run-wide counter) or freezes on it
+    /// (usage arrived in an earlier turn, disabling the heuristic for the rest of the run).
+    /// </summary>
+    public void ResetPerTurnCounters()
+    {
+        Usage = null;
         CompletionTokens = 0;
         ReasoningTokens = 0;
     }

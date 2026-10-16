@@ -50,7 +50,7 @@
     <!-- Chat Messages -->
     <div class="rz-chat-messages" >
         @{
-            var messages = ChatService.Session.GetMessagesSnapshot();
+            var messages = ChatService.Session.GetMessagesSnapshot().Where(m => !m.IsEmptyTurn).ToList();
             if (messages.Count == 0)
             {
                 <RecentSessionsPicker ShowTitle=true />

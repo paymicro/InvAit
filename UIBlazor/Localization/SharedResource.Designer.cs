@@ -772,6 +772,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Write to the sub-agent....
+        /// </summary>
+        public static string InterjectPlaceholder {
+            get {
+                return ResourceManager.GetString("InterjectPlaceholder", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Loading....
         /// </summary>
         public static string Loading {
@@ -885,6 +894,15 @@ namespace UIBlazor.Localization {
         public static string NoMCP {
             get {
                 return ResourceManager.GetString("NoMCP", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Open in IDE.
+        /// </summary>
+        public static string OpenFileInIde {
+            get {
+                return ResourceManager.GetString("OpenFileInIde", resourceCulture);
             }
         }
         

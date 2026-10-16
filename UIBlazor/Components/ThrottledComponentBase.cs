@@ -92,13 +92,22 @@ public abstract class ThrottledComponentBase : ComponentBase, IDisposable
         try
         {
             await Task.Delay(RenderIntervalMs, ct);
+
+            // Fire-and-forget может проснуться после Dispose (компонент ушёл со страницы,
+            // сессия сменилась) — рендер disposed-компонента бросает из Blazor-ядра.
+            if (_disposed)
+                return;
+
             _forceTrailingRender = true;
             StateHasChanged();
         }
         catch (OperationCanceledException) { }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // игнорим?
+            // Ошибка отложенного рендера больше не глотается молча — видна в консоли браузера.
+            // ex.ToString() включает type+message+stack: для диагностики Blazor-ошибок рендера
+            // message без stack часто бесполезен.
+            Console.Error.WriteLine($"[ThrottledComponentBase] delayed render failed: {ex}");
         }
     }
 

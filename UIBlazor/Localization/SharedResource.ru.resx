@@ -165,6 +165,9 @@
   <data name="InputPlaceholderPlan" xml:space="preserve">
     <value>Опишите цель для создания плана...</value>
   </data>
+  <data name="InterjectPlaceholder" xml:space="preserve">
+    <value>Написать в суб-агент...</value>
+  </data>
   <data name="MaxTokens" xml:space="preserve">
     <value>Максимум токенов ответа</value>
   </data>
@@ -632,5 +635,8 @@
   </data>
   <data name="BashPatternTestCustom" xml:space="preserve">
     <value>Пользовательские</value>
+  </data>
+  <data name="OpenFileInIde" xml:space="preserve">
+    <value>Открыть в IDE</value>
   </data>
 </root>

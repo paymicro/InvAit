@@ -2,13 +2,20 @@
 @inject DialogService DialogService
 
 <div class="subagent-block @StatusClass" data-subagent-id="@SubAgent.Id">
-    <div class="subagent-header" @onclick="Toggle">
-        <div class="subagent-header-left">
-            <i class="fa-solid fa-robot" style="color: @IconColor"></i>
-            <span class="subagent-title">@SharedResource.SubAgent</span>
-            <span class="subagent-task hide-750">@TruncateTask</span>
-        </div>
-        <div class="subagent-header-right">
+    @* Единый спойлер через <Details> (как ToolCallBlock/reasoning в MessageContent):
+       состояние раскрытия переживает перерендеры, меньше кастомного CSS.
+       Контролируемый режим OnToggle: источник истины — SubAgent.IsExpanded,
+       поэтому принудительное раскрытие оркестратором (апрув) и сворачивание
+       после Finish доезжают до UI. Клик по заголовку пишет обратно в модель. *@
+    <Details IsExpanded="@SubAgent.IsExpanded" OnToggle="@Toggle" class="subagent-details">
+        <HeaderTemplate>
+            <div class="subagent-header">
+                <div class="subagent-header-left">
+                    <i class="fa-solid fa-robot" style="color: @IconColor"></i>
+                    <span class="subagent-title">@SharedResource.SubAgent</span>
+                    <span class="subagent-task hide-750">@TruncateTask</span>
+                </div>
+                <div class="subagent-header-right">
             @if (SubAgent.Status == SubAgentStatus.Running)
             {
                 <RadzenBadge BadgeStyle="BadgeStyle.Info" Variant="Variant.Text">
@@ -56,20 +63,24 @@
                 <RadzenButton Icon="stop_circle" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text" Size="ButtonSize.ExtraSmall"
                               Click="@CancelSubAgentAsync" @onclick:stopPropagation="true" Title="@SharedResource.Cancel" />
             }
-            <span class="subagent-arrow @(SubAgent.IsExpanded ? "expanded" : "")">▼</span>
+            </div>
         </div>
-    </div>
-
-    @if (SubAgent.IsExpanded)
-    {
+        </HeaderTemplate>
+        <ChildContent>
         <div class="subagent-body">
             @* Sub-agent conversation messages *@
             <div class="subagent-conversation">
-                @foreach (var msg in SubAgent.GetMessages())
+            @foreach (var msg in SubAgent.GetMessages().Where(m => !m.IsEmptyTurn))
                 {
-                    @if (msg.Role is ChatMessageRole.Assistant)
+                    @if (msg.Role is ChatMessageRole.User && msg.IsInterject)
                     {
-                        // Роль User специально пропущена. В нем дублируется задача для суб-агента
+                        // Interject-сообщение пользователя ("написать в ветку"): компактный бабл.
+                        // Начальное user-сообщение задачи (IsInterject = false) по-прежнему скрыто —
+                        // задача дублируется в заголовке.
+                        <div class="subagent-user-interject" data-interject-id="@msg.Id">@msg.Content</div>
+                    }
+                    else if (msg.Role is ChatMessageRole.Assistant)
+                    {
                         <div class="subagent-message-content">
                             @if (!string.IsNullOrEmpty(msg.ReasoningContent))
                             {
@@ -86,7 +97,9 @@
                                 <div class="subagent-toolcalls">
                                     @foreach (var tc in msg.ToolCalls)
                                     {
-                                        <ToolCallBlock ToolCall="@tc"
+                                        // @key: позиционный диффинг может прикрепить состояние
+                                        // ToolCallBlock к неправильному вызову при вставке/смене
+                                        <ToolCallBlock @key="tc.Id" ToolCall="@tc"
                                                         ToolCallHandlerOverride="@SubAgent.ToolCallHandler"
                                                         OnApproval="@HandleSubAgentApproval" />
                                     }
@@ -97,6 +110,25 @@
                 }
                 <div class="subagent-anchor" />
             </div>
+
+            @* Input line for writing to the branch while it is running (interject).
+               The message is added to the branch session immediately; the branch's agent
+               loop picks it up at the next turn boundary (after the current tool turn). *@
+            @if (SubAgent.CanCancel)
+            {
+                <div class="subagent-interject">
+                    <input type="text" class="subagent-interject-input text-input"
+                           placeholder="@SharedResource.InterjectPlaceholder"
+                           value="@_interjectText"
+                           @oninput="OnInterjectInput"
+                           @onkeydown="OnInterjectKeyDown" />
+                    @* Кнопка всегда активна: SubAgentView троттлится (ThrottledComponentBase),
+                       рендер по @oninput ветируется HasChanges — Disabled-атрибут не обновлялся бы.
+                       Пустой текст гвардится в SendInterject (no-op). *@
+                    <RadzenButton Icon="send" ButtonStyle="ButtonStyle.Base" Variant="Variant.Text" Size="ButtonSize.ExtraSmall"
+                                  Click="@(() => SendInterject())" Title="@SharedResource.SendMessage" />
+                </div>
+            }
 
             @if (SubAgent.Status == SubAgentStatus.Failed && !string.IsNullOrEmpty(SubAgent.ErrorMessage))
             {
@@ -111,7 +143,8 @@
                 </div>
             }
         </div>
-    }
+        </ChildContent>
+    </Details>
 </div>
 
 @code {
@@ -124,6 +157,30 @@
     /// via <see cref="HasChanges"/> returning true on first access after change.
     /// </summary>
     protected override int RenderIntervalMs => 100;
+
+    /// <summary>
+    /// Self-subscription to this sub-agent's state stream. Critical for NESTED sub-agent
+    /// views: the Blazor renderer SKIPS re-processing child components whose parameters
+    /// are unchanged, so an upstream "owner bump" re-render (with the same SubAgent
+    /// reference) never reaches the body of an already-created SubAgentView. Subscribing
+    /// here and re-rendering itself bypasses that skip: every NotifyStateChanged (attach,
+    /// branch deltas, finish) reaches the view immediately.
+    /// </summary>
+    private SubAgentMessage? _subscribedSubAgent;
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        if (!ReferenceEquals(_subscribedSubAgent, SubAgent))
+        {
+            _subscribedSubAgent?.StateChanged -= OnSubAgentStateChanged;
+            _subscribedSubAgent = SubAgent;
+            SubAgent.StateChanged += OnSubAgentStateChanged;
+        }
+    }
+
+    private void OnSubAgentStateChanged()
+        => InvokeAsync(StateHasChanged);
 
     private string StatusClass => SubAgent.Status switch
     {
@@ -146,6 +203,8 @@
     private string TruncateTask => (SubAgent.Task?.Length ?? 0) > 80
         ? SubAgent.Task![..80] + "..."
         : (SubAgent.Task ?? string.Empty);
+
+    private string IsExpandedClass => SubAgent.IsExpanded ? "expanded" : string.Empty;
 
     private int _oldMessageCount;
     private SubAgentStatus _oldStatus;
@@ -199,9 +258,10 @@
 
         // Structural changes always render immediately (rare events).
         var messageCountChanged = SubAgent.GetMessageCount() != _oldMessageCount;
+        var expandedChanged = SubAgent.IsExpanded != _oldIsExpanded;
         var structuralChanged = messageCountChanged ||
                                 SubAgent.Status != _oldStatus ||
-                                SubAgent.IsExpanded != _oldIsExpanded ||
+                                expandedChanged ||
                                 streamingStopped ||
                                 SubAgent.IsRetrying != _oldIsRetrying ||
                                 SubAgent.RetryCountdown != _oldRetryCountdown ||
@@ -209,8 +269,11 @@
         if (structuralChanged)
         {
             _structuralChanged = true;
-            // Track scroll need: new messages added while running and expanded.
-            if (messageCountChanged && SubAgent.IsExpanded && SubAgent.Status == SubAgentStatus.Running)
+            // Track scroll need: new messages added while running and expanded,
+            // and any expansion (auto-expand on start, approval-required expand,
+            // user expanding a finished branch) — the user must see the CURRENT
+            // progress, not the top of the history.
+            if ((messageCountChanged || expandedChanged) && SubAgent.IsExpanded)
                 _needsScroll = true;
             return true;
         }
@@ -263,11 +326,39 @@
         }
     }
 
-    private void Toggle()
+    private void Toggle(bool expanded)
     {
-        SubAgent.IsExpanded = !SubAgent.IsExpanded;
+        SubAgent.IsExpanded = expanded;
         SubAgent.NotifyStateChanged();
     }
+
+    #region Interject (write to the running branch)
+
+    private string? _interjectText;
+
+    private void OnInterjectInput(ChangeEventArgs e)
+        => _interjectText = e.Value?.ToString();
+
+    private void OnInterjectKeyDown(KeyboardEventArgs e)
+    {
+        // Enter без Shift/Ctrl — отправка
+        if (e is { Key: "Enter", CtrlKey: false, ShiftKey: false })
+            SendInterject();
+    }
+
+    private void SendInterject()
+    {
+        var text = _interjectText;
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        // Отклоняется вне Running/Compressing (guard внутри) — текст сохраняется в поле,
+        // чтобы пользователь не потерял ввод при гонке с завершением ветки.
+        if (SubAgent.TryAddInterject(text))
+            _interjectText = null;
+    }
+
+    #endregion
 
     /// <summary>
     /// Cancels the sub-agent independently after user confirmation.
@@ -291,5 +382,12 @@
         var handler = SubAgent.ToolCallHandler;
         if (handler is not null)
             await handler.HandleApprovalAsync(args.SegmentId, args.Approved);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            _subscribedSubAgent?.StateChanged -= OnSubAgentStateChanged;
+        base.Dispose(disposing);
     }
 }

@@ -7,7 +7,7 @@ public static class BuiltInToolEnum
     public const string ReadOpenFile = "read_open_file";
     public const string CreateFile = "create_file";
     public const string DeleteFile = "delete_file";
-    public const string EditFiles = "edit_files";
+    public const string EditFile = "edit_file";
 
     // Search and navigation
     public const string SearchFiles = "search_files";
