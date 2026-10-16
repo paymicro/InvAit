@@ -61,17 +61,20 @@ public class DynamicEnvironmentHttpMessageHandler(IJSRuntime jsRuntime) : Delega
                 headers[header.Key] = string.Join(", ", header.Value);
         }
 
-        var tcs = new TaskCompletionSource<HttpResponseMessage>();
+        var tcs = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
         var responseBridge = new VscodeResponseBridge(requestId, tcs, jsRuntime);
         var dotNetRef = DotNetObjectReference.Create(responseBridge);
         responseBridge.DotNetRef = dotNetRef;
 
         // Dispose on cancellation — covers the case where the request is cancelled
-        // before headers or body arrive.
+        // before headers or body arrive. Also notify the VS Code extension host to
+        // destroy the underlying connection (webview cannot abort the extension's
+        // own request, so it must learn about the cancellation explicitly).
         var cancellationRegistration = cancellationToken.Register(() =>
         {
             tcs.TrySetCanceled(cancellationToken);
             DynamicEnvironmentHttpMessageHandler.ActiveStreams.TryRemove(requestId, out _);
+            _ = NotifyVsCodeCancelledAsync(requestId);
             try { dotNetRef.Dispose(); } catch { /* already disposed */ }
         });
 
@@ -110,6 +113,23 @@ public class DynamicEnvironmentHttpMessageHandler(IJSRuntime jsRuntime) : Delega
             try { dotNetRef.Dispose(); } catch { }
             await jsRuntime.InvokeVoidAsync("console.log", $"[InvAit C#] tcs.Task threw: {ex.Message}");
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Fire-and-forget notification to the VS Code extension: destroy the proxied
+    /// connection for the given requestId. Failures are ignored — the race gate in
+    /// the agent loop already detached the UI from the stream.
+    /// </summary>
+    private async Task NotifyVsCodeCancelledAsync(string requestId)
+    {
+        try
+        {
+            await jsRuntime.InvokeVoidAsync("vscodeInterop.cancelNetworkRequest", requestId);
+        }
+        catch
+        {
+            // already detached - nothing else to do
         }
     }
 }

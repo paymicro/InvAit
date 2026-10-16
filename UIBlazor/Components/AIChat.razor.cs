@@ -47,12 +47,7 @@ public partial class AiChat : RadzenComponent
         if (string.IsNullOrWhiteSpace(content) || IsLoading)
             return;
 
-        var userMessage = new VisualChatMessage
-        {
-            Content = content,
-            Role = ChatMessageRole.User,
-            IsExpanded = IsShortMessage(content)
-        };
+        var userMessage = VisualChatMessage.CreateUser(content, IsShortMessage(content));
 
         ChatService.Session.AddMessage(userMessage);
         await ScrollToBottomAsync();
@@ -238,29 +233,43 @@ public partial class AiChat : RadzenComponent
 
         var completions = new CompletionsResult();
 
+        // Agent-loop run: a single stream may span several assistant turns.
+        // Every callback must target the *current* turn's message, not the first one.
+        var currentMessage = assistantMessage;
+
         try
         {
             await ChatService.ProcessStreamAsync(
                 assistantMessage,
                 ChatService.GetCompletionsAsync(completions, cancellationToken),
-                onContentUpdate: content => MessageParser.UpdateSegments(content, assistantMessage),
+                onContentUpdate: content => MessageParser.UpdateSegments(content, currentMessage),
                 onToolCallsUpdate: toolCalls =>
                 {
-                    assistantMessage.ToolCalls = toolCalls;
-                    assistantMessage.IsShouldRender = true;
+                    currentMessage.ToolCalls = toolCalls;
+                    currentMessage.IsShouldRender = true;
                 },
                 onStateChange: () =>
                 {
-                    assistantMessage.Model ??= completions.Model;
+                    currentMessage.Model ??= completions.Model;
                     InvokeAsync(StateHasChanged);
                 },
                 completions,
-                cancellationToken);
-            await HandleStreamCompletionAsync(assistantMessage, completions, cancellationToken);
+                cancellationToken,
+                onNewTurn: () =>
+                {
+                    // ChatClientAgent loop: every new assistant turn is its own message
+                    // (the tool calls of the previous turn stay rendered on it).
+                    var nextMessage = VisualChatMessage.CreateStreaming();
+                    ChatService.Session.AddMessage(nextMessage);
+                    currentMessage = nextMessage;
+                    _ = InvokeAsync(StateHasChanged);
+                    return nextMessage;
+                });
+            await HandleStreamCompletionAsync(currentMessage, completions, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            HandleCancellation(assistantMessage);
+            HandleCancellation(currentMessage);
         }
         catch (Exception ex)
         {
@@ -271,6 +280,16 @@ public partial class AiChat : RadzenComponent
         finally
         {
             assistantMessage.IsStreaming = false;
+            // onNewTurn may have created streaming messages that the
+            // loop never streamed into (cancelled / failed mid-turn) - close them all.
+            foreach (var openMessage in ChatService.Session.GetMessagesSnapshot())
+            {
+                if (openMessage.IsStreaming)
+                {
+                    openMessage.IsStreaming = false;
+                    openMessage.IsShouldRender = true;
+                }
+            }
             IsLoading = false;
             await InvokeAsync(StateHasChanged);
         }
@@ -284,6 +303,13 @@ public partial class AiChat : RadzenComponent
 
         // Handle native tool_calls from the API response
         message.ToolCalls = result.AccumulatedToolCalls;
+        if (result.ToolsExecutedByAgent)
+        {
+            // tools were already executed inside the loop
+            // (approval + Result per toolCall); the UI must not re-process them.
+            return;
+        }
+
         if (message.ToolCalls is { Count: > 0 })
         {
             ToolCallHandler.PrepareToolsForApprovals(message.ToolCalls);

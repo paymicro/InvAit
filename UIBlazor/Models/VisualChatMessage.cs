@@ -117,4 +117,14 @@ public class VisualChatMessage
         IsExpanded = true,
         Content = initialContent
     };
+
+    /// <summary>
+    /// Creates a user message (chat input, sub-agent task, restored after compression).
+    /// </summary>
+    public static VisualChatMessage CreateUser(string content, bool isExpanded = true) => new()
+    {
+        Role = ChatMessageRole.User,
+        IsExpanded = isExpanded,
+        Content = content
+    };
 }

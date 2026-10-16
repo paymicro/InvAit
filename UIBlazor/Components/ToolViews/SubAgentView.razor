@@ -125,6 +125,30 @@
     /// </summary>
     protected override int RenderIntervalMs => 100;
 
+    /// <summary>
+    /// Self-subscription to this sub-agent's state stream. Critical for NESTED sub-agent
+    /// views: the Blazor renderer SKIPS re-processing child components whose parameters
+    /// are unchanged, so an upstream "owner bump" re-render (with the same SubAgent
+    /// reference) never reaches the body of an already-created SubAgentView. Subscribing
+    /// here and re-rendering itself bypasses that skip: every NotifyStateChanged (attach,
+    /// branch deltas, finish) reaches the view immediately.
+    /// </summary>
+    private SubAgentMessage? _subscribedSubAgent;
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        if (!ReferenceEquals(_subscribedSubAgent, SubAgent))
+        {
+            _subscribedSubAgent?.StateChanged -= OnSubAgentStateChanged;
+            _subscribedSubAgent = SubAgent;
+            SubAgent.StateChanged += OnSubAgentStateChanged;
+        }
+    }
+
+    private void OnSubAgentStateChanged()
+        => InvokeAsync(StateHasChanged);
+
     private string StatusClass => SubAgent.Status switch
     {
         SubAgentStatus.Running => "status-running",
@@ -291,5 +315,12 @@
         var handler = SubAgent.ToolCallHandler;
         if (handler is not null)
             await handler.HandleApprovalAsync(args.SegmentId, args.Approved);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            _subscribedSubAgent?.StateChanged -= OnSubAgentStateChanged;
+        base.Dispose(disposing);
     }
 }

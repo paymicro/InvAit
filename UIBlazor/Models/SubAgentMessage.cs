@@ -257,14 +257,14 @@ public class SubAgentMessage
     /// <summary>
     /// CancellationTokenSource linked to the parent token, allowing independent
     /// cancellation of this sub-agent without cancelling the entire chat.
-    /// Set by <c>SubAgentExecutor</c> via <see cref="SetCancellationTokenSource"/>.
+    /// Set by <c>AfSubAgentOrchestrator</c> via <see cref="SetCancellationTokenSource"/>.
     /// </summary>
     [JsonIgnore]
     private CancellationTokenSource? _cancelSource;
 
     /// <summary>
     /// Sets the linked CancellationTokenSource so the sub-agent can be cancelled independently.
-    /// Called by <c>SubAgentExecutor</c> after creating the linked token.
+    /// Called by <c>AfSubAgentOrchestrator</c> after creating the linked token.
     /// Uses <see cref="Volatile.Write"/> to ensure the assignment is immediately visible
     /// to other threads (UI thread calling <see cref="Cancel"/>).
     /// </summary>
@@ -288,13 +288,25 @@ public class SubAgentMessage
         if (cts is null)
             return;
 
+        // The branch's `using var timeoutCts` may dispose this CTS concurrently on the
+        // branch thread (race window between Exchange and using-dispose).
         try
         {
             cts.Cancel();
         }
+        catch (ObjectDisposedException)
+        {
+            // Already disposed by the branch ending - nothing to signal.
+        }
         finally
         {
-            cts.Dispose();
+            try
+            {
+                cts.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
         }
     }
 
@@ -358,7 +370,7 @@ public class SubAgentMessage
     /// Releases heavy runtime resources that are no longer needed after the sub-agent
     /// has finished (Completed / Cancelled / Failed).
     ///
-    /// This method is called by <c>SubAgentExecutor</c> in its <c>finally</c> block,
+    /// This method is called by <c>AfSubAgentOrchestrator</c> in its <c>finally</c> block,
     /// AFTER <c>CancelPendingApprovals</c> has already cancelled all waiters.
     ///
     /// What is cleaned up:

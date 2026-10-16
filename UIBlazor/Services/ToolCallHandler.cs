@@ -7,6 +7,7 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
 {
     private readonly ConcurrentDictionary<string, ApprovalWaiter> _approvalWaiters = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<string>> _askUserWaiters = new();
+    private readonly ConcurrentDictionary<string, ToolApprovalStatus> _deliveredApprovals = new();
     private BashCommandClassifier? _bashClassifier;
 
     /// <summary>
@@ -120,7 +121,7 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
             if (toolCall.Function.Name == BasicEnum.AskUser)
             {
                 toolCall.ApprovalStatus = ToolApprovalStatus.Pending;
-                _askUserWaiters[toolCall.Id] = new TaskCompletionSource<string>();
+                _askUserWaiters[toolCall.Id] = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
                 firstPendingId ??= toolCall.Id;
                 continue;
             }
@@ -132,7 +133,8 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
             {
                 case ToolApprovalMode.Ask:
                     toolCall.ApprovalStatus = ToolApprovalStatus.Pending;
-                    _approvalWaiters[toolCall.Id] = new ApprovalWaiter(new(), toolCall);
+                    _approvalWaiters[toolCall.Id] = new ApprovalWaiter(
+                        new(TaskCreationOptions.RunContinuationsAsynchronously), toolCall);
                     firstPendingId ??= toolCall.Id;
                     break;
                 case ToolApprovalMode.Deny:
@@ -272,12 +274,30 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
         ToolCall toolCall,
         CancellationToken cancellationToken)
     {
+        // The user may click before the waiter for this call is registered (the wait usually
+        // starts after prior tools in the same chain finish). A decision delivered early must
+        // not be silently dropped by TryGetValue-miss in HandleApprovalAsync.
+        if (_deliveredApprovals.TryRemove(toolCall.Id, out var delivered))
+        {
+            return delivered;
+        }
+
         // Get the pre-registered TCS, or create one if not found (defensive)
-        var tcs = _approvalWaiters.GetOrAdd(toolCall.Id, _ => new ApprovalWaiter(new(), toolCall));
+        var tcs = _approvalWaiters.GetOrAdd(toolCall.Id, _ => new ApprovalWaiter(
+            new(TaskCreationOptions.RunContinuationsAsynchronously), toolCall));
+
+        // Re-check the delivered map AFTER registering the waiter: a decision may have
+        // arrived and been recorded in the window between the first check above and the
+        // GetOrAdd call, which would otherwise be missed by the await below.
+        if (_deliveredApprovals.TryRemove(toolCall.Id, out delivered))
+        {
+            return delivered;
+        }
 
         try
         {
-            return await tcs.TaskSource.Task.WaitAsync(cancellationToken);
+            var status = await tcs.TaskSource.Task.WaitAsync(cancellationToken);
+            return status;
         }
         catch (OperationCanceledException)
         {
@@ -373,6 +393,12 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
             aw.ToolCall.ApprovalStatus = status;
             aw.TaskSource.TrySetResult(status);
         }
+        else
+        {
+            // No waiter yet (the tool's execution chain has not reached its approval wait):
+            // remember the decision so WaitForApprovalAsync consumes it later instead of losing it.
+            _deliveredApprovals[toolCallId] = status;
+        }
 
         return Task.CompletedTask;
     }
@@ -402,6 +428,8 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
             kvp.Value.TrySetCanceled();
         }
         _askUserWaiters.Clear();
+
+        _deliveredApprovals.Clear();
     }
 }
 

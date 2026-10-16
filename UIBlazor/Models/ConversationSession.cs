@@ -172,47 +172,41 @@ public class ConversationSession : BaseOptions
     /// Thread-safe: takes a snapshot of <see cref="Messages"/> under lock.
     /// </summary>
     /// <param name="systemPrompt">The system prompt to include.</param>
-    /// <returns>A list of message objects for the AI API.</returns>
-    public IEnumerable<object> GetFormattedMessages(string systemPrompt, IContentFilter? contentFilter = null)
+    /// <returns>Wire-format messages for the AI API.</returns>
+    public IReadOnlyList<WireMessage> GetFormattedMessages(string systemPrompt, IContentFilter? contentFilter = null)
     {
         List<VisualChatMessage> snapshot;
         lock (_messagesLock)
             snapshot = [.. Messages];
 
-        var messages = new List<object>
+        var messages = new List<WireMessage>
         {
             // Add system message
-            new { role = ChatMessageRole.System, content = systemPrompt }
+            new() { Role = ChatMessageRole.System, Content = systemPrompt }
         };
 
         messages.AddRange(PrepareMessages(snapshot, contentFilter));
 
-        return snapshot is [.., { IsStreaming: true }] // не отправлять последнее сообщение, если оно стримится
-            ? messages.SkipLast(1)
-            : messages;
+        // не отправлять последнее сообщение, если оно стримится
+        return snapshot is [.., { IsStreaming: true }] ? messages.Take(messages.Count - 1).ToList() : messages;
     }
 
-    private IEnumerable<object> PrepareMessages(IEnumerable<VisualChatMessage> Input, IContentFilter? contentFilter = null)
+    private static IEnumerable<WireMessage> PrepareMessages(IEnumerable<VisualChatMessage> Input, IContentFilter? contentFilter = null)
     {
-        var messages = new List<object>();
+        var messages = new List<WireMessage>();
 
         foreach (var message in Input)
         {
             if (message.Role == ChatMessageRole.Assistant && message.ToolCalls is { Count: > 0 })
             {
                 // Assistant message with native tool_calls
-                var toolCalls = message.ToolCalls.Select(tc => new
+                messages.Add(new WireMessage
                 {
-                    id = tc.Id,
-                    type = tc.Type,
-                    function = new { name = tc.Function.Name, arguments = tc.Function.Arguments }
-                }).ToList();
-
-                messages.Add(new
-                {
-                    role = ChatMessageRole.Assistant,
-                    content = string.IsNullOrEmpty(message.Content) ? null : message.Content,
-                    tool_calls = toolCalls
+                    Role = ChatMessageRole.Assistant,
+                    Content = string.IsNullOrEmpty(message.Content) ? null : message.Content,
+                    ToolCalls = message.ToolCalls
+                        .Select(tc => new WireToolCall(tc.Id, tc.Function.Name, tc.Function.Arguments))
+                        .ToList()
                 });
 
                 // Tool results stored nested must be sent as separate messages to the LLM
@@ -232,35 +226,36 @@ public class ConversationSession : BaseOptions
                         // No filter available — format structured content with line numbers
                         toolContent = FileContentFormatter.FormatContent(toolContent);
                     }
-                    messages.Add(new
+                    messages.Add(new WireMessage
                     {
-                        role = ChatMessageRole.Tool,
-                        tool_call_id = toolCall.Id,
-                        content = toolContent
+                        Role = ChatMessageRole.Tool,
+                        ToolCallId = toolCall.Id,
+                        Content = toolContent
                     });
                 }
             }
             else
             {
-                messages.Add(new { role = message.Role, content = message.Content });
+                messages.Add(new WireMessage { Role = message.Role, Content = message.Content });
             }
         }
 
         return messages;
     }
 
-    public (IEnumerable<object> Messages, VisualChatMessage? LastUserMessage) GetFormattedMessagesForCompress(IContentFilter? contentFilter = null)
+    public (IReadOnlyList<WireMessage> Messages, VisualChatMessage? LastUserMessage) GetFormattedMessagesForCompress(IContentFilter? contentFilter = null)
     {
         List<VisualChatMessage> snapshot;
         lock (_messagesLock)
             snapshot = [.. Messages];
 
-        var messages = new List<object>
+        var messages = new List<WireMessage>
         {
             // Add system message
-            new {
-                role = ChatMessageRole.System,
-                content = """
+            new()
+            {
+                Role = ChatMessageRole.System,
+                Content = """
                         You are an anchored context summarization assistant for coding sessions.
                         Summarize only the conversation history you are given. The newest turns may be kept verbatim outside your summary, so focus on the older context that still matters for continuing the work.
                         Always follow the exact output structure requested by the user prompt. Keep every section, preserve exact file paths and identifiers when known, and prefer terse bullets over paragraphs.
@@ -274,10 +269,10 @@ public class ConversationSession : BaseOptions
 
         messages.AddRange(PrepareMessages(compressedMessages, contentFilter));
 
-        messages.Add(new
+        messages.Add(new WireMessage
         {
-            role = ChatMessageRole.User,
-            content = """
+            Role = ChatMessageRole.User,
+            Content = """
                 Create a new anchored summary from the conversation history.
 
                 Output exactly the Markdown structure shown inside <template> and keep the section order unchanged. Do not include the <template> tags in your response.

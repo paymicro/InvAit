@@ -15,6 +15,20 @@ public sealed class CompletionsResult
     public List<ToolCall>? AccumulatedToolCalls { get; set; }
 
     /// <summary>
+    /// Phase 2 (ChatClientAgent): true when the agent loop already executed tools
+    /// through ToolCallHandler (approval + execution + Result stored on toolCall).
+    /// Callers must NOT re-process AccumulatedToolCalls in that case.
+    /// </summary>
+    public bool ToolsExecutedByAgent { get; set; }
+
+    /// <summary>
+    /// Responses API: ID of the last response (e.g. "resp_...").
+    /// Stored for potential future use with previous_response_id.
+    /// Null for Chat Completions API.
+    /// </summary>
+    public string? ResponseId { get; set; }
+
+    /// <summary>
     /// Полный вывод модели: из <see cref="UsageInfo.CompletionTokens"/> или приблизительный подсчет во время стрима.
     /// Включает размышления — для места в контексте используйте <see cref="VisibleCompletionTokens"/>.
     /// </summary>
@@ -42,7 +56,9 @@ public sealed class CompletionsResult
         Usage = null;
         FinishReason = null;
         AccumulatedToolCalls = null;
+        ResponseId = null;
         CompletionTokens = 0;
         ReasoningTokens = 0;
+        ToolsExecutedByAgent = false;
     }
 }

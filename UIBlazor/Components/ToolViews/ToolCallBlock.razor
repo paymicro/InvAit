@@ -86,10 +86,13 @@
                 }
             </div>
 
-            @* Sub-agent view: show expanded conversation when delegate_task has a SubAgent attached *@
-            @if (ToolCall.Function.Name == BuiltInToolEnum.DelegateTask && SubAgent is not null)
+            @* Sub-agent views: one per delegated task (Phase 2c: a delegate_task call can run several branches) *@
+            @if (ToolCall.Function.Name == BuiltInToolEnum.DelegateTask && SubAgents is { Count: > 0 })
             {
-                <SubAgentView SubAgent="@SubAgent" />
+                @foreach (var subAgent in SubAgents)
+                {
+                    <SubAgentView SubAgent="@subAgent" />
+                }
             }
             else if (ToolCall.Result is not null)
             {
@@ -136,7 +139,17 @@
     [Parameter] public IToolCallHandler? ToolCallHandlerOverride { get; set; }
 
     private bool _disposed;
-    private SubAgentMessage? _subAgent;
+    private List<SubAgentMessage> _subAgents = [];
+
+    protected override void OnInitialized()
+    {
+        // Subscribe to later sub-agent attaches (e.g. nested batches) — an owner-bump
+        // cascade may be skipped by the renderer for unchanged-parameter components.
+        ToolCall.SubAgentsChanged += OnSubAgentsChanged;
+    }
+
+    private void OnSubAgentsChanged()
+        => InvokeAsync(StateHasChanged);
 
     private string DisplayName => ToolManager.GetTool(ToolCall.Function.Name)?.DisplayName ?? ToolCall.Function.Name;
 
@@ -155,19 +168,19 @@
     /// <summary>
     /// Sub-agent data attached to this specific tool call, if it is a delegate_task.
     /// </summary>
-    private SubAgentMessage? SubAgent => ToolCall.SubAgent;
+    private List<SubAgentMessage> SubAgents => ToolCall.SubAgents ?? (ToolCall.SubAgent is null ? [] : [ToolCall.SubAgent]);
 
     protected override void OnParametersSet()
     {
         // Subscribe to sub-agent state changes for live UI updates
-        var current = SubAgent;
-        if (current != _subAgent)
+        var current = SubAgents;
+        if (!current.SequenceEqual(_subAgents))
         {
-            if (_subAgent is not null)
-                _subAgent.StateChanged -= OnSubAgentStateChanged;
-            _subAgent = current;
-            if (_subAgent is not null)
-                _subAgent.StateChanged += OnSubAgentStateChanged;
+            foreach (var old in _subAgents)
+                old.StateChanged -= OnSubAgentStateChanged;
+            _subAgents = current;
+            foreach (var fresh in current)
+                fresh.StateChanged += OnSubAgentStateChanged;
         }
     }
 
@@ -185,7 +198,8 @@
     {
         if (_disposed) return;
         _disposed = true;
-        if (_subAgent is not null)
-            _subAgent.StateChanged -= OnSubAgentStateChanged;
+        ToolCall.SubAgentsChanged -= OnSubAgentsChanged;
+        foreach (var subAgent in _subAgents)
+            subAgent.StateChanged -= OnSubAgentStateChanged;
     }
 }

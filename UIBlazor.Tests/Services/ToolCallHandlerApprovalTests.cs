@@ -22,7 +22,7 @@ public partial class ToolCallHandlerTests
         _toolManagerMock.Setup(t => t.GetTool("read_files")).Returns(tool);
 
         // Act - Start processing without approving (won't complete)
-        var processTask = _sut.ProcessToolCallsAsync(list, AppMode.Agent, CancellationToken.None);
+        var processTask = _sut.ProcessToolCallsAsync(list, AppMode.Agent, TestContext.Current.CancellationToken);
 
         // Assert - Task should be waiting for approval
         Assert.False(processTask.IsCompleted);
@@ -53,7 +53,7 @@ public partial class ToolCallHandlerTests
         _toolManagerMock.Setup(t => t.GetTool("read_files")).Returns(tool);
 
         // Act - Start processing and approve
-        var processTask = _sut.ProcessToolCallsAsync(list, AppMode.Agent, CancellationToken.None);
+        var processTask = _sut.ProcessToolCallsAsync(list, AppMode.Agent, TestContext.Current.CancellationToken);
         await _sut.HandleApprovalAsync(list[0].Id, approved: true);
         await processTask;
 
@@ -78,7 +78,7 @@ public partial class ToolCallHandlerTests
         _toolManagerMock.Setup(t => t.GetTool("read_files")).Returns(tool);
 
         // Act - Start processing and reject
-        var processTask = _sut.ProcessToolCallsAsync(list, AppMode.Agent, CancellationToken.None);
+        var processTask = _sut.ProcessToolCallsAsync(list, AppMode.Agent, TestContext.Current.CancellationToken);
         await _sut.HandleApprovalAsync(list[0].Id, approved: false);
         await processTask;
 
@@ -122,7 +122,7 @@ public partial class ToolCallHandlerTests
         await _sut.HandleApprovalAsync(list[0].Id, approved: false);
     }
 
-    [Fact]
+    [Fact(Timeout = 10000)]
     public async Task ProcessToolCallsAsync_OutOfOrderApproval_WorksCorrectly()
     {
         // Arrange - Two pending tools; user approves the second one before the first
@@ -155,7 +155,7 @@ public partial class ToolCallHandlerTests
         _toolManagerMock.Setup(t => t.GetTool("tool2")).Returns(tool2);
 
         // Act - Start processing (will block waiting for tool1 approval)
-        var processTask = _sut.ProcessToolCallsAsync(list, AppMode.Agent, CancellationToken.None);
+        var processTask = _sut.ProcessToolCallsAsync(list, AppMode.Agent, TestContext.Current.CancellationToken);
 
         // Approve tool2 FIRST (out of order) - this should not be lost
         await _sut.HandleApprovalAsync(list[0].Id, approved: true);

@@ -1,7 +1,9 @@
 namespace UIBlazor.Tests.Components;
 
 /// <summary>
-/// Tests for <see cref="DelegateTaskView"/>
+/// Tests for <see cref="DelegateTaskView"/>.
+/// After Phase 2c the view renders one info-block per delegated task (the 'tasks'
+/// array), with a legacy fallback for the old single-task argument shape.
 /// </summary>
 public class DelegateTaskViewTests : BunitContext
 {
@@ -38,69 +40,45 @@ public class DelegateTaskViewTests : BunitContext
         };
     }
 
-    #region Task Display Tests
+    #region Tasks Array Display Tests
 
     [Fact]
-    public void ShouldRenderTask_WhenArgsContainTask()
+    public void ShouldRenderTaskFromTasksArray()
     {
-        // Arrange
-        var args = """{"task":"Refactor the authentication module"}""";
+        var args = """{"tasks":[{"task":"Refactor the authentication module"}]}""";
 
-        // Act
         var cut = Render<DelegateTaskView>(parameters => parameters
             .Add(p => p.Args, args));
 
-        // Assert
         var valueSpans = cut.FindAll(".subagent-info-value");
         Assert.Contains(valueSpans, s => s.TextContent.Contains("Refactor the authentication module"));
-    }
-
-    [Fact]
-    public void ShouldRenderTaskLabel()
-    {
-        // Arrange
-        var args = """{"task":"Some task"}""";
-
-        // Act
-        var cut = Render<DelegateTaskView>(parameters => parameters
-            .Add(p => p.Args, args));
-
-        // Assert
         Assert.Contains(SharedResource.SubAgentTask, cut.Markup);
     }
 
     [Fact]
-    public void ShouldRenderEmptyTask_WhenTaskNotInArgs()
+    public void ShouldRenderOneBlockPerTask()
     {
-        // Arrange
-        var args = """{"systemPrompt":"Some prompt"}""";
+        var args = """{"tasks":[{"task":"First"},{"task":"Second"},{"task":"Third"}]}""";
 
-        // Act
         var cut = Render<DelegateTaskView>(parameters => parameters
             .Add(p => p.Args, args));
 
-        // Assert - should render without crash, task value empty
+        // Task + AllowedTools rows for every task entry (no system prompt)
         var rows = cut.FindAll(".subagent-info-row");
-        Assert.NotEmpty(rows);
-        var firstRowValue = rows[0].QuerySelector(".subagent-info-value");
-        Assert.Equal(string.Empty, firstRowValue?.TextContent);
+        Assert.Equal(6, rows.Count);
+        Assert.Contains("First", cut.Markup);
+        Assert.Contains("Second", cut.Markup);
+        Assert.Contains("Third", cut.Markup);
     }
 
-    #endregion
-
-    #region System Prompt Display Tests
-
     [Fact]
-    public void ShouldRenderSystemPrompt_WhenArgsContainSystemPrompt()
+    public void ShouldRenderSystemPromptInsideTaskBlock()
     {
-        // Arrange
-        var args = """{"task":"Do something","systemPrompt":"You are a code reviewer"}""";
+        var args = """{"tasks":[{"task":"Do something","systemPrompt":"You are a code reviewer"}]}""";
 
-        // Act
         var cut = Render<DelegateTaskView>(parameters => parameters
             .Add(p => p.Args, args));
 
-        // Assert
         Assert.Contains("You are a code reviewer", cut.Markup);
         Assert.Contains(SharedResource.SubAgentSystemPrompt, cut.Markup);
     }
@@ -108,85 +86,40 @@ public class DelegateTaskViewTests : BunitContext
     [Fact]
     public void ShouldNotRenderSystemPromptRow_WhenSystemPromptIsEmpty()
     {
-        // Arrange
-        var args = """{"task":"Do something","systemPrompt":""}""";
+        var args = """{"tasks":[{"task":"Do something","systemPrompt":""}]}""";
 
-        // Act
         var cut = Render<DelegateTaskView>(parameters => parameters
             .Add(p => p.Args, args));
 
-        // Assert - system prompt row should not be rendered (empty string check)
         Assert.DoesNotContain(SharedResource.SubAgentSystemPrompt, cut.Markup);
     }
 
     [Fact]
-    public void ShouldNotRenderSystemPromptRow_WhenSystemPromptIsNull()
+    public void ShouldRenderAllToolsBadge_WhenAllowedToolsAbsent()
     {
-        // Arrange
-        var args = """{"task":"Do something"}""";
+        var args = """{"tasks":[{"task":"Do something"}]}""";
 
-        // Act
         var cut = Render<DelegateTaskView>(parameters => parameters
             .Add(p => p.Args, args));
 
-        // Assert
-        Assert.DoesNotContain(SharedResource.SubAgentSystemPrompt, cut.Markup);
-    }
-
-    [Fact]
-    public void ShouldRenderTaskAndSystemPrompt_WithLongClass()
-    {
-        // Arrange
-        var args = """{"task":"Task","systemPrompt":"Long prompt here"}""";
-
-        // Act
-        var cut = Render<DelegateTaskView>(parameters => parameters
-            .Add(p => p.Args, args));
-
-        // Assert - both task and system prompt values render with --long modifier
-        var longValues = cut.FindAll(".subagent-info-value--long");
-        Assert.Equal(2, longValues.Count);
-        Assert.Contains("Task", longValues[0].TextContent);
-        Assert.Contains("Long prompt here", longValues[1].TextContent);
-    }
-
-    #endregion
-
-    #region Allowed Tools Display Tests
-
-    [Fact]
-    public void ShouldRenderAllToolsBadge_WhenAllowedToolsIsNull()
-    {
-        // Arrange
-        var args = """{"task":"Do something"}""";
-
-        // Act
-        var cut = Render<DelegateTaskView>(parameters => parameters
-            .Add(p => p.Args, args));
-
-        // Assert
         Assert.Contains(SharedResource.SubAgentAllTools, cut.Markup);
     }
 
     [Fact]
     public void ShouldRenderAllToolsBadge_WhenAllowedToolsIsEmptyArray()
     {
-        // Arrange
-        var args = """{"task":"Do something","allowedTools":[]}""";
+        var args = """{"tasks":[{"task":"Do something","allowedTools":[]}]}""";
 
-        // Act
         var cut = Render<DelegateTaskView>(parameters => parameters
             .Add(p => p.Args, args));
 
-        // Assert
         Assert.Contains(SharedResource.SubAgentAllTools, cut.Markup);
     }
 
     [Fact]
     public void ShouldRenderSpecificToolBadges_WhenAllowedToolsProvided()
     {
-        // Arrange
-        var args = """{"task":"Do something","allowedTools":["read_files","grep_search"]}""";
+        var args = """{"tasks":[{"task":"Do something","allowedTools":["read_files","grep_search"]}]}""";
 
         _mockToolManager
             .Setup(x => x.GetTool("read_files"))
@@ -196,11 +129,9 @@ public class DelegateTaskViewTests : BunitContext
             .Setup(x => x.GetTool("grep_search"))
             .Returns(CreateTool("grep_search", "Grep Search"));
 
-        // Act
         var cut = Render<DelegateTaskView>(parameters => parameters
             .Add(p => p.Args, args));
 
-        // Assert
         Assert.Contains("Read Files", cut.Markup);
         Assert.Contains("Grep Search", cut.Markup);
         Assert.DoesNotContain(SharedResource.SubAgentAllTools, cut.Markup);
@@ -209,33 +140,52 @@ public class DelegateTaskViewTests : BunitContext
     [Fact]
     public void ShouldRenderToolNameAsFallback_WhenToolNotFound()
     {
-        // Arrange
-        var args = """{"task":"Do something","allowedTools":["unknown_tool"]}""";
+        var args = """{"tasks":[{"task":"Do something","allowedTools":["unknown_tool"]}]}""";
 
         _mockToolManager
             .Setup(x => x.GetTool("unknown_tool"))
             .Returns((Tool?)null);
 
-        // Act
         var cut = Render<DelegateTaskView>(parameters => parameters
             .Add(p => p.Args, args));
 
-        // Assert - should display the raw tool name when ToolManager returns null
         Assert.Contains("unknown_tool", cut.Markup);
     }
 
-    [Fact]
-    public void ShouldRenderAllowedToolsLabel()
-    {
-        // Arrange
-        var args = """{"task":"Do something"}""";
+    #endregion
 
-        // Act
+    #region Legacy Single-Task Fallback Tests
+
+    [Fact]
+    public void ShouldRenderLegacySingleTask_AsFallback()
+    {
+        var args = """{"task":"Legacy task","systemPrompt":"Legacy prompt","allowedTools":["read_files"]}""";
+
+        _mockToolManager
+            .Setup(x => x.GetTool("read_files"))
+            .Returns(CreateTool("read_files", "Read Files"));
+
         var cut = Render<DelegateTaskView>(parameters => parameters
             .Add(p => p.Args, args));
 
-        // Assert
-        Assert.Contains(SharedResource.SubAgentAllowedTools, cut.Markup);
+        Assert.Contains("Legacy task", cut.Markup);
+        Assert.Contains("Legacy prompt", cut.Markup);
+        Assert.Contains("Read Files", cut.Markup);
+
+        var rows = cut.FindAll(".subagent-info-row");
+        Assert.Equal(3, rows.Count);
+    }
+
+    [Fact]
+    public void ShouldPreferTasksArray_OverLegacyFields()
+    {
+        var args = """{"tasks":[{"task":"Array task"}],"task":"Legacy task"}""";
+
+        var cut = Render<DelegateTaskView>(parameters => parameters
+            .Add(p => p.Args, args));
+
+        Assert.Contains("Array task", cut.Markup);
+        Assert.DoesNotContain("Legacy task", cut.Markup);
     }
 
     #endregion
@@ -243,39 +193,33 @@ public class DelegateTaskViewTests : BunitContext
     #region Empty/Null Args Tests
 
     [Fact]
-    public void ShouldNotCrash_WhenArgsIsEmpty()
+    public void ShouldRenderEmptyContainer_WhenArgsIsEmpty()
     {
-        // Arrange & Act
         var cut = Render<DelegateTaskView>(parameters => parameters
             .Add(p => p.Args, string.Empty));
 
-        // Assert - should render with empty task and "All Tools" badge
         Assert.NotNull(cut.Find(".subagent-info"));
-        Assert.Contains(SharedResource.SubAgentAllTools, cut.Markup);
+        Assert.Empty(cut.FindAll(".subagent-info-row"));
     }
 
     [Fact]
-    public void ShouldNotCrash_WhenArgsIsNull()
+    public void ShouldRenderEmptyContainer_WhenArgsIsNull()
     {
-        // Arrange & Act
         var cut = Render<DelegateTaskView>(parameters => parameters
             .Add(p => p.Args, null!));
 
-        // Assert - should render without crash
         Assert.NotNull(cut.Find(".subagent-info"));
-        Assert.Contains(SharedResource.SubAgentAllTools, cut.Markup);
+        Assert.Empty(cut.FindAll(".subagent-info-row"));
     }
 
     [Fact]
-    public void ShouldNotCrash_WhenArgsIsWhitespace()
+    public void ShouldRenderEmptyContainer_WhenArgsIsWhitespace()
     {
-        // Arrange & Act
         var cut = Render<DelegateTaskView>(parameters => parameters
             .Add(p => p.Args, "   "));
 
-        // Assert
         Assert.NotNull(cut.Find(".subagent-info"));
-        Assert.Contains(SharedResource.SubAgentAllTools, cut.Markup);
+        Assert.Empty(cut.FindAll(".subagent-info-row"));
     }
 
     #endregion
@@ -283,49 +227,40 @@ public class DelegateTaskViewTests : BunitContext
     #region Invalid JSON Tests
 
     [Fact]
-    public void ShouldNotCrash_WhenArgsIsInvalidJson()
+    public void ShouldRenderEmptyContainer_WhenArgsIsInvalidJson()
     {
-        // Arrange
         var invalidJson = "this is not valid json {{{";
 
-        // Act
         var cut = Render<DelegateTaskView>(parameters => parameters
             .Add(p => p.Args, invalidJson));
 
-        // Assert - should render without crash, showing empty task and All Tools
         Assert.NotNull(cut.Find(".subagent-info"));
-        Assert.Contains(SharedResource.SubAgentAllTools, cut.Markup);
+        Assert.Empty(cut.FindAll(".subagent-info-row"));
     }
 
     [Fact]
-    public void ShouldNotCrash_WhenArgsIsPartialJson()
+    public void ShouldRenderEmptyContainer_WhenArgsIsPartialJson()
     {
-        // Arrange - partial JSON that gets repaired by JsonUtils
         var partialJson = """{"task":"Partial task""";
 
-        // Act
         var cut = Render<DelegateTaskView>(parameters => parameters
             .Add(p => p.Args, partialJson));
 
-        // Assert - should render without crash
+        // The view intentionally does not repair partial JSON; it renders nothing
         Assert.NotNull(cut.Find(".subagent-info"));
-        // JsonUtils.RepairJson should fix the partial JSON and extract the task
-        Assert.Contains("Partial task", cut.Markup);
+        Assert.Empty(cut.FindAll(".subagent-info-row"));
     }
 
     [Fact]
-    public void ShouldNotCrash_WhenArgsIsRandomText()
+    public void ShouldRenderEmptyContainer_WhenArgsIsRandomText()
     {
-        // Arrange
         var randomText = "random text without any json structure";
 
-        // Act
         var cut = Render<DelegateTaskView>(parameters => parameters
             .Add(p => p.Args, randomText));
 
-        // Assert - should render without crash
         Assert.NotNull(cut.Find(".subagent-info"));
-        Assert.Contains(SharedResource.SubAgentAllTools, cut.Markup);
+        Assert.Empty(cut.FindAll(".subagent-info-row"));
     }
 
     #endregion
@@ -335,8 +270,7 @@ public class DelegateTaskViewTests : BunitContext
     [Fact]
     public void ShouldRenderAllSections_WhenFullArgsProvided()
     {
-        // Arrange
-        var args = """{"task":"Implement feature X","systemPrompt":"You are an expert developer","allowedTools":["read_files","edit_files"]}""";
+        var args = """{"tasks":[{"task":"Implement feature X","systemPrompt":"You are an expert developer","allowedTools":["read_files","edit_files"]}]}""";
 
         _mockToolManager
             .Setup(x => x.GetTool("read_files"))
@@ -346,11 +280,9 @@ public class DelegateTaskViewTests : BunitContext
             .Setup(x => x.GetTool("edit_files"))
             .Returns(CreateTool("edit_files", "Edit File"));
 
-        // Act
         var cut = Render<DelegateTaskView>(parameters => parameters
             .Add(p => p.Args, args));
 
-        // Assert
         Assert.Contains("Implement feature X", cut.Markup);
         Assert.Contains("You are an expert developer", cut.Markup);
         Assert.Contains("Read Files", cut.Markup);
@@ -358,38 +290,7 @@ public class DelegateTaskViewTests : BunitContext
         Assert.Contains(SharedResource.SubAgentTask, cut.Markup);
         Assert.Contains(SharedResource.SubAgentSystemPrompt, cut.Markup);
         Assert.Contains(SharedResource.SubAgentAllowedTools, cut.Markup);
-    }
 
-    [Fact]
-    public void ShouldRenderCorrectNumberOfInfoRows_WithTaskAndAllTools()
-    {
-        // Arrange - task present, no system prompt, no allowed tools
-        var args = """{"task":"Simple task"}""";
-
-        // Act
-        var cut = Render<DelegateTaskView>(parameters => parameters
-            .Add(p => p.Args, args));
-
-        // Assert - should have 2 rows: Task and Allowed Tools (no System Prompt)
-        var rows = cut.FindAll(".subagent-info-row");
-        Assert.Equal(2, rows.Count);
-    }
-
-    [Fact]
-    public void ShouldRenderCorrectNumberOfInfoRows_WithAllSections()
-    {
-        // Arrange - all sections present
-        var args = """{"task":"Task","systemPrompt":"Prompt","allowedTools":["read_files"]}""";
-
-        _mockToolManager
-            .Setup(x => x.GetTool(It.IsAny<string>()))
-            .Returns(CreateTool("read_files", "Read Files"));
-
-        // Act
-        var cut = Render<DelegateTaskView>(parameters => parameters
-            .Add(p => p.Args, args));
-
-        // Assert - should have 3 rows: Task, System Prompt, Allowed Tools
         var rows = cut.FindAll(".subagent-info-row");
         Assert.Equal(3, rows.Count);
     }
@@ -402,7 +303,7 @@ public class DelegateTaskViewTests : BunitContext
     public void ShouldRenderCorrectTask_WithDifferentArgs()
     {
         // Arrange - render with first args
-        var args1 = """{"task":"First task"}""";
+        var args1 = """{"tasks":[{"task":"First task"}]}""";
         var cut1 = Render<DelegateTaskView>(parameters => parameters
             .Add(p => p.Args, args1));
 
@@ -410,7 +311,7 @@ public class DelegateTaskViewTests : BunitContext
         Assert.Contains("First task", cut1.Markup);
 
         // Act - render a new component with different args
-        var args2 = """{"task":"Second task"}""";
+        var args2 = """{"tasks":[{"task":"Second task"}]}""";
         var cut2 = Render<DelegateTaskView>(parameters => parameters
             .Add(p => p.Args, args2));
 

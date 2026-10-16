@@ -44,6 +44,29 @@ export function setSkipSslValidation(value: boolean): void {
 }
 
 /**
+ * In-flight proxied responses keyed by requestId, kept so cancellation
+ * (NetworkProxyCancel) can destroy the underlying connection mid-stream.
+ */
+const activeRequests = new Map<string, http.IncomingMessage>();
+
+/**
+ * Destroys the in-flight proxied response for a requestId. Used when the Blazor
+ * UI cancels a request while a streaming body is still being delivered.
+ */
+export function cancelNetworkProxyRequest(requestId: string): void {
+    const response = activeRequests.get(requestId);
+    if (!response) {
+        return;
+    }
+    activeRequests.delete(requestId);
+    try {
+        response.destroy(new Error('Cancelled by user'));
+    } catch (error) {
+        log('[InvAit Ext] cancelNetworkProxyRequest destroy failed: ' + (error instanceof Error ? error.message : String(error)));
+    }
+}
+
+/**
  * Handles NetworkProxyRequest messages from Blazor.
  * Fetches the URL in the extension host (bypassing webview sandbox)
  * and streams the response back via postMessage.
@@ -60,6 +83,7 @@ export async function handleNetworkProxyRequest(
 
     try {
         const response = await httpRequest(url, method, headers, body);
+        activeRequests.set(requestId, response);
         log('[InvAit Ext] Request completed: ' + response.statusCode + ' ' + response.statusMessage);
 
         const contentType = response.headers['content-type'] || '';
@@ -109,12 +133,14 @@ export async function handleNetworkProxyRequest(
 
         log('[InvAit Ext] Streaming done, chunks sent: ' + chunkCount);
 
+        activeRequests.delete(requestId);
         panel.webview.postMessage({
             type: 'VsStreamingPacket',
             payload: { type: 'end', requestId, success: true }
         });
 
     } catch (error: any) {
+        activeRequests.delete(requestId);
         let errorMsg = error.message || 'Request failed';
         if (error.code) {
             errorMsg += ' [code: ' + error.code + ']';

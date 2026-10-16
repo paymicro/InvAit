@@ -121,12 +121,13 @@ public partial class ChatServiceTests
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  Reasoning token split: the badge (Timings.Tokens) must show only visible
-    //  tokens (the context footprint), reasoning goes to Timings.ReasoningTokens.
+    //  Reasoning token split: the badge (Timings.Tokens) shows the FULL generation
+    //  (including reasoning) both during streaming and after completion — a lower
+    //  final value would read as a bug; reasoning goes to Timings.ReasoningTokens.
     // ═══════════════════════════════════════════════════════════════════════
 
     [Fact]
-    public async Task ProcessStreamAsync_WithReasoningTokens_SplitsVisibleAndReasoning()
+    public async Task ProcessStreamAsync_WithReasoningTokens_BadgeShowsFullGeneration()
     {
         // Arrange - full completion is 100 tokens, of which 40 are reasoning
         var message = new VisualChatMessage();
@@ -136,8 +137,8 @@ public partial class ChatServiceTests
         // Act
         await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, capture, TestContext.Current.CancellationToken);
 
-        // Assert
-        Assert.Equal(60, message.Timings!.Tokens);
+        // Assert - finished badge keeps the full generation count, breakdown in ReasoningTokens
+        Assert.Equal(100, message.Timings!.Tokens);
         Assert.Equal(40, message.Timings.ReasoningTokens);
         // generation speed is based on the full output, including reasoning
         Assert.True(message.Timings.TokensInSec > 0);
@@ -165,11 +166,11 @@ public partial class ChatServiceTests
             capture,
             TestContext.Current.CancellationToken);
 
-        // Assert - every in-stream update includes reasoning; the final one does not
+        // Assert - the badge value is stable: full generation count mid-stream AND at the end
         Assert.NotEmpty(midStreamSnapshots);
         Assert.All(midStreamSnapshots, tokens => Assert.Equal(100, tokens));
         Assert.True(message.IsStreaming == false);
-        Assert.Equal(60, message.Timings!.Tokens);
+        Assert.Equal(100, message.Timings!.Tokens);
     }
 
     [Fact]
@@ -186,5 +187,56 @@ public partial class ChatServiceTests
         // Assert - behavior identical to pre-split versions
         Assert.Equal(75, message.Timings!.Tokens);
         Assert.Equal(0, message.Timings.ReasoningTokens);
+    }
+
+    [Fact]
+    public async Task ProcessStreamAsync_OnNewTurn_WithPayload_CreatesNextMessage()
+    {
+        // Arrange - two assistant turns: the boundary marker is followed by turn-2 content
+        var first = VisualChatMessage.CreateStreaming();
+        var second = VisualChatMessage.CreateStreaming();
+        var created = 0;
+
+        var deltas = CreateAsyncEnumerable(
+            new ChatDelta { Content = "A" },
+            new ChatDelta { IsStartOfTurn = true },
+            new ChatDelta { Content = "B" }
+        );
+
+        // Act
+        await CreateChatService().ProcessStreamAsync(
+            first, deltas, null, null, null, new CompletionsResult(),
+            TestContext.Current.CancellationToken,
+            onNewTurn: () => { created++; return second; });
+
+        // Assert
+        Assert.Equal(1, created);
+        Assert.Equal("A", first.Content);
+        Assert.False(first.IsStreaming);
+        Assert.Equal("B", second.Content);
+    }
+
+    [Fact]
+    public async Task ProcessStreamAsync_OnNewTurn_WithoutPayload_CreatesNoEmptyMessage()
+    {
+        // Arrange - the turn boundary is the last delta (blank/cancelled turn)
+        var first = VisualChatMessage.CreateStreaming();
+        var created = 0;
+
+        var deltas = CreateAsyncEnumerable(
+            new ChatDelta { Content = "A" },
+            new ChatDelta { IsStartOfTurn = true }
+        );
+
+        // Act
+        await CreateChatService().ProcessStreamAsync(
+            first, deltas, null, null, null, new CompletionsResult(),
+            TestContext.Current.CancellationToken,
+            onNewTurn: () => { created++; return VisualChatMessage.CreateStreaming(); });
+
+        // Assert - no message is created for a turn without output
+        Assert.Equal(0, created);
+        Assert.Equal("A", first.Content);
+        Assert.False(first.IsStreaming);
     }
 }

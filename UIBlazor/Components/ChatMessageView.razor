@@ -151,8 +151,8 @@
     [Parameter] public EventCallback OnRegenerate { get; set; }
 
     /// <summary>
-    /// Tooltip of the token badge. With reasoning models the finished badge shows only visible
-    /// tokens (the context footprint); while streaming it shows the full generation count.
+    /// Tooltip of the token badge. Timings.Tokens already includes reasoning tokens
+    /// (full generation), so the tooltip only clarifies the breakdown.
     /// </summary>
     private string TokensTitle
     {
@@ -161,8 +161,7 @@
             if (Message.Timings is not { ReasoningTokens: > 0 } timings)
                 return SharedResource.Tokens;
 
-            var generated = Message.IsStreaming ? timings.Tokens : timings.Tokens + timings.ReasoningTokens;
-            return $"{SharedResource.Generated}: {generated}, {SharedResource.IncludingReasoning}: {timings.ReasoningTokens}";
+            return $"{SharedResource.Generated}: {timings.Tokens}, {SharedResource.IncludingReasoning}: {timings.ReasoningTokens}";
         }
     }
 
@@ -204,10 +203,10 @@
 
         // Sub-agent state changes should trigger re-render.
         // Check all tool calls for sub-agent data (multiple delegate_task calls
-        // can exist in one message, each with its own sub-agent).
+        // can exist in one message, each with its own branches; Phase 2c also allows
+        // several branches inside ONE call via the tasks array).
         _subAgents = Message.ToolCalls?
-            .Where(tc => tc.SubAgent is not null)
-            .Select(tc => tc.SubAgent!)
+            .SelectMany(tc => tc.SubAgents ?? (tc.SubAgent is null ? [] : [tc.SubAgent]))
             .ToList() ?? [];
 
         var subAgentChanged = _subAgents.Count != _oldSubAgentsState.Count ||

@@ -145,13 +145,11 @@ public static class BuiltInToolDefs
     { }
 
     [DisplayName(BuiltInToolEnum.DelegateTask)]
-    [Description("Delegate a task to a sub-agent. The sub-agent runs with its own system prompt and conversation context, " +
-                 "has access to tools, and returns the final result. Sub-agents cannot delegate further (no recursion). " +
-                 "Use this for complex subtasks that benefit from focused attention and a specialized prompt.")]
+    [Description("Delegate one or more tasks to sub-agents. Each task runs in its own parallel branch with its own system prompt and conversation context, " +
+                 "has access to tools, and returns the final result. All tasks run concurrently and the call completes only when every task has finished. " +
+                 "Use this for complex subtasks that benefit from focused attention and a specialized prompt; batch independent subtasks into one call to run them in parallel.")]
     public static void DelegateTask(
-        [Description("Clear task description for the sub-agent")] string task,
-        [Description("System prompt defining the sub-agent's role and expertise")] string systemPrompt,
-        [Description("List of tool names the sub-agent is allowed to use. If null or empty, all tools are available. Only these tools will be accessible; all others are denied.")] string[]? allowedTools)
+        [Description("Tasks to delegate. Each task runs in a separate parallel sub-agent branch.")] SubAgentTaskDefinition[] tasks)
     { }
 
     public static NativeToolDefinition MapMethodToTool(string methodName)

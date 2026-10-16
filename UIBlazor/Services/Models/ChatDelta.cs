@@ -36,4 +36,12 @@ public class ChatDelta
     /// </summary>
     [JsonPropertyName("tool_calls")]
     public IReadOnlyList<ToolCall>? ToolCalls { get; set; }
+
+    /// <summary>
+    /// Phase 2 (ChatClientAgent loop): marker for the start of a new assistant turn.
+    /// Never serialized; UI Hook <c>onNewTurn</c> in <see cref="UIBlazor.Services.ChatService"/>
+    /// swaps the streaming VisualChatMessage when it is set.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsStartOfTurn { get; set; }
 }
