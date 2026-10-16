@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { handleVsRequest } from './toolDispatcher';
-import { handleNetworkProxyRequest, setSkipSslValidation } from './networkProxy';
+import { handleNetworkProxyRequest, cancelNetworkProxyRequest, setSkipSslValidation } from './networkProxy';
 import { log } from './logger';
 
 /**
@@ -35,6 +35,12 @@ export async function handleWebviewMessage(
     // Network proxy requests (from DynamicEnvironmentHttpMessageHandler)
     if (msg['command'] === 'NetworkProxyRequest') {
         await handleNetworkProxyRequest(ctx.panel, msg['payload'] as Parameters<typeof handleNetworkProxyRequest>[1]);
+        return;
+    }
+
+    // Cancel an in-flight proxied request (UI cancel button destroyed its bridge)
+    if (msg['command'] === 'NetworkProxyCancel') {
+        cancelNetworkProxyRequest((msg['payload'] as { requestId: string })['requestId']);
         return;
     }
 

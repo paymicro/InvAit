@@ -1,6 +1,7 @@
 @inject IToolManager ToolManager
 @inject IToolCallHandler ToolCallHandler
 @inject IContentFilter ContentFilter
+@inherits ThrottledComponentBase
 @implements IDisposable
 
 @*
@@ -38,7 +39,7 @@
                         filePath = default(string),
                         edits = default(DiffEdit[])
                     };
-                    result = JsonUtils.DeserializePartialAnonymousType(ToolCall.Function.Arguments, result);
+                    result = JsonUtils.DeserializeAnonymousType(ToolCall.Function.Arguments, result);
                     <DiffView FilePath="@(result.filePath ?? string.Empty)" Edits="@(result.edits ?? [])" />
                 }
                 else if (ToolCall.Function.Name == BuiltInToolEnum.CreateFile)
@@ -48,7 +49,7 @@
                         filePath = default(string),
                         content = default(string)
                     };
-                    result = JsonUtils.DeserializePartialAnonymousType(ToolCall.Function.Arguments, result);
+                result = JsonUtils.DeserializeAnonymousType(ToolCall.Function.Arguments, result);
                     <ToolCreateNewFile FilePath="@(result.filePath ?? string.Empty)" Content="@(result.content ?? string.Empty)" />
                 }
                 else if (ToolCall.Function.Name == BasicEnum.AskUser)
@@ -86,10 +87,13 @@
                 }
             </div>
 
-            @* Sub-agent view: show expanded conversation when delegate_task has a SubAgent attached *@
-            @if (ToolCall.Function.Name == BuiltInToolEnum.DelegateTask && SubAgent is not null)
+            @* Sub-agent views: one per delegated task *@
+            @if (ToolCall.Function.Name == BuiltInToolEnum.DelegateTask && _subAgents is { Count: > 0 })
             {
-                <SubAgentView SubAgent="@SubAgent" />
+                @foreach (var subAgent in _subAgents)
+                {
+                    <SubAgentView SubAgent="@subAgent" />
+                }
             }
             else if (ToolCall.Result is not null)
             {
@@ -135,8 +139,93 @@
     /// </summary>
     [Parameter] public IToolCallHandler? ToolCallHandlerOverride { get; set; }
 
+    /// <summary>
+    /// Throttle per-token sub-agent state events to ~10fps. SubAgentMessage.StateChanged
+    /// fires on EVERY streaming delta; without a gate each raise re-renders this block
+    /// (and queues work into the WASM sync queue), flooding the renderer and freezing
+    /// clicks while a branch streams. Structural changes bypass the throttle via
+    /// <see cref="HasChanges"/> (status, attach, approval) — they are rare and must land.
+    /// </summary>
+    protected override int RenderIntervalMs => 100;
+
+    private int _lastSubAgentCount = -1;
+    private int _lastApprovalStatus = -1;
+    private bool _lastHasResult;
+    private int _lastArgsLength = -1;
+
+    /// <summary>
+    /// Structural changes (status, attach, approval, RESULT) render immediately; streamed
+    /// args growth is throttled to ~10fps. Args growth MUST be in the snapshot: ToolCall is
+    /// a mutable reference (arguments grow inside it), so the parent cascade formally passes
+    /// unchanged parameters — without the args check ShouldRender would return false, the
+    /// block would not re-render, the args would never be re-deserialized and DiffView
+    /// would never receive the new Edits (the diff showed only the final result).
+    /// </summary>
+    protected override bool HasChanges()
+    {
+        var status = (int)ToolCall.ApprovalStatus;
+        var count = ToolCall.SubAgents?.Count ?? 0;
+        var hasResult = ToolCall.Result is not null;
+        var argsLength = ToolCall.Function.Arguments.Length;
+
+        var changed = status != _lastApprovalStatus ||
+                      count != _lastSubAgentCount ||
+                      hasResult != _lastHasResult ||
+                      argsLength != _lastArgsLength;
+        if (changed)
+        {
+            _lastApprovalStatus = status;
+            _lastSubAgentCount = count;
+            _lastHasResult = hasResult;
+            _lastArgsLength = argsLength;
+        }
+        return changed;
+    }
+
+    protected override void OnRendered()
+    {
+        _lastApprovalStatus = (int)ToolCall.ApprovalStatus;
+        _lastSubAgentCount = ToolCall.SubAgents?.Count ?? 0;
+        _lastHasResult = ToolCall.Result is not null;
+        _lastArgsLength = ToolCall.Function.Arguments.Length;
+    }
+
     private bool _disposed;
-    private SubAgentMessage? _subAgent;
+    private List<SubAgentMessage> _subAgents = [];
+    private ToolCall? _subscribedToolCall;
+
+    protected override void OnInitialized()
+    {
+        SubscribeToToolCall(ToolCall);
+    }
+
+    /// <summary>
+    /// Subscribes to SubAgentsChanged for live attach discovery (e.g. nested batches).
+    /// Re-keyed on every ToolCall parameter change: an owner-bump cascade may be skipped
+    /// by the renderer for unchanged-parameter components, so the subscription must
+    /// survive parameter re-assignment (reference-check, unsubscribe the old instance).
+    /// </summary>
+    private void SubscribeToToolCall(ToolCall toolCall)
+    {
+        if (ReferenceEquals(_subscribedToolCall, toolCall))
+            return;
+
+        if (_subscribedToolCall is not null)
+            _subscribedToolCall.SubAgentsChanged -= OnSubAgentsChanged;
+
+        _subscribedToolCall = toolCall;
+        toolCall.SubAgentsChanged += OnSubAgentsChanged;
+    }
+
+    private void OnSubAgentsChanged()
+        => InvokeAsync(() =>
+        {
+            // StateHasChanged без смены параметров НЕ вызывает OnParametersSet —
+            // синхронизируем подписки StateChanged здесь же, иначе поздний attach
+            // (напр. nested batch) не получит подписку и его ветка не будет live.
+            SyncSubAgentSubscriptions();
+            StateHasChanged();
+        });
 
     private string DisplayName => ToolManager.GetTool(ToolCall.Function.Name)?.DisplayName ?? ToolCall.Function.Name;
 
@@ -152,23 +241,31 @@
         _ => "pending" // класс по умолчанию
     };
 
-    /// <summary>
-    /// Sub-agent data attached to this specific tool call, if it is a delegate_task.
-    /// </summary>
-    private SubAgentMessage? SubAgent => ToolCall.SubAgent;
-
     protected override void OnParametersSet()
     {
-        // Subscribe to sub-agent state changes for live UI updates
-        var current = SubAgent;
-        if (current != _subAgent)
-        {
-            if (_subAgent is not null)
-                _subAgent.StateChanged -= OnSubAgentStateChanged;
-            _subAgent = current;
-            if (_subAgent is not null)
-                _subAgent.StateChanged += OnSubAgentStateChanged;
-        }
+        // Re-key the SubAgentsChanged subscription when the ToolCall parameter changes
+        // (see SubscribeToToolCall) and refresh sub-agent StateChanged subscriptions.
+        SubscribeToToolCall(ToolCall);
+        SyncSubAgentSubscriptions();
+    }
+
+    /// <summary>
+    /// Subscribes to sub-agent state changes for live UI updates.
+    /// Copy the list: storing the live ToolCall.SubAgents reference would make
+    /// SequenceEqual compare the list to itself (always true) and late attaches
+    /// would never get subscribed.
+    /// </summary>
+    private void SyncSubAgentSubscriptions()
+    {
+        var currentSubAgents = ToolCall.SubAgents ?? [];
+        if (currentSubAgents.SequenceEqual(_subAgents))
+            return;
+
+        foreach (var old in _subAgents)
+            old.StateChanged -= OnSubAgentStateChanged;
+        _subAgents = [.. currentSubAgents];
+        foreach (var fresh in currentSubAgents)
+            fresh.StateChanged += OnSubAgentStateChanged;
     }
 
     private void OnSubAgentStateChanged()
@@ -185,7 +282,9 @@
     {
         if (_disposed) return;
         _disposed = true;
-        if (_subAgent is not null)
-            _subAgent.StateChanged -= OnSubAgentStateChanged;
+        if (_subscribedToolCall is not null)
+            _subscribedToolCall.SubAgentsChanged -= OnSubAgentsChanged;
+        foreach (var subAgent in _subAgents)
+            subAgent.StateChanged -= OnSubAgentStateChanged;
     }
 }

@@ -101,7 +101,7 @@ public class ProfileServiceTests
             Endpoint = "http://test",
             ApiKey = "key",
             Model = "gpt-4",
-            Temperature = 0.5,
+            Temperature = 0.5f,
             MaxTokens = 2000,
             Stream = false,
             SkipSSL = true,
@@ -162,7 +162,7 @@ public class ProfileServiceTests
 
         // Assert
         Assert.Single(_service.Current.Profiles);
-        Assert.Equal(0.7, _service.ActiveProfile.Temperature);
+        Assert.Equal(0.7f, _service.ActiveProfile.Temperature);
         _localStorageMock.Verify(ls => ls.SetItemAsync("ProfileSettings", _service.Current), Times.AtLeastOnce);
     }
 }

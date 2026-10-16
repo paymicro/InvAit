@@ -2,7 +2,7 @@
   "name": "invaitcode",
   "displayName": "InvAit",
   "description": "Local AI Chat and agent",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "publisher": "paymicro",
   "license": "MIT",
   "repository": {

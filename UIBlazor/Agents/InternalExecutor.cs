@@ -44,7 +44,7 @@ public class InternalExecutor(IServiceProvider serviceProvider) : IInternalExecu
                 return new VsToolResult
                 {
                     Success = false,
-                    ErrorMessage = "delegate_task requires a tool call context."
+                    ErrorMessage = SubAgentErrors.ToolCallContextRequired
                 };
             }
 
@@ -70,50 +70,27 @@ public class InternalExecutor(IServiceProvider serviceProvider) : IInternalExecu
         var question = string.Empty;
         var options = new List<string>();
 
-        if (args != null)
+        if (args?.TryGetValue("question", out var questionObj) == true)
         {
-            if (args.TryGetValue("question", out var questionObj))
-            {
-                question = questionObj?.ToString()?.Trim() ?? string.Empty;
-            }
+            question = questionObj?.ToString()?.Trim() ?? string.Empty;
+        }
 
-            if (args.TryGetValue("options", out var optionsObj) && optionsObj is JsonElement optionsEl)
+        if (args?.TryGetValue("options", out var optionsObj) == true)
+        {
+            // All three option shapes (JSON array as JsonElement, List<object> from
+            // DeserializeParameters, or a single value) normalize the same way.
+            var items = optionsObj switch
             {
-                if (optionsEl.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var item in optionsEl.EnumerateArray())
-                    {
-                        var option = item.ValueKind == JsonValueKind.String
-                            ? item.GetString()?.Trim()
-                            : item.ToString()?.Trim();
-                        if (!string.IsNullOrEmpty(option))
-                        {
-                            options.Add(option);
-                        }
-                    }
-                }
-            }
-            else if (optionsObj is IList list)
-            {
-                // DeserializeParameters converts JSON arrays to List<object>
-                foreach (var item in list)
-                {
-                    var option = item?.ToString()?.Trim();
-                    if (!string.IsNullOrEmpty(option))
-                    {
-                        options.Add(option);
-                    }
-                }
-            }
-            else if (optionsObj != null)
-            {
-                // Fallback: if options is a single string, treat as one option
-                var option = optionsObj.ToString()?.Trim();
-                if (!string.IsNullOrEmpty(option))
-                {
-                    options.Add(option);
-                }
-            }
+                JsonElement { ValueKind: JsonValueKind.Array } el => el.EnumerateArray().Select(i => (object?)i),
+                IList list => list.Cast<object?>(),
+                null => (IEnumerable<object?>)Enumerable.Empty<object?>(),
+                _ => [optionsObj]
+            };
+
+            options.AddRange(items
+                .Select(item => item?.ToString()?.Trim())
+                .Where(option => !string.IsNullOrEmpty(option))
+                .Select(option => option!));
         }
 
         var resultJson = JsonSerializer.Serialize(new { question, options });

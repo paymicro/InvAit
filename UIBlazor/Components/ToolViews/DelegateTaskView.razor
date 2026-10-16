@@ -2,74 +2,90 @@
 @inject IToolManager ToolManager
 
 <div class="subagent-info">
-    <div class="subagent-info-row">
-        <span class="subagent-info-label">@SharedResource.SubAgentTask</span>
-        <span class="subagent-info-value subagent-info-value--long">@Task</span>
-    </div>
-    @if (!string.IsNullOrEmpty(SystemPrompt))
+    @foreach (var task in Tasks)
     {
         <div class="subagent-info-row">
-            <span class="subagent-info-label">@SharedResource.SubAgentSystemPrompt</span>
-            <span class="subagent-info-value subagent-info-value--long">@SystemPrompt</span>
+            <span class="subagent-info-label">@SharedResource.SubAgentTask</span>
+            <span class="subagent-info-value subagent-info-value--long">@task.Task</span>
+        </div>
+        @if (!string.IsNullOrEmpty(task.SystemPrompt))
+        {
+            <div class="subagent-info-row">
+                <span class="subagent-info-label">@SharedResource.SubAgentSystemPrompt</span>
+                <span class="subagent-info-value subagent-info-value--long">@task.SystemPrompt</span>
+            </div>
+        }
+        <div class="subagent-info-row">
+            <span class="subagent-info-label">@SharedResource.SubAgentAllowedTools</span>
+            @if (task.AllowedTools is { Length: > 0 })
+            {
+                <div class="subagent-tools-list">
+                    @foreach (var tool in task.AllowedTools)
+                    {
+                        var toolName = ToolManager.GetTool(tool)?.DisplayName ?? tool;
+                        <RadzenBadge BadgeStyle="BadgeStyle.Success" Variant="Variant.Outlined" class="rz-mr-1">@toolName</RadzenBadge>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="subagent-tools-list">
+                    <RadzenBadge BadgeStyle="BadgeStyle.Light" Variant="Variant.Text">@SharedResource.SubAgentAllTools</RadzenBadge>
+                </div>
+            }
         </div>
     }
-    <div class="subagent-info-row">
-        <span class="subagent-info-label">@SharedResource.SubAgentAllowedTools</span>
-        @if (AllowedTools is { Length: > 0 })
-        {
-            <div class="subagent-tools-list">
-                @foreach (var tool in AllowedTools)
-                {
-                    var toolName = ToolManager.GetTool(tool)?.DisplayName ?? tool;
-                    <RadzenBadge BadgeStyle="BadgeStyle.Success" Variant="Variant.Outlined" class="rz-mr-1">@toolName</RadzenBadge>
-                }
-            </div>
-        }
-        else
-        {
-            <div class="subagent-tools-list">
-                <RadzenBadge BadgeStyle="BadgeStyle.Light" Variant="Variant.Text">@SharedResource.SubAgentAllTools</RadzenBadge>
-            </div>
-        }
-    </div>
 </div>
 
 @code {
     [Parameter] public string Args { get; set; } = string.Empty;
 
-    private string Task { get; set; } = string.Empty;
-    private string? SystemPrompt { get; set; }
-    private string[]? AllowedTools { get; set; }
+    private List<SubAgentTaskRow> Tasks { get; set; } = [];
+    // Кэш по ссылке Args: ре-парсинг на каждый OnParametersSet не нужен,
+    // пока строка та же (перерендер без смены параметров / родительский каскад).
+    private string? _cachedArgs;
+
+    private sealed record SubAgentTaskRow(string Task, string SystemPrompt, string[]? AllowedTools);
+
+    private sealed class DelegateTaskArgs
+    {
+        public SubAgentTaskDefinition[]? Tasks { get; set; }
+
+        // legacy single-task shape
+        public string? Task { get; set; }
+        public string? SystemPrompt { get; set; }
+        public string[]? AllowedTools { get; set; }
+    }
 
     protected override void OnParametersSet()
     {
+        if (ReferenceEquals(_cachedArgs, Args))
+        {
+            return;
+        }
+        _cachedArgs = Args;
+        Tasks = [];
+
         if (string.IsNullOrWhiteSpace(Args))
         {
-            Task = string.Empty;
-            SystemPrompt = null;
-            AllowedTools = null;
             return;
         }
 
-        try
-        {
-            var parsed = JsonUtils.DeserializePartialAnonymousType(Args, new
-            {
-                task = default(string),
-                systemPrompt = default(string),
-                allowedTools = default(string[]?)
-            });
+        // No-throw паттерн: невалидный JSON → пустой DelegateTaskArgs → пустой контейнер
+        // (частичный JSON не чинится намеренно — во время стриминга args неполны).
+        var parsed = JsonUtils.DeserializeAnonymousType<DelegateTaskArgs>(Args, new DelegateTaskArgs());
 
-            Task = parsed.task ?? string.Empty;
-            SystemPrompt = parsed.systemPrompt;
-            AllowedTools = parsed.allowedTools;
-        }
-        catch
+        if (parsed.Tasks is { Length: > 0 })
         {
-            // If JSON parsing fails, show empty values to avoid UI crash
-            Task = string.Empty;
-            SystemPrompt = null;
-            AllowedTools = null;
+            foreach (var t in parsed.Tasks)
+            {
+                if (!string.IsNullOrEmpty(t?.Task))
+                    Tasks.Add(new SubAgentTaskRow(t.Task, t.SystemPrompt ?? string.Empty, t.AllowedTools));
+            }
+        }
+        else if (!string.IsNullOrEmpty(parsed.Task))
+        {
+            Tasks.Add(new SubAgentTaskRow(parsed.Task, parsed.SystemPrompt ?? string.Empty, parsed.AllowedTools));
         }
     }
 }

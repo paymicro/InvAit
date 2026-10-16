@@ -51,7 +51,6 @@
 
     private FormModel _formModel = new();
 
-    private string _customOption = string.Empty;
     private bool _answered;
 
     private string Question { get; set; } = string.Empty;
@@ -64,22 +63,25 @@
         if (string.IsNullOrWhiteSpace(Args))
             return;
 
-        try
+        // JsonUtils.DeserializeAnonymousType never throws (returns the template on
+        // invalid JSON), so there is no exception to catch. Restore the intended
+        // fallback: when parsing yields no question (broken or non-JSON args),
+        // render the raw args as the question.
+        var parsed = JsonUtils.DeserializeAnonymousType(Args, new
         {
-            var parsed = JsonUtils.DeserializePartialAnonymousType(Args, new
-            {
-                question = default(string),
-                options = default(string[])
-            });
+            question = default(string),
+            options = default(string[])
+        });
 
-            Question = parsed.question ?? string.Empty;
-            Options = [.. (parsed.options ?? [])];
-        }
-        catch
+        if (string.IsNullOrEmpty(parsed.question))
         {
             Question = Args;
             Options = [];
+            return;
         }
+
+        Question = parsed.question;
+        Options = [.. (parsed.options ?? [])];
     }
 
     private async Task OnOptionSelected(FormModel selectedOption)

@@ -892,4 +892,36 @@ public class ChatMessageViewTests : BunitContext
     }
 
     #endregion
+
+    #region ToolCall Change Tests
+
+    [Fact]
+    public void ShouldRender_WhenToolCallResultAssigned()
+    {
+        // Arrange - a non-streaming message with a tool call (auto-approve path: the tool
+        // finishes executing AFTER the final stream render)
+        var message = CreateMessage(ChatMessageRole.Assistant);
+        message.IsStreaming = false;
+        var toolCall = new ToolCall
+        {
+            Id = "call-1",
+            Function = new ToolCallFunction { Name = "create_file", Arguments = "{\"filePath\":\"a.cs\"}" }
+        };
+        message.ToolCalls = [toolCall];
+
+        var cut = Render<ChatMessageView>(parameters => parameters
+            .Add(p => p.Message, message));
+
+        // Act - Result assigned after the initial render (no Content change, no streaming,
+        // no IsShouldRender bump - only the ToolCall mutation)
+        var rendersBefore = cut.RenderCount;
+        toolCall.Result = new ToolResult { Content = "done", Name = "create_file", Success = true };
+        cut.Render();
+
+        // Assert - the mutation must trigger a re-render (toolCallsChanged in ShouldRender)
+        // even though Content/IsStreaming/sub-agents are unchanged
+        Assert.True(cut.RenderCount > rendersBefore, "ToolCall mutation should trigger a re-render");
+    }
+
+    #endregion
 }

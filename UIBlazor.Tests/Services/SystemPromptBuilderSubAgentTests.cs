@@ -215,7 +215,7 @@ public partial class SystemPromptBuilderTests
         var result = await builder.PrepareSubAgentSystemPromptAsync("Custom prompt", TestContext.Current.CancellationToken);
 
         // Assert — delegation instructions are NOT included for sub-agents even though
-        // delegate_task is globally registered (it's excluded from sub-agent toolset by SubAgentExecutor)
+        // delegate_task is globally registered (it's excluded from sub-agent toolset by AfSubAgentOrchestrator)
         Assert.DoesNotContain("Sub-Agent Delegation", result);
         Assert.DoesNotContain("delegate_task", result);
     }

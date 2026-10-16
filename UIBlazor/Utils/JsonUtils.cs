@@ -43,7 +43,7 @@ public static class JsonUtils
         {
             // Используем стандартный метод восстановления для анонимных типов
             var repairedJson = sb.ToString();
-            return JsonSerializer.Deserialize<T>(repairedJson, _jsonOptions);
+            return JsonSerializer.Deserialize<T>(repairedJson, _jsonOptions) ?? anonymousTypeObject;
         }
         catch (JsonException)
         {
@@ -51,10 +51,26 @@ public static class JsonUtils
         }
     }
 
-    public static string PrettyPrintFormat(string minifiedJson)
+    /// <summary>
+    /// Десериализация УЖЕ ВОССТАНОВЛЕННОГО валидного JSON (транспорты отдают аргументы
+    /// tool calls восстановленными — RepairJson в UI не нужен). При невалидном JSON
+    /// возвращается anonymousTypeObject (безопасный fallback).
+    /// </summary>
+    public static T DeserializeAnonymousType<T>(string json, T anonymousTypeObject)
     {
-        using var document = JsonDocument.Parse(minifiedJson);
-        return JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions { WriteIndented = true });
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return anonymousTypeObject;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<T>(json, _jsonOptions) ?? anonymousTypeObject;
+        }
+        catch (JsonException)
+        {
+            return anonymousTypeObject;
+        }
     }
 
     public static IReadOnlyDictionary<string, object> DeserializeParameters(string json)
@@ -100,42 +116,6 @@ public static class JsonUtils
         public string? GetString(string key)
         {
             return parameters.GetValue(key)?.ToString();
-        }
-
-        public bool GetBool(string key, bool defaultValue = false)
-        {
-            var value = parameters.GetValue(key);
-            return value?.ToString()?.ToLowerInvariant() switch
-            {
-                "true" or "1" or "yes" => true,
-                "false" or "0" or "no" => false,
-                _ => defaultValue
-            };
-        }
-
-        public int GetInt(string key, int defaultValue = 0)
-        {
-            var value = parameters.GetValue(key);
-            if (value == null) return defaultValue;
-
-            return int.TryParse(value.ToString(), out var result)
-                ? result
-                : defaultValue;
-        }
-
-        public T? GetObject<T>(string key) where T : class
-        {
-            var value = parameters.GetValue(key);
-            if (value == null) return null;
-
-            try
-            {
-                return JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(value, _jsonOptions), _jsonOptions);
-            }
-            catch
-            {
-                return null;
-            }
         }
     }
 

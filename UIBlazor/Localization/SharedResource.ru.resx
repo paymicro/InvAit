@@ -633,4 +633,7 @@
   <data name="BashPatternTestCustom" xml:space="preserve">
     <value>Пользовательские</value>
   </data>
+  <data name="OpenFileInIde" xml:space="preserve">
+    <value>Открыть в IDE</value>
+  </data>
 </root>

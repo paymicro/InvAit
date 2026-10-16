@@ -1,9 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Net.Mime;
 using System.Runtime.CompilerServices;
 
 namespace UIBlazor.Services;
@@ -16,15 +14,25 @@ public class ChatService(
     ILogger<IChatService> logger,
     IToolManager toolManager,
     IContentFilter contentFilter,
-    ICommonSettingsProvider commonSettingsProvider
+    ICommonSettingsProvider commonSettingsProvider,
+    IToolCallHandler toolCallHandler
     ) : IChatService
 {
-    #pragma warning disable format
-    private const string _thinkStart    = "<think>";
-    private const string _thinkEnd      = "</think>";
-    private const string _completions   = "/v1/chat/completions";
-    private const string _models        = "/v1/models";
-    #pragma warning restore format
+    /// <summary>Tool results longer than this are stubbed out of history during compression
+    /// ( "~4000 chars ≈ 1K tokens"); the full result no longer fits the compressed context.</summary>
+    private const int CompressedToolResultThreshold = 4000;
+
+    // LLM gateways (Microsoft Agent Framework paths):
+    // - AfAgentLoop: the tool-invocation loop with tool execution routed through ToolCallHandler
+    //   (main agent chat and sub-agent branches via AfSubAgentOrchestrator);
+    // - AfCompletionsAdapter: single-shot IChatClient gateway without automatic tool execution
+    //   (context compression).
+    private readonly AfCompletionsAdapter _afAdapter =
+        new(() => profileManager.ActiveProfile, httpClient, () => commonSettingsProvider.Current.HttpTimeoutSec);
+
+    private readonly AfAgentLoop _afLoop =
+        new(() => profileManager.ActiveProfile, httpClient, toolCallHandler);
+
 
     public ConnectionProfile Options => profileManager.ActiveProfile;
 
@@ -58,14 +66,14 @@ public class ChatService(
 
     public async Task<AiModelList> GetModelsAsync(CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"{Options.Endpoint}{_models}");
-
-        ApplyApiKey(request);
-
         if (string.IsNullOrEmpty(Options.Endpoint))
         {
             throw new InvalidOperationException("Endpoint must be specified.");
         }
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{ConnectionProfile.NormalizeApiBase(Options.Endpoint)}/models");
+
+        LlmAuthHeader.Apply(request, Options);
 
         var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken).ConfigureAwait(false);
 
@@ -80,7 +88,7 @@ public class ChatService(
 
     public bool NeedCompression => Options.TokensToCompress > 0 && Session.TotalTokens > Options.TokensToCompress;
 
-    public async Task ProcessStreamAsync(
+    public Task ProcessStreamAsync(
         VisualChatMessage message,
         IAsyncEnumerable<ChatDelta> deltas,
         Action<string>? onContentUpdate,
@@ -88,6 +96,17 @@ public class ChatService(
         Action? onStateChange,
         CompletionsResult resultCapture,
         CancellationToken cancellationToken)
+        => ProcessStreamAsync(message, deltas, onContentUpdate, onToolCallsUpdate, onStateChange, resultCapture, cancellationToken, onNewTurn: null);
+
+    public async Task ProcessStreamAsync(
+        VisualChatMessage message,
+        IAsyncEnumerable<ChatDelta> deltas,
+        Action<string>? onContentUpdate,
+        Action<List<ToolCall>>? onToolCallsUpdate,
+        Action? onStateChange,
+        CompletionsResult resultCapture,
+        CancellationToken cancellationToken,
+        Func<VisualChatMessage>? onNewTurn)
     {
         var sw = Stopwatch.StartNew();
         var reasoning = new StringBuilder();
@@ -96,8 +115,47 @@ public class ChatService(
         double firstContentTokenMs = 0;
 
         message.Timings ??= new MessageTimings { Tokens = 0 };
+        // Agent-loop run: the next turn's message is created eagerly on the turn boundary
+        // so the pending bubble appears immediately; a turn that ends without payload is
+        // marked IsEmptyTurn and filtered out of the UI and the LLM history.
+        var pendingNewTurn = false;
+        VisualChatMessage? pendingMessage = null;
+
         await foreach (var delta in deltas.WithCancellation(cancellationToken))
         {
+            var hasPayload = !string.IsNullOrEmpty(delta.Content)
+                             || !string.IsNullOrEmpty(delta.ReasoningContent)
+                             || delta.ToolCalls is { Count: > 0 };
+
+            // Agent-loop run: a new assistant turn started - close the previous
+            // message (it stays as a completed part of the answer) and create the
+            // next turn's message eagerly (pending bubble shows immediately).
+            if (delta.IsStartOfTurn && onNewTurn is not null && message.IsStreaming)
+            {
+                message.IsStreaming = false;
+                CalcTimings(message, sw, firstTokenMs, resultCapture);
+                pendingNewTurn = true;
+                pendingMessage = onNewTurn();
+                pendingMessage.Timings ??= new MessageTimings { Tokens = 0 };
+                reasoning.Clear();
+                response.Clear();
+                firstTokenMs = sw.ElapsedMilliseconds;
+                firstContentTokenMs = 0;
+            }
+
+            if (pendingNewTurn && hasPayload)
+            {
+                message = pendingMessage!;
+                pendingNewTurn = false;
+            }
+
+            if (!hasPayload)
+            {
+                // Marker-only delta (turn boundary) or an empty update: nothing to render yet.
+                onStateChange?.Invoke();
+                continue;
+            }
+
             if (firstTokenMs == 0)
                 firstTokenMs = sw.ElapsedMilliseconds;
 
@@ -107,14 +165,19 @@ public class ChatService(
                 message.ReasoningContent = reasoning.ToString();
             }
 
+            // Первый ВИДИМЫЙ payload (content или tool_calls — reasoning не в счёт) —
+            // начало сегмента "Reasoning" таймингов. Дублирующиеся проверки в обеих
+            // ветках payload слиты в одну.
+            var hasVisibleContent = !string.IsNullOrEmpty(delta.Content)
+                                    || (delta.ToolCalls is { Count: > 0 } && resultCapture.AccumulatedToolCalls is not null);
+            if (firstContentTokenMs == 0 && hasVisibleContent)
+            {
+                firstContentTokenMs = sw.ElapsedMilliseconds;
+                message.Timings.Reasoning = TimeSpan.FromMilliseconds(firstContentTokenMs - firstTokenMs);
+            }
+
             if (!string.IsNullOrEmpty(delta.Content))
             {
-                if (firstContentTokenMs == 0)
-                {
-                    firstContentTokenMs = sw.ElapsedMilliseconds;
-                    message.Timings.Reasoning = TimeSpan.FromMilliseconds(firstContentTokenMs - firstTokenMs);
-                }
-
                 response.Append(delta.Content);
                 message.Content = response.ToString();
                 onContentUpdate?.Invoke(delta.Content);
@@ -122,12 +185,6 @@ public class ChatService(
 
             if (delta.ToolCalls is { Count: > 0 } && resultCapture.AccumulatedToolCalls is not null)
             {
-                if (firstContentTokenMs == 0)
-                {
-                    firstContentTokenMs = sw.ElapsedMilliseconds;
-                    message.Timings.Reasoning = TimeSpan.FromMilliseconds(firstContentTokenMs - firstTokenMs);
-                }
-
                 onToolCallsUpdate?.Invoke(resultCapture.AccumulatedToolCalls);
             }
 
@@ -144,6 +201,13 @@ public class ChatService(
 
         // Финальный подсчет таймингов. Нужен т.к. токен с Usage не запускает цикл выше (он без дельты).
         // IsStreaming сбрасывается ДО расчета: завершенный бейдж должен показать видимые токены.
+        if (pendingNewTurn && pendingMessage is not null)
+        {
+            // Turn ended without payload: the eagerly created message is marked as an
+            // empty turn so it is filtered out of the UI and the LLM history.
+            pendingMessage.IsEmptyTurn = true;
+            pendingMessage.IsStreaming = false;
+        }
         message.IsStreaming = false;
         CalcTimings(message, sw, firstTokenMs, resultCapture);
     }
@@ -152,12 +216,11 @@ public class ChatService(
     {
         var elapsedMs = sw.ElapsedMilliseconds;
 
-        // Пока модель думает, видимых токенов еще нет и бейдж выглядел бы «зависшим» на нуле —
-        // поэтому в стриминге показываем полный вывод (включая размышления), а после завершения —
-        // только видимые токены: столько сообщение реально занимает в контексте.
-        message.Timings.Tokens = message.IsStreaming
-            ? completionsResult.CompletionTokens
-            : completionsResult.VisibleCompletionTokens;
+        // Бейдж всегда показывает ПОЛНЫЙ вывод (включая reasoning): это счетчик генерации,
+        // а позиция в контексте отслеживается отдельно через Session.TotalTokens
+        // (VisibleCompletionTokens - reasoning не досылается).
+        // Смена значения в конце стрима выглядела бы как баг: "токенов стало меньше".
+        message.Timings.Tokens = completionsResult.CompletionTokens;
         message.Timings.ReasoningTokens = completionsResult.ReasoningTokens;
 
         // Скорость генерации честнее считать по полному выводу, включая размышления.
@@ -167,104 +230,22 @@ public class ChatService(
         message.Timings.FirstToken = TimeSpan.FromMilliseconds(firstTokenMs);
     }
 
-    /// <summary>
-    /// Adds the API key to the request via the configured header
-    /// ("Authorization" gets the standard Bearer scheme).
-    /// </summary>
-    private void ApplyApiKey(HttpRequestMessage request)
-    {
-        if (string.IsNullOrEmpty(Options.ApiKey))
-            return;
-
-        if (string.IsNullOrWhiteSpace(Options.ApiKeyHeader))
-        {
-            throw new InvalidOperationException("API key header must be specified when an API key is provided.");
-        }
-
-        if (string.Equals(Options.ApiKeyHeader, "Authorization", StringComparison.OrdinalIgnoreCase))
-        {
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Options.ApiKey);
-        }
-        else
-        {
-            request.Headers.Add(Options.ApiKeyHeader, Options.ApiKey);
-        }
-    }
 
     /// <summary>
-    /// Records usage data from a response chunk. Session.TotalTokens keeps the context-relevant
-    /// size: reasoning tokens are excluded because they are not resent in subsequent requests.
+    /// Сжатие контекста указанной сессии (например, ветки субагента): последние сообщения остаются дословно,
+    /// история текст заменяется сводкой от LLM (resultCapture — состояние LLM-вызова).
     /// </summary>
-    private static void CaptureUsage(StreamChunk? chunk, CompletionsResult resultCapture, ConversationSession targetSession)
-    {
-        if (chunk?.Usage == null)
-            return;
-
-        resultCapture.Usage = chunk.Usage;
-        resultCapture.CompletionTokens = chunk.Usage.CompletionTokens;
-
-        if (chunk.Usage.CompletionDetails is not null)
-            resultCapture.ReasoningTokens = chunk.Usage.ReasoningTokens;
-        // без details оставляем эвристическую оценку размышлений, накопленную во время стрима
-
-        targetSession.TotalTokens = chunk.Usage.TotalTokens - resultCapture.ReasoningTokens;
-    }
-
-    /// <summary>
-    /// Approximate token count while streaming, before usage data arrives (~4 chars per token).
-    /// CompletionTokens always tracks the FULL generation (reasoning included) — same semantics
-    /// as the final usage overwrite; ReasoningTokens holds the breakdown, so reasoning can be
-    /// excluded from the context-relevant counters without changing CompletionTokens meaning.
-    /// </summary>
-    private static void EstimateTokens(StreamChunk chunk, CompletionsResult resultCapture, ConversationSession targetSession, int sessionTokens)
-    {
-        var estDelta = chunk.Choices.Count == 1 ? chunk.Choices[0].Delta : null;
-
-        var contentChars = (estDelta?.Content?.Length ?? 0) + ToolCallChars(estDelta);
-        var reasoningChars = estDelta?.ReasoningContent?.Length ?? 0;
-        var estimatedChars = contentChars + reasoningChars;
-
-        if (estimatedChars == 0)
-            return;
-
-        resultCapture.CompletionTokens += Math.Max(1, estimatedChars / 4);
-
-        if (reasoningChars > 0)
-            resultCapture.ReasoningTokens += Math.Max(1, reasoningChars / 4);
-
-        // Размышления повторно не отправляются — из места в контексте исключаем их сразу.
-        targetSession.TotalTokens = sessionTokens + resultCapture.VisibleCompletionTokens;
-    }
-
-    private static int ToolCallChars(ChatDelta? delta)
-    {
-        if (delta?.ToolCalls is not { Count: > 0 })
-            return 0;
-
-        return delta.ToolCalls.Sum(tc => (tc.Function?.Name?.Length ?? 0) + (tc.Function?.Arguments?.Length ?? 0));
-    }
-
-    public async IAsyncEnumerable<ChatDelta> CompressSessionAsync(CompletionsResult resultCapture, [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        await foreach (var delta in CompressSessionAsync(Session, resultCapture, cancellationToken))
-        {
-            yield return delta;
-        }
-    }
-
-    /// <summary>
-    /// Сжатие контекста для произвольной сессии (например, sub-agent).
-    /// </summary>
-    public async IAsyncEnumerable<ChatDelta> CompressSessionAsync(
-        ConversationSession session,
+    private async IAsyncEnumerable<ChatDelta> CompressSessionCoreAsync(
+        ConversationSession targetSession,
         CompletionsResult resultCapture,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var (Messages, LastUserMessage) = session.GetFormattedMessagesForCompress(contentFilter);
+        var (Messages, LastUserMessage) = targetSession.GetFormattedMessagesForCompress(contentFilter);
 
-        // Получаем сжатый текст от LLM
+        // Получаем сжатый текст от LLM (compression runs WITHOUT tools - single-shot adapter)
         var contentSb = new StringBuilder();
-        await foreach (var chatDelta in GetCompletionsAsync(Messages, false, session, null, resultCapture, cancellationToken))
+        resultCapture.Reset();
+        await foreach (var chatDelta in _afAdapter.GetCompletionsAsync(Messages, null, targetSession, resultCapture, cancellationToken))
         {
             if (chatDelta.Content is not null)
             {
@@ -284,7 +265,7 @@ public class ChatService(
             IsExpanded = true
         };
 
-        var snapshot = session.GetMessagesSnapshot();
+        var snapshot = Session.GetMessagesSnapshot();
         var totalCount = snapshot.Count;
         var windowSize = totalCount < 6 ? 2 : 3;
 
@@ -303,7 +284,7 @@ public class ChatService(
             {
                 foreach (var toolCall in msg.ToolCalls)
                 {
-                    if (toolCall.Result is { Content.Length: > 4000 }) // магическое числоооо где-то ~100 строк кода
+                    if (toolCall.Result is { Content.Length: > CompressedToolResultThreshold })
                     {
                         toolCall.Result = new ToolResult
                         {
@@ -341,8 +322,27 @@ public class ChatService(
         }
 
         // Перезаписываем историю
-        session.SetMessages(keptMessages);
+        targetSession.SetMessages(keptMessages);
     }
+
+    /// <summary>
+    /// Сжатие контекста указанной сессии (например, ветки субагента).
+    /// Состояние LLM-вызова записывается в <paramref name="resultCapture"/>.
+    /// </summary>
+    public IAsyncEnumerable<ChatDelta> CompressSessionAsync(
+        ConversationSession targetSession,
+        CompletionsResult resultCapture,
+        CancellationToken cancellationToken)
+        => CompressSessionCoreAsync(targetSession, resultCapture, cancellationToken);
+
+    /// <summary>
+    /// Сжатие контекста основной сессии: последние сообщения остаются дословно,
+    /// история текст заменяется сводкой от LLM (resultCapture — состояние LLM-вызова).
+    /// </summary>
+    public IAsyncEnumerable<ChatDelta> CompressSessionAsync(
+        CompletionsResult resultCapture,
+        CancellationToken cancellationToken)
+        => CompressSessionCoreAsync(Session, resultCapture, cancellationToken);
 
     /// <summary>
     /// Asynchronously saves the current session data to local storage using the session ID as the key.
@@ -393,284 +393,23 @@ public class ChatService(
         => content.Length > 40 ? content[..40] + "..." : content;
 
     private async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(
-        IEnumerable<object> messages,
+        IReadOnlyList<WireMessage> messages,
         bool withTools,
-        CompletionsResult resultCapture,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        await foreach (var delta in GetCompletionsAsync(messages, withTools, Session, null, resultCapture, cancellationToken))
-        {
-            yield return delta;
-        }
-    }
-
-    /// <summary>
-    /// Internal completions method that supports a custom session (for sub-agents).
-    /// All LLM call state (model, usage, tool_calls, finish_reason, error) is written
-    /// exclusively to <paramref name="resultCapture"/>, never to instance properties.
-    /// This ensures isolation between main agent and sub-agent calls.
-    /// </summary>
-    private async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(
-        IEnumerable<object> messages,
-        bool withTools,
-        ConversationSession targetSession,
-        IEnumerable<Tool>? customTools,
         CompletionsResult resultCapture,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         resultCapture.Reset();
 
-        // Use runtime parameters or fall back to configured options
-        var url = $"{Options.Endpoint}{_completions}";
+        var tools = withTools ? toolManager.GetEnabledTools(Session.Mode) : null;
 
-        var payload = new Dictionary<string, object>
+        // Runs WITH tools go through the tool-invocation loop (AfAgentLoop); runs WITHOUT
+        // tools (context compression) go through the single-shot adapter. Sub-agent
+        // branches build their own AfAgentLoop (AfSubAgentOrchestrator.RunBranchAsync).
+        ICompletionsGateway gateway = withTools ? _afLoop : _afAdapter;
+
+        await foreach (var delta in gateway.GetCompletionsAsync(messages, tools, Session, resultCapture, cancellationToken))
         {
-            { "model", Options.Model },
-            { "messages", messages },
-            { "temperature", Options.Temperature },
-            { "stream", Options.Stream },
-            { "stream_options", new { include_usage = true } }
-        };
-
-        if (Options.MaxTokens >= 1000)
-        {
-            payload.Add("max_tokens", Options.MaxTokens);
-            payload.Add("max_completion_tokens", Options.MaxTokens);
-        }
-
-        if (!string.IsNullOrEmpty(Options.ExtraPayload))
-        {
-            try
-            {
-                var extra = JsonSerializer.Deserialize<Dictionary<string, object>>(Options.ExtraPayload);
-                if (extra != null)
-                {
-                    foreach (var kvp in extra)
-                    {
-                        payload[kvp.Key] = kvp.Value;
-                    }
-                }
-            }
-            catch (JsonException)
-            {
-                // skip invalid ExtraPayload
-            }
-        }
-
-        // Add native tool definitions
-        if (withTools)
-        {
-            var enabledTools = (customTools ?? (targetSession == Session
-                ? toolManager.GetEnabledTools(Session.Mode)
-                : toolManager.GetEnabledTools(AppMode.Agent))).Select(t => t.NativeTool).ToList();
-            if (enabledTools.Count > 0)
-            {
-                payload["tools"] = enabledTools;
-                payload["tool_choice"] = "auto";
-            }
-        }
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, url)
-        {
-            Content = new StringContent(
-                JsonSerializer.Serialize(payload),
-                Encoding.UTF8,
-                MediaTypeNames.Application.Json)
-        };
-
-        ApplyApiKey(request);
-
-        foreach (var header in Options.ExtraHeaders.Where(h => !string.IsNullOrEmpty(h.Name)))
-        {
-            request.Headers.TryAddWithoutValidation(header.Name, header.Value);
-        }
-
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(commonSettingsProvider.Current.HttpTimeoutSec));
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-        // TODO проверять на OperationCanceledException
-        using var response = await httpClient.SendAsync(request,
-            Options.Stream ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead,
-            linkedCts.Token);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            var result = $"HttpCode: {response.StatusCode} | server failed: {await response.Content.ReadAsStringAsync(cancellationToken)}";
-            // Typed exception: SubAgentExecutor (and other callers) use it to
-            // classify HTTP status errors (429/5xx) as transient and retry them.
-            throw new LlmApiException(result);
-        }
-
-        // количество токенов в сессии до запроса
-        var sessionTokens = targetSession.TotalTokens;
-
-        // если не стрим, то возвращаем как один чанк
-        if (!Options.Stream)
-        {
-            // Reset accumulated tool calls
-            resultCapture.AccumulatedToolCalls = null;
-
-            var chunk = await response.Content.ReadFromJsonAsync<StreamChunk>(cancellationToken);
-            var message = chunk?.Choice?.Message;
-
-            resultCapture.Model ??= chunk?.Model;
-            CaptureUsage(chunk, resultCapture, targetSession);
-
-            if (message?.ToolCalls is { Count: > 0 })
-            {
-                // Native tool calls in non-streaming response
-                resultCapture.AccumulatedToolCalls = [.. message.ToolCalls];
-                resultCapture.FinishReason = chunk?.Choice?.FinishReason ?? "tool_calls";
-                yield return message;
-                yield break;
-            }
-
-            if (message?.Content != null)
-            {
-                // Удаление <think> блока из контента и перенос его в ReasoningContent если его там нет.
-                var regex = Regex.Match(message.Content, $"^{_thinkStart}(?<reason>.*){_thinkEnd}", RegexOptions.Singleline);
-                if (regex.Success)
-                {
-                    message.ReasoningContent ??= regex.Groups["reason"].Value;
-                    message.Content = message.Content[regex.Length..];
-                }
-                yield return message;
-            }
-            yield break;
-        }
-
-        // стрим
-        // Reset accumulated tool calls for this response
-        resultCapture.AccumulatedToolCalls = null;
-
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var reader = new StreamReader(stream);
-
-        // Accumulator for partial tool_calls arguments (keyed by index)
-        var toolCallAcc = new Dictionary<int, ToolCall>();
-
-        var isReasoningContent = false;
-        var isStart = true;
-        string? role = null;
-
-        ChatChoice lastChoise = null!;
-        while (await reader.ReadLineAsync(cancellationToken) is { } line && !cancellationToken.IsCancellationRequested)
-        {
-            if (string.IsNullOrWhiteSpace(line) || !line.StartsWith("data:"))
-            {
-                continue;
-            }
-
-            var json = line[6..];
-
-            if (json == "[DONE]")
-            {
-                resultCapture.FinishReason = lastChoise?.FinishReason;
-                break;
-            }
-
-            if (json.StartsWith("{\"error\""))
-            {
-                resultCapture.Error = json;
-                continue;
-            }
-
-            var chunk = JsonUtils.Deserialize<StreamChunk>(json);
-            if (chunk == null)
-            {
-                continue;
-            }
-
-            CaptureUsage(chunk, resultCapture, targetSession);
-            if (chunk.Usage == null)
-            {
-                EstimateTokens(chunk, resultCapture, targetSession, sessionTokens);
-            }
-
-            resultCapture.Model ??= chunk.Model;
-
-            if (chunk.Choices.Count != 1 || chunk.Choices[0].Delta == null)
-            {
-                continue;
-            }
-
-            var delta = chunk.Choices[0].Delta!;
-            var content = delta.Content;
-            role ??= delta?.Role;
-
-            // Размышляющие модели по разному отдают размышления
-            //
-            //           ReasoningContent | Content
-            // GLM 4.7         +++        |   ---
-            // Kimi 2          +++        | <think>
-            // Deepseek R1     ---        | <think>
-            //
-            // обрабатываем размышления как Z.ai GLM.
-            // Все размышления идут в ReasoningContent с пустым Content
-
-            // Преобразрвания нужны если есть контент с блоком <think>
-            if (!string.IsNullOrEmpty(content))
-            {
-                if (!isReasoningContent) // не думаем
-                {
-                    if (isStart && content.StartsWith(_thinkStart))
-                    {
-                        // начать думать можно только в первом чанке
-                        isReasoningContent = true;
-                        delta!.ReasoningContent = content.Replace(_thinkStart, string.Empty);
-                        delta.Content = null;
-                    }
-                }
-                else // внутри <think> блока
-                {
-                    if (content.Contains(_thinkEnd))
-                    {
-                        // если закончил думать, то можно в контент добавить часть чанка (актуально для Kimi2)
-                        isReasoningContent = false;
-                        delta!.Content = content.Replace(_thinkEnd, string.Empty);
-                        delta.ReasoningContent = null;
-                    }
-                    else
-                    {
-                        // если не конец - то все пихаем в ReasoningContent и очищаем Content
-                        delta!.Content = null;
-                        delta.ReasoningContent = content;
-                    }
-                }
-            }
-
-            // Accumulate native tool_calls across chunks
-            if (delta.ToolCalls is { Count: > 0 })
-            {
-                foreach (var tc in delta.ToolCalls)
-                {
-                    var idx = tc.Index ?? 0;
-                    if (!toolCallAcc.TryGetValue(idx, out var existing))
-                    {
-                        existing = new ToolCall
-                        {
-                            Index = idx,
-                            Function = new ToolCallFunction(),
-                            IsReady = false,
-                            ApprovalStatus = ToolApprovalStatus.Pending
-                        };
-                        toolCallAcc[idx] = existing;
-                    }
-                    if (!string.IsNullOrEmpty(tc.Id))
-                        existing.Id = tc.Id;
-                    if (!string.IsNullOrEmpty(tc.Type))
-                        existing.Type = tc.Type;
-                    if (!string.IsNullOrEmpty(tc.Function?.Name))
-                        existing.Function.Name = tc.Function.Name;
-                    if (!string.IsNullOrEmpty(tc.Function?.Arguments))
-                        existing.Function.Arguments += tc.Function.Arguments;
-                }
-                resultCapture.AccumulatedToolCalls = [.. toolCallAcc.Values];
-            }
-
             yield return delta;
-
-            isStart = false;
         }
     }
 
@@ -692,30 +431,9 @@ public class ChatService(
     public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(CompletionsResult resultCapture, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // Get formatted messages including conversation history
-        var messages = Session.GetFormattedMessages(await systemPromptBuilder.PrepareSystemPromptAsync(Session.Mode, cancellationToken), contentFilter) ?? [];
+        var messages = Session.GetFormattedMessages(await systemPromptBuilder.PrepareSystemPromptAsync(Session.Mode, cancellationToken), contentFilter);
 
         await foreach (var chatDelta in GetCompletionsAsync(messages, true, resultCapture, cancellationToken))
-        {
-            yield return chatDelta;
-        }
-    }
-
-    /// <summary>
-    /// Получение ответа для sub-agent с произвольным системным промптом и набором инструментов.
-    /// Использует переданную сессию вместо основной.
-    /// Состояние (AccumulatedToolCalls, Usage и т.д.) записывается в <paramref name="resultCapture"/>,
-    /// а не в общие свойства экземпляра, чтобы избежать конфликтов с главным агентом.
-    /// </summary>
-    public async IAsyncEnumerable<ChatDelta> GetCompletionsForSubAgentAsync(
-        ConversationSession session,
-        string systemPrompt,
-        IEnumerable<Tool> enabledTools,
-        CompletionsResult resultCapture,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        var messages = session.GetFormattedMessages(systemPrompt, contentFilter);
-
-        await foreach (var chatDelta in GetCompletionsAsync(messages, true, session, enabledTools, resultCapture, cancellationToken))
         {
             yield return chatDelta;
         }

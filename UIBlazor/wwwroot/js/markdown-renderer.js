@@ -9,6 +9,24 @@ const highlightExt = markedHighlight.markedHighlight({
     }
 });
 
+// Syntax highlighting for file-viewer components (ToolCreateNewFile etc.)
+// Highlights the text content of an element with Highlight.js.
+// Idempotent: textContent of a highlighted element is the original text,
+// so re-invocation with the same content produces the same result.
+window.highlightCodeElement = function (elementId, language) {
+    const element = document.getElementById(elementId);
+    if (!element || !window.hljs) return;
+
+    const lang = language && hljs.getLanguage(language) ? language : 'plaintext';
+    const text = element.textContent;
+
+    try {
+        element.innerHTML = hljs.highlight(text, { language: lang }).value;
+    } catch (err) {
+        console.error('Failed to highlight code:', err);
+    }
+};
+
 // Global copy function
 window.copyCode = function (btn, elementId) {
     const codeElement = document.getElementById(elementId);

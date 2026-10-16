@@ -21,7 +21,7 @@ builder.Services
     .AddScoped<IContextService, ContextService>()
     .AddScoped<IMessageParser, MessageParser>()
     .AddScoped<IInternalExecutor, InternalExecutor>()
-    .AddScoped<ISubAgentExecutor, SubAgentExecutor>()
+    .AddScoped<ISubAgentExecutor, AfSubAgentOrchestrator>()
     .AddScoped<BuiltInAgent>()
     .AddScoped<IToolManager, ToolManager>()
     .AddScoped<ISystemPromptBuilder, SystemPromptBuilder>()

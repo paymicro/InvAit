@@ -67,13 +67,13 @@ public class ToolAskOptionsTests : BunitContext
     [Fact]
     public void ShouldHandleInvalidArgsGracefully()
     {
-        // Act - unparseable args are silently ignored (JsonUtils returns defaults):
-        // empty question, no option buttons, custom input still available
+        // Act - non-JSON args fall back to rendering the raw args as the question;
+        // no option buttons, custom input still available
         var cut = Render<ToolAskOptions>(parameters => parameters
             .Add(p => p.Args, "just free form text"));
 
         // Assert
-        Assert.Equal(string.Empty, cut.Find(".tool-ask-question").TextContent.Trim());
+        Assert.Contains("just free form text", cut.Find(".tool-ask-question").TextContent);
         Assert.Throws<ElementNotFoundException>(() => cut.Find(".tool-ask-buttons"));
         Assert.NotNull(cut.Find(".tool-ask-custom input"));
     }
@@ -189,9 +189,21 @@ public class ToolAskOptionsTests : BunitContext
     }
 
     [Fact]
-    public void ShouldParsePartialJson_QuestionOnly()
+    public void ShouldParseValidJson_QuestionOnly()
     {
-        // Act - streaming-style truncated JSON still yields the question
+        // Act - transports deliver already-repaired valid JSON (no RepairJson in the UI).
+        var cut = Render<ToolAskOptions>(parameters => parameters
+            .Add(p => p.Args, """{"question":"Pick a color"}"""));
+
+        // Assert
+        Assert.Contains("Pick a color", cut.Find(".tool-ask-question").TextContent);
+    }
+
+    [Fact]
+    public void ShouldFallbackToRawArgs_WhenJsonBroken()
+    {
+        // Act - safety fallback: broken JSON (should not happen - transports deliver
+        // repaired arguments) yields no question, the raw args render as the question.
         var cut = Render<ToolAskOptions>(parameters => parameters
             .Add(p => p.Args, """{"question":"Pick a color","opt"""));
 

@@ -47,12 +47,7 @@ public partial class AiChat : RadzenComponent
         if (string.IsNullOrWhiteSpace(content) || IsLoading)
             return;
 
-        var userMessage = new VisualChatMessage
-        {
-            Content = content,
-            Role = ChatMessageRole.User,
-            IsExpanded = IsShortMessage(content)
-        };
+        var userMessage = VisualChatMessage.CreateUser(content, IsShortMessage(content));
 
         ChatService.Session.AddMessage(userMessage);
         await ScrollToBottomAsync();
@@ -232,45 +227,95 @@ public partial class AiChat : RadzenComponent
         }
 
         var assistantMessage = VisualChatMessage.CreateStreaming();
+
+        // Срез снапшота ДО старта рана: при ретрае все сообщения, созданные этим раном
+        // (частичные туры onNewTurn + assistantMessage), должны быть удалены — иначе
+        // новый прогон дописывает новые туры после устаревших частичных (дубликаты).
+        var preRunIds = ChatService.Session.GetMessagesSnapshot().Select(m => m.Id).ToHashSet();
+
         ChatService.Session.AddMessage(assistantMessage);
         await ChatService.SaveSessionAsync();
         await InvokeAsync(StateHasChanged);
 
         var completions = new CompletionsResult();
 
+        // Agent-loop run: a single stream may span several assistant turns.
+        // Every callback must target the *current* turn's message, not the first one.
+        var currentMessage = assistantMessage;
+
         try
         {
             await ChatService.ProcessStreamAsync(
                 assistantMessage,
                 ChatService.GetCompletionsAsync(completions, cancellationToken),
-                onContentUpdate: content => MessageParser.UpdateSegments(content, assistantMessage),
+                onContentUpdate: content => MessageParser.UpdateSegments(content, currentMessage),
                 onToolCallsUpdate: toolCalls =>
                 {
-                    assistantMessage.ToolCalls = toolCalls;
-                    assistantMessage.IsShouldRender = true;
+                    currentMessage.ToolCalls = toolCalls;
+                    currentMessage.IsShouldRender = true;
                 },
                 onStateChange: () =>
                 {
-                    assistantMessage.Model ??= completions.Model;
+                    currentMessage.Model ??= completions.Model;
                     InvokeAsync(StateHasChanged);
                 },
                 completions,
-                cancellationToken);
-            await HandleStreamCompletionAsync(assistantMessage, completions, cancellationToken);
+                cancellationToken,
+                onNewTurn: () =>
+                {
+                    // ChatClientAgent loop: every new assistant turn is its own message
+                    // (the tool calls of the previous turn stay rendered on it).
+                    var nextMessage = VisualChatMessage.CreateStreaming();
+                    ChatService.Session.AddMessage(nextMessage);
+                    currentMessage = nextMessage;
+                    _ = InvokeAsync(StateHasChanged);
+                    return nextMessage;
+                });
+            await HandleStreamCompletionAsync(currentMessage, completions, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            HandleCancellation(assistantMessage);
+            HandleCancellation(currentMessage);
         }
         catch (Exception ex)
         {
-            await HandleErrorAsync(assistantMessage, ex, ++retryCount,
+            // currentMessage (не assistantMessage): onNewTurn мог создать следующие туры —
+            // финальная ошибка относится к последнему стримившемуся сообщению.
+            var attempt = ++retryCount;
+            var maxRetries = CommonSettingsProvider.Current.MaxRetries;
+
+            // Ретраебельная ошибка: весь ран перезапускается с нуля — удалить частичные
+            // туры этого рана (кроме currentMessage, его удалит HandleErrorAsync перед
+            // retryAction). При финальной ошибке ничего не удаляем — частичный прогресс
+            // остаётся как история попытки.
+            if (attempt < maxRetries)
+            {
+                foreach (var runMessage in ChatService.Session.GetMessagesSnapshot())
+                {
+                    if (runMessage.Id != currentMessage.Id && !preRunIds.Contains(runMessage.Id))
+                    {
+                        ChatService.Session.RemoveMessage(runMessage.Id);
+                    }
+                }
+            }
+
+            await HandleErrorAsync(currentMessage, ex, attempt,
                 async () => await GetAiResponseInternalAsync(retryCount, cancellationToken),
                 cancellationToken);
         }
         finally
         {
             assistantMessage.IsStreaming = false;
+            // onNewTurn may have created streaming messages that the
+            // loop never streamed into (cancelled / failed mid-turn) - close them all.
+            foreach (var openMessage in ChatService.Session.GetMessagesSnapshot())
+            {
+                if (openMessage.IsStreaming)
+                {
+                    openMessage.IsStreaming = false;
+                    openMessage.IsShouldRender = true;
+                }
+            }
             IsLoading = false;
             await InvokeAsync(StateHasChanged);
         }
@@ -284,6 +329,13 @@ public partial class AiChat : RadzenComponent
 
         // Handle native tool_calls from the API response
         message.ToolCalls = result.AccumulatedToolCalls;
+        if (result.ToolsExecutedByAgent)
+        {
+            // tools were already executed inside the loop
+            // (approval + Result per toolCall); the UI must not re-process them.
+            return;
+        }
+
         if (message.ToolCalls is { Count: > 0 })
         {
             ToolCallHandler.PrepareToolsForApprovals(message.ToolCalls);
@@ -359,8 +411,6 @@ public partial class AiChat : RadzenComponent
         int retryCount, Func<Task> retryAction, CancellationToken cancellationToken)
     {
         var maxRetries = CommonSettingsProvider.Current.MaxRetries;
-        message.Content = $"Error: {ex.Message} [{retryCount}/{maxRetries}]";
-        MessageParser.UpdateSegments(message.Content, message);
         Logger.LogError(ex, "Getting response error");
 
         NotificationService.Notify(new NotificationMessage
@@ -374,6 +424,12 @@ public partial class AiChat : RadzenComponent
 
         if (retryCount >= maxRetries)
         {
+            // Финал: перезаписываем контент текстом ошибки. При ретраебельной ошибке контент
+            // НЕ трогаем — сообщение будет удалено перед retryAction, перезапись + перестройка
+            // сегментов здесь была бы мёртвой работой (и затирала бы частичный ответ модели).
+            message.Content = $"Error: {ex.Message} [{retryCount}/{maxRetries}]";
+            message.Segments.Clear();
+            MessageParser.UpdateSegments(message.Content, message);
             return;
         }
 

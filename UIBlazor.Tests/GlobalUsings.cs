@@ -1,4 +1,3 @@
-global using System.Collections.Concurrent;
 global using System.ComponentModel;
 global using System.Text;
 global using System.Text.Json;
@@ -22,6 +21,7 @@ global using UIBlazor.Localization;
 global using UIBlazor.Models;
 global using UIBlazor.Options;
 global using UIBlazor.Services;
+global using UIBlazor.Services.AgentFramework;
 global using UIBlazor.Services.Interfaces;
 global using UIBlazor.Services.Models;
 global using UIBlazor.Services.Settings;

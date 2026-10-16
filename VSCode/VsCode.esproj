@@ -10,7 +10,7 @@
         <RuntimeIdentifiers>win-x64;linux-x64;osx-x64</RuntimeIdentifiers>
         <ResolveNuGetPackages>false</ResolveNuGetPackages>
         <GenerateProgramFile>false</GenerateProgramFile>
-        <IsTestProject>true</IsTestProject>
+        <IsTestProject>false</IsTestProject>
     </PropertyGroup>
 
     <Target Name="VSTest" DependsOnTargets="Test" />

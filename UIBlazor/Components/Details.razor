@@ -38,11 +38,29 @@
     // Задает только НАЧАЛЬНОЕ состояние раскрытости. Дальше состояние внутреннее:
     // повторные перерендеры родителя не должны сбрасывать выбор пользователя.
     [Parameter] public bool IsExpanded { get; set; }
+
+    /// <summary>
+    /// Колбэк клика по заголовку (контролируемый режим, напр. SubAgentView).
+    /// Когда задан, клик НЕ меняет _isExpanded напрямую — источник истины родитель:
+    /// он обновляет IsExpanded и перерендеривается, а OnParametersSet синхронизирует
+    /// внутреннее состояние с внешним. Это позволяет родителю принудительно
+    /// раскрывать/сворачивать блок (напр. оркестратор сабагента при апруве и Finish).
+    /// </summary>
+    [Parameter] public Action<bool>? OnToggle { get; set; }
     [Parameter] public bool IsRounded { get; set; }
 
     private bool _isExpanded;
 
     protected override void OnInitialized() => _isExpanded = IsExpanded;
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        // Контролируемый режим: следуем внешнему состоянию при каждом родительском
+        // рендере (принудительное раскрытие при апруве, сворачивание после Finish).
+        if (OnToggle is not null)
+            _isExpanded = IsExpanded;
+    }
 
     // Позволяет передавать любые другие атрибуты RadzenSwitch (напр. Title, TabIndex)
     [Parameter(CaptureUnmatchedValues = true)]
@@ -53,5 +71,13 @@
                                       ? AdditionalAttributes["class"].ToString() ?? ""
                                       : "";
 
-    private void Toggle() => _isExpanded = !_isExpanded;
+    private void Toggle()
+    {
+        if (OnToggle is not null)
+        {
+            OnToggle(!_isExpanded);
+            return;
+        }
+        _isExpanded = !_isExpanded;
+    }
 }

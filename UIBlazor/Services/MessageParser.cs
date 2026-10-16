@@ -9,11 +9,6 @@ public class MessageParser : IMessageParser
 
         var activeSegment = isHistory ? null : message.Segments.LastOrDefault(s => !s.IsClosed);
 
-        if (isHistory)
-        {
-            activeSegment = null;
-        }
-
         var incomingText = delta;
 
         while (!string.IsNullOrEmpty(incomingText))

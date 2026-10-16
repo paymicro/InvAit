@@ -322,6 +322,23 @@ public class ToolCallBlockTests : BunitContext
     }
 
     [Fact]
+    public void EditFilesTool_InvalidArguments_RendersEmptyDiffView()
+    {
+        // Arrange - safety fallback: broken JSON (should not happen - transports deliver
+        // repaired valid arguments) must not throw, DiffView gets empty defaults.
+        const string args = """{"filePath": """;
+
+        // Act
+        var cut = Render<ToolCallBlock>(parameters => parameters
+            .Add(p => p.ToolCall, CreateReadyCall(BuiltInToolEnum.EditFiles, args)));
+
+        // Assert
+        Assert.NotNull(cut.Find(".diffview-stub"));
+        Assert.Equal(string.Empty, _capturedDiffFilePath);
+        Assert.Equal(0, _capturedEditCount);
+    }
+
+    [Fact]
     public void CreateFileTool_RendersToolCreateNewFile_WithParsedContent()
     {
         // Arrange
@@ -421,7 +438,7 @@ public class ToolCallBlockTests : BunitContext
         // Arrange
         var subAgent = new SubAgentMessage { Task = "Sub agent mission", Status = SubAgentStatus.Running };
         var call = CreateReadyCall(BuiltInToolEnum.DelegateTask, """{"task":"x"}""");
-        call.SubAgent = subAgent;
+        call.SubAgents = [subAgent];
 
         // Act
         var cut = Render<ToolCallBlock>(parameters => parameters
@@ -438,7 +455,7 @@ public class ToolCallBlockTests : BunitContext
         // Arrange
         var subAgent = new SubAgentMessage { Task = "t" };
         var call = CreateReadyCall(BuiltInToolEnum.DelegateTask, """{"task":"x"}""");
-        call.SubAgent = subAgent;
+        call.SubAgents = [subAgent];
 
         var cut = Render<ToolCallBlock>(parameters => parameters
             .Add(p => p.ToolCall, call));
@@ -448,6 +465,112 @@ public class ToolCallBlockTests : BunitContext
 
         // Assert
         Assert.NotNull(cut.Find(".subagent-stub"));
+    }
+
+    [Fact]
+    public async Task ToolCallParameterChanged_SubAgentsChangedSubscriptionSurvives()
+    {
+        // Regression: подписка SubAgentsChanged была только в OnInitialized — при смене
+        // параметра ToolCall (новый экземпляр) компонент слушал СТАРЫЙ вызов, и поздние
+        // attach'ы (напр. nested batches) не доезжали до UI.
+        var firstCall = CreateReadyCall(BuiltInToolEnum.DelegateTask, """{"task":"a"}""");
+        var secondCall = CreateReadyCall(BuiltInToolEnum.DelegateTask, """{"task":"b"}""");
+
+        var cut = Render<ToolCallBlock>(parameters => parameters
+            .Add(p => p.ToolCall, firstCall));
+
+        // Act - смена параметра ToolCall, затем поздний attach во ВТОРОЙ вызов
+        cut.Render(parameters => parameters
+            .Add(p => p.ToolCall, secondCall));
+
+        var lateSubAgent = new SubAgentMessage { Task = "late branch", Status = SubAgentStatus.Running };
+        secondCall.SubAgents ??= [];
+        secondCall.SubAgents.Add(lateSubAgent);
+        await cut.InvokeAsync(() => secondCall.NotifySubAgentsChanged());
+
+        // Assert - подписка пережила смену параметра: рендер подхватил новый attach.
+        // Рендер структурных изменений проходит через троттлинг 100ms (trailing render) —
+        // ждём его через WaitForAssertion.
+        cut.WaitForAssertion(
+            () =>
+            {
+                var stubs = cut.FindAll(".subagent-stub");
+                Assert.Single(stubs);
+                Assert.Equal("late branch", stubs[0].GetAttribute("data-task"));
+            },
+            TimeSpan.FromSeconds(2));
+    }
+
+    #endregion
+
+    #region Streaming Args Tests
+
+    [Fact]
+    public void StreamingArgsGrowth_ReRendersBlock_DiffViewReceivesNewEdits()
+    {
+        // Regression: ToolCall — мутабельная ссылка (args растут внутри неё), параметры
+        // формально не меняются → без args-проверки в HasChanges блок не перерендеривался,
+        // args не десериализовались и DiffView не получал новый Edits (дифф показывал
+        // только финал). Args-мутация входит в HasChanges → блок рендерится (троттлинг
+        // 100ms гейтит частоту), DiffView получает обновлённые Edits.
+        var call = CreateReadyCall(BuiltInToolEnum.EditFiles, """
+            {"filePath":"a.cs","edits":[{"oldStr":"a","newStr":"b"}]}
+            """
+        );
+
+        var cut = Render<ToolCallBlock>(parameters => parameters
+            .Add(p => p.ToolCall, call));
+
+        Assert.Equal(1, _capturedEditCount);
+
+        // Стриминг: args растут ВНУТРИ той же ссылки ToolCall (новый edit дописан).
+        call.Function.Arguments = """
+            {"filePath":"a.cs","edits":[{"oldStr":"a","newStr":"b"},{"oldStr":"c","newStr":"d"}]}
+            """
+        ;
+
+        // Каскад родителя: параметры reference-equal, но SetParametersAsync вызывается —
+        // ShouldRender → HasChanges видит args-рост → рендер (троттлинг 100ms, trailing).
+        cut.Render(parameters => parameters
+            .Add(p => p.ToolCall, call));
+
+        // Trailing render 100ms: DiffView получает обновлённый Edits (2 секции).
+        cut.WaitForAssertion(
+            () => Assert.Equal(2, _capturedEditCount),
+            TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public void StreamingArgsGrowth_ThrottledWithinWindow_StillDeliversFinalArgs()
+    {
+        // Стриминг: несколько пушей args строго внутри одного throttle-окна (все в
+        // пределах 100ms) — ни один не может получить leading-рендер, trailing — единственный
+        // шанс показать финал. Финальные args должны доехать до DiffView.
+        var call = CreateReadyCall(BuiltInToolEnum.EditFiles, """
+            {"filePath":"a.cs","edits":[{"oldStr":"a","newStr":"b"}]}
+            """
+        );
+
+        var cut = Render<ToolCallBlock>(parameters => parameters
+            .Add(p => p.ToolCall, call));
+
+        Assert.Equal(1, _capturedEditCount);
+
+        // Три пуша args подряд (каждый добавляет edit) без пауз — все внутри окна.
+        for (var i = 2; i <= 4; i++)
+        {
+            var edits = string.Join(",", Enumerable.Range(0, i)
+                .Select(j => $"{{\"oldStr\":\"o{j}\",\"newStr\":\"n{j}\"}}"));
+            call.Function.Arguments = $"{{\"filePath\":\"a.cs\",\"edits\":[{edits}]}}";
+
+            cut.Render(parameters => parameters
+                .Add(p => p.ToolCall, call));
+        }
+
+        // Trailing render доставляет ФИНАЛЬНЫЕ args (4 секции), промежуточные гейтятся.
+        cut.WaitForAssertion(
+            () => Assert.Equal(4, _capturedEditCount),
+            TimeSpan.FromSeconds(2));
     }
 
     #endregion

@@ -1,4 +1,6 @@
 @inherits ThrottledComponentBase
+@inject IVsBridge VsBridge
+@inject NotificationService NotificationService
 @using DiffPlex
 @using DiffPlex.Chunkers
 @using DiffPlex.DiffBuilder
@@ -7,7 +9,13 @@
 <div class="diff-view">
     @if (!string.IsNullOrEmpty(FilePath))
     {
-        <div @key="@FilePath" class="tool-file-header">@FilePath</div>
+        <div @key="@FilePath" class="tool-file-header">
+            <span class="tool-file-path">@FilePath</span>
+            <button class="tool-file-open-btn" @onclick="OpenFileInIdeAsync"
+                    title="@SharedResource.OpenFileInIde">
+                <i class="fas fa-external-link-alt"></i>
+            </button>
+        </div>
     }
     <div class="diff-block">
         @for (var i = 0; i < diffs.Count; i++)
@@ -31,16 +39,91 @@
 
     private List<SideBySideDiffModel?> diffs = [null];
     private int processedChars = 0;
-    private bool showDiffSeparator = false;
+    private string? _lastFilePath;
+
+    /// <summary>
+    /// Открывает файл в IDE через shared-хелпер (open_file уже реализован на хостах VS/VS Code).
+    /// При ошибке хоста — notification (Console.Error невидим в релизе).
+    /// </summary>
+    private async Task OpenFileInIdeAsync()
+    {
+        if (string.IsNullOrEmpty(FilePath))
+        {
+            return;
+        }
+
+        var result = await VsBridge.OpenFileInIdeAsync(FilePath);
+        if (!result.Success)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = SharedResource.OpenFileInIde,
+                Detail = result.ErrorMessage,
+                Duration = 10_000,
+            });
+        }
+    }
 
     private bool _changed = false;
+    private bool _pendingParse = false;
+    private bool _renderedOnce = false;
 
     protected override bool HasChanges() => _changed;
-    protected override void OnRendered() => _changed = false;
+
+    protected override void OnRendered()
+    {
+        _renderedOnce = true;
+
+        // DiffPlex-парсинг (CPU-тяжело во время стриминга edits) выполняется здесь —
+        // только когда рендер разрешён троттлингом, а не на каждый пуш параметров
+        // (OnParametersSet стрелял на каждый чанк args). OnRendered вызывается из
+        // ShouldRender ДО BuildRenderTree — модель готова к рендеру.
+        if (_pendingParse)
+        {
+            _pendingParse = false;
+            ParseDiff();
+        }
+
+        // ПОСЛЕ парсинга: ParseDiff обновляет processedChars и снова ставит _changed
+        // (processedChars ещё старый на момент проверки) — сброс в конце даёт чистое
+        // состояние без лишнего рендера на следующем каскаде родителя.
+        _changed = false;
+    }
 
     protected override void OnParametersSet()
     {
-        ParseDiff();
+        // Дешёвая проверка роста (сумма символов) без DiffPlex-парсинга + смена FilePath.
+        // FilePath НЕ входит в сумму символов Edits: если финальный апдейт принёс путь
+        // при неизменных Edits (путь пришёл последним чанком стримящихся args), смена
+        // пути должна поднять рендер — иначе заголовок с файлом не отображается.
+        var sumChars = Edits.Sum(e => e.NewStr.Length + e.OldStr.Length);
+        var editsGrew = sumChars > processedChars;
+        var filePathChanged = !string.Equals(FilePath, _lastFilePath, StringComparison.Ordinal);
+
+        if (editsGrew || filePathChanged)
+        {
+            _changed = true;
+            _lastFilePath = FilePath;
+
+            if (editsGrew)
+            {
+                if (!_renderedOnce)
+                {
+                    // Первый рендер: OnRendered не вызывается до первого BuildRenderTree —
+                    // парсим синхронно, иначе первый рендер покажет пустой дифф.
+                    ParseDiff();
+                }
+                else
+                {
+                    // Стриминг: тяжёлый DiffPlex-парсинг отложен до разрешённого рендера (OnRendered).
+                    _pendingParse = true;
+                }
+            }
+            // При смене только FilePath парсить нечего (Edits не выросли) — ParseDiff НЕ
+            // вызывается: он перезаписывает _changed по росту Edits и затирал бы флаг
+            // смены пути (рендер ветоился, заголовок с файлом не отображался).
+        }
     }
 
     private void ParseDiff()
@@ -84,6 +167,5 @@
         }
 
         processedChars = sumChars;
-        showDiffSeparator = diffs.Count > 1;
     }
 }

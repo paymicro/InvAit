@@ -13,7 +13,6 @@ public class SubAgentMessageTests
         Assert.Equal(SubAgentStatus.Pending, msg.Status);
         Assert.Empty(msg.Task);
         Assert.Empty(msg.SystemPrompt);
-        Assert.Empty(msg.Result);
         Assert.Empty(msg.GetMessages());
         Assert.Null(msg.AllowedTools);
         Assert.Null(msg.ErrorMessage);
@@ -112,7 +111,6 @@ public class SubAgentMessageTests
             AllowedTools = ["read_files", "grep"],
             Status = SubAgentStatus.Running,
             IsExpanded = true,
-            Result = "Analysis complete",
             TotalTokens = 500,
             ErrorMessage = "Something went wrong"
         };
@@ -123,7 +121,6 @@ public class SubAgentMessageTests
         Assert.Equal(["read_files", "grep"], msg.AllowedTools);
         Assert.Equal(SubAgentStatus.Running, msg.Status);
         Assert.True(msg.IsExpanded);
-        Assert.Equal("Analysis complete", msg.Result);
         Assert.Equal(500, msg.TotalTokens);
         Assert.Equal("Something went wrong", msg.ErrorMessage);
     }

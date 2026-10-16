@@ -5,7 +5,7 @@ namespace UIBlazor.Services;
 
 public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
 {
-    private readonly ConcurrentDictionary<string, ApprovalWaiter> _approvalWaiters = new();
+    internal readonly ConcurrentDictionary<string, ApprovalGate> _approvalGates = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<string>> _askUserWaiters = new();
     private BashCommandClassifier? _bashClassifier;
 
@@ -105,6 +105,16 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
 
     public void PrepareToolsForApprovals(List<ToolCall> toolCalls)
     {
+        // Evict "early" approvals (decisions delivered while no waiter consumed them) that
+        // expired, so stale clicks do not accumulate in memory over a long-lived session.
+        // Must run before CancelPendingApprovals, which clears everything else.
+        var now = DateTime.UtcNow;
+        foreach (var kvp in _approvalGates)
+        {
+            if (kvp.Value.Decision is not null && now - kvp.Value.CreatedAtUtc > ApprovalGate.EarlyApprovalTtl)
+                _approvalGates.TryRemove(kvp.Key, out _);
+        }
+
         CancelPendingApprovals();
 
         string? firstPendingId = null;
@@ -120,7 +130,7 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
             if (toolCall.Function.Name == BasicEnum.AskUser)
             {
                 toolCall.ApprovalStatus = ToolApprovalStatus.Pending;
-                _askUserWaiters[toolCall.Id] = new TaskCompletionSource<string>();
+                _askUserWaiters[toolCall.Id] = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
                 firstPendingId ??= toolCall.Id;
                 continue;
             }
@@ -132,7 +142,9 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
             {
                 case ToolApprovalMode.Ask:
                     toolCall.ApprovalStatus = ToolApprovalStatus.Pending;
-                    _approvalWaiters[toolCall.Id] = new ApprovalWaiter(new(), toolCall);
+                    // Reuse an already-present gate (e.g. a decision raced in before the
+                    // registration) so an early user decision survives into the new batch.
+                    _approvalGates.GetOrAdd(toolCall.Id, _ => new ApprovalGate(toolCall));
                     firstPendingId ??= toolCall.Id;
                     break;
                 case ToolApprovalMode.Deny:
@@ -272,21 +284,31 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
         ToolCall toolCall,
         CancellationToken cancellationToken)
     {
-        // Get the pre-registered TCS, or create one if not found (defensive)
-        var tcs = _approvalWaiters.GetOrAdd(toolCall.Id, _ => new ApprovalWaiter(new(), toolCall));
+        // The gate is the single point of truth for the decision: HandleApprovalAsync
+        // records the decision (and releases the signal) on the same object this wait
+        // observes, whether it arrives before or after the wait starts — so a decision
+        // can never be lost or double-applied.
+        var gate = _approvalGates.GetOrAdd(toolCall.Id, _ => new ApprovalGate(toolCall));
 
         try
         {
-            return await tcs.TaskSource.Task.WaitAsync(cancellationToken);
+            await gate.Signal.WaitAsync(cancellationToken);
+
+            var decision = gate.Decision!.Value;
+            toolCall.ApprovalStatus = decision;
+            return decision;
         }
         catch (OperationCanceledException)
         {
+            // Cancellation (e.g. a timeout watchdog) may race with a decision that was
+            // just recorded on this gate — the recorded decision wins over cancellation,
+            // otherwise an approved tool would surface as Rejected.
             CancelPendingApprovals();
-            return ToolApprovalStatus.Rejected;
+            return gate.Decision ?? ToolApprovalStatus.Rejected;
         }
         finally
         {
-            _approvalWaiters.TryRemove(toolCall.Id, out _);
+            _approvalGates.TryRemove(toolCall.Id, out _);
         }
     }
 
@@ -368,11 +390,12 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
     {
         var status = approved ? ToolApprovalStatus.Approved : ToolApprovalStatus.Rejected;
 
-        if (_approvalWaiters.TryGetValue(toolCallId, out var aw))
-        {
-            aw.ToolCall.ApprovalStatus = status;
-            aw.TaskSource.TrySetResult(status);
-        }
+        // The decision always lands on the same gate object a (possibly later) wait will
+        // observe; TryDecide makes a repeated decision for the same id a no-op. If no
+        // waiter exists yet (the tool's execution chain has not reached its approval
+        // wait), the gate keeps the decision until it is consumed or expires via TTL.
+        var gate = _approvalGates.GetOrAdd(toolCallId, _ => new ApprovalGate());
+        gate.TryDecide(status);
 
         return Task.CompletedTask;
     }
@@ -390,12 +413,16 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
     /// <inheritdoc />
     public void CancelPendingApprovals()
     {
-        foreach (var kvp in _approvalWaiters)
+        foreach (var kvp in _approvalGates)
         {
-            kvp.Value.ToolCall.ApprovalStatus = ToolApprovalStatus.Rejected;
-            kvp.Value.TaskSource.TrySetCanceled();
+            // Gates still awaiting a decision die with their waits (TryDecide stamps
+            // Rejected and releases the waiter). Gates that already carry a decision
+            // ("early" approvals with no consumer yet) are kept: their lifetime is
+            // governed by the TTL sweep in PrepareToolsForApprovals, and a decision
+            // recorded while cancellation was in flight must win over the cancel.
+            if (kvp.Value.TryDecide(ToolApprovalStatus.Rejected))
+                _approvalGates.TryRemove(kvp.Key, out _);
         }
-        _approvalWaiters.Clear();
 
         foreach (var kvp in _askUserWaiters)
         {
@@ -405,4 +432,50 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
     }
 }
 
-internal record ApprovalWaiter(TaskCompletionSource<ToolApprovalStatus> TaskSource, ToolCall ToolCall);
+/// <summary>
+/// Per-tool-call approval state: a decision plus a signal that a decision has been made.
+/// TryDecide is idempotent; the decision itself is written under the gate's lock while
+/// <see cref="Signal"/> (released exactly once) wakes up any waiter.
+/// </summary>
+internal sealed class ApprovalGate(ToolCall? toolCall = null)
+{
+    public static readonly TimeSpan EarlyApprovalTtl = TimeSpan.FromMinutes(10);
+
+    private readonly object _lock = new();
+    private ToolApprovalStatus? _decision;
+
+    /// <summary>Tool call this gate belongs to; null for gates created by a decision with no registered tool call.</summary>
+    public ToolCall? ToolCall => toolCall;
+
+    /// <summary>Created to allow orphaned "early" decisions to be evicted after <see cref="EarlyApprovalTtl"/>.</summary>
+    public DateTime CreatedAtUtc { get; internal set; } = DateTime.UtcNow;
+
+    public SemaphoreSlim Signal { get; } = new(0, 1);
+
+    public ToolApprovalStatus? Decision
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _decision;
+            }
+        }
+    }
+
+    /// <summary>Records the decision (first one only) and releases the signal.</summary>
+    public bool TryDecide(ToolApprovalStatus status)
+    {
+        lock (_lock)
+        {
+            if (_decision is not null)
+                return false;
+
+            _decision = status;
+        }
+
+        toolCall?.ApprovalStatus = status;
+        Signal.Release();
+        return true;
+    }
+}

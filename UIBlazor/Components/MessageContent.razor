@@ -38,7 +38,6 @@
 @code {
     [Parameter] public VisualChatMessage Message { get; set; } = new();
     [Parameter] public EventCallback<(string MessageId, string SegmentId, bool Approved)> OnToolApproval { get; set; }
-    [Inject] private IToolManager ToolManager { get; set; } = null!;
 
     private async Task OnToolApprovalHandler((string SegmentId, bool Approved) args)
     {

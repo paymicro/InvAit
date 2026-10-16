@@ -1,4 +1,4 @@
-<div class="rz-chat-message rz-chat-message-@Message.Role" @key="Message.Id">
+<div class="rz-chat-message rz-chat-message-@Message.Role">
     @if (Message.Role == ChatMessageRole.User)
     {
         <RadzenStack class="rz-chat-message-avatar" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0">
@@ -151,8 +151,8 @@
     [Parameter] public EventCallback OnRegenerate { get; set; }
 
     /// <summary>
-    /// Tooltip of the token badge. With reasoning models the finished badge shows only visible
-    /// tokens (the context footprint); while streaming it shows the full generation count.
+    /// Tooltip of the token badge. Timings.Tokens already includes reasoning tokens
+    /// (full generation), so the tooltip only clarifies the breakdown.
     /// </summary>
     private string TokensTitle
     {
@@ -161,8 +161,7 @@
             if (Message.Timings is not { ReasoningTokens: > 0 } timings)
                 return SharedResource.Tokens;
 
-            var generated = Message.IsStreaming ? timings.Tokens : timings.Tokens + timings.ReasoningTokens;
-            return $"{SharedResource.Generated}: {generated}, {SharedResource.IncludingReasoning}: {timings.ReasoningTokens}";
+            return $"{SharedResource.Generated}: {timings.Tokens}, {SharedResource.IncludingReasoning}: {timings.ReasoningTokens}";
         }
     }
 
@@ -182,6 +181,7 @@
     private bool _oldIsExpanded;
     private int _oldRetryCountdown;
     private string _oldContent = string.Empty;
+    private List<(string Id, ToolApprovalStatus? Approval, bool HasResult, int ArgsLength)> _oldToolCallsState = [];
 
     /// <summary>
     /// Per-sub-agent snapshot (keyed by Id) used for change detection in ShouldRender.
@@ -194,8 +194,7 @@
     private readonly record struct SubAgentSnapshot(
         SubAgentStatus Status,
         int MessageCount,
-        bool IsExpanded,
-        string Result);
+        bool IsExpanded);
 
     protected override bool ShouldRender()
     {
@@ -204,19 +203,40 @@
 
         // Sub-agent state changes should trigger re-render.
         // Check all tool calls for sub-agent data (multiple delegate_task calls
-        // can exist in one message, each with its own sub-agent).
-        _subAgents = Message.ToolCalls?
-            .Where(tc => tc.SubAgent is not null)
-            .Select(tc => tc.SubAgent!)
-            .ToList() ?? [];
+        // can exist in one message, each with its own branches).
+        // Early-out: без tool calls и без известных сабагентов LINQ-аллокации не нужны —
+        // это путь каждого токена обычного текстового стрима.
+        var toolCalls = Message.ToolCalls ?? [];
+        if (toolCalls.Count == 0 && _oldSubAgentsState.Count == 0)
+        {
+            _subAgents = [];
+        }
+        else
+        {
+            // Уже materialized local — Message.ToolCalls мутабельно, повторное чтение лишний источник рассинхрона
+            _subAgents = toolCalls.SelectMany(tc => tc.SubAgents ?? []).ToList();
+        }
 
         var subAgentChanged = _subAgents.Count != _oldSubAgentsState.Count ||
             _subAgents.Any(sa =>
                 !_oldSubAgentsState.TryGetValue(sa.Id, out var old) ||
                 sa.Status != old.Status ||
                 sa.GetMessageCount() != old.MessageCount ||
-                sa.IsExpanded != old.IsExpanded ||
-                (sa.Result ?? string.Empty) != old.Result);
+                sa.IsExpanded != old.IsExpanded);
+
+        // ToolCall mutations (streamed arguments, Result assignment, approval status) do not
+        // change Message.Content and are invisible to the checks above. A fast tool finishing
+        // after the final stream render (auto-approve) would never re-render otherwise.
+        var toolCallsChanged = toolCalls.Count != _oldToolCallsState.Count;
+        for (var i = 0; !toolCallsChanged && i < toolCalls.Count; i++)
+        {
+            var tc = toolCalls[i];
+            var (oldId, oldApproval, oldHasResult, oldArgsLength) = _oldToolCallsState[i];
+            toolCallsChanged = tc.Id != oldId ||
+                               tc.ApprovalStatus != oldApproval ||
+                               (tc.Result is not null) != oldHasResult ||
+                               tc.Function.Arguments.Length != oldArgsLength;
+        }
 
         return Message.IsShouldRender ||
                Message.IsStreaming || _oldIsStreaming ||
@@ -226,7 +246,8 @@
                isLoadingChangedForLast ||
                Message.IsExpanded != _oldIsExpanded ||
                Message.Content != _oldContent ||
-               subAgentChanged;
+               subAgentChanged ||
+               toolCallsChanged;
     }
 
     protected override void OnAfterRender(bool firstRender)
@@ -242,7 +263,9 @@
         _oldContent = Message.Content;
         _oldSubAgentsState = _subAgents.ToDictionary(
             sa => sa.Id,
-            sa => new SubAgentSnapshot(sa.Status, sa.GetMessageCount(), sa.IsExpanded, sa.Result ?? string.Empty));
+            sa => new SubAgentSnapshot(sa.Status, sa.GetMessageCount(), sa.IsExpanded));
+        _oldToolCallsState = [.. (Message.ToolCalls ?? []).Select(tc =>
+            (tc.Id, tc.ApprovalStatus, tc.Result is not null, tc.Function.Arguments.Length))];
         Message.IsShouldRender = false;
     }
 }

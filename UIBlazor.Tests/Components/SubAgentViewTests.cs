@@ -5,12 +5,10 @@ namespace UIBlazor.Tests.Components;
 /// </summary>
 public class SubAgentViewTests : BunitContext
 {
-    private readonly Mock<IJSRuntime> _mockJsRuntime;
-
     public SubAgentViewTests()
     {
-        _mockJsRuntime = new Mock<IJSRuntime>();
-        Services.AddSingleton(_mockJsRuntime.Object);
+        // bunit JSInterop (loose mode) — компонент получает его через DI,
+        // вызовы scrollSubAgentToBottom регистрируются и проверяются через VerifyInvoke
         Services.AddRadzenComponents();
         JSInterop.SetupVoid("Radzen.preventArrows", _ => true);
         JSInterop.SetupVoid("scrollSubAgentToBottom", _ => true);
@@ -25,21 +23,9 @@ public class SubAgentViewTests : BunitContext
             builder.CloseElement();
         });
 
-        // Stub Details component to avoid complex child rendering,
-        // but still render ChildContent so reasoning content is visible in tests
-        ComponentFactories.AddStub<Details>(parameters => builder =>
-        {
-            var text = parameters.Get(p => p.Text);
-            var childContent = parameters.Get(p => p.ChildContent);
-            builder.OpenElement(0, "div");
-            builder.AddAttribute(1, "class", "details-stub");
-            builder.AddContent(2, text ?? string.Empty);
-            if (childContent is not null)
-            {
-                builder.AddContent(3, childContent);
-            }
-            builder.CloseElement();
-        });
+        // Details используется реальный (как в ToolCallBlockTests): SubAgentView рендерит
+        // внешний спойлер через HeaderTemplate + класс subagent-details (unmatched attrs),
+        // stub бы их потерял. Реальный Details рендерит ChildContent всегда (скрытие CSS).
 
         // Stub ToolCallBlock to avoid needing IToolManager and IToolCallHandler
         ComponentFactories.AddStub<ToolCallBlock>(parameters => builder =>
@@ -282,8 +268,10 @@ public class SubAgentViewTests : BunitContext
         var cut = Render<SubAgentView>(parameters => parameters
             .Add(p => p.SubAgent, subAgent));
 
-        // Assert
-        Assert.Throws<ElementNotFoundException>(() => cut.Find(".subagent-body"));
+        // Assert - Details рендерит контент всегда (скрытие через CSS grid 0fr):
+        // свернутость выражается отсутствием класса is-expanded на контейнере Details
+        var details = cut.Find(".subagent-details");
+        Assert.DoesNotContain("is-expanded", details.ClassList);
     }
 
     [Fact]
@@ -298,6 +286,8 @@ public class SubAgentViewTests : BunitContext
 
         // Assert
         Assert.NotNull(cut.Find(".subagent-body"));
+        var details = cut.Find(".subagent-details");
+        Assert.Contains("is-expanded", details.ClassList);
     }
 
     [Fact]
@@ -309,16 +299,18 @@ public class SubAgentViewTests : BunitContext
         var cut = Render<SubAgentView>(parameters => parameters
             .Add(p => p.SubAgent, subAgent));
 
-        // Assert initial state - body not visible
-        Assert.Throws<ElementNotFoundException>(() => cut.Find(".subagent-body"));
+        // Assert initial state - Details collapsed
+        var details = cut.Find(".subagent-details");
+        Assert.DoesNotContain("is-expanded", details.ClassList);
 
-        // Act - click header to expand
-        var header = cut.Find(".subagent-header");
+        // Act - click header to expand (клик теперь на .header Details)
+        var header = cut.Find(".subagent-details .header");
         await cut.InvokeAsync(() => header.Click());
 
-        // Assert - body should now be visible
-        Assert.NotNull(cut.Find(".subagent-body"));
+        // Assert - body should now be visible, модель обновлена
         Assert.True(subAgent.IsExpanded);
+        details = cut.Find(".subagent-details");
+        Assert.Contains("is-expanded", details.ClassList);
     }
 
     [Fact]
@@ -334,34 +326,91 @@ public class SubAgentViewTests : BunitContext
         Assert.NotNull(cut.Find(".subagent-body"));
 
         // Act - click header to collapse
-        var header = cut.Find(".subagent-header");
+        var header = cut.Find(".subagent-details .header");
         await cut.InvokeAsync(() => header.Click());
 
-        // Assert - body should no longer be visible
-        Assert.Throws<ElementNotFoundException>(() => cut.Find(".subagent-body"));
+        // Assert - Details collapsed (контент в DOM, скрыт CSS), модель обновлена
         Assert.False(subAgent.IsExpanded);
+        var details = cut.Find(".subagent-details");
+        Assert.DoesNotContain("is-expanded", details.ClassList);
     }
 
     [Fact]
-    public async Task Toggle_ArrowRotates_WhenExpanded()
+    public async Task Toggle_ClickNotifiesStateChanged()
     {
-        // Arrange
+        // Arrange - клик по заголовку должен писать в модель (SubAgent.IsExpanded)
+        // и поднимать Revision, чтобы HasChanges/родительские каскады видели изменение
         var subAgent = CreateSubAgent(SubAgentStatus.Completed, isExpanded: false);
+        var revisionBefore = subAgent.Revision;
 
         var cut = Render<SubAgentView>(parameters => parameters
             .Add(p => p.SubAgent, subAgent));
 
-        // Assert initial state - arrow not expanded
-        var arrow = cut.Find(".subagent-arrow");
-        Assert.DoesNotContain("expanded", arrow.ClassList);
-
-        // Act - click to expand
-        var header = cut.Find(".subagent-header");
+        // Act
+        var header = cut.Find(".subagent-details .header");
         await cut.InvokeAsync(() => header.Click());
 
-        // Assert - arrow should have expanded class
-        arrow = cut.Find(".subagent-arrow");
-        Assert.Contains("expanded", arrow.ClassList);
+        // Assert
+        Assert.True(subAgent.IsExpanded);
+        Assert.True(subAgent.Revision > revisionBefore);
+    }
+
+    [Fact]
+    public void ControlledExpand_ExternalParameterChange_AppliesToDetails()
+    {
+        // Arrange - оркестратор принудительно раскрывает блок при апруве
+        // (OnApprovalRequired ставит IsExpanded=true) и сворачивает после Finish.
+        // Источник истины — SubAgent.IsExpanded, Details следует за ним.
+        var subAgent = CreateSubAgent(SubAgentStatus.Running, isExpanded: false);
+
+        var cut = Render<SubAgentView>(parameters => parameters
+            .Add(p => p.SubAgent, subAgent));
+
+        Assert.DoesNotContain("is-expanded", cut.Find(".subagent-details").ClassList);
+
+        // Act - внешнее принудительное раскрытие (как при апруве):
+        // оркестратор всегда поднимает NotifyStateChanged после смены IsExpanded
+        subAgent.IsExpanded = true;
+        subAgent.NotifyStateChanged();
+        cut.Render(parameters => parameters
+            .Add(p => p.SubAgent, subAgent));
+
+        // Assert - Details синхронизировался с внешним состоянием.
+        // Рендер структурных изменений проходит через троттлинг 100ms
+        // (trailing render) — ждём его через WaitForAssertion.
+        cut.WaitForAssertion(
+            () => Assert.Contains("is-expanded", cut.Find(".subagent-details").ClassList),
+            TimeSpan.FromSeconds(2));
+
+        // Act - внешнее сворачивание (как после Finish)
+        subAgent.IsExpanded = false;
+        subAgent.NotifyStateChanged();
+        cut.Render(parameters => parameters
+            .Add(p => p.SubAgent, subAgent));
+
+        // Assert
+        cut.WaitForAssertion(
+            () => Assert.DoesNotContain("is-expanded", cut.Find(".subagent-details").ClassList),
+            TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public async Task Expand_InvokesScrollToBottom()
+    {
+        // Arrange - при разворачивании чат сабагента должен скроллиться к последнему
+        // сообщению (как основной чат делает ScrollToBottomAsync)
+        var subAgent = CreateSubAgent(SubAgentStatus.Running, isExpanded: false);
+
+        var cut = Render<SubAgentView>(parameters => parameters
+            .Add(p => p.SubAgent, subAgent));
+
+        // Act - клик по заголовку раскрывает блок
+        var header = cut.Find(".subagent-details .header");
+        await cut.InvokeAsync(() => header.Click());
+
+        // Assert - JS-скролл вызван с id сабагента
+        var invocation = JSInterop.VerifyInvoke("scrollSubAgentToBottom");
+        Assert.Equal(subAgent.Id, (string)invocation.Arguments[0]!);
     }
 
     #endregion
@@ -552,8 +601,10 @@ public class SubAgentViewTests : BunitContext
         var cut = Render<SubAgentView>(parameters => parameters
             .Add(p => p.SubAgent, subAgent));
 
-        // Assert - body not rendered, so error not visible
-        Assert.Throws<ElementNotFoundException>(() => cut.Find(".subagent-result-error"));
+        // Assert - Details рендерит контент всегда (скрыт CSS): ошибка в DOM,
+        // но блок свернут (нет is-expanded)
+        Assert.Contains("Connection timeout to API", cut.Markup);
+        Assert.DoesNotContain("is-expanded", cut.Find(".subagent-details").ClassList);
     }
 
     [Fact]

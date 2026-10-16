@@ -27,20 +27,26 @@
     }
 
 /* Header */
+/* Заголовок рендерится компонентом Details (HeaderTemplate) — переопределяем .header,
+   чтобы сохранить прежний вид самодельного спойлера (background, hover, без рамки Details). */
+.subagent-details .header {
+    border-left: 0;
+    background: var(--rz-base-800);
+    color: inherit;
+    transition: background 0.2s;
+}
+
+    .subagent-details .header:hover {
+        background: var(--rz-base-700);
+    }
+
 .subagent-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.5rem 0.8rem;
-    cursor: pointer;
     user-select: none;
-    background: var(--rz-base-800);
-    transition: background 0.2s;
+    width: 100%;
 }
-
-    .subagent-header:hover {
-        background: var(--rz-base-700);
-    }
 
 .subagent-header-left {
     display: flex;
@@ -77,16 +83,6 @@
     gap: 0.4rem;
     flex-shrink: 0;
 }
-
-.subagent-arrow {
-    transition: transform 0.3s;
-    color: var(--rz-base-500);
-    font-size: 0.7rem;
-}
-
-    .subagent-arrow.expanded {
-        transform: rotate(180deg);
-    }
 
 /* Body */
 .subagent-body {

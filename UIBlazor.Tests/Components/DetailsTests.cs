@@ -234,6 +234,94 @@ public class DetailsTests : BunitContext
 
     #endregion
 
+    #region Controlled Mode (OnToggle) Tests
+
+    [Fact]
+    public async Task OnToggle_ClickDelegatesToCallback_DoesNotChangeInternalState()
+    {
+        // Arrange - контролируемый режим: источник истины родитель
+        var received = default(bool?);
+        var cut = Render<Details>(parameters => parameters
+            .Add(p => p.IsExpanded, false)
+            .Add(p => p.OnToggle, (Action<bool>)(expanded => received = expanded))
+            .AddChildContent("content"));
+
+        // Act
+        await cut.InvokeAsync(() => cut.Find(".header").Click());
+
+        // Assert - колбэк вызван с инвертированным значением,
+        // внутреннее состояние НЕ меняется напрямую (родитель перерендерится)
+        Assert.True(received);
+        Assert.DoesNotContain("is-expanded", cut.Find(".custom-details").ClassList);
+    }
+
+    [Fact]
+    public void OnToggle_ExternalParameterChange_AppliesToDetails()
+    {
+        // Arrange - контролируемый режим: OnParametersSet синхронизирует
+        // внутреннее состояние с внешним IsExpanded при каждом родительском рендере
+        var cut = Render<Details>(parameters => parameters
+            .Add(p => p.IsExpanded, false)
+            .Add(p => p.OnToggle, (Action<bool>)(_ => { }))
+            .AddChildContent("content"));
+
+        Assert.DoesNotContain("is-expanded", cut.Find(".custom-details").ClassList);
+
+        // Act - родитель принудительно раскрывает (напр. апрув сабагента)
+        cut.Render(parameters => parameters
+            .Add(p => p.IsExpanded, true)
+            .Add(p => p.OnToggle, (Action<bool>)(_ => { }))
+            .AddChildContent("content"));
+
+        // Assert
+        Assert.Contains("is-expanded", cut.Find(".custom-details").ClassList);
+    }
+
+    [Fact]
+    public async Task OnToggle_ExternalCollapse_AppliesToDetails()
+    {
+        // Arrange - развернут, родитель сворачивает (напр. Finish сабагента)
+        var cut = Render<Details>(parameters => parameters
+            .Add(p => p.IsExpanded, true)
+            .Add(p => p.OnToggle, (Action<bool>)(_ => { }))
+            .AddChildContent("content"));
+
+        Assert.Contains("is-expanded", cut.Find(".custom-details").ClassList);
+
+        // Act
+        cut.Render(parameters => parameters
+            .Add(p => p.IsExpanded, false)
+            .Add(p => p.OnToggle, (Action<bool>)(_ => { }))
+            .AddChildContent("content"));
+
+        // Assert
+        Assert.DoesNotContain("is-expanded", cut.Find(".custom-details").ClassList);
+    }
+
+    [Fact]
+    public async Task OnToggle_Removed_RevertsToUncontrolledMode()
+    {
+        // Arrange - контролируемый режим
+        var cut = Render<Details>(parameters => parameters
+            .Add(p => p.IsExpanded, false)
+            .Add(p => p.OnToggle, (Action<bool>)(_ => { }))
+            .AddChildContent("content"));
+
+        // Act - колбэк снят (явный null: непереданный параметр в Blazor
+        // сохраняет прежнее значение): компонент снова неконтролируемый,
+        // клик меняет внутреннее состояние напрямую
+        cut.Render(parameters => parameters
+            .Add(p => p.IsExpanded, false)
+            .Add(p => p.OnToggle, (Action<bool>?)null)
+            .AddChildContent("content"));
+        await cut.InvokeAsync(() => cut.Find(".header").Click());
+
+        // Assert
+        Assert.Contains("is-expanded", cut.Find(".custom-details").ClassList);
+    }
+
+    #endregion
+
     #region Parameter Update Tests
 
     [Fact]

@@ -889,6 +889,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Open in IDE.
+        /// </summary>
+        public static string OpenFileInIde {
+            get {
+                return ResourceManager.GetString("OpenFileInIde", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Open Rules.
         /// </summary>
         public static string OpenRules {

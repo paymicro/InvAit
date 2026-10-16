@@ -1,11 +1,21 @@
+@inject IJSRuntime Js
+@inject IVsBridge VsBridge
+@inject NotificationService NotificationService
+
 <div class="diff-view">
     @if (!string.IsNullOrEmpty(FilePath))
     {
-        <div @key="@FilePath" class="tool-file-header">@FilePath</div>
+        <div class="tool-file-header">
+            <span class="tool-file-path">@FilePath</span>
+            <button class="tool-file-open-btn" @onclick="OpenFileInIdeAsync"
+                    title="@SharedResource.OpenFileInIde">
+                <i class="fas fa-external-link-alt"></i>
+            </button>
+        </div>
     }
 
     <div class="diff-block">
-        <pre>@Content</pre>
+        <pre><code id="@_blockId" class="@CodeCssClass">@Content</code></pre>
     </div>
 </div>
 
@@ -13,4 +23,106 @@
     [Parameter] public string Content { get; set; } = string.Empty;
 
     [Parameter] public string FilePath { get; set; } = string.Empty;
+
+    private readonly string _blockId = $"nf-{Guid.NewGuid():N}";
+    private string? _lastHighlightedContent;
+    private string? _lastHighlightedLanguage;
+
+    private string? _language;
+
+    /// <summary>
+    /// Открывает файл в IDE через shared-хелпер (open_file уже реализован на хостах VS/VS Code).
+    /// При ошибке хоста — notification (Console.Error невидим в релизе).
+    /// </summary>
+    private async Task OpenFileInIdeAsync()
+    {
+        if (string.IsNullOrEmpty(FilePath))
+        {
+            return;
+        }
+
+        var result = await VsBridge.OpenFileInIdeAsync(FilePath);
+        if (!result.Success)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = SharedResource.OpenFileInIde,
+                Detail = result.ErrorMessage,
+                Duration = 10_000,
+            });
+        }
+    }
+
+    private string CodeCssClass => string.IsNullOrEmpty(_language) ? "hljs" : $"hljs language-{_language}";
+
+    protected override void OnParametersSet()
+    {
+        _language = GetHighlightLanguage(FilePath);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Highlight.js подсветка по расширению файла (паттерн MarkdownBlock:
+        // рендер через JS-интероп после того, как элемент появился в DOM).
+        if (Content == _lastHighlightedContent && _language == _lastHighlightedLanguage)
+        {
+            return;
+        }
+
+        _lastHighlightedContent = Content;
+        _lastHighlightedLanguage = _language;
+
+        try
+        {
+            await Js.InvokeVoidAsync("highlightCodeElement", _blockId, _language ?? string.Empty);
+        }
+        catch (JSException)
+        {
+            // Ignore JS errors during rendering if element is disposed
+        }
+    }
+
+    /// <summary>
+    /// Расширение файла → имя языка Highlight.js (common bundle).
+    /// Неизвестное расширение → null (JS использует plaintext).
+    /// </summary>
+    private static string? GetHighlightLanguage(string? filePath)
+    {
+        if (string.IsNullOrEmpty(filePath))
+        {
+            return null;
+        }
+
+        var ext = Path.GetExtension(filePath).ToLowerInvariant();
+        return ext switch
+        {
+            ".cs" => "csharp",
+            ".sql" => "sql",
+            ".md" or ".markdown" => "markdown",
+            ".js" or ".mjs" or ".cjs" => "javascript",
+            ".ts" or ".mts" or ".cts" => "typescript",
+            ".json" or ".jsonc" => "json",
+            ".py" => "python",
+            ".html" or ".htm" or ".xml" or ".xaml" or ".razor" or ".cshtml" or ".vsct"
+                or ".csproj" or ".props" or ".targets" or ".resx" or ".pubxml" => "xml",
+            ".css" or ".scss" or ".less" => "css",
+            // .ps1 → bash: в common bundle highlight.js нет powershell-грамматики,
+            // bash-подсветка условная, но лучше plaintext
+            ".sh" or ".bash" or ".zsh" or ".ps1" => "bash",
+            ".yaml" or ".yml" => "yaml",
+            ".java" => "java",
+            ".cpp" or ".cc" or ".hpp" or ".h" => "cpp",
+            ".c" => "c",
+            ".go" => "go",
+            ".rs" => "rust",
+            ".rb" => "ruby",
+            ".php" => "php",
+            ".swift" => "swift",
+            ".kt" or ".kts" => "kotlin",
+            ".diff" or ".patch" => "diff",
+            ".ini" or ".toml" or ".cfg" or ".config" => "ini",
+            _ => null
+        };
+    }
 }
