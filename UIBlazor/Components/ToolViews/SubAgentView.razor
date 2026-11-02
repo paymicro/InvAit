@@ -22,6 +22,12 @@
                     <i class="fa-regular fa-hourglass fa-spin"></i> @SharedResource.SubAgentRunning
                 </RadzenBadge>
             }
+            else if (SubAgent.Status == SubAgentStatus.NeedAction)
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Warning" Variant="Variant.Text">
+                    <i class="fa-solid fa-hand fa-bounce"></i> @SharedResource.SubAgentNeedAction
+                </RadzenBadge>
+            }
             else if (SubAgent.Status == SubAgentStatus.Completed)
             {
                 <RadzenBadge BadgeStyle="BadgeStyle.Success" Variant="Variant.Text">
@@ -185,6 +191,7 @@
     private string StatusClass => SubAgent.Status switch
     {
         SubAgentStatus.Running => "status-running",
+        SubAgentStatus.NeedAction => "status-need-action",
         SubAgentStatus.Completed => "status-completed",
         SubAgentStatus.Failed => "status-failed",
         SubAgentStatus.Cancelled => "status-cancelled",
@@ -193,6 +200,7 @@
 
     private string IconColor => SubAgent.Status switch
     {
+        SubAgentStatus.NeedAction => "var(--rz-warning)",
         SubAgentStatus.Completed => "var(--rz-success)",
         SubAgentStatus.Failed => "var(--rz-danger)",
         SubAgentStatus.Cancelled => "var(--rz-warning)",

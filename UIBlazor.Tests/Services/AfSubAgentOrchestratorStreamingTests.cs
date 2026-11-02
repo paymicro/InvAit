@@ -115,6 +115,43 @@ public class AfSubAgentOrchestratorStreamingTests
             "reasoning-only delta must set IsShouldRender on the streaming message");
     }
 
+    [Fact]
+    public async Task ExecuteAsync_MultiTask_FirstFinishedBranchGetsTerminalStatusImmediately()
+    {
+        // Regression: with several parallel branches, a branch that finishes first
+        // must switch to Completed immediately (its own finally), not stay Running
+        // until the whole batch completes.
+        var chatService = new TwoBranchChatService();
+        var orchestrator = CreateOrchestrator(chatService);
+        var toolCall = new ToolCall
+        {
+            Id = "tc-1",
+            Function = new ToolCallFunction { Name = BuiltInToolEnum.DelegateTask }
+        };
+
+        var args = """{"tasks":[{"task":"a","systemPrompt":"sp","allowedTools":[]},{"task":"b","systemPrompt":"sp","allowedTools":[]}]}""";
+
+        SubAgentMessage? first = null;
+        SubAgentMessage? second = null;
+        toolCall.SubAgentsChanged += () =>
+        {
+            var agents = toolCall.SubAgents!;
+            if (agents.Count > 0) first ??= agents[0];
+            if (agents.Count > 1) second ??= agents[1];
+        };
+
+        await orchestrator.ExecuteAsync(args, toolCall, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(first);
+        Assert.NotNull(second);
+        // Both branches are terminal at the end of the batch.
+        Assert.Equal(SubAgentStatus.Completed, first!.Status);
+        Assert.Equal(SubAgentStatus.Completed, second!.Status);
+        // The first branch was finalized by its own finally block, not only by ComposeResult.
+        Assert.True(first.CompletedAt is not null);
+        Assert.True(second.CompletedAt is not null);
+    }
+
     /// <summary>
     /// IChatService stub: streams a reasoning-only delta (onStateChange fires,
     /// onContentUpdate does NOT) and then a content delta. Probes capture the branch
@@ -170,6 +207,73 @@ public class AfSubAgentOrchestratorStreamingTests
             message.Content = "sub-agent answer";
             onContentUpdate?.Invoke("sub-agent answer");
 
+            message.IsStreaming = false;
+            await Task.CompletedTask;
+        }
+
+        public IAsyncEnumerable<ChatDelta> GetCompletionsAsync(CompletionsResult resultCapture, CancellationToken cancellationToken)
+            => EmptyDeltas();
+
+        public IAsyncEnumerable<ChatDelta> CompressSessionAsync(CompletionsResult resultCapture, CancellationToken cancellationToken)
+            => EmptyDeltas();
+
+        public IAsyncEnumerable<ChatDelta> CompressSessionAsync(ConversationSession targetSession, CompletionsResult resultCapture, CancellationToken cancellationToken)
+            => EmptyDeltas();
+
+        public Task<List<SessionSummary>> GetRecentSessionsAsync(int count) => Task.FromResult(new List<SessionSummary>());
+        public Task LoadSessionAsync(string id) => Task.CompletedTask;
+        public Task DeleteSessionAsync(string id) => Task.CompletedTask;
+        public Task SaveSessionAsync() => Task.CompletedTask;
+        public Task NewSessionAsync() => Task.CompletedTask;
+        public Task<AiModelList> GetModelsAsync(CancellationToken cancellationToken)
+            => throw new NotImplementedException();
+
+        private static async IAsyncEnumerable<ChatDelta> EmptyDeltas()
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+
+        public void Dispose() { }
+    }
+
+    /// <summary>
+    /// IChatService stub for the two-branch batch: each ProcessStreamAsync call
+    /// completes immediately with a small answer.
+    /// </summary>
+    private sealed class TwoBranchChatService : IChatService
+    {
+        public ConversationSession Session { get; } = new();
+
+        public bool NeedCompression => false;
+
+        public event PropertyChangedEventHandler? SessionChanged;
+        public void Initialize() { }
+        public ConnectionProfile? Options => null;
+
+        public Task ProcessStreamAsync(
+            VisualChatMessage message,
+            IAsyncEnumerable<ChatDelta> deltas,
+            Action<string>? onContentUpdate,
+            Action<List<ToolCall>>? onToolCallsUpdate,
+            Action? onStateChange,
+            CompletionsResult resultCapture,
+            CancellationToken cancellationToken)
+            => ProcessStreamAsync(message, deltas, onContentUpdate, onToolCallsUpdate, onStateChange,
+                resultCapture, cancellationToken, onNewTurn: null);
+
+        public async Task ProcessStreamAsync(
+            VisualChatMessage message,
+            IAsyncEnumerable<ChatDelta> deltas,
+            Action<string>? onContentUpdate,
+            Action<List<ToolCall>>? onToolCallsUpdate,
+            Action? onStateChange,
+            CompletionsResult resultCapture,
+            CancellationToken cancellationToken,
+            Func<VisualChatMessage>? onNewTurn)
+        {
+            message.Content = "branch answer";
+            onContentUpdate?.Invoke("branch answer");
             message.IsStreaming = false;
             await Task.CompletedTask;
         }

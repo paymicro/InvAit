@@ -103,6 +103,9 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
     /// <inheritdoc />
     public event Action<string>? ApprovalRequired;
 
+    /// <inheritdoc />
+    public event Action<string>? ApprovalResolved;
+
     public void PrepareToolsForApprovals(List<ToolCall> toolCalls)
     {
         // Evict "early" approvals (decisions delivered while no waiter consumed them) that
@@ -394,7 +397,8 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
         // waiter exists yet (the tool's execution chain has not reached its approval
         // wait), the gate keeps the decision until it is consumed or expires via TTL.
         var gate = _approvalGates.GetOrAdd(toolCallId, _ => new ApprovalGate());
-        gate.TryDecide(status);
+        if (gate.TryDecide(status))
+            ApprovalResolved?.Invoke(toolCallId);
 
         return Task.CompletedTask;
     }
@@ -403,7 +407,8 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
     {
         if (_askUserWaiters.TryGetValue(toolCallId, out var tcs))
         {
-            tcs.TrySetResult(answer);
+            if (tcs.TrySetResult(answer))
+                ApprovalResolved?.Invoke(toolCallId);
         }
 
         return Task.CompletedTask;

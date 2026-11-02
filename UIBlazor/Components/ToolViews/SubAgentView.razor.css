@@ -10,6 +10,11 @@
         animation: pulse-glow 2s infinite;
     }
 
+    .subagent-block.status-need-action {
+        border-left: 4px solid var(--rz-warning);
+        animation: pulse-glow 2s infinite;
+    }
+
     .subagent-block.status-completed {
         border-left: 4px solid var(--rz-success);
     }

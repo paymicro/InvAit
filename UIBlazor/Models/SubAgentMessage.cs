@@ -119,7 +119,7 @@ public class SubAgentMessage
     /// <returns>True when the interject was accepted.</returns>
     public bool TryAddInterject(string text)
     {
-        if (Status != SubAgentStatus.Running || IsCompressing)
+        if (Status is not (SubAgentStatus.Running or SubAgentStatus.NeedAction) || IsCompressing)
             return false;
 
         var trimmed = text.Trim();
@@ -343,10 +343,17 @@ public class SubAgentMessage
     }
 
     /// <summary>
-    /// Whether the sub-agent can currently be cancelled (i.e. it is still running).
+    /// Whether the sub-agent can currently be cancelled (i.e. it is still running
+    /// or waiting for user action).
     /// </summary>
     [JsonIgnore]
-    public bool CanCancel => Status == SubAgentStatus.Running;
+    public bool CanCancel => Status is SubAgentStatus.Running or SubAgentStatus.NeedAction;
+
+    /// <summary>
+    /// True when the sub-agent has reached a terminal state and will not run anymore.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsFinished => Status is SubAgentStatus.Completed or SubAgentStatus.Cancelled or SubAgentStatus.Failed;
 
     /// <summary>
     /// The sub-agent's own ToolCallHandler for processing tool call approvals.

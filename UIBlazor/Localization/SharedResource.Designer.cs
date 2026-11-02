@@ -1258,6 +1258,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Need action.
+        /// </summary>
+        public static string SubAgentNeedAction {
+            get {
+                return ResourceManager.GetString("SubAgentNeedAction", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Restrictions for sub-agents.
         /// </summary>
         public static string SubagentRestrinctions {

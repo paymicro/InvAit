@@ -67,7 +67,8 @@ public sealed class AfSubAgentOrchestrator(
         {
             logger.LogInformation("Delegation batch cancelled by user.");
             foreach (var ticket in tickets)
-                Finish(ticket.SubAgent, SubAgentStatus.Cancelled, "Cancelled by user.", ticket.OwnerSubAgent);
+                if (!ticket.SubAgent.IsFinished)
+                    Finish(ticket.SubAgent, SubAgentStatus.Cancelled, "Cancelled by user.", ticket.OwnerSubAgent);
 
             return VsToolResult.Cancelled(BuiltInToolEnum.DelegateTask);
         }
@@ -95,8 +96,13 @@ public sealed class AfSubAgentOrchestrator(
 
         foreach (var ticket in tickets)
         {
-            var status = ticket.Failed ? SubAgentStatus.Failed : SubAgentStatus.Completed;
-            Finish(ticket.SubAgent, status, ticket.ErrorMessage, ticket.OwnerSubAgent);
+            // The branch already finalized its own status in RunBranchAsync's finally
+            // (immediate UI feedback for early finishers); only fill in the rest.
+            if (!ticket.SubAgent.IsFinished)
+            {
+                var status = ticket.Failed ? SubAgentStatus.Failed : SubAgentStatus.Completed;
+                Finish(ticket.SubAgent, status, ticket.ErrorMessage, ticket.OwnerSubAgent);
+            }
             success &= !ticket.Failed;
 
             logger.LogInformation("Sub-agent branch {Index}/{Total} completed. Tokens: {Tokens}",
@@ -179,6 +185,7 @@ public sealed class AfSubAgentOrchestrator(
         var subAgent = ticket.SubAgent;
         var handler = ticket.Handler;
         handler.ApprovalRequired += id => OnApprovalRequired(subAgent, id);
+        handler.ApprovalResolved += id => OnApprovalResolved(subAgent, id);
 
         // Hard cap on total execution time per branch (legacy parity). Distinguished from
         // user cancellation: the root token fires only on real chat-level cancellation.
@@ -381,6 +388,14 @@ public sealed class AfSubAgentOrchestrator(
         finally
         {
             handler.CancelPendingApprovals();
+
+            // Per-branch finalize: a branch that finishes early must switch to its
+            // terminal status immediately (Completed/Failed), not stay "Running"
+            // until the whole batch completes. ComposeResult only fills in what is
+            // still missing (e.g. a branch that never entered this method).
+            if (!subAgent.IsFinished)
+                Finish(subAgent, ticket.Failed ? SubAgentStatus.Failed : SubAgentStatus.Completed,
+                    ticket.ErrorMessage, ticket.OwnerSubAgent);
         }
     }
 
@@ -405,8 +420,24 @@ public sealed class AfSubAgentOrchestrator(
     {
         subAgent.PendingToolCallId = toolCallId;
         subAgent.IsExpanded = true;
+        // Blocked on user interaction (approval or ask_user): show the NeedAction badge
+        // instead of Running while the branch waits.
+        subAgent.Status = SubAgentStatus.NeedAction;
         subAgent.NotifyStateChanged();
         NotifyStructuralChange(subAgent);
+    }
+
+    private void OnApprovalResolved(SubAgentMessage subAgent, string toolCallId)
+    {
+        subAgent.PendingToolCallId = null;
+        // Back to Running only when this branch has no more pending interactions;
+        // another tool call may have raised NeedAction in the meantime.
+        if (subAgent.Status == SubAgentStatus.NeedAction)
+        {
+            subAgent.Status = SubAgentStatus.Running;
+            subAgent.NotifyStateChanged();
+            NotifyStructuralChange(subAgent);
+        }
     }
 
     private static VisualChatMessage AddUserMessage(SubAgentMessage subAgent, string content)

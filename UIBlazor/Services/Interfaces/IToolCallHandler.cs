@@ -8,6 +8,13 @@ public interface IToolCallHandler
     /// </summary>
     event Action<string>? ApprovalRequired;
 
+    /// <summary>
+    /// Raised when a pending tool call no longer requires user interaction:
+    /// an approval decision was made or an ask_user answer was provided.
+    /// Parameter is the tool call ID that was resolved.
+    /// </summary>
+    event Action<string>? ApprovalResolved;
+
     void PrepareToolsForApprovals(List<ToolCall> toolCalls);
 
     /// <summary>

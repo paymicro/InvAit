@@ -480,6 +480,9 @@
   <data name="SubAgentRunning" xml:space="preserve">
     <value>Работает...</value>
   </data>
+  <data name="SubAgentNeedAction" xml:space="preserve">
+    <value>Требуется действие</value>
+  </data>
   <data name="SubAgentCompleted" xml:space="preserve">
     <value>Завершён</value>
   </data>

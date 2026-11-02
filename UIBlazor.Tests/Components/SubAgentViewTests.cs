@@ -137,6 +137,22 @@ public class SubAgentViewTests : BunitContext
     }
 
     [Fact]
+    public void ShouldRenderNeedActionBadge_WhenStatusNeedAction()
+    {
+        // Arrange
+        var subAgent = CreateSubAgent(SubAgentStatus.NeedAction);
+
+        // Act
+        var cut = Render<SubAgentView>(parameters => parameters
+            .Add(p => p.SubAgent, subAgent));
+
+        // Assert
+        Assert.Contains(SharedResource.SubAgentNeedAction, cut.Markup);
+        var block = cut.Find(".subagent-block");
+        Assert.Contains("status-need-action", block.ClassList);
+    }
+
+    [Fact]
     public void ShouldRenderPendingStatusClass_WhenStatusPending()
     {
         // Arrange

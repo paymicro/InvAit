@@ -126,6 +126,28 @@ public class SubAgentMessageTests
     }
 
     [Fact]
+    public void SubAgentMessage_NeedAction_CanCancelAndInterject()
+    {
+        var msg = new SubAgentMessage { Status = SubAgentStatus.NeedAction };
+
+        // NeedAction is still an active state: cancellable and accepts interjects
+        Assert.True(msg.CanCancel);
+        Assert.True(msg.TryAddInterject("hello"));
+        Assert.False(msg.IsFinished);
+    }
+
+    [Fact]
+    public void SubAgentMessage_IsFinished_TerminalStatesOnly()
+    {
+        Assert.False(new SubAgentMessage { Status = SubAgentStatus.Pending }.IsFinished);
+        Assert.False(new SubAgentMessage { Status = SubAgentStatus.Running }.IsFinished);
+        Assert.False(new SubAgentMessage { Status = SubAgentStatus.NeedAction }.IsFinished);
+        Assert.True(new SubAgentMessage { Status = SubAgentStatus.Completed }.IsFinished);
+        Assert.True(new SubAgentMessage { Status = SubAgentStatus.Failed }.IsFinished);
+        Assert.True(new SubAgentMessage { Status = SubAgentStatus.Cancelled }.IsFinished);
+    }
+
+    [Fact]
     public void SubAgentMessage_AttachSession_SetMessages_SyncsLocalCopy()
     {
         // Arrange: the branch session carries a running conversation.
@@ -286,9 +308,10 @@ public class SubAgentMessageTests
     public void SubAgentStatus_AllValuesExist()
     {
         // Assert
-        Assert.Equal(5, Enum.GetNames(typeof(SubAgentStatus)).Length);
+        Assert.Equal(6, Enum.GetNames(typeof(SubAgentStatus)).Length);
         Assert.True(Enum.IsDefined(typeof(SubAgentStatus), "Pending"));
         Assert.True(Enum.IsDefined(typeof(SubAgentStatus), "Running"));
+        Assert.True(Enum.IsDefined(typeof(SubAgentStatus), "NeedAction"));
         Assert.True(Enum.IsDefined(typeof(SubAgentStatus), "Completed"));
         Assert.True(Enum.IsDefined(typeof(SubAgentStatus), "Cancelled"));
         Assert.True(Enum.IsDefined(typeof(SubAgentStatus), "Failed"));

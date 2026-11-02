@@ -230,6 +230,7 @@ public class AfTransportAbortTests
     private sealed class StubToolCallHandler : UIBlazor.Services.Interfaces.IToolCallHandler
     {
         public event Action<string>? ApprovalRequired;
+        public event Action<string>? ApprovalResolved;
         public void PrepareToolsForApprovals(List<UIBlazor.Services.Models.ToolCall> toolCalls) { }
         public Task ProcessToolCallsAsync(List<UIBlazor.Services.Models.ToolCall> toolCalls, Shared.Contracts.AppMode appMode, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task HandleApprovalAsync(string segmentId, bool approved) => Task.CompletedTask;

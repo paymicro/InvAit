@@ -7,6 +7,42 @@ namespace ToolCore;
 public static class UniversalDiffParser
 {
     /// <summary>
+    /// Minimum trimmed length for a first/last search line to participate in partial
+    /// (prefix) matching. Short lines like "}" or "{" must match exactly — a prefix
+    /// rule on them would produce false positives all over the file.
+    /// </summary>
+    private const int PartialMatchMinLength = 3;
+
+    /// <summary>
+    /// Checks if the FIRST search line matches a target line partially at the START.
+    /// LLM-generated diffs often truncate the first line of the search block by cutting
+    /// leading characters (e.g. the indentation + a few leading tokens are lost), so the
+    /// search line is a SUFFIX of the target line. Requires the search line to be long
+    /// enough to be meaningful (<see cref="PartialMatchMinLength"/>).
+    /// </summary>
+    private static bool IsFirstLinePartialMatch(string trimmedTarget, string trimmedSearch)
+    {
+        if (trimmedSearch.Length < PartialMatchMinLength)
+            return false;
+
+        return trimmedTarget.EndsWith(trimmedSearch, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Checks if the LAST search line matches a target line partially at the END.
+    /// The model often cuts the last line of the search block mid-token, so the search
+    /// line is a PREFIX of the target line. Requires the search line to be long enough
+    /// to be meaningful (<see cref="PartialMatchMinLength"/>).
+    /// </summary>
+    private static bool IsLastLinePartialMatch(string trimmedTarget, string trimmedSearch)
+    {
+        if (trimmedSearch.Length < PartialMatchMinLength)
+            return false;
+
+        return trimmedTarget.StartsWith(trimmedSearch, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Checks if strings match starting from given index.
     /// </summary>
     /// <param name="startIdx">Start index in target</param>
@@ -15,6 +51,7 @@ public static class UniversalDiffParser
     /// <returns>true if all lines match</returns>
     private static bool IsMatch(int startIdx, List<string> target, List<string> search)
     {
+        var lastIdx = search.Count - 1;
         for (var j = 0; j < search.Count; j++)
         {
             var targetLine = target[startIdx + j];
@@ -34,8 +71,17 @@ public static class UniversalDiffParser
             }
 
             // Use OrdinalIgnoreCase for case-insensitive comparison
-            if (!string.Equals(trimmedTarget, trimmedSearch, StringComparison.OrdinalIgnoreCase))
-                return false;
+            if (string.Equals(trimmedTarget, trimmedSearch, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // The first line of the search block may be truncated at the START and the
+            // last line at the END by the model — allow the corresponding partial match.
+            if (j == 0 && IsFirstLinePartialMatch(trimmedTarget, trimmedSearch))
+                continue;
+            if (j == lastIdx && IsLastLinePartialMatch(trimmedTarget, trimmedSearch))
+                continue;
+
+            return false;
         }
         return true;
     }
