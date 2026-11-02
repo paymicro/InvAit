@@ -10,18 +10,18 @@ const highlightExt = markedHighlight.markedHighlight({
 });
 
 // Syntax highlighting for file-viewer components (ToolCreateNewFile etc.)
-// Highlights the text content of an element with Highlight.js.
-// Idempotent: textContent of a highlighted element is the original text,
-// so re-invocation with the same content produces the same result.
-window.highlightCodeElement = function (elementId, language) {
+// Content is passed as a parameter (MarkdownBlock pattern): the element stays
+// Blazor-owned and empty, JS fills innerHTML. Blazor never writes text into the
+// element, so re-render cascades can not race with the highlighter and the first
+// (possibly empty) text can not get stuck in the DOM.
+window.highlightCodeElement = function (elementId, language, text) {
     const element = document.getElementById(elementId);
     if (!element || !window.hljs) return;
 
     const lang = language && hljs.getLanguage(language) ? language : 'plaintext';
-    const text = element.textContent;
 
     try {
-        element.innerHTML = hljs.highlight(text, { language: lang }).value;
+        element.innerHTML = hljs.highlight(text ?? '', { language: lang }).value;
     } catch (err) {
         console.error('Failed to highlight code:', err);
     }

@@ -45,7 +45,7 @@
                         filePath = default(string),
                         content = default(string)
                     };
-                result = JsonUtils.DeserializeAnonymousType(ToolCall.Function.Arguments, result);
+                    result = JsonUtils.DeserializeAnonymousType(ToolCall.Function.Arguments, result);
                     <ToolCreateNewFile FilePath="@(result.filePath ?? string.Empty)" Content="@(result.content ?? string.Empty)" />
                 }
                 else if (ToolCall.Function.Name == BasicEnum.AskUser)

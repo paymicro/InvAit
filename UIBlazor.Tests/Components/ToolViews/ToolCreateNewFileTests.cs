@@ -55,9 +55,10 @@ public class ToolCreateNewFileTests : BunitContext
     }
 
     [Fact]
-    public void ShouldRenderContent_InPreElement()
+    public void ShouldPassContent_ToHighlightJs()
     {
-        // Arrange
+        // Arrange - MarkdownBlock pattern: the code element stays empty in the DOM,
+        // content is delivered to the highlighter via JS interop (third argument).
         var content = "namespace Demo;\n\npublic class Demo { }";
 
         // Act
@@ -65,8 +66,11 @@ public class ToolCreateNewFileTests : BunitContext
             .Add(p => p.Content, content));
 
         // Assert
-        var pre = cut.Find(".diff-block pre");
-        Assert.Contains(content, pre.TextContent);
+        cut.WaitForAssertion(() =>
+        {
+            var invocation = JSInterop.VerifyInvoke("highlightCodeElement");
+            Assert.Equal(content, invocation.Arguments[2].ToString());
+        });
     }
 
     [Fact]
@@ -80,18 +84,22 @@ public class ToolCreateNewFileTests : BunitContext
     }
 
     [Fact]
-    public void ShouldUpdateContent_WhenParameterChanges()
+    public async Task ShouldUpdateContent_WhenParameterChanges()
     {
         // Arrange
         var cut = Render<ToolCreateNewFile>(parameters => parameters
             .Add(p => p.Content, "old content"));
 
+        cut.WaitForAssertion(() => JSInterop.VerifyInvoke("highlightCodeElement", 1));
+
         // Act
         cut.Render(parameters => parameters
             .Add(p => p.Content, "new content"));
+        await cut.InvokeAsync(() => { });
 
-        // Assert
-        Assert.Contains("new content", cut.Find(".diff-block pre").TextContent);
+        // Assert - second invocation carries the new content
+        var invocation = JSInterop.VerifyInvoke("highlightCodeElement", 2);
+        Assert.Equal("new content", invocation[1].Arguments[2].ToString());
     }
 
     #region Syntax Highlighting Tests
@@ -263,6 +271,29 @@ public class ToolCreateNewFileTests : BunitContext
         // Assert
         var invocation = JSInterop.VerifyInvoke("highlightCodeElement", 2);
         Assert.Equal("csharp", invocation[1].Arguments[1].ToString());
+    }
+
+    [Fact]
+    public async Task ShouldReinvokeHighlight_WhenContentGrowsFromEmpty()
+    {
+        // Regression: during streaming the first render has empty content. The
+        // highlighter must be re-invoked when the content arrives (was stuck
+        // before because Blazor text node was destroyed by innerHTML).
+        var cut = Render<ToolCreateNewFile>(parameters => parameters
+            .Add(p => p.FilePath, "a.cs"));
+
+        cut.WaitForAssertion(() =>
+            JSInterop.VerifyInvoke("highlightCodeElement", 1));
+
+        // Act - content arrives after the empty first render
+        cut.Render(parameters => parameters
+            .Add(p => p.FilePath, "a.cs")
+            .Add(p => p.Content, "arrived"));
+        await cut.InvokeAsync(() => { });
+
+        // Assert - second invocation carries the arrived content
+        var invocation = JSInterop.VerifyInvoke("highlightCodeElement", 2);
+        Assert.Equal("arrived", invocation[1].Arguments[2].ToString());
     }
 
     #endregion

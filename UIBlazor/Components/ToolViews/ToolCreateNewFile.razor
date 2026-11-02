@@ -15,7 +15,7 @@
     }
 
     <div class="diff-block">
-        <pre><code id="@_blockId" class="@CodeCssClass">@Content</code></pre>
+        <pre><code id="@_blockId" class="@CodeCssClass"></code></pre>
     </div>
 </div>
 
@@ -64,7 +64,7 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         // Highlight.js подсветка по расширению файла (паттерн MarkdownBlock:
-        // рендер через JS-интероп после того, как элемент появился в DOM).
+        // контент передаётся в JS параметром, элемент в DOM пустой).
         if (Content == _lastHighlightedContent && _language == _lastHighlightedLanguage)
         {
             return;
@@ -75,7 +75,7 @@
 
         try
         {
-            await Js.InvokeVoidAsync("highlightCodeElement", _blockId, _language ?? string.Empty);
+            await Js.InvokeVoidAsync("highlightCodeElement", _blockId, _language ?? string.Empty, Content);
         }
         catch (JSException)
         {
