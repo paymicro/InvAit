@@ -25,8 +25,7 @@
             @oninput="HandleInput"
             @onkeydown="OnKeyDown"
             @onkeydown:preventDefault="_shouldPreventDefault"
-            @onblur="OnBlur"
-            disabled="@IsLoading"/>
+            @onblur="OnBlur"/>
 
             <div class="misc">
                 <Tooltip Text="@SharedResource.PromptSectionActiveFile">
@@ -83,7 +82,6 @@
                             <RadzenButton Icon="send"
                                 ButtonStyle="ButtonStyle.Base"
                                 Variant="Variant.Text"
-                                Visible="@(!IsLoading)"
                                 Disabled="@(!CanSend())"
                                 Click="@OnSendClick"
                                 class="rz-chat-send-btn" />
@@ -197,7 +195,9 @@
 
     private bool CanSend()
     {
-        return !IsLoading && (!string.IsNullOrWhiteSpace(_currentInput) || _tokens.Any());
+        // Отправка разрешена и во время стрима (IsLoading): сообщение уходит в сессию как
+        // interject и подхватывается агентным циклом на границе туров (SendMessageAsync).
+        return !string.IsNullOrWhiteSpace(_currentInput) || _tokens.Any();
     }
 
     private void HandleInput(ChangeEventArgs e)

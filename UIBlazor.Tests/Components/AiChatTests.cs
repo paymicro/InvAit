@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+
 namespace UIBlazor.Tests.Components;
 
 /// <summary>
@@ -5,6 +8,7 @@ namespace UIBlazor.Tests.Components;
 /// </summary>
 public class AiChatTests : BunitContext
 {
+    private static int _runCount;
     private readonly Mock<IChatService> _mockChatService;
     private readonly Mock<IToolManager> _mockToolManager;
     private readonly Mock<IProfileManager> _mockProfileManager;
@@ -303,6 +307,134 @@ public class AiChatTests : BunitContext
     }
 
     [Fact]
+    public async Task SendMessageAsync_WhileStreaming_InterjectAddedWithoutNewRun()
+    {
+        // Arrange: the agent loop streams until released — IsLoading stays true.
+        var release = new TaskCompletionSource();
+        _mockChatService.Setup(x => x.GetCompletionsAsync(It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
+            .Returns((CompletionsResult capture, CancellationToken ct) => StreamUntilReleased(release, capture, ct));
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+        SetupProcessStreamConsume();
+
+        var cut = Render<AiChat>();
+
+        // Start the run (IsLoading = true, interject window open).
+        var firstRun = cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("start"));
+
+        // Wait until the first delta is consumed — guarantees the interject window is open
+        // (_acceptInterjects is set before ProcessStreamAsync starts consuming).
+        await WaitUntilAsync(() => _session.GetMessagesSnapshot()[^1].Content == "streaming...");
+
+        // Act: send a second message while the run is streaming — it must be ADDED to the
+        // session right after the streaming message (interject), NOT silently dropped and
+        // NOT followed by a new assistant placeholder (no new run).
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("interject"));
+
+        var snapshot = _session.GetMessagesSnapshot();
+        Assert.Equal(3, snapshot.Count);
+        Assert.Equal(ChatMessageRole.User, snapshot[^1].Role);
+        Assert.Equal("interject", snapshot[^1].Content);
+        Assert.Equal(1, _runCount); // GetCompletionsAsync called exactly once (no new run)
+
+        // Finish the run.
+        release.TrySetResult();
+        await firstRun;
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_DuringCompression_MessageRejected()
+    {
+        // Arrange: the compact command sets IsLoading = true and runs compression —
+        // the interject window is closed (_acceptInterjects is only open for the agent loop).
+        // ProcessStreamAsync blocks until released, so IsLoading stays true.
+        var release = new TaskCompletionSource();
+        _mockChatService.Setup(x => x.CompressSessionAsync(It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
+            .Returns(AsyncEnumerable.Empty<ChatDelta>);
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+        _mockChatService.Setup(x => x.ProcessStreamAsync(
+                It.IsAny<VisualChatMessage>(),
+                It.IsAny<IAsyncEnumerable<ChatDelta>>(),
+                It.IsAny<Action<string>?>(),
+                It.IsAny<Action<List<ToolCall>>>(),
+                It.IsAny<Action?>(),
+                It.IsAny<CompletionsResult>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(release.Task);
+
+        var cut = Render<AiChat>();
+        var compactRun = cut.InvokeAsync(async () => await cut.Instance.HandleCommandAsync("compact"));
+
+        // Wait until the compression assistant message is added (IsLoading = true).
+        await WaitUntilAsync(() => _session.GetMessageCount() >= 1);
+
+        // Act: a message sent during compression must be REJECTED — compression rewrites
+        // the history from a snapshot and would silently drop the interject.
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("during compression"));
+
+        var snapshot = _session.GetMessagesSnapshot();
+        Assert.Equal(1, snapshot.Count);
+        Assert.Equal(ChatMessageRole.Assistant, snapshot[^1].Role);
+        Assert.False(snapshot[^1].Content == "during compression");
+
+        release.TrySetResult();
+        await compactRun;
+    }
+
+    private static async IAsyncEnumerable<ChatDelta> StreamUntilReleased(
+        TaskCompletionSource release, CompletionsResult capture, [EnumeratorCancellation] CancellationToken ct)
+    {
+        Interlocked.Increment(ref _runCount);
+        capture.Model = "test-model";
+        yield return new ChatDelta { Content = "streaming..." };
+        await release.Task.WaitAsync(ct);
+    }
+
+    /// <summary>
+    /// Mocks the agent-loop ProcessStreamAsync overload to consume the deltas (append Content
+    /// to the message) — the run stays active while the stream blocks on the release gate.
+    /// </summary>
+    private void SetupProcessStreamConsume()
+    {
+        _mockChatService.Setup(x => x.ProcessStreamAsync(
+                It.IsAny<VisualChatMessage>(),
+                It.IsAny<IAsyncEnumerable<ChatDelta>>(),
+                It.IsAny<Action<string>?>(),
+                It.IsAny<Action<List<ToolCall>>>(),
+                It.IsAny<Action?>(),
+                It.IsAny<CompletionsResult>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<Func<VisualChatMessage>?>()))
+            .Returns(async (VisualChatMessage msg, IAsyncEnumerable<ChatDelta> deltas,
+                Action<string>? onContent, Action<List<ToolCall>>? onTools, Action? onState,
+                CompletionsResult capture, CancellationToken ct, Func<VisualChatMessage>? onNewTurn) =>
+            {
+                await foreach (var delta in deltas.WithCancellation(ct))
+                {
+                    if (delta.Content is not null)
+                        msg.Content += delta.Content;
+                }
+            });
+    }
+
+    private static async IAsyncEnumerable<ChatDelta> BlockedStream(
+        TaskCompletionSource release, [EnumeratorCancellation] CancellationToken ct)
+    {
+        await release.Task.WaitAsync(ct);
+        yield break;
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 5000)
+    {
+        var sw = Stopwatch.StartNew();
+        while (!condition())
+        {
+            if (sw.ElapsedMilliseconds > timeoutMs)
+                Assert.Fail("Condition was not met within the timeout");
+            await Task.Delay(10);
+        }
+    }
+
+    [Fact]
     public async Task ShouldNotSendMessage_WhenContentIsEmpty()
     {
         // Arrange
@@ -394,6 +526,226 @@ public class AiChatTests : BunitContext
         // Verify messages are rendered in order
         Assert.Contains(message1.Content, messageStubs[0].TextContent);
         Assert.Contains(message2.Content, messageStubs[1].TextContent);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  HandleErrorAsync: при ретраебельной ошибке контент НЕ перезаписывается —
+    //  сообщение будет удалено перед retryAction, перезапись + перестройка сегментов
+    //  была бы мёртвой работой (и затирала бы частичный ответ модели).
+    // ═══════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task RetryableError_PartialContentNotOverwritten()
+    {
+        // Arrange - stream fails after yielding partial content; MaxRetries = 2 → one retry,
+        // the second attempt also fails → final error. The partial content of the failed
+        // attempt must NOT be overwritten with "Error: ..." before the retry (dead work).
+        _commonOptions.MaxRetries = 2;
+
+        // Content snapshots AFTER the pump returns from the stream (including any
+        // HandleErrorAsync overwrite): the old code (overwrite before retry) would leave
+        // "Error: boom [1/2]" in the snapshot — the regression is caught by name.
+        var postStreamContentSnapshots = new List<string>();
+        SetupFailingStream(postStreamContentSnapshots, failureMessage: "boom");
+
+        var cut = Render<AiChat>();
+
+        // Act
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        // Assert
+        // The FIRST attempt's message kept the partial content (NOT overwritten with the
+        // error before the retry — the overwrite+segments-rebuild was dead work).
+        Assert.Equal("Partial answer before failure", postStreamContentSnapshots[0]);
+
+        // Retry budget exhausted: the final message DOES show the error.
+        var messages = _session.GetMessagesSnapshot();
+        Assert.Equal(2, messages.Count); // user + assistant with error
+        Assert.Contains("Error:", messages[1].Content);
+        Assert.Contains("boom", messages[1].Content);
+    }
+
+    [Fact]
+    public async Task ExhaustedRetries_FinalMessageShowsError()
+    {
+        // Arrange - stream always fails; MaxRetries = 1 → no retries, error written to the message
+        _commonOptions.MaxRetries = 1;
+
+        SetupFailingStream(postStreamContentSnapshots: null, failureMessage: "boom");
+
+        var cut = Render<AiChat>();
+
+        // Act
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        // Assert - retry budget exhausted: the error IS written to the final message
+        var messages = _session.GetMessagesSnapshot();
+        Assert.Equal(2, messages.Count); // user + assistant with error
+        Assert.Contains("Error:", messages[1].Content);
+        Assert.Contains("boom", messages[1].Content);
+    }
+
+    /// <summary>
+    /// Multi-turn run fails with retry budget left: COMPLETED turns (1..N-1) must be
+    /// KEPT — their tool calls have results, the wire history stays consistent, so the
+    /// retry CONTINUES from them instead of wiping the whole chain after the user
+    /// message (which lost all completed work). Only the incomplete tail
+    /// (<c>currentMessage</c>) is removed before the retry.
+    /// </summary>
+    [Fact]
+    public async Task RetryableError_MultiTurn_CompletedTurnsKept_RetryContinues()
+    {
+        // Arrange - run 1: turn 1 streams content, onNewTurn starts turn 2, turn 2
+        // streams content, then the stream fails. MaxRetries = 2 → one retry; run 2
+        // CONTINUES from the kept turn 1 (a real model sees it in the wire history),
+        // streams new content, then fails again → final error.
+        _commonOptions.MaxRetries = 2;
+
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+
+        _mockChatService
+            .Setup(x => x.ProcessStreamAsync(
+                It.IsAny<VisualChatMessage>(),
+                It.IsAny<IAsyncEnumerable<ChatDelta>>(),
+                It.IsAny<Action<string>?>(),
+                It.IsAny<Action<List<ToolCall>>?>(),
+                It.IsAny<Action?>(),
+                It.IsAny<CompletionsResult>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<Func<VisualChatMessage>?>()))
+            .Returns(async (VisualChatMessage message,
+                IAsyncEnumerable<ChatDelta> deltas,
+                Action<string>? onContentUpdate,
+                Action<List<ToolCall>>? onToolCallsUpdate,
+                Action? onStateChange,
+                CompletionsResult resultCapture,
+                CancellationToken cancellationToken,
+                Func<VisualChatMessage>? onNewTurn) =>
+            {
+                await foreach (var delta in deltas.WithCancellation(cancellationToken))
+                {
+                    if (delta.IsStartOfTurn && onNewTurn is not null && message.IsStreaming)
+                    {
+                        message = onNewTurn();
+                    }
+
+                    if (delta.Content is not null)
+                    {
+                        message.Content += delta.Content;
+                        onContentUpdate?.Invoke(delta.Content);
+                    }
+
+                    onStateChange?.Invoke();
+                }
+            });
+
+        // Run 1: turn 1 + turn 2, then fail. Run 2: the model continues from the kept
+        // turn 1 — different content (not a repeat of "turn1 partial").
+        _mockChatService
+            .SetupSequence(x => x.GetCompletionsAsync(It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
+            .Returns(CreateFailingStream(
+                [
+                    new ChatDelta { Content = "turn1 partial" },
+                    new ChatDelta { Content = "turn2 partial", IsStartOfTurn = true }
+                ],
+                "boom"))
+            .Returns(CreateFailingStream(
+                [
+                    new ChatDelta { Content = "turn1 continued" }
+                ],
+                "boom"));
+
+        var cut = Render<AiChat>();
+
+        // Act
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        // Assert
+        var messages = _session.GetMessagesSnapshot();
+
+        // Run 1's completed turn 1 is KEPT; its incomplete turn 2 is removed before
+        // the retry. Run 2 continues (new content), fails with exhausted budget →
+        // final error. Without the fix (aggressive wipe) the session would NOT
+        // contain run 1's "turn1 partial" — the lost work is the regression.
+        Assert.Equal(3, messages.Count); // user + run1 turn1 (kept) + run2 turn (overwritten with error)
+        Assert.Single(messages.Where(m => m.Content == "turn1 partial"));
+        Assert.DoesNotContain("turn2 partial", messages.Select(m => m.Content));
+        Assert.Contains("Error:", messages[2].Content);
+        Assert.Contains("boom", messages[2].Content);
+    }
+
+    /// <summary>
+    /// Wires <see cref="IChatService.ProcessStreamAsync"/> to a minimal in-test pump that
+    /// streams the given deltas into the message (content append + callbacks) and then
+    /// throws (simulates a transport failure mid-stream). Every call (including retries)
+    /// fails the same way. The content snapshot is taken AFTER the pump returns —
+    /// HandleErrorAsync mutations (error overwrite) are included in it.
+    /// </summary>
+    private void SetupFailingStream(List<string>? postStreamContentSnapshots, string failureMessage)
+    {
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+        _mockChatService
+            .Setup(x => x.ProcessStreamAsync(
+                It.IsAny<VisualChatMessage>(),
+                It.IsAny<IAsyncEnumerable<ChatDelta>>(),
+                It.IsAny<Action<string>?>(),
+                It.IsAny<Action<List<ToolCall>>?>(),
+                It.IsAny<Action?>(),
+                It.IsAny<CompletionsResult>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<Func<VisualChatMessage>?>()))
+            .Returns(async (VisualChatMessage message,
+                IAsyncEnumerable<ChatDelta> deltas,
+                Action<string>? onContentUpdate,
+                Action<List<ToolCall>>? onToolCallsUpdate,
+                Action? onStateChange,
+                CompletionsResult resultCapture,
+                CancellationToken cancellationToken,
+                Func<VisualChatMessage>? onNewTurn) =>
+            {
+                try
+                {
+                    await foreach (var delta in deltas.WithCancellation(cancellationToken))
+                    {
+                        if (delta.IsStartOfTurn && onNewTurn is not null && message.IsStreaming)
+                        {
+                            message = onNewTurn();
+                        }
+
+                        if (delta.Content is not null)
+                        {
+                            message.Content += delta.Content;
+                            onContentUpdate?.Invoke(delta.Content);
+                        }
+
+                        onStateChange?.Invoke();
+                    }
+                }
+                finally
+                {
+                    // AFTER the pump returns: HandleErrorAsync (called by the component's
+                    // catch) may have overwritten the content — the snapshot includes it.
+                    postStreamContentSnapshots?.Add(message.Content);
+                }
+            });
+
+        _mockChatService
+            .Setup(x => x.GetCompletionsAsync(It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
+            .Returns((CompletionsResult _, CancellationToken _) => CreateFailingStream(
+                [new ChatDelta { Content = "Partial answer before failure" }],
+                failureMessage));
+    }
+
+    private static async IAsyncEnumerable<ChatDelta> CreateFailingStream(
+        ChatDelta[] deltas, string failureMessage,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        foreach (var delta in deltas)
+        {
+            yield return delta;
+        }
+
+        throw new Exception(failureMessage);
     }
 }
 

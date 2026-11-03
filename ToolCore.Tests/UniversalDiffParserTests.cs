@@ -308,4 +308,134 @@ public class UniversalDiffParserTests
     }
 
     #endregion
+
+    #region Partial Boundary Line Tests
+
+    [Theory]
+    // Last line truncated at the end (search is a prefix of the target line)
+    [InlineData(new[] { "line1", "line2", "line3" }, new[] { "line1", "line2", "lin" }, 0)]
+    // First line truncated at the start (search is a suffix of the target line)
+    [InlineData(new[] { "line1", "line2", "line3" }, new[] { "ne1", "line2", "line3" }, 0)]
+    [InlineData(new[] { "line1", "line2", "line3" }, new[] { "ine1", "line2", "line3" }, 0)]
+    public void FindInFile_TruncatedBoundaryLines_Matches(string[] target, string[] search, int expected)
+    {
+        // The first search line is truncated at the start and the last at the end —
+        // the block must still be found via partial boundary matching.
+        var result = UniversalDiffParser.FindInFile([.. target], [.. search], -1, 0);
+        Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public void FindInFile_FirstLineTruncatedAtEnd_DoesNotMatch()
+    {
+        // The first line may only be truncated at the START, not at the end:
+        // search line extending the target line must not match.
+        var target = new List<string> { "line1", "line2", "line3" };
+        var search = new List<string> { "line1 extra", "line2", "line3" };
+
+        var result = UniversalDiffParser.FindInFile(target, search, -1, 0);
+
+        Assert.Equal(-1, result);
+    }
+
+    [Fact]
+    public void FindInFile_LastLineTruncatedAtStart_DoesNotMatch()
+    {
+        // The last line may only be truncated at the END, not at the start.
+        var target = new List<string> { "line1", "line2", "line3" };
+        var search = new List<string> { "line1", "line2", "xline3" };
+
+        var result = UniversalDiffParser.FindInFile(target, search, -1, 0);
+
+        Assert.Equal(-1, result);
+    }
+
+    [Fact]
+    public void FindInFile_TruncatedLastLine_RealWorldScenario()
+    {
+        // Regression: the model cut the last line of oldStr mid-token —
+        // the search must still find the block.
+        var target = new List<string>
+        {
+            "public void Method()", "{", "    var x = 1;", "    DoSomething(value);", "}"
+        };
+        var search = new List<string>
+        {
+            "    var x = 1;", "    DoSomething(val"
+        };
+
+        var result = UniversalDiffParser.FindInFile(target, search, -1, 0);
+
+        Assert.Equal(2, result);
+    }
+
+    [Fact]
+    public void FindInFile_TruncatedFirstLine_RealWorldScenario()
+    {
+        // The model lost the leading characters of the first line (indentation + tokens) —
+        // the search line is a suffix of the target line and must still match.
+        var target = new List<string>
+        {
+            "public void Method()", "{", "    var someLongVariable = ComputeValue();", "}"
+        };
+        var search = new List<string>
+        {
+            "ar someLongVariable = ComputeValue();", "}"
+        };
+
+        var result = UniversalDiffParser.FindInFile(target, search, -1, 0);
+
+        Assert.Equal(2, result);
+    }
+
+    [Fact]
+    public void FindInFile_ShortBoundaryLines_StillRequireExactMatch()
+    {
+        // Short lines like "}" must NOT match partially — otherwise "}" would
+        // match any line starting with "}" and produce false positives.
+        var target = new List<string> { "a", "b", "}" };
+        var search = new List<string> { "b", "} extra" };
+
+        var result = UniversalDiffParser.FindInFile(target, search, -1, 0);
+
+        Assert.Equal(-1, result);
+    }
+
+    [Fact]
+    public void FindInFile_MiddleLineTruncated_DoesNotMatch()
+    {
+        // Only boundary lines match partially; a truncated middle line must fail.
+        var target = new List<string> { "alpha", "beta", "gamma", "delta" };
+        var search = new List<string> { "alpha", "gam", "delta" };
+
+        var result = UniversalDiffParser.FindInFile(target, search, -1, 0);
+
+        Assert.Equal(-1, result);
+    }
+
+    [Fact]
+    public void FindInFile_PartialBoundaryMatch_StillRequiresFullMiddleMatch()
+    {
+        // First line truncated at start ("alp" is a suffix of "alpha"),
+        // last line truncated at end ("delt" is a prefix of "delta").
+        var target = new List<string> { "alpha", "beta", "gamma", "delta" };
+        var search = new List<string> { "lpha", "beta", "gamma", "delt" };
+
+        var result = UniversalDiffParser.FindInFile(target, search, -1, 0);
+
+        Assert.Equal(0, result);
+    }
+
+    [Fact]
+    public void FindInFile_PartialBoundaryMatch_CaseInsensitive()
+    {
+        var target = new List<string> { "public void Method()", "{", "    var x = 1;", "}" };
+        var search = new List<string> { "    VAR X = 1;", "}" };
+
+        var result = UniversalDiffParser.FindInFile(target, search, -1, 0);
+
+        Assert.Equal(2, result);
+    }
+
+    #endregion
 }

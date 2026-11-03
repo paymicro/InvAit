@@ -6,7 +6,11 @@ public class ConnectionProfile : BaseOptions
 
     public string Name { get; set => SetIfChanged(ref field, value); } = "New Profile";
 
-    public string Provider { get; set => SetIfChanged(ref field, value); } = "OpenAI Compatible";
+    /// <summary>
+    /// Тип API: Chat Completions (/v1/chat/completions) или Responses (/v1/responses).
+    /// Определяет протокол, по которому <see cref="Services.AfChatClientFactory"/> строит IChatClient.
+    /// </summary>
+    public ApiProvider ApiProviderType { get; set => SetIfChanged(ref field, value); } = ApiProvider.ChatCompletions;
 
     public string Endpoint { get; set => SetIfChanged(ref field, PrepareEndpoint(value)); } = string.Empty;
 
@@ -18,7 +22,7 @@ public class ConnectionProfile : BaseOptions
 
     public List<string> AvailableModels { get; set => SetIfChanged(ref field, value); } = [];
 
-    public double Temperature { get; set => SetIfChanged(ref field, value); } = 0.7;
+    public float Temperature { get; set => SetIfChanged(ref field, MathF.Round(value, 2)); } = 0.7f;
 
     public List<HeaderModel> ExtraHeaders { get; set => SetIfChanged(ref field, value); } = [];
 
@@ -49,6 +53,14 @@ public class ConnectionProfile : BaseOptions
     /// 0 — ограничение отключено.
     /// </summary>
     public int MaxExecutionTimePerSubAgent { get; set => SetIfChanged(ref field, value); } = 0;
+
+    /// <summary>
+    /// Максимальная глубина вложенного делегирования субагентов.
+    /// Главный агент — уровень 0; субагент хочет вызвать delegate_task — занимает уровень 1.
+    /// Значение N разрешает вложенные delegate_tree до уровня N включительно.
+    /// 0 — рекурсия запрещена (legacy-поведение).
+    /// </summary>
+    public int MaxSubAgentDepth { get; set => SetIfChanged(ref field, value); } = 1;
 
     /// <summary>
     /// Контекстное окно = все промпты + <see cref="MaxTokens"/>
@@ -92,5 +104,20 @@ public class ConnectionProfile : BaseOptions
             return endpoint[..^suffix.Length];
         }
         return endpoint;
+    }
+
+    private static readonly Regex RegexVersioned = new("/v\\d+$", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Base for API GET/POST paths (SDK appends "models" and the legacy code appended
+    /// "/v1/chat/completions" itself): a bare base is extended with /v1,
+    /// already-versioned paths (/v1, /v4...) are kept as-is.
+    /// </summary>
+    public static string NormalizeApiBase(string endpoint)
+    {
+        var baseUrl = endpoint.TrimEnd('/');
+        return baseUrl.EndsWith("/v1", StringComparison.OrdinalIgnoreCase) || RegexVersioned.IsMatch(baseUrl)
+            ? baseUrl
+            : $"{baseUrl}/v1";
     }
 }

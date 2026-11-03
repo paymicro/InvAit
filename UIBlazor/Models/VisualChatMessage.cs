@@ -53,6 +53,21 @@ public class VisualChatMessage
     public bool IsStreaming { get; set; }
 
     /// <summary>
+    /// Turn boundary created this message but no payload ever arrived.
+    /// Serialized: the flag must survive a session reload so the empty bubble stays filtered.
+    /// </summary>
+    public bool IsEmptyTurn { get; set; }
+
+    /// <summary>
+    /// User interject message added to a running sub-agent branch ("write to the branch
+    /// while it works"). SubAgentView renders interjects as compact user bubbles while the
+    /// initial task message (also Role=User) stays hidden — it duplicates the header task.
+    /// Not serialized: only relevant for live branch rendering.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsInterject { get; set; }
+
+    /// <summary>
     /// Gets or sets whether this message is currently being edited.
     /// </summary>
     [JsonIgnore]
@@ -116,5 +131,15 @@ public class VisualChatMessage
         IsStreaming = true,
         IsExpanded = true,
         Content = initialContent
+    };
+
+    /// <summary>
+    /// Creates a user message (chat input, sub-agent task, restored after compression).
+    /// </summary>
+    public static VisualChatMessage CreateUser(string content, bool isExpanded = true) => new()
+    {
+        Role = ChatMessageRole.User,
+        IsExpanded = isExpanded,
+        Content = content
     };
 }

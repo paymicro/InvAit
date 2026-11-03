@@ -36,12 +36,22 @@ class FakeIncomingMessage extends EventEmitter {
         super();
     }
 
+    // Real stream semantics: destroy(err) emits 'error', destroy() emits 'end'
+    destroy(err?: Error): void {
+        if (err) {
+            this.emit('error', err);
+        } else {
+            this.emit('end');
+        }
+    }
+
     // Make it async-iterable so `for await (const data of response)` works
     // in the streaming path of handleNetworkProxyRequest.
     async *[Symbol.asyncIterator](): AsyncIterator<Buffer> {
         const queue: Buffer[] = [];
         let done = false;
         let resolveWait: (() => void) | null = null;
+        let pendingError: Error | null = null;
 
         const onData = (chunk: Buffer) => {
             queue.push(chunk);
@@ -59,11 +69,11 @@ class FakeIncomingMessage extends EventEmitter {
         };
         const onError = (err: Error) => {
             done = true;
+            pendingError = err;
             if (resolveWait) {
                 resolveWait();
                 resolveWait = null;
             }
-            throw err;
         };
 
         this.on('data', onData);
@@ -81,6 +91,9 @@ class FakeIncomingMessage extends EventEmitter {
             // Drain remaining
             while (queue.length > 0) {
                 yield queue.shift()!;
+            }
+            if (pendingError) {
+                throw pendingError;
             }
         } finally {
             this.off('data', onData);
@@ -111,7 +124,7 @@ Module._load = function (request: string, parent: any, isMain: boolean) {
     return originalLoad.call(this, request, parent, isMain);
 };
 
-import { setSkipSslValidation, setExtensionUserAgent, handleNetworkProxyRequest } from '../networkProxy';
+import { setSkipSslValidation, setExtensionUserAgent, handleNetworkProxyRequest, cancelNetworkProxyRequest } from '../networkProxy';
 
 Module._load = originalLoad;
 
@@ -310,6 +323,58 @@ describe('networkProxy', () => {
             expect(postMessageStub.getCall(2).args[0].payload.chunk).to.include('chunk2');
             expect(postMessageStub.getCall(3).args[0].payload.type).to.equal('end');
             expect(postMessageStub.getCall(3).args[0].payload.success).to.be.true;
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // cancelNetworkProxyRequest
+    // -----------------------------------------------------------------------
+
+    describe('cancelNetworkProxyRequest', () => {
+        it('destroys an in-flight streaming response and reports a failed end', async () => {
+            const fakeReq = new FakeClientRequest();
+            const fakeRes = new FakeIncomingMessage();
+            fakeRes.headers = { 'content-type': 'text/event-stream' };
+
+            // Stream stays open (no 'end' emission) — like a real LLM SSE stream
+            setupMockResponse(httpStub.request, fakeReq, fakeRes, [
+                Buffer.from('data: chunk1\n\n'),
+            ], false);
+
+            const postMessageStub = sinon.stub();
+            const fakePanel: any = {
+                webview: { postMessage: postMessageStub },
+            };
+
+            const pending = handleNetworkProxyRequest(fakePanel, {
+                requestId: 'req-cancel',
+                url: 'http://localhost:3000/stream',
+                method: 'GET',
+                headers: {},
+            });
+
+            // Let the response deliver headers + first chunk
+            await new Promise(r => setTimeout(r, 60));
+            expect(postMessageStub.callCount).to.be.at.least(2);
+
+            // Simulate the Blazor UI cancelling the request
+            cancelNetworkProxyRequest('req-cancel');
+
+            // The destroyed stream surfaces its error on a later microtask turn
+            await new Promise(r => setTimeout(r, 20));
+
+            const endMsg = postMessageStub.lastCall.args[0];
+            expect(endMsg.payload.type).to.equal('end');
+            expect(endMsg.payload.success).to.be.false;
+            expect(endMsg.payload.error).to.include('Cancelled by user');
+
+            // Subsequent cancel for the same id must be a no-op (not throw)
+            expect(() => cancelNetworkProxyRequest('req-cancel')).to.not.throw();
+            await pending;
+        });
+
+        it('ignores unknown requestId without throwing', () => {
+            expect(() => cancelNetworkProxyRequest('unknown-id')).to.not.throw();
         });
     });
 

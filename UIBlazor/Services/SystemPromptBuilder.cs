@@ -62,8 +62,10 @@ public class SystemPromptBuilder : ISystemPromptBuilder
     /// </summary>
     public async Task<string> PrepareSubAgentSystemPromptAsync(string customPrompt, CancellationToken cancellationToken)
     {
-        // Sub-agents always run in Agent mode and never get delegation instructions:
-        // delegate_task is excluded from their tool set by SubAgentExecutor.
+        // Sub-agents always run in Agent mode and never get delegation instructions here:
+        // the orchestrator builds its own depth-aware delegate_task tool for branches
+        // (recursion is allowed while MaxSubAgentDepth permits), but the prompt defaults
+        // to the standard agent toolset the LLM already discovers via tool schemas.
         const string fallbackPrompt = "You are a helpful assistant. Complete the task given to you.";
 
         return await BuildPromptAsync(
@@ -227,11 +229,12 @@ public class SystemPromptBuilder : ISystemPromptBuilder
         {
             sb.AppendLine("""
                           ## Sub-Agent Delegation
-                          You can delegate tasks to sub-agents using the `delegate_task` tool. Sub-agents have their own conversation context and system prompt.
+                          You can delegate tasks to sub-agents using the `delegate_task` tool. Every task runs in its own parallel branch with its own conversation context and system prompt, and the tool returns only when ALL tasks have finished.
                           
-                          - Use sub-agents for complex subtasks that benefit from focused attention and a specialized prompt.
+                          - Batch several independent subtasks into ONE `delegate_task` call (the `tasks` array) so they run concurrently.
                           - The sub-agent's final answer is returned to you as the tool result.
-                          - Sub-agents cannot delegate further (no recursion).
+                          - Sub-agents may delegate further (recursion) while the configured depth limit allows it.
+                          - Tasks that depend on each other's output must go into SEPARATE calls, waiting for the results in between.
                           """);
         }
 

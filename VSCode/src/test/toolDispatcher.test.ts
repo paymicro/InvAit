@@ -977,11 +977,11 @@ describe('toolDispatcher', () => {
             expect(invalidateContextCacheStub.calledOnce).to.be.true;
         });
 
-        it('should call invalidateContextCache for edit_files', async () => {
+        it('should call invalidateContextCache for edit_file', async () => {
             dispatchToolStub.returns({ success: true, payload: 'edited' });
 
             const panel = createFakePanel();
-            await handleVsRequest(panel, createMessage('edit_files', 'corr-1', '{"filePath":"test.ts"}'));
+            await handleVsRequest(panel, createMessage('edit_file', 'corr-1', '{"filePath":"test.ts"}'));
 
             expect(invalidateContextCacheStub.calledOnce).to.be.true;
         });

@@ -126,6 +126,15 @@
   <data name="CallingTool" xml:space="preserve">
     <value>Инструмент</value>
   </data>
+  <data name="Pause" xml:space="preserve">
+    <value>Пауза</value>
+  </data>
+  <data name="Resume" xml:space="preserve">
+    <value>Продолжить</value>
+  </data>
+  <data name="AddMessage" xml:space="preserve">
+    <value>Добавить сообщение</value>
+  </data>
   <data name="Cancel" xml:space="preserve">
     <value>Отмена</value>
   </data>
@@ -164,6 +173,9 @@
   </data>
   <data name="InputPlaceholderPlan" xml:space="preserve">
     <value>Опишите цель для создания плана...</value>
+  </data>
+  <data name="InterjectPlaceholder" xml:space="preserve">
+    <value>Написать в суб-агент...</value>
   </data>
   <data name="MaxTokens" xml:space="preserve">
     <value>Максимум токенов ответа</value>
@@ -477,6 +489,12 @@
   <data name="SubAgentRunning" xml:space="preserve">
     <value>Работает...</value>
   </data>
+  <data name="SubAgentNeedAction" xml:space="preserve">
+    <value>Требуется действие</value>
+  </data>
+  <data name="SubAgentPaused" xml:space="preserve">
+    <value>Приостановлен</value>
+  </data>
   <data name="SubAgentCompleted" xml:space="preserve">
     <value>Завершён</value>
   </data>
@@ -632,5 +650,8 @@
   </data>
   <data name="BashPatternTestCustom" xml:space="preserve">
     <value>Пользовательские</value>
+  </data>
+  <data name="OpenFileInIde" xml:space="preserve">
+    <value>Открыть в IDE</value>
   </data>
 </root>

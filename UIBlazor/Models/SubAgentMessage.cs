@@ -1,18 +1,6 @@
 namespace UIBlazor.Models;
 
 /// <summary>
-/// Status of a sub-agent execution.
-/// </summary>
-public enum SubAgentStatus
-{
-    Pending,
-    Running,
-    Completed,
-    Cancelled,
-    Failed
-}
-
-/// <summary>
 /// Represents a sub-agent execution context and its conversation.
 /// Attached to the parent assistant message that triggered the delegate_task tool call.
 /// </summary>
@@ -69,7 +57,31 @@ public class SubAgentMessage
     /// the session becomes an automatically-synced mirror used only for LLM API calls.
     /// </summary>
     /// <param name="session">The session to attach. Must not be null.</param>
-    public void AttachSession(ConversationSession session) => _session = session;
+    public void AttachSession(ConversationSession session)
+    {
+        _session = session;
+
+        // Reverse sync: context compression rewrites the session history directly via
+        // SetMessages (bypassing the Add/Remove/Set wrapper methods), so the UI-side
+        // _messages copy would go stale — the user would see the uncompressed history
+        // while the model receives the compressed one. Listen to the session event and
+        // update the local copy WITHOUT propagating back into the session (no recursion).
+        session.MessagesReplaced += OnSessionMessagesReplaced;
+    }
+
+    /// <summary>
+    /// Handler for <see cref="ConversationSession.MessagesReplaced"/>: replaces the local
+    /// _messages copy with the compressed history. Writes only to the local list — the
+    /// session is already updated (this is the event source).
+    /// </summary>
+    private void OnSessionMessagesReplaced(List<VisualChatMessage> messages)
+    {
+        lock (_messagesLock)
+        {
+            _messages.Clear();
+            _messages.AddRange(messages);
+        }
+    }
 
     /// <summary>
     /// The conversation messages of the sub-agent (for UI display).
@@ -94,6 +106,31 @@ public class SubAgentMessage
                 _messages.AddRange(value);
             }
         }
+    }
+
+    /// <summary>
+    /// Adds a user interject message to the RUNNING sub-agent conversation ("write to the
+    /// branch while it works"). The message lands in the UI history and the attached session
+    /// immediately; the branch's <c>AfAgentLoop</c> picks it up at the next turn boundary
+    /// (after the current tool turn completes, before the next LLM call).
+    /// Rejected when the branch is not running or is compressing (compression rewrites the
+    /// session history from a snapshot and would silently drop the interject).
+    /// </summary>
+    /// <returns>True when the interject was accepted.</returns>
+    public bool TryAddInterject(string text)
+    {
+        if (Status is not (SubAgentStatus.Running or SubAgentStatus.NeedAction or SubAgentStatus.Paused) || IsCompressing)
+            return false;
+
+        var trimmed = text.Trim();
+        if (trimmed.Length == 0)
+            return false;
+
+        var message = VisualChatMessage.CreateUser(trimmed);
+        message.IsInterject = true;
+        AddMessage(message); // writes _messages + the attached session
+        NotifyStateChanged();
+        return true;
     }
 
     /// <summary>
@@ -177,11 +214,6 @@ public class SubAgentMessage
     }
 
     /// <summary>
-    /// The final result returned by the sub-agent to the main agent.
-    /// </summary>
-    public string Result { get; set; } = string.Empty;
-
-    /// <summary>
     /// Current status of the sub-agent execution.
     /// </summary>
     public SubAgentStatus Status { get; set; } = SubAgentStatus.Pending;
@@ -257,14 +289,14 @@ public class SubAgentMessage
     /// <summary>
     /// CancellationTokenSource linked to the parent token, allowing independent
     /// cancellation of this sub-agent without cancelling the entire chat.
-    /// Set by <c>SubAgentExecutor</c> via <see cref="SetCancellationTokenSource"/>.
+    /// Set by <c>AfSubAgentOrchestrator</c> via <see cref="SetCancellationTokenSource"/>.
     /// </summary>
     [JsonIgnore]
     private CancellationTokenSource? _cancelSource;
 
     /// <summary>
     /// Sets the linked CancellationTokenSource so the sub-agent can be cancelled independently.
-    /// Called by <c>SubAgentExecutor</c> after creating the linked token.
+    /// Called by <c>AfSubAgentOrchestrator</c> after creating the linked token.
     /// Uses <see cref="Volatile.Write"/> to ensure the assignment is immediately visible
     /// to other threads (UI thread calling <see cref="Cancel"/>).
     /// </summary>
@@ -288,21 +320,118 @@ public class SubAgentMessage
         if (cts is null)
             return;
 
+        // The branch's `using var timeoutCts` may dispose this CTS concurrently on the
+        // branch thread (race window between Exchange and using-dispose).
+        // A paused loop waits on the pause gate with the linked token; releasing it
+        // lets the cancelled WaitAsync throw immediately instead of waiting for the
+        // token-only path.
+        if (IsPaused)
+        {
+            IsPaused = false;
+            try { _pauseGate.Release(); } catch (SemaphoreFullException) { }
+        }
+
         try
         {
             cts.Cancel();
         }
+        catch (ObjectDisposedException)
+        {
+            // Already disposed by the branch ending - nothing to signal.
+        }
         finally
         {
-            cts.Dispose();
+            try
+            {
+                cts.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
         }
     }
 
     /// <summary>
-    /// Whether the sub-agent can currently be cancelled (i.e. it is still running).
+    /// Whether the sub-agent can currently be cancelled (i.e. it is still running
+    /// or waiting for user action).
     /// </summary>
     [JsonIgnore]
-    public bool CanCancel => Status == SubAgentStatus.Running;
+    public bool CanCancel => Status is SubAgentStatus.Running or SubAgentStatus.NeedAction or SubAgentStatus.Paused;
+
+    /// <summary>
+    /// Whether the sub-agent is currently paused by the user (the agent loop waits
+    /// at the next turn boundary until resumed). UI shows a pause/play toggle.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsPaused { get; private set; }
+
+    [JsonIgnore]
+    private readonly SemaphoreSlim _pauseGate = new(1, 1);
+
+    /// <summary>
+    /// The status the sub-agent had before pausing (Running or NeedAction),
+    /// restored by <see cref="Resume"/>.
+    /// </summary>
+    [JsonIgnore]
+    private SubAgentStatus _statusBeforePause;
+
+    /// <summary>
+    /// Pauses the sub-agent: the branch loop awaits <see cref="WaitIfPausedAsync"/>
+    /// at the next turn boundary and stops making LLM calls until resumed.
+    /// Sets the status to <see cref="SubAgentStatus.Paused"/> (the previous status is
+    /// remembered and restored on resume). No-op when the sub-agent is not active
+    /// or is already paused.
+    /// </summary>
+    public void Pause()
+    {
+        if (!CanCancel || IsPaused)
+            return;
+
+        // Acquire synchronously: the gate is free unless a resume raced in (then
+        // Pause is a no-op anyway — the loop will not block).
+        _pauseGate.Wait();
+        IsPaused = true;
+        _statusBeforePause = Status;
+        Status = SubAgentStatus.Paused;
+        NotifyStateChanged();
+    }
+
+    /// <summary>
+    /// Resumes a paused sub-agent: releases the gate the loop is waiting on and
+    /// restores the pre-pause status (Running or NeedAction). No-op when not paused.
+    /// </summary>
+    public void Resume()
+    {
+        if (!IsPaused)
+            return;
+
+        IsPaused = false;
+        Status = _statusBeforePause is SubAgentStatus.NeedAction
+            ? SubAgentStatus.NeedAction
+            : SubAgentStatus.Running;
+        _pauseGate.Release();
+        NotifyStateChanged();
+    }
+
+    /// <summary>
+    /// Called by the branch loop at turn boundaries: blocks (asynchronously) while
+    /// the sub-agent is paused. Cancellation (user cancel / time limit) propagates
+    /// as <see cref="OperationCanceledException"/> so the loop unwinds normally.
+    /// </summary>
+    public async Task WaitIfPausedAsync(CancellationToken cancellationToken)
+    {
+        if (!IsPaused)
+            return;
+
+        await _pauseGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        _pauseGate.Release();
+    }
+
+    /// <summary>
+    /// True when the sub-agent has reached a terminal state and will not run anymore.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsFinished => Status is SubAgentStatus.Completed or SubAgentStatus.Cancelled or SubAgentStatus.Failed;
 
     /// <summary>
     /// The sub-agent's own ToolCallHandler for processing tool call approvals.
@@ -358,7 +487,7 @@ public class SubAgentMessage
     /// Releases heavy runtime resources that are no longer needed after the sub-agent
     /// has finished (Completed / Cancelled / Failed).
     ///
-    /// This method is called by <c>SubAgentExecutor</c> in its <c>finally</c> block,
+    /// This method is called by <c>AfSubAgentOrchestrator</c> in its <c>finally</c> block,
     /// AFTER <c>CancelPendingApprovals</c> has already cancelled all waiters.
     ///
     /// What is cleaned up:
@@ -404,6 +533,9 @@ public class SubAgentMessage
         // Cancel() and ReleaseMemory() race on different threads.
         var cts = Interlocked.Exchange(ref _cancelSource, null);
         cts?.Dispose();
+
+        // The loop has exited — no one waits on the pause gate anymore.
+        _pauseGate.Dispose();
 
         // Clean up heavy per-message transient data.
         // Segments are used only by MessageContent.razor (main chat), not by SubAgentView.

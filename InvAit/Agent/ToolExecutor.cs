@@ -46,7 +46,7 @@ public class ToolExecutor
                 BuiltInToolEnum.FindDeclarations => await FindDeclarationsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.FindReferences => await FindReferencesAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.Dir => await ListDirectoryAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
-                BuiltInToolEnum.EditFiles => await EditsAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
+                BuiltInToolEnum.EditFile => await EditFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.Build => await BuildSolutionAsync(),
                 BuiltInToolEnum.RunTests => await RunTestsAsync(),
                 BuiltInToolEnum.GetErrors => await GetErrorListAsync(),
@@ -553,7 +553,7 @@ public class ToolExecutor
         };
     }
 
-    private async Task<VsResponse> EditsAsync(IReadOnlyDictionary<string, object> args)
+    private async Task<VsResponse> EditFileAsync(IReadOnlyDictionary<string, object> args)
     {
         var solutionPath = await GetSolutionPathAsync();
         var inputFileName = args.GetString("filePath");
@@ -571,18 +571,23 @@ public class ToolExecutor
         var fileData = await _fileUtils.ReadFileWithMetadataAsync(filepath);
         var lines = fileData.Lines;
         var totalReplacements = 0;
-        var appliedReplacements = new List<string>();
+        var failures = new List<string>();
 
-        diffEdits = [.. diffEdits.OrderByDescending(r => r.ApproximateLine)];
+        // Оригинальные индексы: модель повторяет только упавшие правки по номеру в своём запросе
+        var orderedEdits = diffEdits
+            .Select((rep, i) => (Rep: rep, Index: i))
+            .OrderByDescending(x => x.Rep.ApproximateLine)
+            .ToList();
 
-        foreach (var rep in diffEdits)
+        foreach (var (rep, index) in orderedEdits)
         {
             var search = Regex.Replace(rep.OldStr, "\r", "").Split('\n').ToList();
             var replace = Regex.Replace(rep.NewStr, "\r", "").Split('\n').ToList();
-            var actualStart = UniversalDiffParser.FindInFile(lines, search, rep.ApproximateLine ?? -1, 5);
+            var hint = rep.ApproximateLine ?? -1;
+            var actualStart = UniversalDiffParser.FindInFile(lines, search, hint, 5);
             if (actualStart == -1)
             {
-                appliedReplacements.Add($"FAILED at line {rep.ApproximateLine}");
+                failures.Add($"edit #{index} (line {hint}): oldStr not found");
                 continue;
             }
 
@@ -593,9 +598,26 @@ public class ToolExecutor
             totalReplacements++;
         }
 
+        // Per-edit отчёт: модель видит, КАКАЯ правка упала и почему — может прицельно
+        // повторить только упавшие. Пустой oldStr-фрагмент не ищем.
+        var report = failures.Count == 0
+            ? string.Empty
+            : "\nFailed edits:\n - " + string.Join("\n - ", failures);
+
+        // Dry-run: правки применяются к строкам в памяти (последующие поиски видят
+        // сдвиги строк), но файл НЕ пишется — проверка находимости всех oldStr.
+        var isDryRun = args.GetBool("dryRun");
+        if (isDryRun)
+        {
+            return new VsResponse
+            {
+                Payload = $"Dry run on {inputFileName}: {totalReplacements}/{diffEdits.Count} edits would apply.{report}"
+            };
+        }
+
         if (totalReplacements == 0)
         {
-            return new VsResponse { Success = false, Error = "No valid replacements found." };
+            return new VsResponse { Success = false, Error = "No valid replacements found." + report };
         }
 
         try
@@ -616,7 +638,7 @@ public class ToolExecutor
 
         return new VsResponse
         {
-            Payload = $"Changes successfully applied to {inputFileName}. {totalReplacements}/{diffEdits.Count}."
+            Payload = $"Changes successfully applied to {inputFileName}. {totalReplacements}/{diffEdits.Count}.{report}"
         };
     }
 
@@ -741,6 +763,26 @@ public class ToolExecutor
     }
 
     /// <summary>
+    /// Имя активной конфигурации решения (Debug/Release) через DTE automation model.
+    /// null — недоступна: проверка не должна ломать запуск тестов.
+    /// </summary>
+    private async Task<string?> GetActiveConfigurationNameAsync()
+    {
+        try
+        {
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+            var dte = Package.GetGlobalService(typeof(DTE)) as DTE2;
+            return dte?.Solution?.SolutionBuild?.ActiveConfiguration?.Name;
+        }
+        catch
+        {
+            // safe skip error
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Запуск тестов через консоль
     /// Через TestExplorer можно запустить, но не узнать о завершении и прочитать ошибки тоже нельзя
     /// </summary>
@@ -768,6 +810,16 @@ public class ToolExecutor
 
         var allOutput = new StringBuilder();
         var hasFailures = false;
+
+        // Предупреждение агенту (в текст результата, не пользователю): тесты собираются
+        // только при конфигурации Debug. При Release прогон молча даёт устаревшие
+        // результаты — новые/изменённые тесты могут не появиться.
+        var configName = await GetActiveConfigurationNameAsync();
+        if (!string.IsNullOrEmpty(configName) && !configName.Equals("Debug", StringComparison.OrdinalIgnoreCase))
+        {
+            allOutput.AppendLine($"WARNING: active solution configuration is '{configName}', not 'Debug'. Test assemblies may be stale — new or changed tests may be missing from this run.");
+            allOutput.AppendLine();
+        }
 
         // Запуск dotnet test для всех DLL
         if (testDlls.Count > 0)

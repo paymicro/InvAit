@@ -33,11 +33,11 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
         },
         new()
         {
-            Name = BuiltInToolEnum.EditFiles,
+            Name = BuiltInToolEnum.EditFile,
             DisplayName = SharedResource.ToolEditFile,
             Category = ToolCategory.WriteFiles,
-            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.EditFiles)),
-            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.EditFiles, args, c)
+            NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.EditFile)),
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.EditFile, args, c)
         },
         
         // Search and navigation
