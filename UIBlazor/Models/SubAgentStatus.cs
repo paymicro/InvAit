@@ -12,6 +12,11 @@ public enum SubAgentStatus
     /// or an ask_user answer.
     /// </summary>
     NeedAction,
+    /// <summary>
+    /// The sub-agent is paused by the user: the agent loop waits at the next
+    /// turn boundary until resumed.
+    /// </summary>
+    Paused,
     Completed,
     Cancelled,
     Failed

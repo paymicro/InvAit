@@ -142,6 +142,7 @@ public class SubAgentMessageTests
         Assert.False(new SubAgentMessage { Status = SubAgentStatus.Pending }.IsFinished);
         Assert.False(new SubAgentMessage { Status = SubAgentStatus.Running }.IsFinished);
         Assert.False(new SubAgentMessage { Status = SubAgentStatus.NeedAction }.IsFinished);
+        Assert.False(new SubAgentMessage { Status = SubAgentStatus.Paused }.IsFinished);
         Assert.True(new SubAgentMessage { Status = SubAgentStatus.Completed }.IsFinished);
         Assert.True(new SubAgentMessage { Status = SubAgentStatus.Failed }.IsFinished);
         Assert.True(new SubAgentMessage { Status = SubAgentStatus.Cancelled }.IsFinished);
@@ -308,10 +309,11 @@ public class SubAgentMessageTests
     public void SubAgentStatus_AllValuesExist()
     {
         // Assert
-        Assert.Equal(6, Enum.GetNames(typeof(SubAgentStatus)).Length);
+        Assert.Equal(7, Enum.GetNames(typeof(SubAgentStatus)).Length);
         Assert.True(Enum.IsDefined(typeof(SubAgentStatus), "Pending"));
         Assert.True(Enum.IsDefined(typeof(SubAgentStatus), "Running"));
         Assert.True(Enum.IsDefined(typeof(SubAgentStatus), "NeedAction"));
+        Assert.True(Enum.IsDefined(typeof(SubAgentStatus), "Paused"));
         Assert.True(Enum.IsDefined(typeof(SubAgentStatus), "Completed"));
         Assert.True(Enum.IsDefined(typeof(SubAgentStatus), "Cancelled"));
         Assert.True(Enum.IsDefined(typeof(SubAgentStatus), "Failed"));

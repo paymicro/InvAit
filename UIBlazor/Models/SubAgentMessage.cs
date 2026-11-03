@@ -119,7 +119,7 @@ public class SubAgentMessage
     /// <returns>True when the interject was accepted.</returns>
     public bool TryAddInterject(string text)
     {
-        if (Status is not (SubAgentStatus.Running or SubAgentStatus.NeedAction) || IsCompressing)
+        if (Status is not (SubAgentStatus.Running or SubAgentStatus.NeedAction or SubAgentStatus.Paused) || IsCompressing)
             return false;
 
         var trimmed = text.Trim();
@@ -322,6 +322,15 @@ public class SubAgentMessage
 
         // The branch's `using var timeoutCts` may dispose this CTS concurrently on the
         // branch thread (race window between Exchange and using-dispose).
+        // A paused loop waits on the pause gate with the linked token; releasing it
+        // lets the cancelled WaitAsync throw immediately instead of waiting for the
+        // token-only path.
+        if (IsPaused)
+        {
+            IsPaused = false;
+            try { _pauseGate.Release(); } catch (SemaphoreFullException) { }
+        }
+
         try
         {
             cts.Cancel();
@@ -347,7 +356,76 @@ public class SubAgentMessage
     /// or waiting for user action).
     /// </summary>
     [JsonIgnore]
-    public bool CanCancel => Status is SubAgentStatus.Running or SubAgentStatus.NeedAction;
+    public bool CanCancel => Status is SubAgentStatus.Running or SubAgentStatus.NeedAction or SubAgentStatus.Paused;
+
+    /// <summary>
+    /// Whether the sub-agent is currently paused by the user (the agent loop waits
+    /// at the next turn boundary until resumed). UI shows a pause/play toggle.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsPaused { get; private set; }
+
+    [JsonIgnore]
+    private readonly SemaphoreSlim _pauseGate = new(1, 1);
+
+    /// <summary>
+    /// The status the sub-agent had before pausing (Running or NeedAction),
+    /// restored by <see cref="Resume"/>.
+    /// </summary>
+    [JsonIgnore]
+    private SubAgentStatus _statusBeforePause;
+
+    /// <summary>
+    /// Pauses the sub-agent: the branch loop awaits <see cref="WaitIfPausedAsync"/>
+    /// at the next turn boundary and stops making LLM calls until resumed.
+    /// Sets the status to <see cref="SubAgentStatus.Paused"/> (the previous status is
+    /// remembered and restored on resume). No-op when the sub-agent is not active
+    /// or is already paused.
+    /// </summary>
+    public void Pause()
+    {
+        if (!CanCancel || IsPaused)
+            return;
+
+        // Acquire synchronously: the gate is free unless a resume raced in (then
+        // Pause is a no-op anyway — the loop will not block).
+        _pauseGate.Wait();
+        IsPaused = true;
+        _statusBeforePause = Status;
+        Status = SubAgentStatus.Paused;
+        NotifyStateChanged();
+    }
+
+    /// <summary>
+    /// Resumes a paused sub-agent: releases the gate the loop is waiting on and
+    /// restores the pre-pause status (Running or NeedAction). No-op when not paused.
+    /// </summary>
+    public void Resume()
+    {
+        if (!IsPaused)
+            return;
+
+        IsPaused = false;
+        Status = _statusBeforePause is SubAgentStatus.NeedAction
+            ? SubAgentStatus.NeedAction
+            : SubAgentStatus.Running;
+        _pauseGate.Release();
+        NotifyStateChanged();
+    }
+
+    /// <summary>
+    /// Called by the branch loop at turn boundaries: blocks (asynchronously) while
+    /// the sub-agent is paused. Cancellation (user cancel / time limit) propagates
+    /// as <see cref="OperationCanceledException"/> so the loop unwinds normally.
+    /// </summary>
+    public async Task WaitIfPausedAsync(CancellationToken cancellationToken)
+    {
+        if (!IsPaused)
+            return;
+
+        await _pauseGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        _pauseGate.Release();
+    }
 
     /// <summary>
     /// True when the sub-agent has reached a terminal state and will not run anymore.
@@ -455,6 +533,9 @@ public class SubAgentMessage
         // Cancel() and ReleaseMemory() race on different threads.
         var cts = Interlocked.Exchange(ref _cancelSource, null);
         cts?.Dispose();
+
+        // The loop has exited — no one waits on the pause gate anymore.
+        _pauseGate.Dispose();
 
         // Clean up heavy per-message transient data.
         // Segments are used only by MessageContent.razor (main chat), not by SubAgentView.

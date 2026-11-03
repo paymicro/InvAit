@@ -15,6 +15,10 @@
         animation: pulse-glow 2s infinite;
     }
 
+    .subagent-block.status-paused {
+        border-left: 4px solid var(--rz-warning);
+    }
+
     .subagent-block.status-completed {
         border-left: 4px solid var(--rz-success);
     }
@@ -220,7 +224,28 @@
     word-break: break-word;
 }
 
-/* Interject input row (visible while the branch is running) */
+/* Bottom action bar: pause / stop / add message — compact, unobtrusive
+   (Message Actions style: semi-transparent text-variant icon buttons) */
+.subagent-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    flex-shrink: 0;
+    opacity: 0.55;
+    transition: opacity 0.2s;
+    justify-content: center;
+}
+
+    .subagent-actions:hover {
+        opacity: 1;
+    }
+
+::deep.subagent-actions .rzi {
+    font-size: 1rem;
+    font-weight: 400 !important;
+}
+
+/* Interject input row (visible on demand via the add-message button) */
 .subagent-interject {
     display: flex;
     align-items: center;
@@ -235,6 +260,10 @@
         padding: 0.3rem 0.55rem;
         border-radius: 6px;
         resize: none;
+        border: 0px;
+        background-color: var(--rz-chat-message-user-background-color);
+        color: var(--rz-chat-message-user-color);
+        padding: 0.8rem;
     }
 
 @keyframes pulse-glow {

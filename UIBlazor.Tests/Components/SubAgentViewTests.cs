@@ -153,6 +153,22 @@ public class SubAgentViewTests : BunitContext
     }
 
     [Fact]
+    public void ShouldRenderPausedBadge_WhenStatusPaused()
+    {
+        // Arrange
+        var subAgent = CreateSubAgent(SubAgentStatus.Paused);
+
+        // Act
+        var cut = Render<SubAgentView>(parameters => parameters
+            .Add(p => p.SubAgent, subAgent));
+
+        // Assert
+        Assert.Contains(SharedResource.SubAgentPaused, cut.Markup);
+        var block = cut.Find(".subagent-block");
+        Assert.Contains("status-paused", block.ClassList);
+    }
+
+    [Fact]
     public void ShouldRenderPendingStatusClass_WhenStatusPending()
     {
         // Arrange
@@ -411,41 +427,49 @@ public class SubAgentViewTests : BunitContext
     }
 
     [Fact]
-    public void Interject_SendButton_NotDisabled_WhenRunning()
+    public void Interject_InputHiddenByDefault_ShownByAddMessageButton()
     {
-        // Arrange — кнопка отправки interject всегда активна: SubAgentView троттлится
-        // (ThrottledComponentBase), рендер по @oninput ветируется HasChanges, поэтому
-        // Disabled-атрибут по тексту поля не обновлялся бы (кнопка залипала disabled).
+        // Arrange — инпут скрыт по умолчанию, панель действий видна при Running
         var subAgent = CreateSubAgent(SubAgentStatus.Running, isExpanded: true);
 
-        // Act
         var cut = Render<SubAgentView>(parameters => parameters
             .Add(p => p.SubAgent, subAgent));
 
-        // Assert
-        var button = cut.Find(".subagent-interject button");
-        Assert.Null(button.GetAttribute("disabled"));
+        // Assert — панель действий есть, инпута нет
+        Assert.NotNull(cut.Find(".subagent-actions"));
+        Assert.Empty(cut.FindAll(".subagent-interject-input"));
+
+        // Act — клик по кнопке добавления сообщения
+        var addBtn = cut.FindAll(".subagent-actions button").Last();
+        cut.InvokeAsync(() => addBtn.Click());
+
+        // Assert — инпут показан
+        Assert.NotNull(cut.Find(".subagent-interject-input"));
     }
 
     [Fact]
-    public void Interject_ClickWithEmptyText_NoOp()
+    public void Interject_EmptyTextEnter_NoOp()
     {
-        // Arrange — пустой текст гвардится в SendInterject (кнопка активна, но no-op)
+        // Arrange — пустой текст гвардится в SendInterject (no-op), инпут остаётся
         var subAgent = CreateSubAgent(SubAgentStatus.Running, isExpanded: true);
 
         var cut = Render<SubAgentView>(parameters => parameters
             .Add(p => p.SubAgent, subAgent));
 
-        // Act — клик по кнопке с пустым полем
-        var button = cut.Find(".subagent-interject button");
-        cut.InvokeAsync(() => button.Click());
+        var addBtn = cut.FindAll(".subagent-actions button").Last();
+        cut.InvokeAsync(() => addBtn.Click());
 
-        // Assert — интерсект не добавлен (в сессии нет user-сообщений с IsInterject)
+        // Act — Enter с пустым полем
+        var input = cut.Find(".subagent-interject-input");
+        cut.InvokeAsync(() => input.KeyDown("Enter"));
+
+        // Assert — интерсект не добавлен, инпут не скрыт
         Assert.Equal(0, subAgent.GetMessageCount());
+        Assert.NotNull(cut.Find(".subagent-interject-input"));
     }
 
     [Fact]
-    public void Interject_ClickWithText_AddedToSession()
+    public void Interject_EnterWithText_AddedToSessionAndInputHides()
     {
         // Arrange
         var subAgent = CreateSubAgent(SubAgentStatus.Running, isExpanded: true);
@@ -453,15 +477,44 @@ public class SubAgentViewTests : BunitContext
         var cut = Render<SubAgentView>(parameters => parameters
             .Add(p => p.SubAgent, subAgent));
 
-        // Act — ввод текста и клик по кнопке
+        var addBtn = cut.FindAll(".subagent-actions button").Last();
+        cut.InvokeAsync(() => addBtn.Click());
+
+        // Act — ввод текста и Enter
         var input = cut.Find(".subagent-interject-input");
         cut.InvokeAsync(() => input.Input("extra requirement"));
-        var button = cut.Find(".subagent-interject button");
-        cut.InvokeAsync(() => button.Click());
+        cut.InvokeAsync(() => input.KeyDown("Enter"));
 
-        // Assert — interject добавлен в сессию ветки
+        // Assert — interject добавлен в сессию ветки, инпут скрыт обратно
+        // (рендер структурных изменений проходит через троттлинг 100ms — ждём его)
         Assert.Equal(1, subAgent.GetMessageCount());
         Assert.True(subAgent.AnyMessage(m => m.IsInterject));
+        cut.WaitForAssertion(
+            () => Assert.Empty(cut.FindAll(".subagent-interject-input")),
+            TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public void Pause_ToggleButton_PausesAndResumes()
+    {
+        // Arrange — первая кнопка панели действий: пауза/продолжить
+        var subAgent = CreateSubAgent(SubAgentStatus.Running, isExpanded: true);
+
+        var cut = Render<SubAgentView>(parameters => parameters
+            .Add(p => p.SubAgent, subAgent));
+
+        var pauseBtn = cut.Find(".subagent-actions button");
+        Assert.False(subAgent.IsPaused);
+
+        // Act / Assert — пауза: статус Paused
+        cut.InvokeAsync(() => pauseBtn.Click());
+        Assert.True(subAgent.IsPaused);
+        Assert.Equal(SubAgentStatus.Paused, subAgent.Status);
+
+        // Act / Assert — продолжить: статус восстановлен в Running
+        cut.InvokeAsync(() => pauseBtn.Click());
+        Assert.False(subAgent.IsPaused);
+        Assert.Equal(SubAgentStatus.Running, subAgent.Status);
     }
 
     [Fact]

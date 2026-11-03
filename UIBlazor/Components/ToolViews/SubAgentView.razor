@@ -28,6 +28,12 @@
                     <i class="fa-solid fa-hand fa-bounce"></i> @SharedResource.SubAgentNeedAction
                 </RadzenBadge>
             }
+            else if (SubAgent.Status == SubAgentStatus.Paused)
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Warning" Variant="Variant.Text">
+                    <i class="fa-solid fa-pause"></i> @SharedResource.SubAgentPaused
+                </RadzenBadge>
+            }
             else if (SubAgent.Status == SubAgentStatus.Completed)
             {
                 <RadzenBadge BadgeStyle="BadgeStyle.Success" Variant="Variant.Text">
@@ -63,11 +69,6 @@
                 <RadzenBadge BadgeStyle="BadgeStyle.Warning" Variant="Variant.Text">
                     <i class="fa-solid fa-compress fa-spin"></i> @SharedResource.Compressing
                 </RadzenBadge>
-            }
-            @if (SubAgent.CanCancel)
-            {
-                <RadzenButton Icon="stop_circle" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text" Size="ButtonSize.ExtraSmall"
-                              Click="@CancelSubAgentAsync" @onclick:stopPropagation="true" Title="@SharedResource.Cancel" />
             }
             </div>
         </div>
@@ -117,22 +118,37 @@
                 <div class="subagent-anchor" />
             </div>
 
-            @* Input line for writing to the branch while it is running (interject).
-               The message is added to the branch session immediately; the branch's agent
-               loop picks it up at the next turn boundary (after the current tool turn). *@
+            @* Bottom action bar: pause/resume, stop, add-message — one compact place,
+               semi-transparent icon buttons (Message Actions style in ChatMessageView).
+               The input appears on demand (add-message), Enter sends, then it hides back. *@
             @if (SubAgent.CanCancel)
             {
-                <div class="subagent-interject">
-                    <input type="text" class="subagent-interject-input text-input"
-                           placeholder="@SharedResource.InterjectPlaceholder"
-                           value="@_interjectText"
-                           @oninput="OnInterjectInput"
-                           @onkeydown="OnInterjectKeyDown" />
-                    @* Кнопка всегда активна: SubAgentView троттлится (ThrottledComponentBase),
-                       рендер по @oninput ветируется HasChanges — Disabled-атрибут не обновлялся бы.
-                       Пустой текст гвардится в SendInterject (no-op). *@
-                    <RadzenButton Icon="send" ButtonStyle="ButtonStyle.Base" Variant="Variant.Text" Size="ButtonSize.ExtraSmall"
-                                  Click="@(() => SendInterject())" Title="@SharedResource.SendMessage" />
+                @if (_isInputVisible)
+                {
+                    <div class="subagent-interject">
+                        <input type="text" class="subagent-interject-input text-input"
+                               placeholder="@SharedResource.InterjectPlaceholder"
+                               value="@_interjectText"
+                               @oninput="OnInterjectInput"
+                               @onkeydown="OnInterjectKeyDown" />
+                    </div>
+                }
+                <div class="subagent-actions" @onclick:stopPropagation="true">
+                    <Tooltip Text="@(SubAgent.IsPaused ? SharedResource.Resume : SharedResource.Pause)">
+                        <RadzenButton Icon="@(SubAgent.IsPaused ? "play_circle" : "pause")"
+                                      ButtonStyle="ButtonStyle.Base" Variant="Variant.Text" Size="ButtonSize.ExtraSmall"
+                                      Click="@TogglePause" />
+                    </Tooltip>
+                    <Tooltip Text="@SharedResource.Cancel">
+                        <RadzenButton Icon="close"
+                                      ButtonStyle="ButtonStyle.Base" Variant="Variant.Text" Size="ButtonSize.ExtraSmall"
+                                      Click="@CancelSubAgentAsync" />
+                    </Tooltip>
+                    <Tooltip Text="@SharedResource.AddMessage">
+                        <RadzenButton Icon="add_comment"
+                                      ButtonStyle="ButtonStyle.Base" Variant="Variant.Text" Size="ButtonSize.ExtraSmall"
+                                      Click="@ShowInterjectInput" />
+                    </Tooltip>
                 </div>
             }
 
@@ -192,6 +208,7 @@
     {
         SubAgentStatus.Running => "status-running",
         SubAgentStatus.NeedAction => "status-need-action",
+        SubAgentStatus.Paused => "status-paused",
         SubAgentStatus.Completed => "status-completed",
         SubAgentStatus.Failed => "status-failed",
         SubAgentStatus.Cancelled => "status-cancelled",
@@ -201,6 +218,7 @@
     private string IconColor => SubAgent.Status switch
     {
         SubAgentStatus.NeedAction => "var(--rz-warning)",
+        SubAgentStatus.Paused => "var(--rz-warning)",
         SubAgentStatus.Completed => "var(--rz-success)",
         SubAgentStatus.Failed => "var(--rz-danger)",
         SubAgentStatus.Cancelled => "var(--rz-warning)",
@@ -332,6 +350,12 @@
             _needsScroll = false;
             await JsRuntime.InvokeVoidAsync("scrollSubAgentToBottom", SubAgent.Id);
         }
+
+        if (_needsFocus)
+        {
+            _needsFocus = false;
+            await JsRuntime.InvokeVoidAsync("focusSubAgentInput", SubAgent.Id);
+        }
     }
 
     private void Toggle(bool expanded)
@@ -339,6 +363,44 @@
         SubAgent.IsExpanded = expanded;
         SubAgent.NotifyStateChanged();
     }
+
+    #region Bottom action bar (pause / stop / add message)
+
+    private bool _isInputVisible;
+    private bool _needsFocus;
+
+    private void TogglePause()
+    {
+        if (SubAgent.IsPaused)
+            SubAgent.Resume();
+        else
+            SubAgent.Pause();
+    }
+
+    private void ShowInterjectInput()
+    {
+        // Toggle: повторный клик скрывает инпут обратно в кнопки.
+        if (_isInputVisible)
+        {
+            _isInputVisible = false;
+            _interjectText = null;
+        }
+        else
+        {
+            _isInputVisible = true;
+            _needsFocus = true;
+        }
+        SubAgent.NotifyStateChanged();
+    }
+
+    private void HideInterjectInput()
+    {
+        _isInputVisible = false;
+        _interjectText = null;
+        SubAgent.NotifyStateChanged();
+    }
+
+    #endregion
 
     #region Interject (write to the running branch)
 
@@ -349,9 +411,11 @@
 
     private void OnInterjectKeyDown(KeyboardEventArgs e)
     {
-        // Enter без Shift/Ctrl — отправка
+        // Enter без Shift/Ctrl — отправка; Escape — скрыть инпут
         if (e is { Key: "Enter", CtrlKey: false, ShiftKey: false })
             SendInterject();
+        else if (e.Key == "Escape")
+            HideInterjectInput();
     }
 
     private void SendInterject()
@@ -360,10 +424,10 @@
         if (string.IsNullOrWhiteSpace(text))
             return;
 
-        // Отклоняется вне Running/Compressing (guard внутри) — текст сохраняется в поле,
-        // чтобы пользователь не потерял ввод при гонке с завершением ветки.
+        // Отклоняется вне Running/NeedAction/Compressing (guard внутри).
+        // После отправки инпут очищается и скрывается обратно в кнопку.
         if (SubAgent.TryAddInterject(text))
-            _interjectText = null;
+            HideInterjectInput();
     }
 
     #endregion

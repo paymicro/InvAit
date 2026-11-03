@@ -248,6 +248,11 @@ public sealed class AfSubAgentOrchestrator(
                     httpClient,
                     handler)
                 {
+                    // Pause gate: the loop checks it before each LLM call and each tool
+                    // execution, so a paused branch stops immediately (not only between
+                    // ProcessStreamAsync calls — the whole LLM↔tool round-trip runs
+                    // inside one call). Cancellation propagates normally.
+                    PauseGate = subAgent.WaitIfPausedAsync,
                     // Iteration cap continuation (legacy parity): 0 = unlimited.
                     MaximumIterations = profileManager.ActiveProfile.MaxIterationsPerSubAgent > 0
                         ? profileManager.ActiveProfile.MaxIterationsPerSubAgent

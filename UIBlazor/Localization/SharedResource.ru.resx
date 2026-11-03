@@ -126,6 +126,15 @@
   <data name="CallingTool" xml:space="preserve">
     <value>Инструмент</value>
   </data>
+  <data name="Pause" xml:space="preserve">
+    <value>Пауза</value>
+  </data>
+  <data name="Resume" xml:space="preserve">
+    <value>Продолжить</value>
+  </data>
+  <data name="AddMessage" xml:space="preserve">
+    <value>Добавить сообщение</value>
+  </data>
   <data name="Cancel" xml:space="preserve">
     <value>Отмена</value>
   </data>
@@ -482,6 +491,9 @@
   </data>
   <data name="SubAgentNeedAction" xml:space="preserve">
     <value>Требуется действие</value>
+  </data>
+  <data name="SubAgentPaused" xml:space="preserve">
+    <value>Приостановлен</value>
   </data>
   <data name="SubAgentCompleted" xml:space="preserve">
     <value>Завершён</value>

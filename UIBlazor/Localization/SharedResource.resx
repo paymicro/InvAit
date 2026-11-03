@@ -126,6 +126,15 @@
   <data name="CallingTool" xml:space="preserve">
     <value>Tool</value>
   </data>
+  <data name="Pause" xml:space="preserve">
+    <value>Pause</value>
+  </data>
+  <data name="Resume" xml:space="preserve">
+    <value>Resume</value>
+  </data>
+  <data name="AddMessage" xml:space="preserve">
+    <value>Add message</value>
+  </data>
   <data name="Cancel" xml:space="preserve">
     <value>Cancel</value>
   </data>
@@ -482,6 +491,9 @@
   </data>
   <data name="SubAgentNeedAction" xml:space="preserve">
     <value>Need action</value>
+  </data>
+  <data name="SubAgentPaused" xml:space="preserve">
+    <value>Paused</value>
   </data>
   <data name="SubAgentCompleted" xml:space="preserve">
     <value>Completed</value>

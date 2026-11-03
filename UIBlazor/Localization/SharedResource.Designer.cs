@@ -61,6 +61,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Add message.
+        /// </summary>
+        public static string AddMessage {
+            get {
+                return ResourceManager.GetString("AddMessage", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Ask.
         /// </summary>
         public static string ApprovalModeAsk {
@@ -925,6 +934,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Pause.
+        /// </summary>
+        public static string Pause {
+            get {
+                return ResourceManager.GetString("Pause", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Profile.
         /// </summary>
         public static string Profile {
@@ -1065,6 +1083,15 @@ namespace UIBlazor.Localization {
         public static string ReloadAfterChange {
             get {
                 return ResourceManager.GetString("ReloadAfterChange", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Resume.
+        /// </summary>
+        public static string Resume {
+            get {
+                return ResourceManager.GetString("Resume", resourceCulture);
             }
         }
         
@@ -1263,6 +1290,15 @@ namespace UIBlazor.Localization {
         public static string SubAgentNeedAction {
             get {
                 return ResourceManager.GetString("SubAgentNeedAction", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Paused.
+        /// </summary>
+        public static string SubAgentPaused {
+            get {
+                return ResourceManager.GetString("SubAgentPaused", resourceCulture);
             }
         }
         

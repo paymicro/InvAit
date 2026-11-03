@@ -180,11 +180,19 @@ window.scrollToToolCall = function(toolCallId) {
 
         // Подсветка
         el.classList.add('tool-call-highlight');
-        setTimeout(() => el.classList.remove('tool-call-highlight'), 4000);
     }, subAgentBlock ? 150 : 0);
 };
 
 // скролл диалога сабагента к последнему сообщению
+window.focusSubAgentInput = function(subAgentId) {
+    const block = document.querySelector(`[data-subagent-id="${subAgentId}"]`);
+    if (!block) return;
+    const input = block.querySelector('.subagent-interject-input');
+    if (input) {
+        input.focus();
+    }
+};
+
 window.scrollSubAgentToBottom = function(subAgentId) {
     const block = document.querySelector(`[data-subagent-id="${subAgentId}"]`);
     if (!block) return;

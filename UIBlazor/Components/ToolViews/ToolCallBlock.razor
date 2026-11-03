@@ -186,7 +186,6 @@
         _lastArgsLength = ToolCall.Function.Arguments.Length;
     }
 
-    private bool _disposed;
     private List<SubAgentMessage> _subAgents = [];
     private ToolCall? _subscribedToolCall;
 
@@ -274,13 +273,16 @@
         await EffectiveHandler.HandleAskUserAnswerAsync(ToolCall.Id, answer);
     }
 
-    public void Dispose()
+    protected override void Dispose(bool disposing)
     {
-        if (_disposed) return;
-        _disposed = true;
-        if (_subscribedToolCall is not null)
-            _subscribedToolCall.SubAgentsChanged -= OnSubAgentsChanged;
-        foreach (var subAgent in _subAgents)
-            subAgent.StateChanged -= OnSubAgentStateChanged;
+        if (disposing)
+        {
+            if (_subscribedToolCall is not null)
+                _subscribedToolCall.SubAgentsChanged -= OnSubAgentsChanged;
+            foreach (var subAgent in _subAgents)
+                subAgent.StateChanged -= OnSubAgentStateChanged;
+        }
+
+        base.Dispose(disposing);
     }
 }

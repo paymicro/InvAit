@@ -30,6 +30,14 @@ internal sealed class AfAgentLoop(
     /// </summary>
     public int? MaximumIterations { get; init; }
 
+    /// <summary>
+    /// Optional pause gate checked at every iteration boundary (before each LLM call
+    /// and before each tool execution). Sub-agent loops pass the branch's
+    /// WaitIfPausedAsync so a user-paused branch stops making progress immediately,
+    /// not only between ProcessStreamAsync calls. Cancellation propagates normally.
+    /// </summary>
+    public Func<CancellationToken, Task>? PauseGate { get; init; }
+
     public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(
         IReadOnlyList<WireMessage> messages,
         IEnumerable<Tool>? tools,
@@ -57,6 +65,10 @@ internal sealed class AfAgentLoop(
 
         for (var iteration = 0; ; iteration++)
         {
+            // Pause gate: a user-paused branch blocks here before the next LLM call.
+            if (PauseGate is not null)
+                await PauseGate(cancellationToken);
+
             var text = new StringBuilder();
 
             var updates = AfCancelRace.GuardAsync(
@@ -107,6 +119,11 @@ internal sealed class AfAgentLoop(
                 // Исполнение КАЖДОГО вызова РОВНО ОДИН РАЗ (последовательно — approval flow)
                 foreach (var tc in calls)
                 {
+                    // Pause gate before each tool execution: a paused branch does not run
+                    // the tool even if its approval arrived while paused.
+                    if (PauseGate is not null)
+                        await PauseGate(cancellationToken);
+
                     var result = await ExecuteToolForLoopAsync(tc, targetSession, resultCapture, cancellationToken);
                     chatMessages.Add(new ChatMessage(ChatRole.Tool, [new FunctionResultContent(tc.Id, result)]));
                 }
