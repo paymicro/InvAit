@@ -38,6 +38,17 @@ internal sealed class AfAgentLoop(
     /// </summary>
     public Func<CancellationToken, Task>? PauseGate { get; init; }
 
+    /// <summary>
+    /// Optional mid-run compression gate, checked at every iteration boundary (before each
+    /// LLM call). ChatService wires the main session's compression here: a long tool-heavy
+    /// run that crosses the token threshold mid-run compresses at the next turn boundary
+    /// (parity with AfSubAgentOrchestrator, which checks before every attempt). Returns the
+    /// updated consumed-message baseline: compression rewrites the session history
+    /// (SetMessages), so the interject scan index must be re-based — otherwise interjects
+    /// sent after compression would be silently missed for the rest of the run.
+    /// </summary>
+    public Func<ConversationSession, CancellationToken, Task<int>>? CompressionGate { get; set; }
+
     public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(
         IReadOnlyList<WireMessage> messages,
         IEnumerable<Tool>? tools,
@@ -69,7 +80,20 @@ internal sealed class AfAgentLoop(
             if (PauseGate is not null)
                 await PauseGate(cancellationToken);
 
+            // Mid-run compression check (todo.md: «сжатие не вызывается при достижении лимита
+            // в новый тур»): стартовая проверка в GetAiResponseInternalAsync покрывает только
+            // первый вызов, а суб-агентный оркестратор проверяет перед КАЖДЫМ вызовом — здесь
+            // паритет. Гейт возвращает новую базовую линию interject-скана (компрессия
+            // перезаписывает историю сессии через SetMessages).
+            if (CompressionGate is not null)
+                consumedSessionMessages = await CompressionGate(targetSession, cancellationToken);
+
             var text = new StringBuilder();
+            // Страховка (дефект 1): тулзы из дельт запоминаем ПО-ИТЕРАЦИОННО — delta.ToolCalls
+            // держит ту же ссылку на список, что capture.AccumulatedToolCalls, с финальными
+            // аргументами. Scope внутри итерации исключает повторное исполнение вызовов
+            // прошлых туров (interject / текстовый тур).
+            IReadOnlyList<ToolCall>? turnCalls = null;
 
             var updates = AfCancelRace.GuardAsync(
                 client.GetStreamingResponseAsync(chatMessages, chatOptions, cancellationToken),
@@ -80,17 +104,25 @@ internal sealed class AfAgentLoop(
             {
                 if (delta.Content is not null)
                     text.Append(delta.Content);
+                if (delta.ToolCalls is not null)
+                    turnCalls = delta.ToolCalls;
                 yield return delta; // прогрессивный UI сохраняется
             }
 
-            // Лимит итераций: всегда останов (вызовы на cap не исполняются — существующее поведение)
-            if (iteration >= maxIterations)
-                break;
 
-            var calls = resultCapture.AccumulatedToolCalls;
+
+            var calls = resultCapture.AccumulatedToolCalls ?? turnCalls;
 
             if (calls is not { Count: > 0 })
             {
+                // Лимит итераций (дефект 2): вызовов нет — останавливаемся, сигнал в UI через Error
+                // (NotifyIfNeeded покажет уведомление) вместо тихого break.
+                if (iteration >= maxIterations)
+                {
+                    resultCapture.Error = $"Iteration limit reached ({maxIterations} turns).";
+                    break;
+                }
+
                 // Interject-скан (финальный текстовый тур): user-сообщения, добавленные в сессию,
                 // пока цикл стримил, подхватываются здесь. Если вмешательств нет — ран завершается.
                 (interjects, consumedSessionMessages) = TakeNewUserMessages(targetSession, consumedSessionMessages);
@@ -132,6 +164,16 @@ internal sealed class AfAgentLoop(
                 // сообщения, добавленные в сессию пока тулзы работали, видны модели уже
                 // в следующем вызове.
                 (interjects, consumedSessionMessages) = TakeNewUserMessages(targetSession, consumedSessionMessages);
+
+                // Лимит итераций (дефект 2): проверка ПОСЛЕ исполнения — вызовы тура, пришедшего
+                // на cap-итерации, исполняются, результаты попадают в wire-историю и в сессию
+                // (модель увидит их в следующем прогоне). Раньше break стоял ДО чтения вызовов —
+                // вызовы уже ушли в UI, но не исполнялись (тихое прерывание на ~40-м вызове).
+                if (iteration >= maxIterations)
+                {
+                    resultCapture.Error = $"Iteration limit reached ({maxIterations} turns). Pending tool calls were executed; send a message to continue.";
+                    break;
+                }
             }
 
             foreach (var interject in interjects)

@@ -344,14 +344,18 @@ public partial class AiChat : RadzenComponent
         ParsePlan(message);
         await ChatService.SaveSessionAsync();
 
-        // Handle native tool_calls from the API response
-        message.ToolCalls = result.AccumulatedToolCalls;
+        // Handle native tool_calls from the API response.
+        // Guard (дефект 2): НЕ перезаписываем отрисованные на сообщении ToolCalls значением null —
+        // после cap-исполнения цикл сбрасывает AccumulatedToolCalls, и прежняя строка стирала бы
+        // блоки тулзов с результатами с последнего сообщения. При ToolsExecutedByAgent вызовы уже
+        // исполнены в цикле — return до перезаписи.
         if (result.ToolsExecutedByAgent)
         {
             // tools were already executed inside the loop
             // (approval + Result per toolCall); the UI must not re-process them.
             return;
         }
+        message.ToolCalls = result.AccumulatedToolCalls ?? message.ToolCalls;
 
         if (message.ToolCalls is { Count: > 0 })
         {

@@ -233,7 +233,7 @@
     flex-shrink: 0;
     opacity: 0.55;
     transition: opacity 0.2s;
-    justify-content: center;
+    justify-content: end;
 }
 
     .subagent-actions:hover {

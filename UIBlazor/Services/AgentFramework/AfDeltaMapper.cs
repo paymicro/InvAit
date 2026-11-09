@@ -94,8 +94,15 @@ internal sealed class AfDeltaMapper(ConversationSession targetSession, Completio
                 _turnAcc = [];
                 _isStart = true;
                 _inThink = false;
-                capture.AccumulatedToolCalls = null;
-
+                // ФИКС (todo.md, дефект 1): НЕ затираем capture.AccumulatedToolCalls на границе
+                // MessageId. _turnAcc сбрасывается (новый тур копит свои вызовы с чистого листа,
+                // иначе исполненные вызовы ушли бы на повторное исполнение), но capture остаётся
+                // ссылкой на завершённый список вызовов предыдущего хода с финальными аргументами.
+                // Некоторые провайдеры меняют MessageId ВНУТРИ одного HTTP-ответа (финальный
+                // usage-чанк, Responses API item-id) — прежний сброс терял накопленные вызовы:
+                // цикл видел null и молча завершался, не исполнив вызовы, уже отрисованные в UI
+                // («вызывается, но ничего не происходит»). Per-call reset по-прежнему делает
+                // PumpAsync (граница HTTP-туров), а цикл сбрасывает аккумулятор перед исполнением.
                 // In-call turn boundary (several MessageIds inside ONE HTTP call — e.g. the
                 // non-streaming adapter replaying messages): the UI closes the previous
                 // message on the marker (CalcTimings already stamped its badge with the

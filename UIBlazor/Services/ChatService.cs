@@ -43,6 +43,14 @@ public class ChatService(
     {
         Session.PropertyChanged -= SessionPropertyChanged;
         Session.PropertyChanged += SessionPropertyChanged;
+
+        // Mid-run compression gate (todo.md: порог, пересечённый в середине тулза-тяжёлого
+        // прогона): проверка перед КАЖДЫМ LLM-вызовом цикла (паритет с AfSubAgentOrchestrator).
+        // Стартовая проверка в AIChat.GetAiResponseInternalAsync покрывает только первый вызов.
+        // Компрессия основной сессии перезаписывает историю (SetMessages) — возвращаем новую
+        // базовую линию interject-скана цикла. Подключается здесь: field-initializer не может
+        // ссылаться на instance-метод.
+        _afLoop.CompressionGate = CompressMainSessionIfOverThresholdAsync;
     }
 
     public ConversationSession Session
@@ -87,6 +95,26 @@ public class ChatService(
     }
 
     public bool NeedCompression => Options.TokensToCompress > 0 && Session.TotalTokens > Options.TokensToCompress;
+
+    /// <summary>
+    /// Compression gate for the main agent loop (checked before every LLM call): when the
+    /// session crosses the token threshold mid-run, compress the main session and return the
+    /// updated consumed-message baseline for the loop's interject scan.
+    /// </summary>
+    private async Task<int> CompressMainSessionIfOverThresholdAsync(ConversationSession targetSession, CancellationToken cancellationToken)
+    {
+        if (!NeedCompression)
+            return targetSession.GetMessageCount();
+
+        logger.LogInformation("Token threshold crossed mid-run ({Tokens} > {Threshold}); compressing session.",
+            Session.TotalTokens, Options.TokensToCompress);
+
+        await foreach (var _ in CompressSessionAsync(new CompletionsResult(), cancellationToken).ConfigureAwait(false)) { }
+
+        // Compression rewrote the session history (SetMessages): the interject scan baseline
+        // must be re-based to the new message count.
+        return targetSession.GetMessageCount();
+    }
 
     public Task ProcessStreamAsync(
         VisualChatMessage message,

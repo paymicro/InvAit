@@ -27,22 +27,22 @@ internal static class AfMessageMapper
                     break;
 
                 case ChatMessageRole.Assistant when wire.ToolCalls is { Count: > 0 }:
-                {
-                    var contents = new List<AIContent>();
-                    if (!string.IsNullOrEmpty(wire.Content))
                     {
-                        contents.Add(new TextContent(wire.Content));
-                    }
+                        var contents = new List<AIContent>();
+                        if (!string.IsNullOrEmpty(wire.Content))
+                        {
+                            contents.Add(new TextContent(wire.Content));
+                        }
 
-                    foreach (var tc in wire.ToolCalls)
-                    {
-                        var args = ParseArguments(tc.Arguments);
-                        contents.Add(new FunctionCallContent(tc.Id, tc.Name, args));
-                    }
+                        foreach (var tc in wire.ToolCalls)
+                        {
+                            var args = ParseArguments(tc.Arguments);
+                            contents.Add(new FunctionCallContent(tc.Id, tc.Name, args));
+                        }
 
-                    result.Add(new ChatMessage(ChatRole.Assistant, contents));
-                    break;
-                }
+                        result.Add(new ChatMessage(ChatRole.Assistant, contents));
+                        break;
+                    }
 
                 case ChatMessageRole.Assistant:
                     result.Add(new ChatMessage(ChatRole.Assistant, wire.Content ?? string.Empty));

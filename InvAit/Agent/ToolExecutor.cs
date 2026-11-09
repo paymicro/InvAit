@@ -584,22 +584,21 @@ public class ToolExecutor
             var search = Regex.Replace(rep.OldStr, "\r", "").Split('\n').ToList();
             var replace = Regex.Replace(rep.NewStr, "\r", "").Split('\n').ToList();
             var hint = rep.ApproximateLine ?? -1;
-            var actualStart = UniversalDiffParser.FindInFile(lines, search, hint, 5);
+            // ApplyEdit replaces only the matched FRAGMENT of partially matched lines
+            // (e.g. search "List<string" inside "var fileContent = new List<string>"),
+            // and whole lines for exact matches.
+            var actualStart = EditApplier.ApplyEdit(lines, search, replace, hint, 5);
             if (actualStart == -1)
             {
                 failures.Add($"edit #{index} (line {hint}): oldStr not found");
                 continue;
             }
 
-            // Replace from actualStart
-            lines.RemoveRange(actualStart, search.Count);
-            lines.InsertRange(actualStart, replace);
-
             totalReplacements++;
         }
 
         // Per-edit отчёт: модель видит, КАКАЯ правка упала и почему — может прицельно
-        // повторить только упавшие. Пустой oldStr-фрагмент не ищем.
+        // повторить только упавшие. Пустой oldStr матчит пустую строку файла.
         var report = failures.Count == 0
             ? string.Empty
             : "\nFailed edits:\n - " + string.Join("\n - ", failures);

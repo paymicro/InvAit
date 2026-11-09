@@ -150,7 +150,7 @@ internal sealed class AfResponsesClient(ConnectionProfile profile, HttpClient ht
                         : evt.Message;
                     throw new LlmApiException(!string.IsNullOrWhiteSpace(errorMessage) ? errorMessage : json);
 
-                // Прочие типы (response.created, annotations...) — игнорируем
+                    // Прочие типы (response.created, annotations...) — игнорируем
             }
 
             // yield только непустых апдейтов (есть Contents или FinishReason)

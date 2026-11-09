@@ -402,13 +402,13 @@ public class AfAgentFrameworkTests
             () => 30,
             (_, _) => fake);
 
-    private static UsageContent UsageFrom(int input, int output, int total, int? reasoning)        => new(new UsageDetails
-        {
-            InputTokenCount = input,
-            OutputTokenCount = output,
-            TotalTokenCount = total,
-            ReasoningTokenCount = reasoning
-        });
+    private static UsageContent UsageFrom(int input, int output, int total, int? reasoning) => new(new UsageDetails
+    {
+        InputTokenCount = input,
+        OutputTokenCount = output,
+        TotalTokenCount = total,
+        ReasoningTokenCount = reasoning
+    });
 
     private static async Task<List<ChatDelta>> Collect(IAsyncEnumerable<ChatDelta> stream)
     {

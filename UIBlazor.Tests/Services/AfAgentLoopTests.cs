@@ -432,6 +432,159 @@ public class AfAgentLoopTests
     }
 
     /// <summary>
+    /// Cap-iteration probe (todo.md: агентный цикл прерывался на ~40-м вызове тулзов):
+    /// каждый тур возвращает tool_call, тулза исполняется мгновенно — цикл должен крутиться все
+    /// maxIterations туров и исполнять вызов КАЖДОГО тура, включая последний (на cap).
+    /// </summary>
+    [Fact(Timeout = 30000)]
+    public async Task Loop_EveryTurnReturnsToolCall_ExecutesAllCalls_IncludingAtIterationCap()
+    {
+        var executedCalls = new List<string>();
+        var handlerMock = new Mock<IToolCallHandler>();
+        handlerMock.Setup(h => h.PrepareToolsForApprovals(It.IsAny<List<ToolCall>>()));
+        handlerMock
+            .Setup(h => h.ProcessToolCallsAsync(It.IsAny<List<ToolCall>>(), It.IsAny<AppMode>(), It.IsAny<CancellationToken>()))
+            .Returns((List<ToolCall> calls, AppMode mode, CancellationToken ct) =>
+            {
+                executedCalls.AddRange(calls.Select(c => c.Id));
+                foreach (var call in calls)
+                    call.Result = new ToolResult { Content = "TOOL_DONE", Name = call.Function.Name, Success = true };
+                return Task.CompletedTask;
+            });
+
+        // Каждый тур: tool_call с уникальным id (45 туров), тур 46 — пустой (Stop).
+        // Cap = 45: цикл обязан исполнить вызов КАЖДОГО тура 1..45 (исполнение перед break),
+        // затем на пустом туре 46 остановиться по cap. Раньше break стоял ДО исполнения —
+        // вызов тура, пришедшего на cap-итерации, терялся молча.
+        const int totalTurns = 45;
+        var client = new MultiTurnToolCallClient(totalTurns);
+
+        var loop = new AfAgentLoop(
+            () => new ConnectionProfile { Endpoint = "https://api.test", ApiKey = "key", Model = "test-model", Stream = true, Temperature = 0.7f, MaxTokens = 1000 },
+            new HttpClient(),
+            handlerMock.Object,
+            (_, _) => client)
+        { MaximumIterations = totalTurns };
+        var session = new ConversationSession { Id = "s", Mode = AppMode.Agent };
+        var capture = new CompletionsResult();
+
+        await foreach (var _ in loop
+            .GetCompletionsAsync(
+                [new WireMessage { Role = ChatMessageRole.User, Content = "hi" }], [Tool()], session, capture, TestContext.Current.CancellationToken)
+            .ConfigureAwait(false))
+        {
+        }
+
+        // Каждый из 45 туров обязан исполнить свой tool call ровно один раз.
+        Assert.Equal(totalTurns, executedCalls.Count);
+        Assert.True(capture.ToolsExecutedByAgent);
+    }
+
+    /// <summary>
+    /// Accumulator-reset probe (todo.md, дефект 1): после чанков tool_call приходит финальный chunk
+    /// с НОВЫМ MessageId без вызовов — граница MessageId в AfDeltaMapper сбрасывает AccumulatedToolCalls,
+    /// цикл видит «вызовов нет» и завершается тихо, НЕ исполнив вызов, уже отрисованный в UI.
+    /// </summary>
+    [Fact(Timeout = 20000)]
+    public async Task Loop_ToolCallChunksFollowedByNewMessageIdChunk_StillExecutesToolCall()
+    {
+        var executedCalls = new List<string>();
+        var handlerMock = new Mock<IToolCallHandler>();
+        handlerMock.Setup(h => h.PrepareToolsForApprovals(It.IsAny<List<ToolCall>>()));
+        handlerMock
+            .Setup(h => h.ProcessToolCallsAsync(It.IsAny<List<ToolCall>>(), It.IsAny<AppMode>(), It.IsAny<CancellationToken>()))
+            .Returns((List<ToolCall> calls, AppMode mode, CancellationToken ct) =>
+            {
+                executedCalls.AddRange(calls.Select(c => c.Id));
+                foreach (var call in calls)
+                    call.Result = new ToolResult { Content = "TOOL_DONE", Name = call.Function.Name, Success = true };
+                return Task.CompletedTask;
+            });
+
+        // Тур 1: tool_call (MessageId "a") + финальный usage-подобный chunk с MessageId "b" (без вызовов).
+        // Тур 2: финальный текст (чтобы ран корректно завершился, если вызов исполнился).
+        var client = new ScriptedChatClient(
+            () =>
+            [
+                new ChatResponseUpdate(ChatRole.Assistant, (string?)null)
+                {
+                    MessageId = "a",
+                    Contents = [new FunctionCallContent("c1", "test_tool", new Dictionary<string, object?> { ["task"] = "do it" })],
+                    FinishReason = ChatFinishReason.ToolCalls
+                },
+                new ChatResponseUpdate(ChatRole.Assistant, (string?)null)
+                {
+                    MessageId = "b",
+                    FinishReason = ChatFinishReason.ToolCalls
+                }
+            ],
+            () =>
+            [
+                new ChatResponseUpdate(ChatRole.Assistant, "DONE") { FinishReason = ChatFinishReason.Stop }
+            ]);
+
+        var loop = CreateLoop(handlerMock.Object, client);
+        var session = new ConversationSession { Id = "s", Mode = AppMode.Agent };
+        var capture = new CompletionsResult();
+
+        await foreach (var _ in loop
+            .GetCompletionsAsync(
+                [new WireMessage { Role = ChatMessageRole.User, Content = "hi" }], [Tool()], session, capture, TestContext.Current.CancellationToken)
+            .ConfigureAwait(false))
+        {
+        }
+
+        // Вызов, отрисованный в UI, обязан быть исполнен ровно один раз, несмотря на
+        // следующий chunk с новым MessageId, сбросивший аккумулятор.
+        _ = executedCalls;
+        Assert.Single(executedCalls);
+        Assert.Equal("c1", executedCalls[0]);
+        Assert.True(capture.ToolsExecutedByAgent);
+    }
+
+    /// <summary>
+    /// Multi-turn scripted client: каждый тур возвращает один tool_call с уникальным id;
+    /// тур totalTurns+1 не приходит — поток завершается (ран заканчивается на cap).
+    /// </summary>
+    private sealed class MultiTurnToolCallClient(int totalTurns) : IChatClient
+    {
+        private int _call;
+
+        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            var turn = Interlocked.Increment(ref _call);
+            if (turn > totalTurns)
+                return SingleEmptyUpdate(); // после cap-тура цикл не делает вызовов; на всякий случай — пустой тур
+
+            return SingleToolCallUpdate($"call_{turn}");
+        }
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
+            => throw new NotSupportedException("The loop streams; GetResponseAsync is not used.");
+
+        private static async IAsyncEnumerable<ChatResponseUpdate> SingleToolCallUpdate(string callId)
+        {
+            await Task.Yield();
+            yield return new ChatResponseUpdate(ChatRole.Assistant, (string?)null)
+            {
+                Contents = [new FunctionCallContent(callId, "test_tool", new Dictionary<string, object?> { ["task"] = "do it" })],
+                FinishReason = ChatFinishReason.ToolCalls
+            };
+        }
+
+        private static async IAsyncEnumerable<ChatResponseUpdate> SingleEmptyUpdate()
+        {
+            await Task.Yield();
+            yield return new ChatResponseUpdate(ChatRole.Assistant, (string?)null) { FinishReason = ChatFinishReason.Stop };
+        }
+
+        public object? GetService(Type serviceType, object? serviceKey) => null;
+        public void Dispose() { }
+    }
+
+    /// <summary>
     /// Turn 1 streams through the real transport (WireMock SSE); turn 2 records the model
     /// history passed by the loop and yields the final text.
     /// </summary>

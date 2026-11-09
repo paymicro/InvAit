@@ -1,4 +1,4 @@
-﻿using System.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 
 // Radzen.Blazor (global usings in test infra) also declares ChatMessage.

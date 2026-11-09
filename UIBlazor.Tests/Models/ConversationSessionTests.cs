@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Tests.Models;
+namespace UIBlazor.Tests.Models;
 
 /// <summary>
 /// GetFormattedMessages filters empty turn-boundary messages (turn started but no payload

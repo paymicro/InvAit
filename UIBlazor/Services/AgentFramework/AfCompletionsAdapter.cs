@@ -98,7 +98,7 @@ internal sealed class AfCompletionsAdapter(
         CancellationToken cancellationToken)
     {
         var options = AfChatClientFactory.BuildChatOptions(profile, chatTools);
-        
+
         try
         {
             if (!profile.Stream)
