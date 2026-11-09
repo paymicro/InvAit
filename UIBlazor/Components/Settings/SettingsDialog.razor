@@ -23,7 +23,7 @@
                 </RadzenFormField>
 
                 <RadzenFormField Text="@SharedResource.Provider" Variant="Variant.Outlined" AllowFloatingLabel="false">
-                    <RadzenDropDown Disabled @bind-Value="@ProfileManager.ActiveProfile.Provider" Data="@_providers" Style="width: 100%" />
+                    <RadzenDropDown @bind-Value="@ProfileManager.ActiveProfile.ApiProviderType" Data="@_apiTypes" TextProperty="Text" ValueProperty="Value" Style="width: 100%" />
                 </RadzenFormField>
 
                 <RadzenFormField Text="@SharedResource.Endpoint" Variant="Variant.Outlined" AllowFloatingLabel="false">
@@ -241,7 +241,10 @@
         ToolCategory.Execution,
         ToolCategory.SubAgent
     ];
-    private readonly string[] _providers = ["OpenAI Compatible"];
+    private readonly List<object> _apiTypes = [
+        new { Text = "Chat Completions", Value = ApiProvider.ChatCompletions },
+        new { Text = "Responses API", Value = ApiProvider.Responses }
+    ];
     private bool _isModelUpdating;
     private readonly string _extraPayloadPlaceholder = """
                                                        {

@@ -103,30 +103,63 @@ public partial class ChatServiceTests
     [Fact]
     public async Task ProcessStreamAsync_UpdatesTimingsInRealTime()
     {
-        // Arrange
+        // Arrange - slow stream (delay before EVERY delta): the mid-stream snapshot
+        // (taken at the first onStateChange, i.e. after the first delta is processed)
+        // must already show ticking timings. The old test asserted >= 0 (always true) —
+        // these asserts are falsifiable.
         var message = new VisualChatMessage();
-        var deltas = CreateAsyncEnumerable(
+        var deltas = SlowStream(
+        [
             new ChatDelta { Content = "A" },
             new ChatDelta { Content = "BC" },
             new ChatDelta { Content = "DEF" }
-        );
+        ]);
 
-        // Act
-        await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, new CompletionsResult(), TestContext.Current.CancellationToken);
+        double midStreamTotalMs = -1;
+        double midStreamFirstTokenMs = -1;
 
-        // Assert - message.Timings is initialized and updated during streaming
-        Assert.NotNull(message.Timings);
-        Assert.True(message.Timings.TokensInSec >= 0);
-        Assert.True(message.Timings.Total.TotalMilliseconds >= 0);
+        // Act - snapshot values at the first onStateChange (Timings object is mutated
+        // in place, so the VALUES must be copied, not the reference)
+        await CreateChatService().ProcessStreamAsync(
+            message, deltas, null, null,
+            () =>
+            {
+                if (midStreamTotalMs < 0 && message.Timings is { } t)
+                {
+                    midStreamTotalMs = t.Total.TotalMilliseconds;
+                    midStreamFirstTokenMs = t.FirstToken.TotalMilliseconds;
+                }
+            },
+            new CompletionsResult(), TestContext.Current.CancellationToken);
+
+        // Assert - falsifiable: mid-stream (first delta) timings were already ticking
+        Assert.True(midStreamTotalMs > 0,
+            $"Timings.Total must be positive mid-stream, was {midStreamTotalMs}");
+        Assert.True(midStreamFirstTokenMs > 0,
+            $"Timings.FirstToken must be positive mid-stream, was {midStreamFirstTokenMs}");
+        // Final timings are at least the mid-stream ones (monotonic clock)
+        Assert.True(message.Timings.Total.TotalMilliseconds >= midStreamTotalMs,
+            $"Final Total {message.Timings.Total.TotalMilliseconds} must be >= mid-stream {midStreamTotalMs}");
+    }
+
+    /// <summary>Stream with a 50ms delay before every delta — makes wall-clock timings measurable.</summary>
+    private static async IAsyncEnumerable<ChatDelta> SlowStream(ChatDelta[] deltas)
+    {
+        foreach (var delta in deltas)
+        {
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+            yield return delta;
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  Reasoning token split: the badge (Timings.Tokens) must show only visible
-    //  tokens (the context footprint), reasoning goes to Timings.ReasoningTokens.
+    //  Reasoning token split: the badge (Timings.Tokens) shows the FULL generation
+    //  (including reasoning) both during streaming and after completion — a lower
+    //  final value would read as a bug; reasoning goes to Timings.ReasoningTokens.
     // ═══════════════════════════════════════════════════════════════════════
 
     [Fact]
-    public async Task ProcessStreamAsync_WithReasoningTokens_SplitsVisibleAndReasoning()
+    public async Task ProcessStreamAsync_WithReasoningTokens_BadgeShowsFullGeneration()
     {
         // Arrange - full completion is 100 tokens, of which 40 are reasoning
         var message = new VisualChatMessage();
@@ -136,8 +169,8 @@ public partial class ChatServiceTests
         // Act
         await CreateChatService().ProcessStreamAsync(message, deltas, null, null, null, capture, TestContext.Current.CancellationToken);
 
-        // Assert
-        Assert.Equal(60, message.Timings!.Tokens);
+        // Assert - finished badge keeps the full generation count, breakdown in ReasoningTokens
+        Assert.Equal(100, message.Timings!.Tokens);
         Assert.Equal(40, message.Timings.ReasoningTokens);
         // generation speed is based on the full output, including reasoning
         Assert.True(message.Timings.TokensInSec > 0);
@@ -165,11 +198,11 @@ public partial class ChatServiceTests
             capture,
             TestContext.Current.CancellationToken);
 
-        // Assert - every in-stream update includes reasoning; the final one does not
+        // Assert - the badge value is stable: full generation count mid-stream AND at the end
         Assert.NotEmpty(midStreamSnapshots);
         Assert.All(midStreamSnapshots, tokens => Assert.Equal(100, tokens));
         Assert.True(message.IsStreaming == false);
-        Assert.Equal(60, message.Timings!.Tokens);
+        Assert.Equal(100, message.Timings!.Tokens);
     }
 
     [Fact]
@@ -186,5 +219,90 @@ public partial class ChatServiceTests
         // Assert - behavior identical to pre-split versions
         Assert.Equal(75, message.Timings!.Tokens);
         Assert.Equal(0, message.Timings.ReasoningTokens);
+    }
+
+    [Fact]
+    public async Task ProcessStreamAsync_OnNewTurn_WithPayload_CreatesNextMessage()
+    {
+        // Arrange - two assistant turns: the boundary marker is followed by turn-2 content
+        var first = VisualChatMessage.CreateStreaming();
+        var second = VisualChatMessage.CreateStreaming();
+        var created = 0;
+
+        var deltas = CreateAsyncEnumerable(
+            new ChatDelta { Content = "A" },
+            new ChatDelta { IsStartOfTurn = true },
+            new ChatDelta { Content = "B" }
+        );
+
+        // Act
+        await CreateChatService().ProcessStreamAsync(
+            first, deltas, null, null, null, new CompletionsResult(),
+            TestContext.Current.CancellationToken,
+            onNewTurn: () => { created++; return second; });
+
+        // Assert
+        Assert.Equal(1, created);
+        Assert.Equal("A", first.Content);
+        Assert.False(first.IsStreaming);
+        Assert.Equal("B", second.Content);
+        Assert.False(second.IsEmptyTurn);
+    }
+
+    [Fact]
+    public async Task ProcessStreamAsync_OnNewTurn_WithoutPayload_CreatesNoEmptyMessage()
+    {
+        // Arrange - the turn boundary is the last delta (blank/cancelled turn)
+        var first = VisualChatMessage.CreateStreaming();
+        var pending = VisualChatMessage.CreateStreaming();
+        var created = 0;
+
+        var deltas = CreateAsyncEnumerable(
+            new ChatDelta { Content = "A" },
+            new ChatDelta { IsStartOfTurn = true }
+        );
+
+        // Act
+        await CreateChatService().ProcessStreamAsync(
+            first, deltas, null, null, null, new CompletionsResult(),
+            TestContext.Current.CancellationToken,
+            onNewTurn: () => { created++; return pending; });
+
+        // Assert - onNewTurn is called eagerly on the boundary; the turn produced no
+        // payload, so the eagerly created message is marked as an empty turn and closed.
+        Assert.Equal(1, created);
+        Assert.Equal("A", first.Content);
+        Assert.False(first.IsStreaming);
+        Assert.True(pending.IsEmptyTurn);
+        Assert.False(pending.IsStreaming);
+    }
+
+    [Fact]
+    public async Task ProcessStreamAsync_OnNewTurn_CalledExactlyOncePerBoundary()
+    {
+        // Arrange - one boundary followed by several payload deltas: the turn message
+        // is created exactly once (eagerly) and every payload lands in it.
+        var first = VisualChatMessage.CreateStreaming();
+        var second = VisualChatMessage.CreateStreaming();
+        var created = 0;
+
+        var deltas = CreateAsyncEnumerable(
+            new ChatDelta { Content = "A" },
+            new ChatDelta { IsStartOfTurn = true },
+            new ChatDelta { Content = "B" },
+            new ChatDelta { Content = "C" }
+        );
+
+        // Act
+        await CreateChatService().ProcessStreamAsync(
+            first, deltas, null, null, null, new CompletionsResult(),
+            TestContext.Current.CancellationToken,
+            onNewTurn: () => { created++; return second; });
+
+        // Assert
+        Assert.Equal(1, created);
+        Assert.Equal("BC", second.Content);
+        Assert.False(second.IsEmptyTurn);
+        Assert.False(second.IsStreaming);
     }
 }

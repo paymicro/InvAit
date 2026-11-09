@@ -199,14 +199,16 @@ public class AiChatInputTests : BunitContext
     }
 
     [Fact]
-    public void ShouldNotRenderSendButton_WhenLoading()
+    public void ShouldRenderSendButton_WhenLoading()
     {
-        // Arrange & Act
+        // Arrange & Act: во время стрима кнопка отправки остаётся видимой — сообщение уходит
+        // в сессию как interject и подхватывается агентным циклом на границе туров.
         var cut = Render<AiChatInput>(parameters => parameters
             .Add(p => p.IsLoading, true));
 
         // Assert
-        Assert.Throws<ElementNotFoundException>(() => cut.Find(".rz-chat-send-btn"));
+        var sendButton = cut.Find(".rz-chat-send-btn");
+        Assert.NotNull(sendButton);
     }
 
     [Fact]
@@ -267,17 +269,16 @@ public class AiChatInputTests : BunitContext
     }
 
     [Fact]
-    public void ShouldDisableTextarea_WhenLoading()
+    public void ShouldNotDisableTextarea_WhenLoading()
     {
-        // Arrange & Act
+        // Arrange & Act: поле ввода остаётся активным во время стрима — пользователь может
+        // набрать interject-сообщение (добавляется в сессию сразу после стримящегося).
         var cut = Render<AiChatInput>(parameters => parameters
             .Add(p => p.IsLoading, true));
 
         // Assert
         var textarea = cut.Find("textarea.text-input");
-        // In Blazor, disabled attribute is present (even if empty) when disabled
-        var disabledAttr = textarea.GetAttribute("disabled");
-        Assert.NotNull(disabledAttr);
+        Assert.Null(textarea.GetAttribute("disabled"));
     }
 
     #endregion

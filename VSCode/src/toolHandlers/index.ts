@@ -23,7 +23,7 @@ export function dispatchTool(action: string, payloadStr: string | undefined, wor
                 return readFiles(params, workspaceRoot);
             case 'create_file':
                 return createFile(params, workspaceRoot);
-            case 'edit_files':
+            case 'edit_file':
                 return editFiles(params, workspaceRoot);
             case 'delete_file':
                 return deleteFile(params, workspaceRoot);

@@ -126,6 +126,15 @@
   <data name="CallingTool" xml:space="preserve">
     <value>Tool</value>
   </data>
+  <data name="Pause" xml:space="preserve">
+    <value>Pause</value>
+  </data>
+  <data name="Resume" xml:space="preserve">
+    <value>Resume</value>
+  </data>
+  <data name="AddMessage" xml:space="preserve">
+    <value>Add message</value>
+  </data>
   <data name="Cancel" xml:space="preserve">
     <value>Cancel</value>
   </data>
@@ -164,6 +173,9 @@
   </data>
   <data name="InputPlaceholderPlan" xml:space="preserve">
     <value>Describe your goal to create a plan...</value>
+  </data>
+  <data name="InterjectPlaceholder" xml:space="preserve">
+    <value>Write to the sub-agent...</value>
   </data>
   <data name="MaxTokens" xml:space="preserve">
     <value>Max completion tokens</value>
@@ -477,6 +489,12 @@
   <data name="SubAgentRunning" xml:space="preserve">
     <value>Running...</value>
   </data>
+  <data name="SubAgentNeedAction" xml:space="preserve">
+    <value>Need action</value>
+  </data>
+  <data name="SubAgentPaused" xml:space="preserve">
+    <value>Paused</value>
+  </data>
   <data name="SubAgentCompleted" xml:space="preserve">
     <value>Completed</value>
   </data>
@@ -632,5 +650,8 @@
   </data>
   <data name="BashPatternTestCustom" xml:space="preserve">
     <value>Custom</value>
+  </data>
+  <data name="OpenFileInIde" xml:space="preserve">
+    <value>Open in IDE</value>
   </data>
 </root>

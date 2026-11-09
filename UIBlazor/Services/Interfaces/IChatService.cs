@@ -39,13 +39,10 @@ public interface IChatService : IDisposable
     IAsyncEnumerable<ChatDelta> CompressSessionAsync(CompletionsResult resultCapture, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Сжатие контекста для произвольной сессии (например, sub-agent).
-    /// Работает аналогично <see cref="CompressSessionAsync"/>, но с переданной сессией.
+    /// Сжатие контекста указанной сессии (например, ветки субагента). Остается 2 сообщения + сжатое сообщение.
+    /// Состояние LLM-вызова записывается в <paramref name="resultCapture"/>.
     /// </summary>
-    IAsyncEnumerable<ChatDelta> CompressSessionAsync(
-        ConversationSession session,
-        CompletionsResult resultCapture,
-        CancellationToken cancellationToken);
+    IAsyncEnumerable<ChatDelta> CompressSessionAsync(ConversationSession targetSession, CompletionsResult resultCapture, CancellationToken cancellationToken);
 
     /// <summary>
     /// Получение стандартного ответа.
@@ -53,18 +50,6 @@ public interface IChatService : IDisposable
     /// записывается в  <paramref name="resultCapture"/>.
     /// </summary>
     IAsyncEnumerable<ChatDelta> GetCompletionsAsync(CompletionsResult resultCapture, CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Получение ответа для sub-agent с произвольным системным промптом и набором инструментов.
-    /// Использует переданную сессию вместо основной.
-    /// Состояние записывается в <paramref name="resultCapture"/>.
-    /// </summary>
-    IAsyncEnumerable<ChatDelta> GetCompletionsForSubAgentAsync(
-        ConversationSession session,
-        string systemPrompt,
-        IEnumerable<Tool> enabledTools,
-        CompletionsResult resultCapture,
-        CancellationToken cancellationToken);
 
     /// <summary>
     /// Получение списка моделей по API
@@ -91,4 +76,19 @@ public interface IChatService : IDisposable
         Action? onStateChange,
         CompletionsResult resultCapture,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Agent-loop runs (FunctionInvokingChatClient): same as the base <see cref="ProcessStreamAsync(VisualChatMessage, ...)"/>;
+    /// the factory is invoked when the agent run starts a new assistant turn and its returned
+    /// message becomes the current streaming target.
+    /// </summary>
+    Task ProcessStreamAsync(
+        VisualChatMessage message,
+        IAsyncEnumerable<ChatDelta> deltas,
+        Action<string>? onContentUpdate,
+        Action<List<ToolCall>> onToolCallsUpdate,
+        Action? onStateChange,
+        CompletionsResult resultCapture,
+        CancellationToken cancellationToken,
+        Func<VisualChatMessage>? onNewTurn);
 }

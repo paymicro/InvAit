@@ -183,7 +183,7 @@ public class HeadlessMocker
                             6 |}
                             """
             },
-            BuiltInToolEnum.EditFiles => new VsToolResult
+            BuiltInToolEnum.EditFile => new VsToolResult
             {
                 Result = "All replacements is successful."
             },

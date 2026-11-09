@@ -61,6 +61,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Add message.
+        /// </summary>
+        public static string AddMessage {
+            get {
+                return ResourceManager.GetString("AddMessage", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Ask.
         /// </summary>
         public static string ApprovalModeAsk {
@@ -772,6 +781,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Write to the sub-agent....
+        /// </summary>
+        public static string InterjectPlaceholder {
+            get {
+                return ResourceManager.GetString("InterjectPlaceholder", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Loading....
         /// </summary>
         public static string Loading {
@@ -889,6 +907,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Open in IDE.
+        /// </summary>
+        public static string OpenFileInIde {
+            get {
+                return ResourceManager.GetString("OpenFileInIde", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Open Rules.
         /// </summary>
         public static string OpenRules {
@@ -903,6 +930,15 @@ namespace UIBlazor.Localization {
         public static string OpenSkills {
             get {
                 return ResourceManager.GetString("OpenSkills", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Pause.
+        /// </summary>
+        public static string Pause {
+            get {
+                return ResourceManager.GetString("Pause", resourceCulture);
             }
         }
         
@@ -1047,6 +1083,15 @@ namespace UIBlazor.Localization {
         public static string ReloadAfterChange {
             get {
                 return ResourceManager.GetString("ReloadAfterChange", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Resume.
+        /// </summary>
+        public static string Resume {
+            get {
+                return ResourceManager.GetString("Resume", resourceCulture);
             }
         }
         
@@ -1236,6 +1281,24 @@ namespace UIBlazor.Localization {
         public static string SubAgentFailed {
             get {
                 return ResourceManager.GetString("SubAgentFailed", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Need action.
+        /// </summary>
+        public static string SubAgentNeedAction {
+            get {
+                return ResourceManager.GetString("SubAgentNeedAction", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Paused.
+        /// </summary>
+        public static string SubAgentPaused {
+            get {
+                return ResourceManager.GetString("SubAgentPaused", resourceCulture);
             }
         }
         

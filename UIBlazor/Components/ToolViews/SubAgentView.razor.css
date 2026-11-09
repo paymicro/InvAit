@@ -10,6 +10,15 @@
         animation: pulse-glow 2s infinite;
     }
 
+    .subagent-block.status-need-action {
+        border-left: 4px solid var(--rz-warning);
+        animation: pulse-glow 2s infinite;
+    }
+
+    .subagent-block.status-paused {
+        border-left: 4px solid var(--rz-warning);
+    }
+
     .subagent-block.status-completed {
         border-left: 4px solid var(--rz-success);
     }
@@ -27,20 +36,26 @@
     }
 
 /* Header */
+/* Заголовок рендерится компонентом Details (HeaderTemplate) — переопределяем .header,
+   чтобы сохранить прежний вид самодельного спойлера (background, hover, без рамки Details). */
+.subagent-details .header {
+    border-left: 0;
+    background: var(--rz-base-800);
+    color: inherit;
+    transition: background 0.2s;
+}
+
+    .subagent-details .header:hover {
+        background: var(--rz-base-700);
+    }
+
 .subagent-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.5rem 0.8rem;
-    cursor: pointer;
     user-select: none;
-    background: var(--rz-base-800);
-    transition: background 0.2s;
+    width: 100%;
 }
-
-    .subagent-header:hover {
-        background: var(--rz-base-700);
-    }
 
 .subagent-header-left {
     display: flex;
@@ -77,16 +92,6 @@
     gap: 0.4rem;
     flex-shrink: 0;
 }
-
-.subagent-arrow {
-    transition: transform 0.3s;
-    color: var(--rz-base-500);
-    font-size: 0.7rem;
-}
-
-    .subagent-arrow.expanded {
-        transform: rotate(180deg);
-    }
 
 /* Body */
 .subagent-body {
@@ -203,6 +208,63 @@
     gap: 0.3rem;
     margin-top: 0.3rem;
 }
+
+/* User interject message ("write to the branch while it works") */
+.subagent-user-interject {
+    overflow-anchor: none;
+    align-self: flex-end;
+    max-width: 85%;
+    padding: 0.35rem 0.6rem;
+    border-radius: 10px 10px 2px 10px;
+    background: var(--rz-primary-dark);
+    color: var(--rz-on-primary-dark);
+    font-size: 0.8rem;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* Bottom action bar: pause / stop / add message — compact, unobtrusive
+   (Message Actions style: semi-transparent text-variant icon buttons) */
+.subagent-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    flex-shrink: 0;
+    opacity: 0.55;
+    transition: opacity 0.2s;
+    justify-content: end;
+}
+
+    .subagent-actions:hover {
+        opacity: 1;
+    }
+
+::deep.subagent-actions .rzi {
+    font-size: 1rem;
+    font-weight: 400 !important;
+}
+
+/* Interject input row (visible on demand via the add-message button) */
+.subagent-interject {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+}
+
+    .subagent-interject .subagent-interject-input {
+        flex: 1;
+        min-width: 0;
+        font-size: 0.8rem;
+        padding: 0.3rem 0.55rem;
+        border-radius: 6px;
+        resize: none;
+        border: 0px;
+        background-color: var(--rz-chat-message-user-background-color);
+        color: var(--rz-chat-message-user-color);
+        padding: 0.8rem;
+    }
 
 @keyframes pulse-glow {
     0% {
