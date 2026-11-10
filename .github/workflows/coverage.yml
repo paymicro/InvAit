@@ -30,7 +30,7 @@ jobs:
           dotnet restore UIBlazor.Tests/UIBlazor.Tests.csproj
           dotnet restore ToolCore.Tests/ToolCore.Tests.csproj
 
-      - name: Test & Collect Coverage
+      - name: Test & Collect Coverage (UIBlazor)
         # Белый список: считаем покрытие только продуктивной сборки UI.
         # Новые NuGet-зависимости не попадут в отчет автоматически.
         run: |
@@ -39,24 +39,6 @@ jobs:
       - name: Test & Collect Coverage (ToolCore)
         run: |
           dotnet test --project ToolCore.Tests/ToolCore.Tests.csproj -c Release --results-directory TestResults/ToolCore --coverlet --coverlet-output-format cobertura --coverlet-include "[ToolCore]*"
-          
-      - name: Analyse SonarScanner for .NET
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: |
-          dotnet tool install --global dotnet-sonarscanner
-          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
-          
-          dotnet-sonarscanner begin \
-            /k:"InvAit" \
-            /o:"paymicro" \
-            /d:sonar.token="${{ secrets.SONAR_TOKEN }}" \
-            /d:sonar.host.url="https://sonarcloud.io" \
-            /d:sonar.cs.vstest.reportsPaths="TestResults/**/*.trx" \
-            /d:sonar.cs.cobertura.reportsPaths="TestResults/**/coverage.cobertura.*.xml"
-        
-          dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
 
       - name: Generate Report
         uses: danielpalme/ReportGenerator-GitHub-Action@5.5.2
