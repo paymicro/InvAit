@@ -23,6 +23,11 @@ jobs:
 
       - name: Install Workloads (Blazor only)
         run: dotnet workload restore UIBlazor/UIBlazor.csproj
+        
+      - name: Install SonarScanner for .NET
+        run: |
+          dotnet tool install --global dotnet-sonarscanner
+          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
       - name: Restore (Only .NET 10 Projects)
         run: |
@@ -31,11 +36,31 @@ jobs:
           dotnet restore ToolCore.Tests/ToolCore.Tests.csproj
 
       - name: Test & Collect Coverage (UIBlazor)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         # Белый список: считаем покрытие только продуктивной сборки UI.
         # Новые NuGet-зависимости не попадут в отчет автоматически.
         run: |
-          dotnet test --project UIBlazor.Tests/UIBlazor.Tests.csproj -c Release --results-directory TestResults/UIBlazor --coverlet --coverlet-output-format cobertura --coverlet-include "[UIBlazor]*"
-          
+          dotnet-sonarscanner begin \
+            /k:"InvAit" \
+            /o:"paymicro" \
+            /d:sonar.token="${{ secrets.SONAR_TOKEN }}" \
+            /d:sonar.host.url="https://sonarcloud.io" \
+            /d:sonar.cs.vstest.reportsPaths="TestResults/**/*.trx" \
+            /d:sonar.cs.cobertura.reportsPaths="TestResults/**/coverage.cobertura.xml"
+
+          # Запуск тестов для всего решения (.sln). 
+          # Флаг --collect автоматически подтянет Coverlet как для .NET 10, так и для .NET Standard 2.0
+          dotnet test InvAit.slnx -c Release \
+            --results-directory TestResults \
+            --logger "trx" \
+            --collect:"XPlat Code Coverage" \
+            --coverlet-output-format cobertura \
+            --coverlet-include "[UIBlazor]*"
+
+          dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
+      
       - name: Sonar analyze
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -46,8 +71,6 @@ jobs:
             /o:"paymicro" \
             /d:sonar.token="${{ secrets.SONAR_TOKEN }}" \
             /d:sonar.host.url="https://sonarcloud.io"
-
-          dotnet build
 
           dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
 
