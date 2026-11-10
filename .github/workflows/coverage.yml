@@ -58,6 +58,7 @@ jobs:
             --collect:"XPlat Code Coverage" \
             --coverlet-output-format cobertura \
             --coverlet-include "[UIBlazor]*"
+            --property:ExcludeProjects=VsCode
 
           dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
       
