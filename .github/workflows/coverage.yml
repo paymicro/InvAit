@@ -35,7 +35,7 @@ jobs:
           dotnet restore UIBlazor.Tests/UIBlazor.Tests.csproj
           dotnet restore ToolCore.Tests/ToolCore.Tests.csproj
 
-      - name: Test & Collect Coverage (UIBlazor)
+      - name: Test & Collect Coverage & Analyse
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -50,28 +50,19 @@ jobs:
             /d:sonar.cs.vstest.reportsPaths="TestResults/**/*.trx" \
             /d:sonar.cs.cobertura.reportsPaths="TestResults/**/coverage.cobertura.xml"
 
-          # Запуск тестов для всего решения (.sln). 
-          # Флаг --collect автоматически подтянет Coverlet как для .NET 10, так и для .NET Standard 2.0
-          dotnet test InvAit.slnx -c Release \
-            --results-directory TestResults \
+          dotnet test UIBlazor.Tests/UIBlazor.Tests.csproj -c Release \
+            --results-directory TestResults/UIBlazor \
             --logger "trx" \
             --collect:"XPlat Code Coverage" \
             --coverlet-output-format cobertura \
             --coverlet-include "[UIBlazor]*"
-            --property:ExcludeProjects=VsCode
 
-          dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
-      
-      - name: Sonar analyze
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: |
-          dotnet-sonarscanner begin \
-            /k:"InvAit" \
-            /o:"paymicro" \
-            /d:sonar.token="${{ secrets.SONAR_TOKEN }}" \
-            /d:sonar.host.url="https://sonarcloud.io"
+          dotnet test ToolCore.Tests/ToolCore.Tests.csproj -c Release \
+            --results-directory TestResults/ToolCore \
+            --logger "trx" \
+            --collect:"XPlat Code Coverage" \
+            --coverlet-output-format cobertura \
+            --coverlet-include "[ToolCore]*"
 
           dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
 
