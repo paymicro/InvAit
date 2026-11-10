@@ -160,7 +160,7 @@ public partial class AiChat : RadzenComponent
     private async Task ScrollToBottomAsync()
     {
         await Task.Yield();
-        await JsRuntime.InvokeVoidAsync("scrollToAnchor");
+        await JsRuntime.InvokeVoidAsync("scrollToAnchor", _cts.Token);
     }
 
     private async Task GetAiResponseAsync()

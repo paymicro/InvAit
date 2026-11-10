@@ -57,15 +57,3 @@ var options = new McpServerOptions
 
 await using var server = McpServer.Create(new StdioServerTransport("echo"), options);
 await server.RunAsync();
-
-namespace ToolCore.Tests.TestAssets
-{
-    public static class EchoMarker
-    {
-    }
-
-    public static class SpawnArgs
-    {
-        public static readonly string[] Values = Environment.GetCommandLineArgs();
-    }
-}

@@ -91,7 +91,7 @@ public class DynamicEnvironmentHttpMessageHandler(IJSRuntime jsRuntime) : Delega
         }
         catch (Exception ex)
         {
-            cancellationRegistration.Dispose();
+            await cancellationRegistration.DisposeAsync();
             try { dotNetRef.Dispose(); } catch { }
             await jsRuntime.InvokeVoidAsync("console.log", $"[InvAit C#] sendNetworkRequest JS call THREW: {ex.Message}");
             throw;
@@ -108,7 +108,7 @@ public class DynamicEnvironmentHttpMessageHandler(IJSRuntime jsRuntime) : Delega
         {
             // Only clean up on error/cancellation — on success, dotNetRef is
             // disposed by VscodeResponseBridge.ReceiveEnd after the stream completes.
-            cancellationRegistration.Dispose();
+            await cancellationRegistration.DisposeAsync();
             DynamicEnvironmentHttpMessageHandler.ActiveStreams.TryRemove(requestId, out _);
             try { dotNetRef.Dispose(); } catch { }
             await jsRuntime.InvokeVoidAsync("console.log", $"[InvAit C#] tcs.Task threw: {ex.Message}");

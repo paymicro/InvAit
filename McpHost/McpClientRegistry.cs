@@ -161,7 +161,7 @@ public sealed class McpClientRegistry : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _reaperTimer.Dispose();
+        await _reaperTimer.DisposeAsync();
         await StopAllAsync();
         GC.SuppressFinalize(this);
     }
@@ -284,10 +284,10 @@ public sealed class McpClientRegistry : IAsyncDisposable
             EnvironmentVariables = env,
             InheritEnvironmentVariables = false,
             ShutdownTimeout = TimeSpan.FromSeconds(5),
-            StandardErrorLines = line =>
+            StandardErrorLines = async line =>
             {
                 if (!string.IsNullOrWhiteSpace(line))
-                    Console.Error.WriteLine($"[mcp:{parameters.ServerId}] {line}");
+                    await Console.Error.WriteLineAsync($"[mcp:{parameters.ServerId}] {line}");
             },
         });
     }

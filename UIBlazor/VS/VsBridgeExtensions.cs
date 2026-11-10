@@ -23,7 +23,7 @@ public static class VsBridgeExtensions
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Failed to open file '{filePath}': {ex.Message}");
+            await Console.Error.WriteLineAsync($"Failed to open file '{filePath}': {ex.Message}");
             return VsToolResult.Failed(BasicEnum.OpenFile, ex.Message);
         }
     }

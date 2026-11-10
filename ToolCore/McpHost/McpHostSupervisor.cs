@@ -164,7 +164,7 @@ public sealed class McpHostSupervisor : IAsyncDisposable
         var lockTaken = false;
         try
         {
-            lockTaken = await _stateLock.WaitAsync(TimeSpan.FromSeconds(20)).ConfigureAwait(false);
+            lockTaken = await _stateLock.WaitAsync(TimeSpan.FromSeconds(20), CancellationToken.None).ConfigureAwait(false);
         }
         catch (ObjectDisposedException)
         {
@@ -244,7 +244,7 @@ public sealed class McpHostSupervisor : IAsyncDisposable
             await _writeLock.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
             try
             {
-                await FrameCodec.WriteFrameAsync(_pipe!, bytes).ConfigureAwait(false);
+                await FrameCodec.WriteFrameAsync(_pipe!, bytes, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
@@ -489,7 +489,7 @@ public sealed class McpHostSupervisor : IAsyncDisposable
         string? fireReason = null;
         try
         {
-            lockTaken = _stateLock.Wait(0);
+            lockTaken = _stateLock.Wait(0, _connectionCts?.Token ?? CancellationToken.None);
         }
         catch (ObjectDisposedException)
         {

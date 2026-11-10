@@ -107,7 +107,7 @@ public abstract class ThrottledComponentBase : ComponentBase, IDisposable
             // Ошибка отложенного рендера больше не глотается молча — видна в консоли браузера.
             // ex.ToString() включает type+message+stack: для диагностики Blazor-ошибок рендера
             // message без stack часто бесполезен.
-            Console.Error.WriteLine($"[ThrottledComponentBase] delayed render failed: {ex}");
+            await Console.Error.WriteLineAsync($"[ThrottledComponentBase] delayed render failed: {ex}");
         }
     }
 
