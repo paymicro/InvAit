@@ -52,7 +52,7 @@ jobs:
 
           dotnet test --project UIBlazor.Tests/UIBlazor.Tests.csproj -c Release --results-directory TestResults/UIBlazor --coverlet --coverlet-output-format cobertura --coverlet-include "[UIBlazor]*"
           
-          dotnet test --project UIBlazor.Tests/ToolCore.Tests.csproj -c Release --results-directory TestResults/ToolCore --coverlet --coverlet-output-format cobertura --coverlet-include "[ToolCore]*"
+          dotnet test --project ToolCore.Tests/ToolCore.Tests.csproj -c Release --results-directory TestResults/ToolCore --coverlet --coverlet-output-format cobertura --coverlet-include "[ToolCore]*"
 
           dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
 
