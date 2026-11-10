@@ -19,7 +19,7 @@ for (var i = 0; i < args.Length - 1; i++)
 
 if (string.IsNullOrWhiteSpace(pipeName))
 {
-    Console.Error.WriteLine("[mcphost] --pipe-name is required.");
+    await Console.Error.WriteLineAsync("[mcphost] --pipe-name is required.");
     return 2;
 }
 
@@ -45,7 +45,7 @@ try
 }
 catch (Exception ex)
 {
-    Console.Error.WriteLine("[mcphost] registry shutdown error: " + ex.Message);
+    await Console.Error.WriteLineAsync("[mcphost] registry shutdown error: " + ex.Message);
 }
 
 Console.WriteLine("[mcphost] exiting.");

@@ -215,7 +215,7 @@ public class ProcessExecutor(ILogger logger)
             // netstandard2.0 не имеет File.WriteAllTextAsync — используем синхронную запись.
             File.WriteAllText(tempScript, bashScript, new UTF8Encoding(false));
 
-            await Task.Delay(100); // чуть ожидаем, а то файл не всегда создается
+            await Task.Delay(100, cancellationToken); // чуть ожидаем, а то файл не всегда создается
             if (!File.Exists(tempScript))
                 return new ProcessResult { Success = false, Error = "Failed to create TMP sh file" };
 

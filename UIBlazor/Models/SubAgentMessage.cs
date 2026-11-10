@@ -389,7 +389,7 @@ public class SubAgentMessage
 
         // Acquire synchronously: the gate is free unless a resume raced in (then
         // Pause is a no-op anyway — the loop will not block).
-        _pauseGate.Wait();
+        _pauseGate.Wait(_cancelSource?.Token ?? CancellationToken.None);
         IsPaused = true;
         _statusBeforePause = Status;
         Status = SubAgentStatus.Paused;

@@ -643,17 +643,17 @@ public class AiChatTests : BunitContext
         // turn 1 — different content (not a repeat of "turn1 partial").
         _mockChatService
             .SetupSequence(x => x.GetCompletionsAsync(It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
-            .Returns(CreateFailingStream(
+            .Returns(CreateFailingStreamAsync(
                 [
                     new ChatDelta { Content = "turn1 partial" },
                     new ChatDelta { Content = "turn2 partial", IsStartOfTurn = true }
                 ],
-                "boom"))
-            .Returns(CreateFailingStream(
+                "boom", TestContext.Current.CancellationToken))
+            .Returns(CreateFailingStreamAsync(
                 [
                     new ChatDelta { Content = "turn1 continued" }
                 ],
-                "boom"));
+                "boom", TestContext.Current.CancellationToken));
 
         var cut = Render<AiChat>();
 
@@ -689,7 +689,7 @@ public class AiChatTests : BunitContext
                 It.IsAny<VisualChatMessage>(),
                 It.IsAny<IAsyncEnumerable<ChatDelta>>(),
                 It.IsAny<Action<string>?>(),
-                It.IsAny<Action<List<ToolCall>>?>(),
+                It.IsAny<Action<List<ToolCall>>>(),
                 It.IsAny<Action?>(),
                 It.IsAny<CompletionsResult>(),
                 It.IsAny<CancellationToken>(),
@@ -731,14 +731,14 @@ public class AiChatTests : BunitContext
 
         _mockChatService
             .Setup(x => x.GetCompletionsAsync(It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
-            .Returns((CompletionsResult _, CancellationToken _) => CreateFailingStream(
+            .Returns((CompletionsResult _, CancellationToken _) => CreateFailingStreamAsync(
                 [new ChatDelta { Content = "Partial answer before failure" }],
-                failureMessage));
+                failureMessage, TestContext.Current.CancellationToken));
     }
 
-    private static async IAsyncEnumerable<ChatDelta> CreateFailingStream(
+    private static async IAsyncEnumerable<ChatDelta> CreateFailingStreamAsync(
         ChatDelta[] deltas, string failureMessage,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken ct)
     {
         foreach (var delta in deltas)
         {

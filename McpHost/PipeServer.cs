@@ -66,7 +66,7 @@ public sealed class PipeServer
                 break;
         }
 
-        idleTimer.Dispose();
+        await idleTimer.DisposeAsync();
 
         if (!_dispatcher.StopRequested && !cancellationToken.IsCancellationRequested && idleCts.IsCancellationRequested)
             Console.WriteLine("[mcphost] idle timeout reached, exiting.");
