@@ -35,6 +35,21 @@ jobs:
         # Новые NuGet-зависимости не попадут в отчет автоматически.
         run: |
           dotnet test --project UIBlazor.Tests/UIBlazor.Tests.csproj -c Release --results-directory TestResults/UIBlazor --coverlet --coverlet-output-format cobertura --coverlet-include "[UIBlazor]*"
+          
+      - name: Sonar analyze
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          dotnet-sonarscanner begin \
+            /k:"InvAit" \
+            /o:"paymicro" \
+            /d:sonar.token="${{ secrets.SONAR_TOKEN }}" \
+            /d:sonar.host.url="https://sonarcloud.io"
+
+          dotnet build
+
+          dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
 
       - name: Test & Collect Coverage (ToolCore)
         run: |
