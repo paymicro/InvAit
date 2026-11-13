@@ -160,7 +160,21 @@ public partial class AiChat : RadzenComponent
     private async Task ScrollToBottomAsync()
     {
         await Task.Yield();
-        await JsRuntime.InvokeVoidAsync("scrollToAnchor", _cts.Token);
+        try
+        {
+            // Скролл — UI-операция и не должен жить на токене LLM-прогона: после отмены
+            // ответа _cts остаётся cancelled до следующего GetAiResponseAsync (который сам
+            // не стартует, если SendMessage упадёт раньше), и InvokeVoidAsync на этом токене
+            // бросал OperationCanceledException в SendMessageAsync ДО старта нового прогона —
+            // сообщения добавлялись визуально, но не отправлялись агенту и не сохранялись
+            // в localStorage (до перезагрузки окна).
+            await JsRuntime.InvokeVoidAsync("scrollToAnchor");
+        }
+        catch (Exception ex)
+        {
+            // Скролл — косметика: сбой JS-моста не должен ломать конвейер сообщений.
+            Logger.LogWarning(ex, "ScrollToBottomAsync failed");
+        }
     }
 
     private async Task GetAiResponseAsync()

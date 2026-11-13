@@ -1,7 +1,6 @@
-namespace ToolCore.Tests.TestAssets
+namespace App;
+
+public static class SpawnArgs
 {
-    public static class SpawnArgs
-    {
-        public static readonly string[] Values = Environment.GetCommandLineArgs();
-    }
+    public static readonly string[] Values = Environment.GetCommandLineArgs();
 }

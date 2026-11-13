@@ -1,5 +1,7 @@
 using ModelContextProtocol.Server;
 
+namespace App;
+
 [McpServerToolType]
 public sealed class HttpEchoTools
 {

@@ -380,6 +380,72 @@ public class AiChatTests : BunitContext
         await compactRun;
     }
 
+    /// <summary>
+    /// Local variant of <see cref="StreamUntilReleased"/> without the static run counter:
+    /// the static _runCount is asserted by other tests in this class.
+    /// </summary>
+    private static async IAsyncEnumerable<ChatDelta> StreamUntilReleasedLocal(
+        TaskCompletionSource release, CompletionsResult capture, [EnumeratorCancellation] CancellationToken ct)
+    {
+        yield return new ChatDelta { Content = "streaming..." };
+        await release.Task.WaitAsync(ct);
+    }
+
+    /// <summary>
+    /// Regression for the cached-cancelled-token bug: cancel during a run, then send a
+    /// message. The old code used the run's _cts.Token for the UI scroll (ScrollToBottomAsync):
+    /// after cancellation the token stayed cancelled (recreated only inside
+    /// GetAiResponseAsync, which never ran), so SendMessageAsync threw
+    /// OperationCanceledException between AddMessage and GetAiResponseAsync — the message
+    /// appeared in the chat but was never sent to the agent and never saved to localStorage.
+    /// </summary>
+    [Fact]
+    public async Task SendMessageAsync_AfterCancel_NewRunStartsAndSessionSaved()
+    {
+        // Arrange: run 1 streams until released (cancel target).
+        var release = new TaskCompletionSource();
+        var runCount = 0;
+        // Local stream factory: does NOT touch the static _runCount that
+        // SendMessageAsync_WhileStreaming_InterjectAddedWithoutNewRun asserts on.
+        _mockChatService.Setup(x => x.GetCompletionsAsync(It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
+            .Returns((CompletionsResult capture, CancellationToken ct) =>
+            {
+                Interlocked.Increment(ref runCount);
+                capture.Model = "test-model";
+                return StreamUntilReleasedLocal(release, capture, ct);
+            });
+        var saveCount = 0;
+        _mockChatService.Setup(x => x.SaveSessionAsync())
+            .Callback(() => Interlocked.Increment(ref saveCount))
+            .Returns(Task.CompletedTask);
+        SetupProcessStreamConsume();
+
+        var cut = Render<AiChat>();
+
+        var firstRun = cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("start"));
+        await WaitUntilAsync(() => _session.GetMessagesSnapshot()[^1].Content == "streaming...");
+
+        // Act 1: cancel (the same path as the Cancel button in AiChatInput).
+        var cancelMethod = typeof(AiChat).GetMethod("CancelResponseAsync",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        await cut.InvokeAsync(async () => await (Task)cancelMethod!.Invoke(cut.Instance, null)!);
+        await WaitUntilAsync(() => _session.GetMessagesSnapshot().All(m => !m.IsStreaming));
+
+        // Release the gate AFTER run 1 fully unwound: the second run reuses the same
+        // stream factory, so an unreleased gate would block the new run forever.
+        release.TrySetResult();
+        await firstRun;
+
+        // Act 2: a message after cancel must NOT throw on the cancelled scroll token.
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("after cancel"));
+
+        // Assert: a new run started, the message is in the session, the session was saved.
+        Assert.Equal(2, runCount);
+        Assert.Contains(_session.GetMessagesSnapshot(),
+            m => m.Role == ChatMessageRole.User && m.Content == "after cancel");
+        Assert.True(saveCount > 0);
+    }
+
     private static async IAsyncEnumerable<ChatDelta> StreamUntilReleased(
         TaskCompletionSource release, CompletionsResult capture, [EnumeratorCancellation] CancellationToken ct)
     {

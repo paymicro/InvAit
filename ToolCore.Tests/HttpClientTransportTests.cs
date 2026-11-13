@@ -1,9 +1,7 @@
 using System.Diagnostics;
 using System.Net.Sockets;
-using System.Text.Json;
 using McpHost;
 using Shared.Contracts.McpHost;
-using ToolCore.Tests.TestAssets;
 
 namespace ToolCore.Tests;
 

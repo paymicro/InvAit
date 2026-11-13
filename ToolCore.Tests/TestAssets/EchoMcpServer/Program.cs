@@ -1,6 +1,6 @@
+using App;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using ToolCore.Tests.TestAssets;
 
 var options = new McpServerOptions
 {
