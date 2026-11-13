@@ -10,6 +10,8 @@ public class ToolCallBlockTests : BunitContext
     private readonly Mock<IToolManager> _mockToolManager;
     private readonly Mock<IToolCallHandler> _mockToolCallHandler;
     private readonly Mock<IContentFilter> _mockContentFilter;
+    private readonly Mock<ICommonSettingsProvider> _mockCommonSettingsProvider;
+    private readonly Mock<IProfileManager> _mockProfileManager;
     private string? _capturedJsonArgs;
     private string? _capturedDiffFilePath;
     private int? _capturedEditCount;
@@ -21,10 +23,17 @@ public class ToolCallBlockTests : BunitContext
         _mockToolManager = new Mock<IToolManager>();
         _mockToolCallHandler = new Mock<IToolCallHandler>();
         _mockContentFilter = new Mock<IContentFilter>();
+        _mockCommonSettingsProvider = new Mock<ICommonSettingsProvider>();
+        _mockCommonSettingsProvider.Setup(x => x.Current).Returns(new CommonOptions { ToolTimeoutMs = 120000 });
+        _mockProfileManager = new Mock<IProfileManager>();
+        _mockProfileManager.Setup(x => x.Current).Returns(new ProfileOptions());
+        _mockProfileManager.Setup(x => x.ActiveProfile).Returns(new ConnectionProfile());
 
         Services.AddSingleton(_mockToolManager.Object);
         Services.AddSingleton(_mockToolCallHandler.Object);
         Services.AddSingleton(_mockContentFilter.Object);
+        Services.AddSingleton(_mockCommonSettingsProvider.Object);
+        Services.AddSingleton(_mockProfileManager.Object);
         Services.AddRadzenComponents();
         JSInterop.SetupVoid("Radzen.preventArrows", _ => true);
 

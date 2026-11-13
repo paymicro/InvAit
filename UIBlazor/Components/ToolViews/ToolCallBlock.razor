@@ -1,6 +1,8 @@
 @inject IToolManager ToolManager
 @inject IToolCallHandler ToolCallHandler
 @inject IContentFilter ContentFilter
+@inject ICommonSettingsProvider CommonSettingsProvider
+@inject IProfileManager ProfileManager
 @inherits ThrottledComponentBase
 @implements IDisposable
 
@@ -21,6 +23,10 @@
             @if (ToolCall.Result is null)
             {
                 <i class="fa-regular fa-hourglass fa-spin"></i> <span>@SharedResource.CallingToolAwait</span>
+                @* Бейдж с убывающим таймером: для delegate_task — лимит времени субагента из профиля
+                   (AfSubAgentOrchestrator.CancelAfter), иначе ToolTimeoutMs из настроек.
+                   0 = без ограничения — бейдж не рендерится. *@
+                <ToolTimeoutBadge ToolCall="ToolCall" TimeoutMs="@BadgeTimeoutMs" />
             }
         </HeaderTemplate>
         <ChildContent>
@@ -223,6 +229,15 @@
         });
 
     private string DisplayName => ToolManager.GetTool(ToolCall.Function.Name)?.DisplayName ?? ToolCall.Function.Name;
+
+    /// <summary>
+    /// Timeout for the countdown badge, ms. delegate_task is NOT limited by ToolTimeoutMs —
+    /// its real watchdog is the per-sub-agent time limit from the active profile
+    /// (AfSubAgentOrchestrator: timeoutCts.CancelAfter). 0 = unlimited — no badge.
+    /// </summary>
+    private int BadgeTimeoutMs => ToolCall.Function.Name == BuiltInToolEnum.DelegateTask
+        ? ProfileManager.ActiveProfile.MaxExecutionTimePerSubAgent * 1000
+        : CommonSettingsProvider.Current.ToolTimeoutMs;
 
     /// <summary>
     /// Sub-agent's handler when inside SubAgentView, otherwise the main DI-injected handler.
