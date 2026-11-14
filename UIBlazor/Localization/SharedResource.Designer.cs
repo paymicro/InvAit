@@ -736,7 +736,7 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Request timeout.
+        ///   Looks up a localized string similar to Http request timeout.
         /// </summary>
         public static string HttpTimeoutSec {
             get {
@@ -1591,7 +1591,7 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Request timeout.
+        ///   Looks up a localized string similar to Tool result timeout.
         /// </summary>
         public static string ToolRequestTimeoutSec {
             get {

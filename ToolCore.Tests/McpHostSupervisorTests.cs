@@ -23,6 +23,7 @@ public class McpHostSupervisorIntegrationTests
             HostExecutablePath = GetHostDllPath(),
             SkipRuntimeCheck = true,
             StartTimeout = TimeSpan.FromSeconds(15),
+            RequestTimeout = TimeSpan.FromSeconds(20),
         };
         configure?.Invoke(options);
         return options;
@@ -31,6 +32,8 @@ public class McpHostSupervisorIntegrationTests
     [Fact]
     public async Task EnsureStarted_Ping_Succeeds()
     {
+        IntegrationGate.SkipIfDisabled();
+
         var supervisor = new McpHostSupervisor(CreateOptions(), new SilentLogger());
 
         try
@@ -54,6 +57,8 @@ public class McpHostSupervisorIntegrationTests
     [Fact]
     public async Task Status_ReturnsSuccessWithUptime()
     {
+        IntegrationGate.SkipIfDisabled();
+
         await using var supervisor = new McpHostSupervisor(CreateOptions(), new SilentLogger());
         await supervisor.EnsureStartedAsync(TestContext.Current.CancellationToken);
 
@@ -66,6 +71,8 @@ public class McpHostSupervisorIntegrationTests
     [Fact]
     public async Task UnknownMethod_ReturnsError()
     {
+        IntegrationGate.SkipIfDisabled();
+
         await using var supervisor = new McpHostSupervisor(CreateOptions(), new SilentLogger());
         await supervisor.EnsureStartedAsync(TestContext.Current.CancellationToken);
 
@@ -78,6 +85,8 @@ public class McpHostSupervisorIntegrationTests
     [Fact]
     public async Task Shutdown_StopsHostProcess()
     {
+        IntegrationGate.SkipIfDisabled();
+
         await using var supervisor = new McpHostSupervisor(CreateOptions(), new SilentLogger());
         await supervisor.EnsureStartedAsync(TestContext.Current.CancellationToken);
 
@@ -99,6 +108,8 @@ public class McpHostSupervisorIntegrationTests
     [Fact]
     public async Task Dispose_KillsHostProcess()
     {
+        IntegrationGate.SkipIfDisabled();
+
         var supervisor = new McpHostSupervisor(CreateOptions(), new SilentLogger());
         await supervisor.EnsureStartedAsync(TestContext.Current.CancellationToken);
         Assert.True(supervisor.IsConnected);
@@ -111,6 +122,8 @@ public class McpHostSupervisorIntegrationTests
     [Fact]
     public async Task ExternalKill_ThenEnsureStarted_RestartsNewProcess()
     {
+        IntegrationGate.SkipIfDisabled();
+
         await using var supervisor = new McpHostSupervisor(CreateOptions(), new SilentLogger());
         await supervisor.EnsureStartedAsync(TestContext.Current.CancellationToken);
         var firstPid = await GetHostPid(supervisor);
@@ -129,6 +142,8 @@ public class McpHostSupervisorIntegrationTests
     [Fact]
     public async Task Watchdog_DetectsLostContact_AndAutoRestarts()
     {
+        IntegrationGate.SkipIfDisabled();
+
         await using var supervisor = new McpHostSupervisor(CreateOptions(o =>
         {
             o.PingInterval = TimeSpan.FromMilliseconds(300);
@@ -165,6 +180,8 @@ public class McpHostSupervisorIntegrationTests
     [Fact]
     public async Task SendRequest_PerCallTimeout_DoesNotBlockSubsequentRequests()
     {
+        IntegrationGate.SkipIfDisabled();
+
         await using var supervisor = new McpHostSupervisor(CreateOptions(), new SilentLogger());
         await supervisor.EnsureStartedAsync(TestContext.Current.CancellationToken);
 

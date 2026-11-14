@@ -5,12 +5,20 @@ namespace ToolCore.Tests;
 
 public class McpClientRegistryIntegrationTests
 {
+    /// <summary>
+    /// Bounded tool timeout. The production default (10 min) would turn a stuck MCP server
+    /// into a CI hang instead of a fast, readable failure.
+    /// </summary>
+    private const int ToolTimeoutMs = 30_000;
+
     private static string GetEchoServerExePath()
         => TestAssetLocator.GetAssetExePath("EchoMcpServer", "EchoMcpServer.exe");
 
     [Fact]
     public async Task ListTools_ReturnsEchoServerTools()
     {
+        IntegrationGate.SkipIfDisabled();
+
         var registry = new McpClientRegistry();
         await using (registry)
         {
@@ -34,6 +42,8 @@ public class McpClientRegistryIntegrationTests
     [Fact]
     public async Task CallTool_Echo_ReturnsTextContent()
     {
+        IntegrationGate.SkipIfDisabled();
+
         var registry = new McpClientRegistry();
         await using (registry)
         {
@@ -43,6 +53,7 @@ public class McpClientRegistryIntegrationTests
                 Command = GetEchoServerExePath(),
                 ToolName = "echo",
                 Arguments = JsonSerializer.SerializeToElement(new { text = "world" }),
+                TimeoutMs = ToolTimeoutMs,
             }, CancellationToken.None);
 
             Assert.False(result.GetProperty("isError").GetBoolean());
@@ -56,6 +67,8 @@ public class McpClientRegistryIntegrationTests
     [Fact]
     public async Task CallTool_Fail_ReturnsIsError()
     {
+        IntegrationGate.SkipIfDisabled();
+
         var registry = new McpClientRegistry();
         await using (registry)
         {
@@ -65,6 +78,7 @@ public class McpClientRegistryIntegrationTests
                 Command = GetEchoServerExePath(),
                 ToolName = "fail",
                 Arguments = JsonSerializer.SerializeToElement(new { }),
+                TimeoutMs = ToolTimeoutMs,
             }, CancellationToken.None);
 
             Assert.True(result.GetProperty("isError").GetBoolean());
@@ -74,6 +88,8 @@ public class McpClientRegistryIntegrationTests
     [Fact]
     public async Task CallTool_UnknownTool_ReturnsErrorResult()
     {
+        IntegrationGate.SkipIfDisabled();
+
         var registry = new McpClientRegistry();
         await using (registry)
         {
@@ -82,6 +98,7 @@ public class McpClientRegistryIntegrationTests
                 ServerId = "echo-test",
                 Command = GetEchoServerExePath(),
                 ToolName = "no_such_tool",
+                TimeoutMs = ToolTimeoutMs,
             }, CancellationToken.None);
 
             Assert.True(result.GetProperty("isError").GetBoolean());
@@ -91,6 +108,8 @@ public class McpClientRegistryIntegrationTests
     [Fact]
     public async Task Environment_Sanitized_AllowlistKept_SecretsDropped()
     {
+        IntegrationGate.SkipIfDisabled();
+
         Environment.SetEnvironmentVariable("INVGEN_TEST_SECRET", "top-secret", EnvironmentVariableTarget.Process);
 
         try
@@ -114,6 +133,8 @@ public class McpClientRegistryIntegrationTests
     [Fact]
     public async Task UserEnv_OverridesDefaults()
     {
+        IntegrationGate.SkipIfDisabled();
+
         var registry = new McpClientRegistry();
         await using (registry)
         {
@@ -124,6 +145,7 @@ public class McpClientRegistryIntegrationTests
                 ToolName = "get_env",
                 Arguments = JsonSerializer.SerializeToElement(new { name = "ECHO_CUSTOM_VAR" }),
                 Env = new Dictionary<string, string> { ["ECHO_CUSTOM_VAR"] = "custom-value" },
+                TimeoutMs = ToolTimeoutMs,
             }, CancellationToken.None);
 
             var text = result.GetProperty("content")[0].GetProperty("text").GetString();
@@ -134,6 +156,8 @@ public class McpClientRegistryIntegrationTests
     [Fact]
     public async Task StopAll_DisposesServers_NextCallRestarts()
     {
+        IntegrationGate.SkipIfDisabled();
+
         var registry = new McpClientRegistry();
         await using (registry)
         {
@@ -166,6 +190,8 @@ public class McpClientRegistryIntegrationTests
     [Fact]
     public async Task LaunchParamsChanged_SameServerId_ClientRestarts()
     {
+        IntegrationGate.SkipIfDisabled();
+
         var registry = new McpClientRegistry();
         await using (registry)
         {
@@ -181,6 +207,8 @@ public class McpClientRegistryIntegrationTests
     [Fact]
     public async Task SpawnArgs_PassedAsArray_SpacesPreservedWithoutSplitter()
     {
+        IntegrationGate.SkipIfDisabled();
+
         var registry = new McpClientRegistry();
         await using (registry)
         {
@@ -198,6 +226,7 @@ public class McpClientRegistryIntegrationTests
                 Command = GetEchoServerExePath(),
                 Args = ["--probe", "hello world", "x"],
                 ToolName = "spawn_args",
+                TimeoutMs = ToolTimeoutMs,
             }, CancellationToken.None);
 
             Assert.False(result.GetProperty("isError").GetBoolean());
@@ -247,6 +276,8 @@ public class McpClientRegistryIntegrationTests
     [Fact]
     public async Task KilledChildProcess_AutoRecovers_OnNextCall()
     {
+        IntegrationGate.SkipIfDisabled();
+
         var registry = new McpClientRegistry();
         await using (registry)
         {
@@ -257,6 +288,7 @@ public class McpClientRegistryIntegrationTests
                 Command = GetEchoServerExePath(),
                 ToolName = "spawn_args",
                 Args = ["--marker", marker],
+                TimeoutMs = ToolTimeoutMs,
             };
 
             var first = await registry.CallToolAsync(launch, CancellationToken.None);
@@ -268,6 +300,7 @@ public class McpClientRegistryIntegrationTests
                 Command = launch.Command,
                 Args = launch.Args,
                 ToolName = "exit",
+                TimeoutMs = ToolTimeoutMs,
             };
             await Assert.ThrowsAnyAsync<Exception>(
                 () => registry.CallToolAsync(exitCall, CancellationToken.None));
@@ -289,6 +322,8 @@ public class McpClientRegistryIntegrationTests
     [Fact]
     public async Task CallTool_Cyrillic_RoundTripsUnescaped()
     {
+        IntegrationGate.SkipIfDisabled();
+
         var registry = new McpClientRegistry();
         await using (registry)
         {
@@ -298,6 +333,7 @@ public class McpClientRegistryIntegrationTests
                 Command = GetEchoServerExePath(),
                 ToolName = "cyr",
                 Arguments = JsonSerializer.SerializeToElement(new { text = "мир — «тест» \"в кавычках\"" }),
+                TimeoutMs = ToolTimeoutMs,
             }, CancellationToken.None);
 
             Assert.False(result.GetProperty("isError").GetBoolean());
@@ -329,6 +365,7 @@ public class McpClientRegistryIntegrationTests
             ToolName = "get_env",
             Arguments = JsonSerializer.SerializeToElement(new { name = variableName }),
             Env = env,
+            TimeoutMs = ToolTimeoutMs,
         }, CancellationToken.None);
 
         return result.GetProperty("content")[0].GetProperty("text").GetString() ?? string.Empty;

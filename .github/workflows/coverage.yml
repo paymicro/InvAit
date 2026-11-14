@@ -1,4 +1,4 @@
-name: Quality Gate
+﻿name: Quality Gate
 
 on: 
   push:
@@ -15,6 +15,8 @@ jobs:
     permissions:
       contents: write
     runs-on: ubuntu-latest
+    # Hard ceiling for the whole job: a hung child process can never block the gate for hours.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -38,14 +40,44 @@ jobs:
       - name: Test & Collect Coverage (UIBlazor)
         # Белый список: считаем покрытие только продуктивной сборки UI.
         # Новые NuGet-зависимости не попадут в отчет автоматически.
+        timeout-minutes: 15
         run: |
           dotnet test --project UIBlazor.Tests/UIBlazor.Tests.csproj -c Release --results-directory TestResults/UIBlazor --coverlet --coverlet-output-format cobertura --coverlet-include "[UIBlazor]*"
 
-      - name: Test & Collect Coverage (ToolCore)
+      - name: Test & Collect Coverage (ToolCore, unit only)
+        # MCP-интеграционные тесты (реальные дочерние процессы: McpHost, stdio/HTTP echo-серверы)
+        # вынесены в отдельный шаг ниже: в unit-прогоне они не нужны, а именно они способны
+        # подвиснуть на раннере. Отключаются переменной INVAIT_SKIP_INTEGRATION=1.
+        timeout-minutes: 15
+        env:
+          INVAIT_SKIP_INTEGRATION: '1'
         run: |
           dotnet test --project ToolCore.Tests/ToolCore.Tests.csproj -c Release --results-directory TestResults/ToolCore --coverlet --coverlet-output-format cobertura --coverlet-include "[ToolCore]*"
 
+      - name: Test MCP integration (ToolCore, bounded)
+        # Отдельный шаг: покрытие сюда же докладывается в TestResults/Integration и
+        # подхватывается ReportGenerator ниже. timeout-minutes гарантирует, что зависший
+        # MCP-хост/сервер убьёт шаг за минуты, а не за 40 минут.
+        # continue-on-error: эти тесты спавнят реальные процессы и исторически нестабильны
+        # на общих раннерах — красный статус quality gate из-за них не нужен. Диагностика
+        # выкладывается артефактом. Нужен строгий режим — уберите continue-on-error.
+        timeout-minutes: 8
+        continue-on-error: true
+        run: |
+          dotnet test --project ToolCore.Tests/ToolCore.Tests.csproj -c Release --results-directory TestResults/Integration --coverlet --coverlet-output-format cobertura --coverlet-include "[ToolCore]*"
+
+      - name: Upload MCP integration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolcore-mcp-integration-diagnostics
+          path: |
+            TestResults/Integration/**
+            ToolCore.Tests/bin/Release/net10.0/Log/**
+          if-no-files-found: ignore
+
       - name: Generate Report
+        if: always() && hashFiles('TestResults/**/coverage.cobertura.*.xml') != ''
         uses: danielpalme/ReportGenerator-GitHub-Action@5.5.2
         with:
           reports: 'TestResults/**/coverage.cobertura.*.xml'

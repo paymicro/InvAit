@@ -72,6 +72,8 @@ Skills: `*SKILL.md` with YAML frontmatter. Local `{solutionDir}/**/skills/**` (p
 
 **Test (MTPv2):** `dotnet test --project UIBlazor.Tests/UIBlazor.Tests.csproj` or `dotnet test --project ToolCore.Tests/ToolCore.Tests.csproj` (integration tests spawn real test MCP servers). Or build and run *Tests.exe
 
+**MCP integration tests (ToolCore.Tests):** `McpClientRegistry*`, `McpHostSupervisor*`, `HttpClientTransport*` spawn real child processes (McpHost pipe, stdio/HTTP echo servers) and are the only process-dependent tests. Set `INVAIT_SKIP_INTEGRATION=1` to run the fast unit-only suite; CI runs them in a separate time-bounded step (see `IntegrationGate`). Tool timeouts in those tests are capped at 30 s on purpose — the production default (10 min) would turn a stuck MCP server into a CI hang.
+
 **Conventions:**
 - **Diff (`edits`):** Fuzzy matching (trim + case-insensitive). `approximateLine` hint ±5, then full-file search. Applied bottom-to-top.
 - **Tool Calling:** OpenAI-compatible, `strict: true`. Optional params use union types (`["string","null"]`).

@@ -13,6 +13,8 @@ public class HttpClientTransportIntegrationTests
     [Fact]
     public async Task ListTools_And_CallTool_OverStreamableHttp()
     {
+        IntegrationGate.SkipIfDisabled();
+
         var port = GetFreePort();
         var server = StartServer(port);
         try
@@ -38,6 +40,7 @@ public class HttpClientTransportIntegrationTests
                     Url = $"http://127.0.0.1:{port}/mcp",
                     ToolName = "echo",
                     Arguments = JsonSerializer.SerializeToElement(new { text = "over-http" }),
+                    TimeoutMs = 30_000,
                 }, CancellationToken.None);
 
                 Assert.False(result.GetProperty("isError").GetBoolean());

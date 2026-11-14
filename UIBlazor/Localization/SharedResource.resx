@@ -379,10 +379,10 @@
     <value>Limit Stop. Increase the maximum output tokens.</value>
   </data>
   <data name="ToolRequestTimeoutSec" xml:space="preserve">
-    <value>Request timeout</value>
+    <value>Tool result timeout</value>
   </data>
   <data name="HttpTimeoutSec" xml:space="preserve">
-    <value>Request timeout</value>
+    <value>Http request timeout</value>
   </data>
   <data name="ExtraHeaders" xml:space="preserve">
     <value>Extra headers</value>

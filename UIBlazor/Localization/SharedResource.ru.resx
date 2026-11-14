@@ -379,10 +379,10 @@
     <value>Остановка по лимитам. Увеличьте максимум выходных токенов</value>
   </data>
   <data name="ToolRequestTimeoutSec" xml:space="preserve">
-    <value>Тайм-аут запроса</value>
+    <value>Тайм-аут выполнения тулза</value>
   </data>
   <data name="HttpTimeoutSec" xml:space="preserve">
-    <value>Тайм-аут запроса</value>
+    <value>Тайм-аут http запроса</value>
   </data>
   <data name="ExtraHeaders" xml:space="preserve">
     <value>Дополнительные заголовки</value>
