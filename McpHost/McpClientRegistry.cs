@@ -13,6 +13,14 @@ public sealed class McpClientRegistry : IAsyncDisposable
 {
     private static readonly TimeSpan IdleLifetime = TimeSpan.FromMinutes(10);
 
+    /// <summary>
+    /// Upper bound for launching and initializing an MCP server. Without it a server that starts
+    /// but never answers the MCP <c>initialize</c> handshake hangs the caller forever - there is no
+    /// other timeout on this path (the per-call <see cref="McpCallToolParams.TimeoutMs"/> only
+    /// covers the tool call itself, i.e. after the client exists).
+    /// </summary>
+    private static readonly TimeSpan StartupTimeout = TimeSpan.FromSeconds(60);
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -254,7 +262,18 @@ public sealed class McpClientRegistry : IAsyncDisposable
 
         try
         {
-            return await McpClient.CreateAsync(transport, cancellationToken: cancellationToken);
+            using var startupCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            startupCts.CancelAfter(StartupTimeout);
+
+            try
+            {
+                return await McpClient.CreateAsync(transport, cancellationToken: startupCts.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException(
+                    $"MCP server '{parameters.ServerId}' did not complete the initialize handshake within {StartupTimeout.TotalSeconds:F0} s.");
+            }
         }
         catch (Exception ex)
         {

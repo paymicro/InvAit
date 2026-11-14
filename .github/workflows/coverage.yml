@@ -32,48 +32,67 @@ jobs:
         run: dotnet workload restore UIBlazor/UIBlazor.csproj
 
       - name: Restore (Only .NET 10 Projects)
+        # NuGetAudit=false: аудит уязвимостей тянет данные с nuget.org на каждом restore.
+        # На раннере с медленным/нестабильным egress это главный источник «зависаний в restore»:
+        # TCP-соединение к CDN висит в retransmit (cwnd схлопывается в 1) и шаг висит минутами.
+        # Аудит не нужен для сборки и покрытия — выключаем, чтобы restore был чисто локальным.
+        timeout-minutes: 10
         run: |
-          dotnet restore UIBlazor/UIBlazor.csproj
-          dotnet restore UIBlazor.Tests/UIBlazor.Tests.csproj
-          dotnet restore ToolCore.Tests/ToolCore.Tests.csproj
+          dotnet restore UIBlazor/UIBlazor.csproj -p:NuGetAudit=false
+          dotnet restore UIBlazor.Tests/UIBlazor.Tests.csproj -p:NuGetAudit=false
+          dotnet restore ToolCore.Tests/ToolCore.Tests.csproj -p:NuGetAudit=false
 
       - name: Test & Collect Coverage (UIBlazor)
         # Белый список: считаем покрытие только продуктивной сборки UI.
         # Новые NuGet-зависимости не попадут в отчет автоматически.
         timeout-minutes: 15
         run: |
-          dotnet test --project UIBlazor.Tests/UIBlazor.Tests.csproj -c Release --results-directory TestResults/UIBlazor --coverlet --coverlet-output-format cobertura --coverlet-include "[UIBlazor]*"
+          dotnet test --project UIBlazor.Tests/UIBlazor.Tests.csproj -c Release --no-restore --timeout 10m --show-slowest-tests 10 --results-directory TestResults/UIBlazor --coverlet --coverlet-output-format cobertura --coverlet-include "[UIBlazor]*"
+
+      - name: Build ToolCore.Tests (Release)
+        # Сборка вынесена отдельным шагом: если тестовый шаг вдруг долгий, по таймингам видно,
+        # что время ушло НЕ на компиляцию. Здесь же собираются TestAssets,
+        # включая ASP.NET echo-сервер для HTTP-транспорта.
+        timeout-minutes: 10
+        run: dotnet build ToolCore.Tests/ToolCore.Tests.csproj -c Release --no-restore
 
       - name: Test & Collect Coverage (ToolCore, unit only)
-        # MCP-интеграционные тесты (реальные дочерние процессы: McpHost, stdio/HTTP echo-серверы)
-        # вынесены в отдельный шаг ниже: в unit-прогоне они не нужны, а именно они способны
-        # подвиснуть на раннере. Отключаются переменной INVAIT_SKIP_INTEGRATION=1.
-        timeout-minutes: 15
+        # Два предохранителя сразу:
+        #  1) INVAIT_SKIP_INTEGRATION=1 — убирает MCP-тесты с реальными дочерними процессами.
+        #  2) --timeout 8m — глобальный лимит самого раннера: зависший тест/хост
+        #     будет принудительно прерван (Aborted) через 8 минут, а не через 40.
+        # --diagnostic пишет трассировку MTP в артефакт: по ней видно, на чём именно встало.
+        timeout-minutes: 12
         env:
           INVAIT_SKIP_INTEGRATION: '1'
         run: |
-          dotnet test --project ToolCore.Tests/ToolCore.Tests.csproj -c Release --results-directory TestResults/ToolCore --coverlet --coverlet-output-format cobertura --coverlet-include "[ToolCore]*"
+          dotnet test --project ToolCore.Tests/ToolCore.Tests.csproj -c Release --no-build \
+            --timeout 8m --show-slowest-tests 10 \
+            --diagnostic --diagnostic-output-directory TestResults/ToolCore/diag \
+            --results-directory TestResults/ToolCore \
+            --coverlet --coverlet-output-format cobertura --coverlet-include "[ToolCore]*"
 
       - name: Test MCP integration (ToolCore, bounded)
-        # Отдельный шаг: покрытие сюда же докладывается в TestResults/Integration и
-        # подхватывается ReportGenerator ниже. timeout-minutes гарантирует, что зависший
-        # MCP-хост/сервер убьёт шаг за минуты, а не за 40 минут.
-        # continue-on-error: эти тесты спавнят реальные процессы и исторически нестабильны
-        # на общих раннерах — красный статус quality gate из-за них не нужен. Диагностика
-        # выкладывается артефактом. Нужен строгий режим — уберите continue-on-error.
-        timeout-minutes: 8
+        # Отдельный шаг с тем же лимитом раннера. Покрытие докладывается в TestResults/Integration
+        # и сливается в общий отчет ниже. continue-on-error: эти тесты спавнят реальные процессы
+        # и нестабильны на общих раннерах — красный статус quality gate из-за них не нужен.
+        timeout-minutes: 10
         continue-on-error: true
         run: |
-          dotnet test --project ToolCore.Tests/ToolCore.Tests.csproj -c Release --results-directory TestResults/Integration --coverlet --coverlet-output-format cobertura --coverlet-include "[ToolCore]*"
+          dotnet test --project ToolCore.Tests/ToolCore.Tests.csproj -c Release --no-build \
+            --timeout 6m --show-slowest-tests 10 \
+            --diagnostic --diagnostic-output-directory TestResults/Integration/diag \
+            --results-directory TestResults/Integration \
+            --coverlet --coverlet-output-format cobertura --coverlet-include "[ToolCore]*"
 
-      - name: Upload MCP integration diagnostics
+      - name: Upload ToolCore diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: toolcore-mcp-integration-diagnostics
+          name: toolcore-diagnostics
           path: |
+            TestResults/ToolCore/**
             TestResults/Integration/**
-            ToolCore.Tests/bin/Release/net10.0/Log/**
           if-no-files-found: ignore
 
       - name: Generate Report

@@ -359,7 +359,7 @@ public class ProcessExecutor(ILogger logger)
     }
 
     /// <summary>
-    /// Кроссплатформенное убийство всего дерева процессов для .NET Standard 2.0
+    /// Кроссплатформенное убийство всего дерева процессов для .NET Standard 2.0.
     /// </summary>
     private static void KillProcessTree(int pid)
     {
@@ -367,47 +367,38 @@ public class ProcessExecutor(ILogger logger)
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            try
-            {
-                using var p = Process.Start(new ProcessStartInfo
-                {
-                    FileName = "taskkill",
-                    Arguments = $"/T /F /PID {pid}",
-                    CreateNoWindow = true,
-                    UseShellExecute = false
-                });
-                p?.WaitForExit(3000);
-            }
-            catch { }
+            RunDetached("taskkill", $"/T /F /PID {pid}");
+            return;
         }
-        else
+
+        // Unix: сначала дети, потом сам процесс. Обратный порядок не работает — после смерти
+        // родителя дети переподвешиваются к init, и найти их по родительскому PID уже нельзя.
+        //
+        // ВАЖНО: здесь нельзя использовать `kill -9 -PID` как единственную попытку.
+        // Такой вызов убивает ГРУППУ процессов с PGID == PID, а дочерний процесс наследует
+        // PGID тест-хоста, поэтому kill завершается с ошибкой "No such process", но НЕ бросает
+        // исключение — процесс остаётся жив (тихая утечка осиротевших процессов).
+        RunDetached("pkill", $"-9 -P {pid}");
+        RunDetached("kill", $"-9 {pid}");
+    }
+
+    /// <summary>Запуск внешней утилиты с жёстким ожиданием; ошибки игнорируются.</summary>
+    private static void RunDetached(string fileName, string arguments)
+    {
+        try
         {
-            try
+            using var p = Process.Start(new ProcessStartInfo
             {
-                using var p = Process.Start(new ProcessStartInfo
-                {
-                    FileName = "kill",
-                    Arguments = $"-9 -{pid}",
-                    CreateNoWindow = true,
-                    UseShellExecute = false
-                });
-                p?.WaitForExit(3000);
-            }
-            catch
-            {
-                try
-                {
-                    using var p = Process.Start(new ProcessStartInfo
-                    {
-                        FileName = "kill",
-                        Arguments = $"-9 {pid}",
-                        CreateNoWindow = true,
-                        UseShellExecute = false
-                    });
-                    p?.WaitForExit(3000);
-                }
-                catch { }
-            }
+                FileName = fileName,
+                Arguments = arguments,
+                CreateNoWindow = true,
+                UseShellExecute = false,
+            });
+            p?.WaitForExit(3000);
+        }
+        catch
+        {
+            // Утилита недоступна в этой системе — не критично: следующая попытка может сработать.
         }
     }
 
