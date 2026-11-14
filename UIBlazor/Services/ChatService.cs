@@ -33,29 +33,59 @@ public class ChatService(
     private readonly AfAgentLoop _afLoop =
         new(() => profileManager.ActiveProfile, httpClient, toolCallHandler);
 
-
     public ConnectionProfile Options => profileManager.ActiveProfile;
 
     /// <summary>
     /// Подписка на события после создания экземпляра
     /// </summary>
-    public void Initialize()
+    public void Initialize() => EnsureWired();
+
+    private bool _wired;
+
+    /// <summary>
+    /// Idempotent one-time wiring of the invariants that must never depend on app startup order:
+    /// autosave of the current session and the loop's mid-run mode refresh. Called from
+    /// <see cref="Initialize"/> and lazily from the <see cref="Session"/> getter, so a host that
+    /// skips Initialize cannot silently lose persistence or the switch_mode refresh.
+    /// </summary>
+    private void EnsureWired()
     {
+        if (_wired)
+            return;
+        _wired = true;
+
         Session.PropertyChanged -= SessionPropertyChanged;
         Session.PropertyChanged += SessionPropertyChanged;
+        AttachAutosave(Session);
 
-        // Mid-run compression gate (todo.md: порог, пересечённый в середине тулза-тяжёлого
-        // прогона): проверка перед КАЖДЫМ LLM-вызовом цикла (паритет с AfSubAgentOrchestrator).
-        // Стартовая проверка в AIChat.GetAiResponseInternalAsync покрывает только первый вызов.
-        // Компрессия основной сессии перезаписывает историю (SetMessages) — возвращаем новую
-        // базовую линию interject-скана цикла. Подключается здесь: field-initializer не может
-        // ссылаться на instance-метод.
+        // Mid-run compression gate: checked before EVERY LLM call of the loop (parity with
+        // AfSubAgentOrchestrator). The start-of-run check in AiChat covers the first call only.
+        // Compression rewrites the session history (SetMessages), so the gate returns the new
+        // interject-scan baseline. Wired here: a field initializer cannot reference an
+        // instance method.
         _afLoop.CompressionGate = CompressMainSessionIfOverThresholdAsync;
+
+        // Mid-run mode switch: switch_mode mutates Session.Mode while the loop is running.
+        // The loop rebuilds its system prompt and tool set from this provider before the next
+        // LLM call, so the switch takes effect immediately instead of after the run.
+        _afLoop.ModeContextProvider = BuildModeContextAsync;
+    }
+
+    private async Task<ModeContext> BuildModeContextAsync(AppMode mode, CancellationToken cancellationToken)
+    {
+        var systemPrompt = await systemPromptBuilder.PrepareSystemPromptAsync(mode, cancellationToken).ConfigureAwait(false);
+        return new ModeContext(systemPrompt, toolManager.GetEnabledTools(mode).ToList());
     }
 
     public ConversationSession Session
     {
-        get;
+        get
+        {
+            // Lazy guarantee: the persistence and mode-refresh invariants are wired even if the
+            // host never called Initialize (idempotent, single bool check on a hot path).
+            EnsureWired();
+            return field;
+        }
         private set
         {
             if (field == value)
@@ -63,6 +93,7 @@ public class ChatService(
             field?.PropertyChanged -= SessionPropertyChanged;
             field = value;
             field?.PropertyChanged += SessionPropertyChanged;
+            AttachAutosave(field);
             SessionChanged?.Invoke(field, new PropertyChangedEventArgs(nameof(ConversationSession)));
         }
     } = CreateNewSession();
@@ -71,6 +102,91 @@ public class ChatService(
 
     private void SessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
         => SessionChanged?.Invoke(sender, e);
+
+    // ── Autosave ───────────────────────────────────────────────────────────
+    // Saving is an invariant of the session model, not a duty of every caller:
+    // ConversationSession raises Changed on structural mutations and this pump persists them.
+    // Callers never *have* to remember SaveSessionAsync — forgetting it can no longer lose work.
+    //
+    // Guarantees:
+    //  - burst coalescing: many mutations within AutosaveDelay produce ONE write;
+    //  - writes are serialized (localStorage interop must not interleave);
+    //  - a failed write is logged and retried by the next mutation/explicit flush;
+    //  - SaveSessionAsync() flushes immediately (explicit "persist now" hook).
+
+    private readonly object _autosaveSync = new();
+    private readonly HashSet<ConversationSession> _dirtySessions = [];
+    private readonly SemaphoreSlim _saveGate = new(1, 1);
+    private CancellationTokenSource? _autosaveDebounce;
+    private ConversationSession? _autosaveAttached;
+
+    /// <summary>Debounce window before a scheduled autosave write. Tests set it to zero.</summary>
+    internal TimeSpan AutosaveDelay { get; set; } = TimeSpan.FromMilliseconds(750);
+
+    /// <summary>
+    /// Subscribes the autosave pump to <paramref name="session"/>. Only the current session is
+    /// attached: callers persist the previous one explicitly before swapping, and a swap is
+    /// blocked while an agent run is in flight (the run pins its session).
+    /// </summary>
+    private void AttachAutosave(ConversationSession? session)
+    {
+        if (session is null || ReferenceEquals(_autosaveAttached, session))
+            return;
+
+        if (_autosaveAttached is not null)
+            _autosaveAttached.Changed -= OnSessionChanged;
+
+        _autosaveAttached = session;
+        session.Changed += OnSessionChanged;
+    }
+
+    private void DetachAutosave(ConversationSession session)
+    {
+        session.Changed -= OnSessionChanged;
+        if (ReferenceEquals(_autosaveAttached, session))
+            _autosaveAttached = null;
+
+        lock (_autosaveSync)
+            _dirtySessions.Remove(session);
+    }
+
+    private void OnSessionChanged(ConversationSession session)
+    {
+        CancellationToken token;
+        lock (_autosaveSync)
+        {
+            _dirtySessions.Add(session);
+            _autosaveDebounce?.Cancel();
+            _autosaveDebounce?.Dispose();
+            _autosaveDebounce = new CancellationTokenSource();
+            token = _autosaveDebounce.Token;
+        }
+
+        _ = AutosaveAfterDelayAsync(token);
+    }
+
+    private async Task AutosaveAfterDelayAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (AutosaveDelay > TimeSpan.Zero)
+                await Task.Delay(AutosaveDelay, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return; // a newer mutation re-scheduled the write
+        }
+
+        try
+        {
+            await SaveSessionAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // Never let a background save take the app down.
+            logger.LogError("Autosave failed: {Message}", ex.Message);
+        }
+    }
 
     public async Task<AiModelList> GetModelsAsync(CancellationToken cancellationToken)
     {
@@ -103,13 +219,15 @@ public class ChatService(
     /// </summary>
     private async Task<int> CompressMainSessionIfOverThresholdAsync(ConversationSession targetSession, CancellationToken cancellationToken)
     {
-        if (!NeedCompression)
+        // The gate is checked before EVERY LLM call of the loop, so it must read the PINNED
+        // session and re-arm its threshold — otherwise the next boundary compresses again.
+        if (Options.TokensToCompress <= 0 || targetSession.TotalTokens <= Options.TokensToCompress)
             return targetSession.GetMessageCount();
 
         logger.LogInformation("Token threshold crossed mid-run ({Tokens} > {Threshold}); compressing session.",
-            Session.TotalTokens, Options.TokensToCompress);
+            targetSession.TotalTokens, Options.TokensToCompress);
 
-        await foreach (var _ in CompressSessionAsync(new CompletionsResult(), cancellationToken).ConfigureAwait(false)) { }
+        await foreach (var _ in CompressSessionAsync(targetSession, new CompletionsResult(), cancellationToken).ConfigureAwait(false)) { }
 
         // Compression rewrote the session history (SetMessages): the interject scan baseline
         // must be re-based to the new message count.
@@ -356,6 +474,35 @@ public class ChatService(
 
         // Перезаписываем историю
         targetSession.SetMessages(keptMessages);
+
+        // Re-arm the compression threshold: the context just shrank, so TotalTokens must follow
+        // the kept history. Without this the mid-run gate (checked before every LLM call) sees
+        // "still over the limit" and re-summarizes the already compressed history at every turn
+        // boundary — an extra LLM call per turn plus a destructive SetMessages on live turns.
+        targetSession.TotalTokens = EstimateContextTokens(keptMessages);
+    }
+
+    /// <summary>
+    /// Rough context size of a message list (~4 chars per token — the same heuristic the
+    /// streaming estimate uses). Only used to re-arm the compression threshold after a
+    /// successful compression, where no provider usage number is available.
+    /// </summary>
+    private static int EstimateContextTokens(IEnumerable<VisualChatMessage> messages)
+    {
+        var chars = 0;
+        foreach (var message in messages)
+        {
+            chars += message.Content?.Length ?? 0;
+            if (message.ToolCalls is not { Count: > 0 })
+                continue;
+            foreach (var toolCall in message.ToolCalls)
+            {
+                chars += toolCall.Function.Arguments?.Length ?? 0;
+                chars += toolCall.Result?.Content?.Length ?? 0;
+            }
+        }
+
+        return chars / 4;
     }
 
     /// <summary>
@@ -378,19 +525,47 @@ public class ChatService(
         => CompressSessionCoreAsync(Session, resultCapture, cancellationToken);
 
     /// <summary>
-    /// Asynchronously saves the current session data to local storage using the session ID as the key.
+    /// Persists the current session and everything that changed since the last write.
+    /// Callable at any time: it is a "persist now" flush on top of the autosave invariant,
+    /// and it never throws (a failed write is logged and retried on the next flush).
     /// </summary>
-    /// <returns></returns>
     public async Task SaveSessionAsync()
     {
+        ConversationSession[] pending;
+        lock (_autosaveSync)
+        {
+            pending = [.. _dirtySessions, Session];
+            _dirtySessions.Clear();
+            _autosaveDebounce?.Cancel();
+            _autosaveDebounce?.Dispose();
+            _autosaveDebounce = null;
+        }
+
+        foreach (var session in pending.Distinct())
+            await SaveSessionCoreAsync(session).ConfigureAwait(false);
+    }
+
+    private async Task SaveSessionCoreAsync(ConversationSession session)
+    {
+        await _saveGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
         {
-            await localStorage.SetItemAsync(Session.Id, Session);
-            UpdateSessionCache(Session);
+            if (string.IsNullOrEmpty(session.Id))
+                return;
+
+            await localStorage.SetItemAsync(session.Id, session).ConfigureAwait(false);
+            UpdateSessionCache(session);
         }
         catch (Exception ex)
         {
-            logger.LogWarning("Failed to save session {id}: {message}", Session.Id, ex.Message);
+            // Keep the session dirty so the next mutation or explicit flush retries.
+            lock (_autosaveSync)
+                _dirtySessions.Add(session);
+            logger.LogError("Failed to save session {id}: {message}", session.Id, ex.Message);
+        }
+        finally
+        {
+            _saveGate.Release();
         }
     }
 
@@ -428,19 +603,22 @@ public class ChatService(
     private async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(
         IReadOnlyList<WireMessage> messages,
         bool withTools,
+        ConversationSession targetSession,
         CompletionsResult resultCapture,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         resultCapture.Reset();
 
-        var tools = withTools ? toolManager.GetEnabledTools(Session.Mode) : null;
+        // The session is PASSED IN, never re-read from the Session property: the whole run
+        // (history, mode, tools, compression gate) must stay pinned to the session it started in.
+        var tools = withTools ? toolManager.GetEnabledTools(targetSession.Mode) : null;
 
         // Runs WITH tools go through the tool-invocation loop (AfAgentLoop); runs WITHOUT
         // tools (context compression) go through the single-shot adapter. Sub-agent
         // branches build their own AfAgentLoop (AfSubAgentOrchestrator.RunBranchAsync).
         ICompletionsGateway gateway = withTools ? _afLoop : _afAdapter;
 
-        await foreach (var delta in gateway.GetCompletionsAsync(messages, tools, Session, resultCapture, cancellationToken))
+        await foreach (var delta in gateway.GetCompletionsAsync(messages, tools, targetSession, resultCapture, cancellationToken))
         {
             yield return delta;
         }
@@ -463,10 +641,13 @@ public class ChatService(
     /// <exception cref="Exception">Thrown if the chat completion request fails or the server returns an unsuccessful response.</exception>
     public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(CompletionsResult resultCapture, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        // Get formatted messages including conversation history
-        var messages = Session.GetFormattedMessages(await systemPromptBuilder.PrepareSystemPromptAsync(Session.Mode, cancellationToken), contentFilter);
+        // Pin the session: system prompt, history and tools belong to the session the run
+        // started in (a run never spans two sessions - NewSession is blocked while it runs).
+        var session = Session;
+        var messages = session.GetFormattedMessages(
+            await systemPromptBuilder.PrepareSystemPromptAsync(session.Mode, cancellationToken), contentFilter);
 
-        await foreach (var chatDelta in GetCompletionsAsync(messages, true, resultCapture, cancellationToken))
+        await foreach (var chatDelta in GetCompletionsAsync(messages, true, session, resultCapture, cancellationToken))
         {
             yield return chatDelta;
         }
@@ -510,8 +691,11 @@ public class ChatService(
 
     public async Task NewSessionAsync()
     {
-        // Save current session if it has messages
-        if (Session?.GetMessageCount() > 0)
+        // Flush the session being left (completed turns, tool results, mode) before the swap:
+        // a swapped-out session must never lose work that autosave has not written yet.
+        // A pending write counts as work even when the session has no messages (e.g. only the
+        // mode changed) — the message count alone would silently drop that write.
+        if (HasPendingWork(Session))
         {
             await SaveSessionAsync();
         }
@@ -547,15 +731,43 @@ public class ChatService(
 
     public async Task LoadSessionAsync(string id)
     {
-        Session = await TryLoadSessionAsync(id) ?? Session;
+        var loaded = await TryLoadSessionAsync(id);
+        if (loaded is null)
+            return;
+
+        if (HasPendingWork(Session))
+            await SaveSessionAsync();
+
+        Session = loaded;
+    }
+
+    /// <summary>
+    /// True when the session has content worth flushing: messages or a change that autosave has
+    /// not written yet (mode switch, compression rewrite, message removal).
+    /// </summary>
+    private bool HasPendingWork(ConversationSession? session)
+    {
+        if (session is null)
+            return false;
+        if (session.GetMessageCount() > 0)
+            return true;
+
+        lock (_autosaveSync)
+            return _dirtySessions.Contains(session);
     }
 
     public async Task DeleteSessionAsync(string id)
     {
         if (Session?.Id == id)
         {
+            DetachAutosave(Session);
             Session = CreateNewSession();
         }
+
+        // A pending autosave must not resurrect the file we are deleting.
+        lock (_autosaveSync)
+            _dirtySessions.RemoveWhere(s => s.Id == id);
+
         await localStorage.RemoveItemAsync(id);
 
         _recentSessionsCache?.RemoveAll(s => s.Id == id);
@@ -566,7 +778,7 @@ public class ChatService(
         return [.. (await localStorage.GetAllKeysAsync()).Where(k => k.StartsWith("session_"))];
     }
 
-    private static string GenerateSessionId() => $"session_{DateTime.Now:s}";
+    private static string GenerateSessionId() => $"session_{DateTime.Now:s}_{Guid.NewGuid():N}";
 
     private static ConversationSession CreateNewSession() => new() { Id = GenerateSessionId() };
 
@@ -581,12 +793,32 @@ public class ChatService(
     }
 
     private static DateTime ParseSessionCreatedAt(string id)
-        => DateTime.TryParseExact(id[8..], "s", CultureInfo.InvariantCulture, DateTimeStyles.None, out var result)
+    {
+        // Id format: "session_{yyyy-MM-ddTHH:mm:ss}_{guid}". The timestamp is the leading 19
+        // characters of the payload; the suffix only guarantees uniqueness (two sessions created
+        // in the same second used to share an Id and silently overwrite each other in storage).
+        var payload = id[8..];
+        var stamp = payload.Length >= 19 ? payload[..19] : payload;
+        return DateTime.TryParseExact(stamp, "s", CultureInfo.InvariantCulture, DateTimeStyles.None, out var result)
             ? result
             : DateTime.MinValue;
+    }
 
     public void Dispose()
     {
         Session.PropertyChanged -= SessionPropertyChanged;
+
+        // Cannot await in a synchronous Dispose: drop the debounce timer and forget the
+        // session. Callers that must not lose pending work call SaveSessionAsync first.
+        lock (_autosaveSync)
+        {
+            _autosaveDebounce?.Cancel();
+            _autosaveDebounce?.Dispose();
+            _autosaveDebounce = null;
+            _dirtySessions.Clear();
+        }
+
+        DetachAutosave(Session);
+        // _saveGate is intentionally not disposed: an in-flight write may still release it.
     }
 }

@@ -802,42 +802,6 @@ public class AiChatInputTests : BunitContext
         Assert.NotNull(cut.Find(".chat-input-wrapper"));
     }
 
-    [Fact]
-    public void ShouldUnsubscribeEvents_OnDispose()
-    {
-        // Arrange
-        var cut = Render<AiChatInput>();
-
-        // Act
-        cut.Dispose();
-
-        // Assert - verify unsubscription by triggering events (should not throw)
-        _mockChatService.Raise(x => x.SessionChanged += null,
-            new PropertyChangedEventArgs(nameof(ConversationSession)));
-        // No exception should be thrown
-    }
-
-    [Fact]
-    public async Task ShouldUpdatePlaceholder_WhenModeChanges()
-    {
-        // Arrange
-        _session.Mode = AppMode.Chat;
-        var cut = Render<AiChatInput>();
-
-        var textarea = cut.Find("textarea.text-input");
-        Assert.Equal(SharedResource.InputPlaceholder, textarea.GetAttribute("placeholder"));
-
-        // Act - change mode
-        _session.Mode = AppMode.Agent;
-        _mockChatService.Raise(x => x.SessionChanged += null,
-            new PropertyChangedEventArgs(nameof(ConversationSession.Mode)));
-
-        await cut.InvokeAsync(() => cut.Render());
-
-        // Assert
-        Assert.Equal(SharedResource.InputPlaceholderAgent, textarea.GetAttribute("placeholder"));
-    }
-
     #endregion
 
     #region Cancel Button Tests

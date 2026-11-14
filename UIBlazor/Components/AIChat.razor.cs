@@ -46,6 +46,11 @@ public partial class AiChat : RadzenComponent
 
     public async Task NewSessionAsync()
     {
+        // A run in flight pins its session; swapping mid-run would scatter turns across two
+        // sessions. Autosave keeps the current one safe, so blocking here loses nothing.
+        if (IsLoading)
+            return;
+
         await ChatService.NewSessionAsync();
         await InvokeAsync(StateHasChanged);
     }
@@ -168,7 +173,7 @@ public partial class AiChat : RadzenComponent
             // бросал OperationCanceledException в SendMessageAsync ДО старта нового прогона —
             // сообщения добавлялись визуально, но не отправлялись агенту и не сохранялись
             // в localStorage (до перезагрузки окна).
-            await JsRuntime.InvokeVoidAsync("scrollToAnchor");
+            await JsRuntime.InvokeVoidAsync("scrollToAnchor", CancellationToken.None);
         }
         catch (Exception ex)
         {
@@ -238,7 +243,7 @@ public partial class AiChat : RadzenComponent
                 {
                     result = await CompressAsync(retryCount, cancellationToken);
                 },
-                cancellationToken);
+                cancellationToken, ChatService.Session);
         }
         finally
         {
@@ -263,9 +268,14 @@ public partial class AiChat : RadzenComponent
             }
         }
 
+        // The run is PINNED to the session it started in: every turn message, tool result and
+        // error goes there even if the current session reference changes underneath (autosave
+        // persists by instance, so nothing is lost).
+        var runSession = ChatService.Session;
+
         var assistantMessage = VisualChatMessage.CreateStreaming();
 
-        ChatService.Session.AddMessage(assistantMessage);
+        runSession.AddMessage(assistantMessage);
         await ChatService.SaveSessionAsync();
         await InvokeAsync(StateHasChanged);
 
@@ -302,12 +312,12 @@ public partial class AiChat : RadzenComponent
                     // ChatClientAgent loop: every new assistant turn is its own message
                     // (the tool calls of the previous turn stay rendered on it).
                     var nextMessage = VisualChatMessage.CreateStreaming();
-                    ChatService.Session.AddMessage(nextMessage);
+                    runSession.AddMessage(nextMessage);
                     currentMessage = nextMessage;
                     _ = InvokeAsync(StateHasChanged);
                     return nextMessage;
                 });
-            await HandleStreamCompletionAsync(currentMessage, completions, cancellationToken);
+            await HandleStreamCompletionAsync(currentMessage, completions, runSession, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -331,7 +341,7 @@ public partial class AiChat : RadzenComponent
             // прогресс остаётся как история попытки.
             await HandleErrorAsync(currentMessage, ex, attempt,
                 async () => await GetAiResponseInternalAsync(retryCount, cancellationToken),
-                cancellationToken);
+                cancellationToken, runSession);
         }
         finally
         {
@@ -339,7 +349,7 @@ public partial class AiChat : RadzenComponent
             assistantMessage.IsStreaming = false;
             // onNewTurn may have created streaming messages that the
             // loop never streamed into (cancelled / failed mid-turn) - close them all.
-            foreach (var openMessage in ChatService.Session.GetMessagesSnapshot())
+            foreach (var openMessage in runSession.GetMessagesSnapshot())
             {
                 if (openMessage.IsStreaming)
                 {
@@ -347,12 +357,17 @@ public partial class AiChat : RadzenComponent
                     openMessage.IsShouldRender = true;
                 }
             }
+            // Terminal state of the run (success, error or cancellation) is always persisted:
+            // this is the safety net on top of the autosave invariant (nothing may be lost
+            // because a caller forgot to save).
+            await ChatService.SaveSessionAsync();
             IsLoading = false;
             await InvokeAsync(StateHasChanged);
         }
     }
 
-    private async Task HandleStreamCompletionAsync(VisualChatMessage message, CompletionsResult result, CancellationToken cancellationToken)
+    private async Task HandleStreamCompletionAsync(
+        VisualChatMessage message, CompletionsResult result, ConversationSession session, CancellationToken cancellationToken)
     {
         NotifyIfNeeded(result);
         ParsePlan(message);
@@ -376,8 +391,8 @@ public partial class AiChat : RadzenComponent
             ToolCallHandler.PrepareToolsForApprovals(message.ToolCalls);
             message.IsShouldRender = true;
             await InvokeAsync(StateHasChanged);
-            await ToolCallHandler.ProcessToolCallsAsync(message.ToolCalls, ChatService.Session.Mode, cancellationToken);
-            ChatService.Session.TotalTokens += message.ToolCalls?.Sum(t => t.Tokens) ?? 0;
+            await ToolCallHandler.ProcessToolCallsAsync(message.ToolCalls, session.Mode, cancellationToken);
+            session.TotalTokens += message.ToolCalls?.Sum(t => t.Tokens) ?? 0;
             await ChatService.SaveSessionAsync();
             message.IsShouldRender = true;
             await InvokeAsync(StateHasChanged);
@@ -442,7 +457,8 @@ public partial class AiChat : RadzenComponent
     }
 
     private async Task HandleErrorAsync(VisualChatMessage message, Exception ex,
-        int retryCount, Func<Task> retryAction, CancellationToken cancellationToken)
+        int retryCount, Func<Task> retryAction, CancellationToken cancellationToken,
+        ConversationSession session)
     {
         var maxRetries = CommonSettingsProvider.Current.MaxRetries;
         Logger.LogError(ex, "Getting response error");
@@ -464,6 +480,8 @@ public partial class AiChat : RadzenComponent
             message.Content = $"Error: {ex.Message} [{retryCount}/{maxRetries}]";
             message.Segments.Clear();
             MessageParser.UpdateSegments(message.Content, message);
+            // The error text is part of the history: persist it now, not only on the next run.
+            await ChatService.SaveSessionAsync();
             return;
         }
 
@@ -489,7 +507,7 @@ public partial class AiChat : RadzenComponent
             message.RetryCountdown = 0;
         }
 
-        ChatService.Session.RemoveMessage(message.Id);
+        session.RemoveMessage(message.Id);
         await retryAction.Invoke();
     }
 

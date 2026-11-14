@@ -9,7 +9,6 @@
   </Folder>
   <Folder Name="/VisualStudio/">
     <Project Path="InvAit/InvAit.csproj" Id="306abb42-dd0a-49db-a5ef-2165c3db35ea" />
-    <Project Path="McpHost.Cli/McpHost.Cli.csproj" />
     <Project Path="McpHost/McpHost.csproj" />
     <Project Path="ToolCore/ToolCore.csproj" Id="ce5f7c3b-ffb6-4b0b-adba-d10a3b42798d" />
   </Folder>

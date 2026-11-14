@@ -49,6 +49,16 @@ internal sealed class AfAgentLoop(
     /// </summary>
     public Func<ConversationSession, CancellationToken, Task<int>>? CompressionGate { get; set; }
 
+    /// <summary>
+    /// Optional mid-run mode refresh: the system prompt and the enabled tool set are PER-MODE,
+    /// and both are captured when the run starts. Without this hook a <c>switch_mode</c> tool
+    /// call changes <see cref="ConversationSession.Mode"/> but the model keeps the old
+    /// instructions and the old tool list for the rest of the run ("switched, but nothing
+    /// changed"). The loop checks the mode before every LLM call and, when it changed,
+    /// rebuilds the system message and the chat options from the fresh context.
+    /// </summary>
+    public Func<AppMode, CancellationToken, Task<ModeContext>>? ModeContextProvider { get; set; }
+
     public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(
         IReadOnlyList<WireMessage> messages,
         IEnumerable<Tool>? tools,
@@ -67,6 +77,10 @@ internal sealed class AfAgentLoop(
         var chatOptions = AfChatClientFactory.BuildChatOptions(
             currentProfile,
             AfToolMapper.Map(tools ?? []));
+
+        // Mode the run started in: switch_mode mutates targetSession.Mode mid-run, so the
+        // per-mode context (system prompt + tools) must be rebuilt when it drifts.
+        var runMode = targetSession.Mode;
 
         using var client = _chatClientFactory(currentProfile, httpClient);
         var maxIterations = MaximumIterations ?? 40; // legacy FICC default
@@ -87,6 +101,17 @@ internal sealed class AfAgentLoop(
             // перезаписывает историю сессии через SetMessages).
             if (CompressionGate is not null)
                 consumedSessionMessages = await CompressionGate(targetSession, cancellationToken);
+
+            // Mode switched during the run (switch_mode tool): the next turn must see the new
+            // system prompt and the new tool set, not the ones captured at run start.
+            if (ModeContextProvider is not null && targetSession.Mode != runMode)
+            {
+                runMode = targetSession.Mode;
+                var modeContext = await ModeContextProvider(runMode, cancellationToken);
+                ReplaceSystemPrompt(chatMessages, modeContext.SystemPrompt);
+                chatOptions = AfChatClientFactory.BuildChatOptions(
+                    currentProfile, AfToolMapper.Map(modeContext.Tools));
+            }
 
             var text = new StringBuilder();
             // Страховка (дефект 1): тулзы из дельт запоминаем ПО-ИТЕРАЦИОННО — delta.ToolCalls
@@ -185,6 +210,19 @@ internal sealed class AfAgentLoop(
     }
 
     /// <summary>
+    /// Swaps the run's system prompt in place, keeping every accumulated turn (tool calls and
+    /// their results) that the loop appended to <paramref name="chatMessages"/>.
+    /// </summary>
+    private static void ReplaceSystemPrompt(List<ChatMessage> chatMessages, string systemPrompt)
+    {
+        var index = chatMessages.FindIndex(m => m.Role == ChatRole.System);
+        if (index >= 0)
+            chatMessages[index] = new ChatMessage(ChatRole.System, systemPrompt);
+        else
+            chatMessages.Insert(0, new ChatMessage(ChatRole.System, systemPrompt));
+    }
+
+    /// <summary>
     /// Interject-скан: возвращает user-сообщения, добавленные в сессию после индекса
     /// <paramref name="consumed"/> (вмешательства пользователя в работающий агент), в порядке добавления.
     /// Сообщения ассистента пропускаются — цикл сам добавляет их в wire-историю (turn-механика).
@@ -241,3 +279,9 @@ internal sealed class AfAgentLoop(
         }
     }
 }
+
+/// <summary>
+/// Per-mode run context: the system prompt and the enabled tools a mode implies.
+/// Produced by <see cref="AfAgentLoop.ModeContextProvider"/> when the mode changes mid-run.
+/// </summary>
+internal sealed record ModeContext(string SystemPrompt, IReadOnlyList<Tool> Tools);

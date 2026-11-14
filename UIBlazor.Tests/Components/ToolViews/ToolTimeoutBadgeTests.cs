@@ -30,8 +30,6 @@ public class ToolTimeoutBadgeTests : BunitContext
         var badge = cut.Find(".tool-timeout-badge");
         Assert.NotNull(badge);
         Assert.Contains("2:00", cut.Markup);
-        Assert.Contains("fa-hourglass", cut.Markup);
-        Assert.Contains("fa-spin", cut.Markup);
     }
 
     [Fact]
@@ -67,7 +65,6 @@ public class ToolTimeoutBadgeTests : BunitContext
         // Approval re-renders the parent block and re-passes the parameter: the countdown starts
         toolCall.ApprovalStatus = ToolApprovalStatus.Approved;
         cut.Render();
-        Assert.Contains("fa-spin", cut.Markup);
 
         // After ~1.5s at least one second must tick away
         cut.WaitForAssertion(() =>

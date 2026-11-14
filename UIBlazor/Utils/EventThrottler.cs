@@ -63,7 +63,10 @@ public sealed class EventThrottler : IDisposable
         _action();
     }
 
-    /// <summary>True when a trailing fire is scheduled (test access).</summary>
+    /// <summary>
+    /// True while a trailing fire is scheduled or its action is still running (test access and
+    /// "final state delivered" signal).
+    /// </summary>
     public bool IsPending
     {
         get { lock (_lock) return _pending; }
@@ -79,11 +82,22 @@ public sealed class EventThrottler : IDisposable
             {
                 if (_disposed)
                     return;
+                // The window restarts here, but IsPending stays true until the action has
+                // actually run: observers of IsPending treat it as "the final state has not
+                // been delivered yet" (a false reset here made test/settlement waits return
+                // while the trailing call was still in flight).
                 _lastFireTicks = Stopwatch.GetTimestamp();
-                _pending = false;
             }
 
-            _action();
+            try
+            {
+                _action();
+            }
+            finally
+            {
+                lock (_lock)
+                    _pending = false;
+            }
         }
         catch (OperationCanceledException)
         {

@@ -48,7 +48,32 @@ public class ConversationSession : BaseOptions
     /// <summary>
     /// Gets or sets the current application mode for this session.
     /// </summary>
-    public AppMode Mode { get; set => SetIfChanged(ref field, value); } = AppMode.Chat;
+    public AppMode Mode
+    {
+        get => field;
+        set
+        {
+            var previous = field;
+            SetIfChanged(ref field, value);
+            if (!EqualityComparer<AppMode>.Default.Equals(previous, value))
+                MarkChanged();
+        }
+    } = AppMode.Chat;
+
+    /// <summary>
+    /// Raised on every STRUCTURAL mutation of the session: messages added/removed/replaced,
+    /// content overwritten, mode switched. Persistence (autosave) subscribes here, so saving a
+    /// session is an invariant of the model instead of a duty of every caller — a new code path
+    /// that mutates history cannot forget to save.
+    /// <para>
+    /// Deliberately NOT raised for <see cref="TotalTokens"/>: the token counter is updated on
+    /// every streamed delta, so it would turn autosave into a per-token writer. It rides along
+    /// with the next structural change instead.
+    /// </para>
+    /// </summary>
+    internal event Action<ConversationSession>? Changed;
+
+    private void MarkChanged() => Changed?.Invoke(this);
 
     /// <summary>
     /// Adds a message object to the conversation and manages memory limits.
@@ -61,6 +86,8 @@ public class ConversationSession : BaseOptions
             Messages.Add(message);
             LastUpdated = DateTime.Now;
         }
+
+        MarkChanged();
     }
 
     /// <summary>
@@ -69,6 +96,7 @@ public class ConversationSession : BaseOptions
     /// </summary>
     public void RemoveMessage(string id)
     {
+        var removed = false;
         lock (_messagesLock)
         {
             var message = Messages.FirstOrDefault(m => m.Id == id);
@@ -77,8 +105,12 @@ public class ConversationSession : BaseOptions
                 TotalTokens -= (message.Timings?.Tokens ?? 0) + (message.ToolCalls?.Sum(t => t.Tokens) ?? 0);
                 Messages.Remove(message);
                 LastUpdated = DateTime.Now;
+                removed = true;
             }
         }
+
+        if (removed)
+            MarkChanged();
     }
 
     /// <summary>
@@ -87,14 +119,19 @@ public class ConversationSession : BaseOptions
     /// </summary>
     public void RemoveMessage(VisualChatMessage message)
     {
+        var removed = false;
         lock (_messagesLock)
         {
             if (Messages.Remove(message))
             {
                 TotalTokens -= (message.Timings?.Tokens ?? 0) + (message.ToolCalls?.Sum(t => t.Tokens) ?? 0);
                 LastUpdated = DateTime.Now;
+                removed = true;
             }
         }
+
+        if (removed)
+            MarkChanged();
     }
 
     /// <summary>
@@ -140,6 +177,8 @@ public class ConversationSession : BaseOptions
         // Outside the lock: subscribers update their own mirrors and must not
         // re-enter SetMessages (the recursion guard is on the subscriber side).
         MessagesReplaced?.Invoke(messages);
+
+        MarkChanged();
     }
 
     /// <summary>
@@ -158,6 +197,7 @@ public class ConversationSession : BaseOptions
     /// </summary>
     public void UpdateMessage(string id, string content)
     {
+        var updated = false;
         lock (_messagesLock)
         {
             var message = Messages.FirstOrDefault(m => m.Id == id);
@@ -165,8 +205,12 @@ public class ConversationSession : BaseOptions
             {
                 message.Content = content;
                 LastUpdated = DateTime.Now;
+                updated = true;
             }
         }
+
+        if (updated)
+            MarkChanged();
     }
 
     /// <summary>
