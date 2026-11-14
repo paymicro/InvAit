@@ -135,8 +135,8 @@ public class FileUtilsTests
 
         using var cts = new CancellationTokenSource();
 
-        // Сразу отменяем токен
-        cts.Cancel();
+        // Сразу отменяем токен (CancelAsync — Sonar S6966: колбэки отмены асинхронные)
+        await cts.CancelAsync();
 
         // Act & Assert
         await Assert.ThrowsAsync<TaskCanceledException>(async () =>

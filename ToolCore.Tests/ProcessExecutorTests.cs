@@ -162,11 +162,65 @@ public class ProcessExecutorTests
         var executor = new ProcessExecutor(_mockLogger.Object);
 
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        // CancelAsync (а не Cancel) — по рекомендации Sonar S6966: колбэки отмены
+        // выполняются асинхронно, и await гарантирует, что токен уже отменён
+        // к моменту вызова ExecuteAsync.
+        await cts.CancelAsync();
 
         var result = await executor.ExecuteAsync("echo", "hello", cancellationToken: cts.Token);
 
-        Assert.True(result.Cancelled || !result.Success);
+        // Раньше здесь стояло ослабленное `result.Cancelled || !result.Success`: на Windows тест
+        // проходил по ложной причине (echo не найден → Success=false), а на Linux — падал,
+        // потому что /bin/echo успевал завершиться раньше, чем проверялась отмена.
+        Assert.False(result.Success);
+        Assert.True(result.Cancelled, "Cancellation requested before launch must be reported, not ignored.");
+        Assert.Equal(-1, result.ExitCode);
+        Assert.False(result.WasKilled, "No process was started, so nothing was killed.");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WithCancellationBeforeStart_DoesNotSpawnProcess()
+    {
+        var executor = new ProcessExecutor(_mockLogger.Object);
+        var marker = Path.Combine(Path.GetTempPath(), $"invait_cancel_{Guid.NewGuid():N}.txt");
+
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        try
+        {
+            // Команда-«свидетель»: если бы процесс всё-таки запустился, он создал бы файл.
+            var command = EnvironmentHelpers.GetShellCommand();
+            var args = OperatingSystem.IsWindows()
+                ? $"/c echo ran > \"{marker}\""
+                : $"-c \"echo ran > '{marker}'\"";
+
+            var result = await executor.ExecuteAsync(command, args, cancellationToken: cts.Token);
+
+            Assert.True(result.Cancelled);
+            Assert.False(File.Exists(marker), "A pre-cancelled call must not start the process.");
+        }
+        finally
+        {
+            if (File.Exists(marker))
+                File.Delete(marker);
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteBashAsync_WithCancellationBeforeStart_ShouldReturnCancelled()
+    {
+        var executor = new ProcessExecutor(_mockLogger.Object);
+
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        // Должно вернуть результат с флагом Cancelled, а не бросить OperationCanceledException.
+        var result = await executor.ExecuteBashAsync("echo 'should not run'", cancellationToken: cts.Token);
+
+        Assert.False(result.Success);
+        Assert.True(result.Cancelled);
+        Assert.Equal(-1, result.ExitCode);
     }
 
     [Fact]

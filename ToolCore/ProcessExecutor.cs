@@ -144,6 +144,13 @@ public class ProcessExecutor(ILogger logger)
         int outputLimit = DefaultOutputLimit,
         CancellationToken cancellationToken = default)
     {
+        // Отмена, запрошенная ДО старта, должна уважаться: процесс не запускаем вообще.
+        // Иначе исход зависит от гонки «успел ли процесс завершиться раньше, чем мы проверим
+        // токен» — на Linux `echo` выходит за пару миллисекунд и результат становится Success.
+        var preCancelled = TryGetPreCancelledResult(cancellationToken);
+        if (preCancelled != null)
+            return preCancelled;
+
         try
         {
             _logger.Log($"Executing command: {command} (arguments redacted)");
@@ -202,6 +209,13 @@ public class ProcessExecutor(ILogger logger)
         int outputLimit = DefaultOutputLimit,
         CancellationToken cancellationToken = default)
     {
+        // Как и ExecuteAsync: не создаём временный файл и не спавним sh, если отмена уже запрошена.
+        // Без этой проверки Task.Delay ниже бросил бы OperationCanceledException вместо
+        // возврата результата с флагом Cancelled.
+        var preCancelled = TryGetPreCancelledResult(cancellationToken);
+        if (preCancelled != null)
+            return preCancelled;
+
         var shPath = FindGitSh();
         if (shPath == null)
         {
@@ -356,6 +370,24 @@ public class ProcessExecutor(ILogger logger)
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Возвращает результат «отменено до запуска», если токен уже отменён, иначе null.
+    /// Процесс при этом не создаётся, поэтому WasKilled остаётся false.
+    /// </summary>
+    private static ProcessResult? TryGetPreCancelledResult(CancellationToken cancellationToken)
+    {
+        if (!cancellationToken.IsCancellationRequested)
+            return null;
+
+        return new ProcessResult
+        {
+            Success = false,
+            Cancelled = true,
+            ExitCode = -1,
+            Error = "Process was not started: the operation was cancelled before launch.",
+        };
     }
 
     /// <summary>

@@ -11,13 +11,16 @@ internal static class TestAssetLocator
     {
         var path = GetProjectOutputPath(Path.Combine("TestAssets", assetProjectDirName, "bin", GetConfiguration(), "net10.0", exeName));
 
-        // На Unix apphost собирается без расширения .exe
-        if (!OperatingSystem.IsWindows() && !File.Exists(path))
+        // На Unix apphost собирается без расширения .exe. Проверяем его ПЕРВЫМ и независимо от
+        // наличия .exe: в общей папке (WSL /mnt, примонтированный кэш, смешанная сборка под
+        // Windows и Linux) рядом могут лежать оба файла. Если выбрать .exe, WSL запустит
+        // Windows-бинарник через interop и упадёт с UtilAcceptVsock / exited early.
+        if (!OperatingSystem.IsWindows())
         {
-            var withoutExtension = Path.ChangeExtension(path, null);
-            if (File.Exists(withoutExtension))
+            var nativeApphost = Path.ChangeExtension(path, null);
+            if (File.Exists(nativeApphost))
             {
-                return withoutExtension;
+                return nativeApphost;
             }
         }
 
