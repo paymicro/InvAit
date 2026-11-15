@@ -2,11 +2,6 @@
 @inject DialogService DialogService
 
 <div class="subagent-block @StatusClass" data-subagent-id="@SubAgent.Id">
-    @* Единый спойлер через <Details> (как ToolCallBlock/reasoning в MessageContent):
-       состояние раскрытия переживает перерендеры, меньше кастомного CSS.
-       Контролируемый режим OnToggle: источник истины — SubAgent.IsExpanded,
-       поэтому принудительное раскрытие оркестратором (апрув) и сворачивание
-       после Finish доезжают до UI. Клик по заголовку пишет обратно в модель. *@
     <Details IsExpanded="@SubAgent.IsExpanded" OnToggle="@Toggle" class="subagent-details">
         <HeaderTemplate>
             <div class="subagent-header">
@@ -229,8 +224,6 @@
     private string TruncateTask => (SubAgent.Task?.Length ?? 0) > 80
         ? SubAgent.Task![..80] + "..."
         : (SubAgent.Task ?? string.Empty);
-
-    private string IsExpandedClass => SubAgent.IsExpanded ? "expanded" : string.Empty;
 
     private int _oldMessageCount;
     private SubAgentStatus _oldStatus;

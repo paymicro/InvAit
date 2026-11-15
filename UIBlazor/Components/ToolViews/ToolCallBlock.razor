@@ -20,14 +20,6 @@
         <HeaderTemplate>
             <span>@SharedResource.CallingTool:</span>
             <strong>@DisplayName</strong>
-            @if (ToolCall.Result is null)
-            {
-                <i class="fa-regular fa-hourglass fa-spin"></i> <span>@SharedResource.CallingToolAwait</span>
-                @if (ToolCall.ApprovalStatus == ToolApprovalStatus.Approved)
-                {
-                    <ToolTimeoutBadge ToolCall="ToolCall" TimeoutMs="@BadgeTimeoutMs" />
-                }
-            }
         </HeaderTemplate>
         <ChildContent>
 
@@ -92,12 +84,22 @@
             @* Sub-agent views: one per delegated task *@
             @if (ToolCall.Function.Name == BuiltInToolEnum.DelegateTask && _subAgents is { Count: > 0 })
             {
-                @foreach (var subAgent in _subAgents)
+                foreach (var subAgent in _subAgents)
                 {
                     <SubAgentView SubAgent="@subAgent" />
                 }
             }
-            else if (ToolCall.Result is not null)
+            else if (ToolCall.Result is null)
+            {
+                if (ToolCall.Function.Name != BuiltInToolEnum.DelegateTask && ToolCall.ApprovalStatus != ToolApprovalStatus.Pending)
+                {
+                    <div class="tool-call-progress @StatusClass">
+                        <i class="fa-regular fa-hourglass fa-spin"></i>
+                        <ToolTimeoutBadge ToolCall="ToolCall" TimeoutMs="@BadgeTimeoutMs" />
+                    </div>
+                }
+            }
+            else
             {
                 <Details>
                     <HeaderTemplate>
@@ -115,6 +117,7 @@
                                 ~@ToolCall.Tokens tokens
                             </RadzenBadge>
                         </Tooltip>
+                        <ToolTimeoutBadge ToolCall="ToolCall" TimeoutMs="@BadgeTimeoutMs" />
                     </HeaderTemplate>
                     
                     <ChildContent>
@@ -234,6 +237,9 @@
     /// Timeout for the countdown badge, ms. delegate_task is NOT limited by ToolTimeoutMs —
     /// its real watchdog is the per-sub-agent time limit from the active profile
     /// (AfSubAgentOrchestrator: timeoutCts.CancelAfter). 0 = unlimited — no badge.
+    /// In HasChanges snapshot? No: it is read from settings on every parent render, while
+    /// the badge snapshots it on start, so a mid-flight settings change cannot move a
+    /// running countdown.
     /// </summary>
     private int BadgeTimeoutMs => ToolCall.Function.Name == BuiltInToolEnum.DelegateTask
         ? ProfileManager.ActiveProfile.MaxExecutionTimePerSubAgent * 1000

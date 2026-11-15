@@ -262,6 +262,42 @@ public partial class ChatControl
                 return;
             }
 
+            if (request.Action == BasicEnum.LogError)
+            {
+                // fire-and-forget: UI -> host log, без отправки VsResponse.
+                if (string.IsNullOrEmpty(request.Payload))
+                {
+                    return;
+                }
+
+                try
+                {
+                    var entry = JsonSerializer.Deserialize<LogEntry>(request.Payload, JsonSerializerOptions.Web);
+                    if (entry == null)
+                    {
+                        return;
+                    }
+
+                    // Logger сам добавляет префикс [timestamp] [level] — не дублируем уровень в message.
+                    var level = entry.Level == LogEntry.ErrorLevel ? "ERROR"
+                        : entry.Level == LogEntry.WarnLevel ? "WARN"
+                        : "INFO";
+                    var message = $"[{entry.Source}] {entry.Message}";
+                    if (!string.IsNullOrEmpty(entry.Exception))
+                    {
+                        message += "\n" + entry.Exception;
+                    }
+
+                    await Logger.LogAsync(message, level);
+                }
+                catch (JsonException)
+                {
+                    // Битый payload от UI — молча игнорируем, ответ не нужен.
+                }
+
+                return;
+            }
+
             await Logger.LogAsync($"WebMessage {request.Action} received.");
             var response = await _toolExecutor.ExecuteAsync(request);
             var json = new { type = nameof(VsResponse), payload = response };

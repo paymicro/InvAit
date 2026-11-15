@@ -714,6 +714,52 @@ code.hljs {
     background-color: var(--rz-danger-dark) !important;
 }
 
+/* Execution clock badge (ToolTimeoutBadge): countdown → expired → measured duration.
+   The badge is rendered by the result area — in the progress line while the tool runs and
+   in the result block header once it finished — so the selectors are not tied to a
+   particular container. The three states share the layout; only colour/font weight
+   distinguishes them, so nothing jumps when the badge changes state. */
+.tool-timeout-badge,
+.tool-timeout-expired,
+.tool-timeout-elapsed {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+/* Countdown: quiet, it is only informational while the tool runs. */
+.tool-call-block .rz-badge.tool-timeout-badge {
+    opacity: 0.7;
+}
+
+/* Deadline passed but the tool is still running: must stand out. */
+.tool-call-block .rz-badge.tool-timeout-expired {
+    opacity: 1;
+    font-weight: 600;
+}
+
+/* Finished: the badge sits next to the result and reports the spent time. */
+.tool-call-block .rz-badge.tool-timeout-elapsed {
+    opacity: 0.85;
+    margin-left: auto;
+}
+
+/* Progress line under the arguments ("waiting for result" + execution clock). It replaces
+   the result block until the result arrives, so it keeps the same horizontal rhythm. */
+.tool-call-progress {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.8rem;
+    font-size: 0.85rem;
+    color: var(--rz-base-300);
+    border-bottom: 1px solid var(--rz-base-dark);
+}
+
 /* Tool Approval UI */
 .tool-approval-footer {
     display: flex;

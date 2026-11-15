@@ -4,17 +4,66 @@ using Shared.Contracts.Mcp;
 namespace UIBlazor.Services;
 
 /// <summary>
-/// Для тестов на голом UI без VS
+/// Мок VS-моста для отладки UI без VS (headless-режим).
+/// <para>
+/// Пока VS-мост недоступен, любой тулз возвращает ошибку <c>WebView2 API not found.</c> —
+/// именно по ней распознаётся headless-режим. В нём мок подменяет ответ на правдоподобный,
+/// чтобы можно было работать с UI без бэкенда.
+/// </para>
 /// </summary>
 [ExcludeFromCodeCoverage]
 public class HeadlessMocker
 {
+    /// <summary>
+    /// Искусственная задержка headless-тулза (мс). Нужна, чтобы увидеть в UI обратный отсчёт
+    /// <c>ToolTimeoutBadge</c> и итоговое время выполнения, когда реального исполнения нет.
+    /// <para>
+    /// Обычная статическая настройка: тесты ставят её в 0 (см. <c>TestSetup</c>).
+    /// Задержка попадает внутрь измеряемого интервала исполнения (start → result), поэтому
+    /// тайминговые тесты не должны её видеть.
+    /// </para>
+    /// </summary>
+    public static int DebugToolDelayMs { get; set; } = 5_000;
+
+    /// <summary>
+    /// Мок-ответ моста: в headless-режиме может сымитировать «медленный» тулз
+    /// (<see cref="DebugToolDelayMs"/>) и подменить ответ на правдоподобный.
+    /// <para>
+    /// Вызывать ДО присвоения результата: искусственное ожидание должно попасть внутрь
+    /// измеряемого интервала исполнения, как у реального медленного тулза.
+    /// </para>
+    /// </summary>
+    public static async Task<VsToolResult> GetVsToolResultAsync(VsToolResult original, CancellationToken cancellationToken)
+    {
+        // Реальный ответ боевого VS — не трогаем и ничего не задерживаем:
+        // иначе DEBUG-сборка внутри VS тормозила бы каждый тулз на DebugToolDelayMs.
+        if (!IsHeadless(original))
+            return original;
+
+        if (DebugToolDelayMs > 0)
+            await Task.Delay(DebugToolDelayMs, cancellationToken);
+
+        return GetVsToolResult(original);
+    }
+
+    /// <summary>
+    /// Тулз не дошёл до VS (UI запущен без него) — только такие ответы подменяются моком.
+    /// </summary>
+    private static bool IsHeadless(VsToolResult original)
+        => !original.Success && original.ErrorMessage == HeadlessErrorMarker;
+
+    /// <summary>Признак отсутствия VS-моста в ответе тулза.</summary>
+    private const string HeadlessErrorMarker = "WebView2 API not found.";
+
+    /// <summary>
+    /// Синхронный мок-ответ (без имитации задержки). Вызывающие, которым она не нужна
+    /// (настройки MCP, скиллы, тест-прогоны), используют этот вариант; путь исполнения
+    /// тулзов использует <see cref="GetVsToolResultAsync"/>.
+    /// </summary>
     public static VsToolResult GetVsToolResult(VsToolResult original)
     {
-        if (original.Success || original.ErrorMessage != "WebView2 API not found.")
-        {
+        if (!IsHeadless(original))
             return original;
-        }
 
         return original.Name switch
         {

@@ -75,6 +75,7 @@ public class AiChatTests : BunitContext
         Services.AddSingleton(_mockVsBridge.Object);
         Services.AddSingleton(_mockMessageParser.Object);
         Services.AddSingleton(_mockJsRuntime.Object);
+        Services.AddSingleton(new UiErrorLogger(new Mock<IJSRuntime>().Object));
         Services.AddSingleton(new Mock<ILogger<AiChat>>().Object);
 
         Services.AddSingleton<IRetryHandler>(new RetryHandler());

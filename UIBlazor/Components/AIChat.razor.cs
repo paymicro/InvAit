@@ -43,6 +43,7 @@ public partial class AiChat : RadzenComponent
     [Inject] private IToolCallHandler ToolCallHandler { get; set; } = null!;
     [Inject] private ISubAgentExecutor SubAgentExecutor { get; set; } = null!;
     [Inject] private ISkillService SkillService { get; set; } = null!;
+    [Inject] private UiErrorLogger UiErrorLogger { get; set; } = null!;
 
     public async Task NewSessionAsync()
     {
@@ -130,27 +131,13 @@ public partial class AiChat : RadzenComponent
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to load skill {SkillName}", skillName);
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = string.Format(SharedResource.CommandSkillNotFound, skillName),
-                Detail = ex.Message,
-                Duration = 10_000,
-                ShowProgress = true,
-            });
+            NotificationService.NotifyError(UiErrorLogger, string.Format(SharedResource.CommandSkillNotFound, skillName), ex.Message, "Skill", ex);
             return;
         }
 
         if (!result.Success || string.IsNullOrWhiteSpace(result.Result))
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = string.Format(SharedResource.CommandSkillNotFound, skillName),
-                Detail = result.ErrorMessage,
-                Duration = 10_000,
-                ShowProgress = true,
-            });
+            NotificationService.NotifyError(UiErrorLogger, string.Format(SharedResource.CommandSkillNotFound, skillName), result.ErrorMessage, "Skill");
             return;
         }
 
@@ -409,26 +396,12 @@ public partial class AiChat : RadzenComponent
     {
         if (result.FinishReason?.Equals("length", StringComparison.OrdinalIgnoreCase) == true)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = SharedResource.ErrorFinishByLength,
-                Detail = string.Empty,
-                Duration = 30_000,
-                ShowProgress = true,
-            });
+            NotificationService.NotifyError(UiErrorLogger, SharedResource.ErrorFinishByLength, null, "Completions", duration: 30_000);
         }
 
         if (!string.IsNullOrEmpty(result.Error))
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = result.Error,
-                Detail = string.Empty,
-                Duration = 30_000,
-                ShowProgress = true,
-            });
+            NotificationService.NotifyError(UiErrorLogger, result.Error, null, "Completions", duration: 30_000);
         }
     }
 
@@ -462,15 +435,7 @@ public partial class AiChat : RadzenComponent
     {
         var maxRetries = CommonSettingsProvider.Current.MaxRetries;
         Logger.LogError(ex, "Getting response error");
-
-        NotificationService.Notify(new NotificationMessage
-        {
-            Severity = NotificationSeverity.Error,
-            Summary = $"[{retryCount}/{maxRetries}] Response error",
-            Detail = ex.Message,
-            Duration = 25_000,
-            ShowProgress = true,
-        });
+        NotificationService.NotifyError(UiErrorLogger, $"[{retryCount}/{maxRetries}] Response error", ex.Message, "HTTP transport", ex, duration: 25_000);
 
         if (retryCount >= maxRetries)
         {
@@ -651,16 +616,9 @@ public partial class AiChat : RadzenComponent
     private async Task HandleApprovalRequiredAsync(string toolCallId, bool isSubAgent)
     {
         // Show notification
-        NotificationService.Notify(new NotificationMessage
-        {
-            Severity = NotificationSeverity.Warning,
-            Summary = isSubAgent
-                ? $"{SharedResource.SubAgent}: {SharedResource.ApproveRequired}"
-                : SharedResource.ApproveRequired,
-            Detail = string.Empty,
-            Duration = 10_000,
-            ShowProgress = true,
-        });
+        NotificationService.NotifyWarning(UiErrorLogger, isSubAgent
+            ? $"{SharedResource.SubAgent}: {SharedResource.ApproveRequired}"
+            : SharedResource.ApproveRequired, null, "Approval");
 
         // Wait for Blazor to render the tool call block, then scroll to it
         await Task.Yield();

@@ -322,15 +322,6 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Wait for the result.
-        /// </summary>
-        public static string CallingToolAwait {
-            get {
-                return ResourceManager.GetString("CallingToolAwait", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to Cancel.
         /// </summary>
         public static string Cancel {
@@ -1461,6 +1452,15 @@ namespace UIBlazor.Localization {
         public static string ToolExec {
             get {
                 return ResourceManager.GetString("ToolExec", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Tool execution time (approval wait excluded).
+        /// </summary>
+        public static string ToolExecutionTime {
+            get {
+                return ResourceManager.GetString("ToolExecutionTime", resourceCulture);
             }
         }
         

@@ -213,9 +213,11 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
             {
                 var vsToolResult = await ExecuteToolWithApprovalAsync(item.toolCall, item.tool, cancellationToken);
 #if DEBUG
-                vsToolResult = HeadlessMocker.GetVsToolResult(vsToolResult);
+                vsToolResult = await HeadlessMocker.GetVsToolResultAsync(vsToolResult, cancellationToken);
 #endif
                 item.toolCall.Result = ToolResult.Convert(vsToolResult, item.tool?.DisplayName ?? "", item.tool?.Name ?? "");
+                // Measured at the same point as the result assignment: start → result.
+                item.toolCall.MarkExecutionFinished();
             });
 
             await Task.WhenAll(parallelTasks);
@@ -230,10 +232,16 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
             var vsToolResult = await ExecuteToolWithApprovalAsync(toolCall, tool, cancellationToken);
 
 #if DEBUG
-            vsToolResult = HeadlessMocker.GetVsToolResult(vsToolResult);
+            // Headless-мок: без VS подменяет ответ на правдоподобный и имитирует задержку
+            // (HeadlessMocker.DebugToolDelayMs) — только в headless-режиме. Ждём ДО
+            // присвоения результата, чтобы задержка попала внутрь измеряемого интервала
+            // исполнения, как у реального медленного тулза.
+            vsToolResult = await HeadlessMocker.GetVsToolResultAsync(vsToolResult, cancellationToken);
 #endif
 
             toolCall.Result = ToolResult.Convert(vsToolResult, tool?.DisplayName ?? "", tool?.Name ?? "");
+            // Measured at the same point as the result assignment: start → result.
+            toolCall.MarkExecutionFinished();
         }
     }
 
@@ -278,6 +286,18 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
                 return VsToolResult.Cancelled(toolCall.Function.Name);
             }
         }
+
+        if (toolCall.ApprovalStatus != ToolApprovalStatus.Approved)
+        {
+            // Denied / rejected: nothing is executed, no execution clock is started.
+            return VsToolResult.Denied(toolCall.Function.Name);
+        }
+
+        // Execution clock starts HERE: the approval is already resolved and the tool body
+        // is invoked on the very next line. The approval wait is therefore never counted,
+        // and neither is the wait in the sequential batch queue (PrepareToolsForApprovals
+        // sets Approved for the whole batch up-front).
+        toolCall.MarkExecutionStarted();
 
         return await ExecuteToolAsync(tool, toolCall, cancellationToken);
     }

@@ -1,31 +1,49 @@
+﻿@implements IDisposable
+
 @*
-    ToolTimeoutBadge shows a badge with a DECREASING countdown timer for a tool call.
-    The timeout comes from settings (CommonOptions.ToolTimeoutMs).
+    ToolTimeoutBadge renders the execution clock of a single tool call. It is rendered by the
+    result area of ToolCallBlock: in the progress line while the tool runs and in the result
+    block header once the result arrived.
 
-    The countdown does NOT start immediately: while the tool call is Pending (waiting for
-    user approval) the badge is STATIC — the full timeout is displayed without ticking,
-    because the user may take an arbitrary time to approve and the execution timeout clock
-    has not started yet. The countdown starts only when ApprovalStatus becomes Approved.
+    The clock itself does NOT live here: it is stamped on the ToolCall model by
+    ToolCallHandler — ExecutionStartedAtUtc right before the tool body is invoked
+    (AFTER the approval is resolved) and ExecutionElapsedMs right after the result is
+    assigned. That makes the model the single source of truth:
+    - the approval wait is never counted (the call is not executed while Pending);
+    - a call approved up-front (Allow mode) but still queued behind other tool calls
+      is not counted either — the stamp lands when its own execution starts;
+    - the measured value survives this component being re-created (re-render, session
+      switch) and, for the finished state, a session reload.
 
-    Lifecycle:
-    - ApprovalStatus == Pending — static badge with the full timeout (no timer, no ticking).
-    - ApprovalStatus == Approved — countdown ticks ~2fps from the moment of approval.
-    - ToolCall.Result appears (tool finished) — the badge disappears and the timer stops.
-    - Timeout expires — shows 0:00 with an "expired" style and stops ticking.
-    - ApprovalStatus == Rejected — the badge is hidden.
+    Lifecycle (driven entirely by the model):
+    - no stamp, no duration — nothing is rendered (pending approval, rejected calls,
+      ask_user, tools that never executed);
+    - stamp set, duration unknown — DECREASING countdown of the timeout. The timeout
+      value is snapshotted on the first observation, so changing the setting mid-flight
+      does not move a running countdown. At zero the badge turns into the "expired" style;
+    - duration set (tool finished) — the badge STAYS and shows the measured execution
+      time (start → result); the timer stops and the ticker is disposed;
+    - TimeoutMs <= 0 (no configured limit) — no countdown, but the measured duration is
+      still reported once the tool finishes.
 
-    IMPORTANT: this component does NOT inherit ThrottledComponentBase. ToolCallBlock throttles
-    re-renders (~10fps, gated by HasChanges()); the countdown must tick independently, so it
-    uses its own timer and InvokeAsync(StateHasChanged) directly. The approval transition is
-    detected in OnParametersSet: ToolCallBlock re-renders on ApprovalStatus change (it is in
-    the HasChanges snapshot) and re-passes the ToolCall parameter.
+    IMPORTANT: this component does NOT inherit ThrottledComponentBase. ToolCallBlock
+    throttles its re-renders (~10fps, gated by HasChanges()); the countdown must tick
+    independently, so it owns a timer and calls InvokeAsync(StateHasChanged) directly,
+    re-rendering only when the displayed text or the expired/finished state changed.
+    Start/finish transitions arrive through ToolCall.ExecutionClockChanged — the handler
+    stamps the clock outside the render cascade and nothing else would re-render the header
+    while a tool runs.
 *@
 
 @if (ShowBadge)
 {
-    <Tooltip Text="@SharedResource.ToolRequestTimeoutSec">
+    <Tooltip Text="@TooltipText">
         <RadzenBadge class="@CssClass" BadgeStyle="@BadgeStyleOf" Variant="Variant.Text">
-            @RemainingText
+            @if (IsFinished)
+            {
+                <i class="fa-regular fa-clock"></i>
+            }
+            @TimeText
         </RadzenBadge>
     </Tooltip>
 }
@@ -34,99 +52,224 @@
     /// <summary>Tick interval of the countdown timer (~2 fps is enough for a m:ss display).</summary>
     private static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(500);
 
-    /// <summary>The tool call to watch; the badge hides as soon as Result appears or the call is rejected.</summary>
+    /// <summary>
+    /// Finished tools faster than this are not reported: a "0:00" badge on every instant
+    /// tool would be pure noise. The measured value stays on the model regardless.
+    /// </summary>
+    private const long MinVisibleElapsedMs = 1_000;
+
+    /// <summary>The tool call whose execution clock is displayed.</summary>
     [Parameter] public ToolCall ToolCall { get; set; } = null!;
 
-    /// <summary>Total timeout in ms (from CommonOptions.ToolTimeoutMs); &lt;= 0 hides the badge.</summary>
+    /// <summary>
+    /// Total timeout in ms (CommonOptions.ToolTimeoutMs or the per-sub-agent limit);
+    /// &lt;= 0 means "no limit" — nothing to count down from, so the running badge is hidden.
+    /// The finished badge (measured duration) is shown regardless.
+    /// </summary>
     [Parameter] public int TimeoutMs { get; set; }
 
     private System.Threading.Timer? _timer;
-    private DateTime _startedAtUtc;
-    private bool _countdownStarted;
-    private bool _lastHasResult;
+    private ToolCall? _observedToolCall;
+    private int? _timeoutSnapshot;
+    private bool _disposed;
+    private string _lastText = string.Empty;
     private bool _lastExpired;
-    private long _lastRemainingSeconds = -1;
+    private bool _lastFinished;
 
-    /// <summary>
-    /// The countdown starts ONLY when the tool call is approved (Allow mode approves
-    /// immediately; Ask mode approves on user click). While Pending the badge is static —
-    /// no timer is created, nothing ticks. ToolCallBlock includes ApprovalStatus in its
-    /// HasChanges snapshot, so the approval transition re-renders this component and
-    /// OnParametersSet starts the clock here.
-    /// </summary>
     protected override void OnParametersSet()
     {
-        if (!_countdownStarted && ToolCall.ApprovalStatus == ToolApprovalStatus.Approved)
-            StartCountdown();
-    }
+        // ToolCall is a mutable reference: a re-render may pass the same instance with new
+        // timestamps (start/finish). Only a genuinely different instance resets the state.
+        if (!ReferenceEquals(_observedToolCall, ToolCall))
+        {
+            SubscribeToClock(ToolCall);
+            _timeoutSnapshot = null;
+            _lastText = string.Empty;
+            _lastExpired = false;
+            _lastFinished = false;
+        }
 
-    private void StartCountdown()
-    {
-        _countdownStarted = true;
-        _startedAtUtc = DateTime.UtcNow;
-        _timer = new System.Threading.Timer(OnTick, null, TickInterval, TickInterval);
+        SyncTimer();
     }
 
     /// <summary>
-    /// Timer callback runs on a thread-pool thread: marshal into the renderer sync context
-    /// and re-render ONLY when something visible changed (result appeared, expired, or a
-    /// displayed second changed), otherwise every 500ms tick would re-render the block chain.
+    /// The handler stamps the execution clock outside the render cascade: without this
+    /// subscription a long-running tool would never show its badge (nothing else re-renders
+    /// the header while the tool runs). Re-keyed when the parameter instance changes.
+    /// </summary>
+    private void SubscribeToClock(ToolCall toolCall)
+    {
+        if (_observedToolCall is not null)
+            _observedToolCall.ExecutionClockChanged -= OnExecutionClockChanged;
+
+        _observedToolCall = toolCall;
+        toolCall.ExecutionClockChanged += OnExecutionClockChanged;
+    }
+
+    private void OnExecutionClockChanged()
+    {
+        if (_disposed)
+            return;
+
+        _ = InvokeAsync(() =>
+        {
+            if (_disposed)
+                return;
+
+            SyncTimer();
+            StateHasChanged();
+        });
+    }
+
+    /// <summary>
+    /// Keeps the ticker alive exactly while the countdown runs: created on the first
+    /// observation of a running call, disposed as soon as the call finishes/goes away.
+    /// </summary>
+    private void SyncTimer()
+    {
+        if (!ShowBadge || !IsRunning)
+        {
+            StopTimer();
+            return;
+        }
+
+        // Snapshot the timeout once: a settings change must not shift a running countdown.
+        _timeoutSnapshot ??= TimeoutMs;
+
+        _timer ??= new System.Threading.Timer(OnTick, null, TickInterval, TickInterval);
+    }
+    private void StopTimer()
+    {
+        if (_disposed)
+            return;
+
+        var timer = _timer;
+        _timer = null;
+        timer?.Dispose();
+    }
+
+    /// <summary>
+    /// Timer callback runs on a thread-pool thread: marshal into the renderer sync context,
+    /// but only when the visible state actually changed — otherwise every 500ms tick would
+    /// re-render the whole tool-call block chain.
     /// </summary>
     private void OnTick(object? state)
     {
-        var hasResult = ToolCall.Result is not null;
-        var expired = RemainingMs <= 0;
-        var remainingSeconds = (long)Math.Ceiling(Math.Max(0, RemainingMs) / 1000.0);
-
-        if (hasResult == _lastHasResult && expired == _lastExpired && remainingSeconds == _lastRemainingSeconds)
+        if (_disposed)
             return;
 
-        _lastHasResult = hasResult;
-        _lastExpired = expired;
-        _lastRemainingSeconds = remainingSeconds;
+        var text = TimeText;
+        var expired = Expired;
+        var finished = IsFinished;
 
-        _ = InvokeAsync(StateHasChanged);
+        if (text == _lastText && expired == _lastExpired && finished == _lastFinished)
+            return;
+
+        _lastText = text;
+        _lastExpired = expired;
+        _lastFinished = finished;
+
+        if (finished || !ShowBadge || !IsRunning)
+            StopTimer();
+
+        Render();
     }
 
-    /// <summary>Countdown is running: the call was approved and the clock has started.</summary>
-    protected bool IsRunning => _countdownStarted;
+    private void Render()
+    {
+        try
+        {
+            _ = InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Component removed between the _disposed check and the dispatch.
+        }
+        catch (InvalidOperationException)
+        {
+            // Renderer already detached (Dispose raced the tick) — nothing to render.
+        }
+    }
 
-    /// <summary>Remaining time in ms; before approval (and while Pending) it stays at the full timeout.</summary>
+    /// <summary>
+    /// Execution finished and the duration is worth showing. A sub-second tool keeps the
+    /// measured value on the model but shows no badge ("0:00" on every instant call is noise).
+    /// </summary>
+    protected bool IsFinished => ToolCall.ExecutionElapsedMs is { } elapsedMs && elapsedMs >= MinVisibleElapsedMs;
+
+    /// <summary>
+    /// Execution is running right now: start stamped, duration not measured yet. The duration
+    /// check (not the <see cref="IsFinished"/> one) is what matters here — otherwise a tool
+    /// that finished below <see cref="MinVisibleElapsedMs"/> would look like it is still running.
+    /// </summary>
+    protected bool IsRunning => ToolCall.ExecutionElapsedMs is null && ToolCall.ExecutionStartedAtUtc is not null;
+
+    /// <summary>
+    /// The badge is visible for a call that is executing (countdown, needs a positive timeout
+    /// to have something to count down from) or that has a measured execution time.
+    /// The finished state does NOT depend on TimeoutMs: a tool run without any configured limit
+    /// still reports how long it took — the timeout is merely absent from the story.
+    /// </summary>
+    protected bool ShowBadge => IsFinished || (TimeoutMs > 0 && IsRunning);
+
+    /// <summary>Countdown reached zero while the tool is still running.</summary>
+    protected bool Expired => IsRunning && RemainingMs <= 0;
+
+    /// <summary>Remaining time in ms of the running call, measured from the execution stamp.</summary>
     protected double RemainingMs
     {
         get
         {
-            if (!_countdownStarted)
-                return TimeoutMs;
+            var total = _timeoutSnapshot ?? TimeoutMs;
+            if (ToolCall.ExecutionStartedAtUtc is not { } startedAt)
+                return total;
 
-            var elapsed = (DateTime.UtcNow - _startedAtUtc).TotalMilliseconds;
-            return TimeoutMs - elapsed;
+            return total - (DateTime.UtcNow - startedAt).TotalMilliseconds;
         }
     }
 
-    /// <summary>Whether the countdown has reached zero.</summary>
-    protected bool Expired => _countdownStarted && RemainingMs <= 0;
+    /// <summary>Countdown text while running, measured duration once finished.</summary>
+    protected string TimeText => IsFinished
+        ? FormatClock(ToolCall.ExecutionElapsedMs!.Value, roundUp: false)
+        : FormatClock(Math.Max(0, RemainingMs), roundUp: true);
 
-    /// <summary>
-    /// Badge is shown while the tool call has no result, the timeout is positive and the call
-    /// is not rejected. AskUser-style calls stay Pending until answered — the badge remains static.
-    /// </summary>
-    protected bool ShowBadge => TimeoutMs > 0 && ToolCall.Result is null && ToolCall.ApprovalStatus != ToolApprovalStatus.Rejected;
-
-    /// <summary>Remaining time formatted as m:ss (e.g. 2:00, 1:05, 0:00).</summary>
-    protected string RemainingText
+    /// <summary>Formats a duration as m:ss (2:00, 1:05, 0:00).</summary>
+    private static string FormatClock(double ms, bool roundUp)
     {
-        get
-        {
-            var totalSeconds = Math.Max(0, (long)Math.Ceiling(RemainingMs / 1000.0));
-            return $"{totalSeconds / 60}:{totalSeconds % 60:D2}";
-        }
+        var seconds = roundUp
+            ? (long)Math.Ceiling(Math.Max(0, ms) / 1000.0)
+            : (long)Math.Round(Math.Max(0, ms) / 1000.0);
+
+        return $"{seconds / 60}:{seconds % 60:D2}";
     }
 
-    protected string CssClass => Expired ? "tool-timeout-expired" : "tool-timeout-badge";
+    /// <summary>Countdown explains the limit, the finished badge explains the spent time.</summary>
+    protected string TooltipText => IsFinished
+        ? SharedResource.ToolExecutionTime
+        : SharedResource.ToolRequestTimeoutSec;
 
-    protected BadgeStyle BadgeStyleOf => Expired ? BadgeStyle.Warning : BadgeStyle.Base;
+    protected string CssClass => IsFinished
+        ? "tool-timeout-elapsed"
+        : Expired
+            ? "tool-timeout-expired"
+            : "tool-timeout-badge";
+
+    protected BadgeStyle BadgeStyleOf => IsFinished
+        ? BadgeStyle.Success
+        : Expired
+            ? BadgeStyle.Warning
+            : BadgeStyle.Base;
 
     public void Dispose()
-        => _timer?.Dispose();
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+        if (_observedToolCall is not null)
+            _observedToolCall.ExecutionClockChanged -= OnExecutionClockChanged;
+
+        _timer?.Dispose();
+        _timer = null;
+    }
 }

@@ -16,6 +16,7 @@ builder.Services
     .AddScoped<IProfileManager, ProfileService>()
     .AddScoped<ICommonSettingsProvider, CommonSettingsProvider>()
     .AddScoped<IVsBridge, VsBridge>()
+    .AddScoped<UiErrorLogger>()
     .AddScoped<ISkillService, SkillService>()
     .AddScoped<IRuleService, RuleService>()
     .AddScoped<IContextService, ContextService>()

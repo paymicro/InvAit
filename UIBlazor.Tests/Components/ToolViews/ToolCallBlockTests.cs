@@ -191,23 +191,6 @@ public class ToolCallBlockTests : BunitContext
         Assert.Contains("~28 tokens", cut.Find(".tool-call-details").TextContent);
     }
 
-    [Fact]
-    public void AwaitingResultCall_ShowsHourglass_AndApprovalFooterWhenPending()
-    {
-        // Arrange: no result yet — the hourglass shows (the old !IsReady branch was dead:
-        // nothing ever set IsReady = false, the property was removed).
-        var call = CreateReadyCall(BuiltInToolEnum.Bash);
-        call.ApprovalStatus = ToolApprovalStatus.Pending;
-
-        // Act
-        var cut = Render<ToolCallBlock>(parameters => parameters
-            .Add(p => p.ToolCall, call));
-
-        // Assert
-        Assert.NotNull(cut.Find(".tool-call-details .header i.fa-hourglass"));
-        Assert.NotNull(cut.Find(".tool-approval-footer"));
-    }
-
     #endregion
 
     #region Approval Tests
@@ -500,7 +483,7 @@ public class ToolCallBlockTests : BunitContext
         // Assert - подписка пережила смену параметра: рендер подхватил новый attach.
         // Рендер структурных изменений проходит через троттлинг 100ms (trailing render) —
         // ждём его через WaitForAssertion.
-        cut.WaitForAssertion(
+        await cut.WaitForAssertionAsync(
             () =>
             {
                 var stubs = cut.FindAll(".subagent-stub");
@@ -515,7 +498,7 @@ public class ToolCallBlockTests : BunitContext
     #region Streaming Args Tests
 
     [Fact]
-    public void StreamingArgsGrowth_ReRendersBlock_DiffViewReceivesNewEdits()
+    public async Task StreamingArgsGrowth_ReRendersBlock_DiffViewReceivesNewEdits()
     {
         // Regression: ToolCall — мутабельная ссылка (args растут внутри неё), параметры
         // формально не меняются → без args-проверки в HasChanges блок не перерендеривался,
@@ -544,13 +527,13 @@ public class ToolCallBlockTests : BunitContext
             .Add(p => p.ToolCall, call));
 
         // Trailing render 100ms: DiffView получает обновлённый Edits (2 секции).
-        cut.WaitForAssertion(
+        await cut.WaitForAssertionAsync(
             () => Assert.Equal(2, _capturedEditCount),
             TimeSpan.FromSeconds(2));
     }
 
     [Fact]
-    public void StreamingArgsGrowth_ThrottledWithinWindow_StillDeliversFinalArgs()
+    public async Task StreamingArgsGrowth_ThrottledWithinWindow_StillDeliversFinalArgs()
     {
         // Стриминг: несколько пушей args строго внутри одного throttle-окна (все в
         // пределах 100ms) — ни один не может получить leading-рендер, trailing — единственный
@@ -577,7 +560,7 @@ public class ToolCallBlockTests : BunitContext
         }
 
         // Trailing render доставляет ФИНАЛЬНЫЕ args (4 секции), промежуточные гейтятся.
-        cut.WaitForAssertion(
+        await cut.WaitForAssertionAsync(
             () => Assert.Equal(4, _capturedEditCount),
             TimeSpan.FromSeconds(2));
     }
@@ -637,6 +620,116 @@ public class ToolCallBlockTests : BunitContext
         // Assert - блок свернут (класс снят), но содержимое остается в DOM
         Assert.DoesNotContain("is-expanded", cut.Find(".tool-call-details").ClassList);
         Assert.NotNull(cut.Find(".jsonargs-stub"));
+    }
+
+    #endregion
+
+    #region Execution Clock Tests
+
+    [Fact]
+    public void RunningCall_RendersCountdownInResultArea_NotInHeader()
+    {
+        // Arrange: the execution clock was stamped by ToolCallHandler
+        var call = CreateReadyCall(BuiltInToolEnum.Bash, """{"command":"echo hi"}""");
+        call.ExecutionStartedAtUtc = DateTime.UtcNow.AddSeconds(-2);
+
+        // Act
+        var cut = Render<ToolCallBlock>(parameters => parameters
+            .Add(p => p.ToolCall, call));
+
+        // Assert: the clock belongs to the outcome area, not to the tool name
+        var progress = cut.Find(".tool-call-progress");
+        Assert.Contains("1:58", progress.TextContent);
+        Assert.DoesNotContain("1:58", cut.Find(".tool-call-details .header").TextContent);
+    }
+
+    [Fact]
+    public void ApprovedButNotStartedCall_RendersNoCountdown()
+    {
+        // Arrange: Allow-mode batch sets Approved up-front, the tool is still queued
+        var call = CreateReadyCall(BuiltInToolEnum.ReadFiles, """{"paths":["f.cs"]}""");
+
+        // Act
+        var cut = Render<ToolCallBlock>(parameters => parameters
+            .Add(p => p.ToolCall, call));
+
+        // Assert
+        Assert.Empty(cut.FindAll(".tool-timeout-badge"));
+    }
+
+    [Fact]
+    public void ResultAppears_ExecutionTimeBadgeMovesToResultBlock()
+    {
+        // Arrange: the tool ran for 12s and returned a result
+        var call = CreateReadyCall(BuiltInToolEnum.ReadFiles, """{"paths":["f.cs"]}""");
+        call.ExecutionStartedAtUtc = DateTime.UtcNow.AddSeconds(-12);
+        call.ExecutionElapsedMs = 12_000;
+        call.Result = new ToolResult { Name = BuiltInToolEnum.ReadFiles, Content = "body", Success = true };
+
+        // Act
+        var cut = Render<ToolCallBlock>(parameters => parameters
+            .Add(p => p.ToolCall, call));
+
+        // Assert: the badge survives the result — inside the result block, next to the outcome
+        var resultHeader = cut.Find(".tool-call-details .custom-details .header");
+        Assert.Contains("0:12", resultHeader.TextContent);
+        // ...the progress line is gone...
+        Assert.Empty(cut.FindAll(".tool-call-progress"));
+        // ...and the header still carries only the tool name
+        Assert.DoesNotContain("0:12", cut.Find(".tool-call-details .header").TextContent);
+    }
+
+    [Fact]
+    public void DelegateTaskWithBranches_RendersNoWaitingLine()
+    {
+        // delegate_task progress is its branch views; the waiting line would duplicate them.
+        var call = CreateReadyCall(BuiltInToolEnum.DelegateTask, """{"tasks":[]}""");
+        call.SubAgents = [new SubAgentMessage { Task = "branch 1" }];
+
+        var cut = Render<ToolCallBlock>(parameters => parameters
+            .Add(p => p.ToolCall, call));
+
+        Assert.NotEmpty(cut.FindAll(".subagent-stub"));
+        Assert.Empty(cut.FindAll(".tool-call-progress"));
+    }
+
+    [Fact]
+    public void DelegateTaskWithoutBranches_RendersNoWaitingLine()
+    {
+        var call = CreateReadyCall(BuiltInToolEnum.DelegateTask, """{"tasks":[]}""");
+
+        var cut = Render<ToolCallBlock>(parameters => parameters
+            .Add(p => p.ToolCall, call));
+
+        Assert.Empty(cut.FindAll(".tool-call-progress"));
+    }
+
+    [Fact]
+    public void DelegateTaskResult_ShowsElapsedBadgeInResultBlock()
+    {
+        var call = CreateReadyCall(BuiltInToolEnum.DelegateTask, """{"tasks":[]}""");
+        call.ExecutionStartedAtUtc = DateTime.UtcNow.AddSeconds(-30);
+        call.ExecutionElapsedMs = 30_000;
+        call.Result = new ToolResult { Name = BuiltInToolEnum.DelegateTask, Content = "report", Success = true };
+
+        var cut = Render<ToolCallBlock>(parameters => parameters
+            .Add(p => p.ToolCall, call));
+
+        Assert.Contains("0:30", cut.Find(".tool-call-details .custom-details .header").TextContent);
+    }
+
+    [Fact]
+    public void AskUser_NeitherWaitsInProgressLineNorShowsClock()
+    {
+        var call = CreateReadyCall(BasicEnum.AskUser, """{"question":"Q?","options":["A"]}""");
+
+        var cut = Render<ToolCallBlock>(parameters => parameters
+            .Add(p => p.ToolCall, call));
+
+        // The question itself is the UI; an execution clock would be meaningless here.
+        Assert.NotEmpty(cut.FindAll(".askoptions-stub"));
+        Assert.Empty(cut.FindAll(".tool-call-progress"));
+        Assert.Empty(cut.FindAll(".rz-badge"));
     }
 
     #endregion

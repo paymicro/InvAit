@@ -18,6 +18,7 @@ public class DiffViewTests : BunitContext
     {
         Services.AddRadzenComponents();
         Services.AddSingleton(_vsBridgeMock.Object);
+        Services.AddSingleton(new UiErrorLogger(new Mock<IJSRuntime>().Object));
     }
 
     private static DiffEdit CreateEdit(string? oldStr, string newStr, int? approximateLine = null)
@@ -284,7 +285,7 @@ public class DiffViewTests : BunitContext
             .Add(p => p.Edits, [CreateEdit(null!, finalChunk)]));
 
         // Settle past the interval and assert the final line is displayed
-        cut.WaitForAssertion(
+        await cut.WaitForAssertionAsync(
             () => Assert.Contains("final-line-marker", cut.Markup),
             TimeSpan.FromSeconds(3));
     }

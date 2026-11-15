@@ -113,6 +113,25 @@ public class VsBridge : IVsBridge, IDisposable
         }
         catch (Exception ex)
         {
+            // Ошибка транспорта моста больше не молчит: логируем в JS-консоль и хост-лог,
+            // но не крешим вызывающий код (ответ остаётся error-результатом). Запись в консоль
+            // не может вылететь из catch и заменить задуманный error-ответ.
+            try
+            {
+                await Console.Error.WriteLineAsync($"[VsBridge] Request '{request.Action}' failed: {ex.Message}");
+            }
+            catch
+            {
+                // Даже консоль недоступна — окончательно глотаем.
+            }
+            _ = PostLogAsync(new LogEntry
+            {
+                Level = LogEntry.ErrorLevel,
+                Source = "VsBridge",
+                Message = $"Request '{request.Action}' failed",
+                Exception = $"{ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}",
+            });
+
             return new VsResponse
             {
                 Success = false,
@@ -194,6 +213,27 @@ public class VsBridge : IVsBridge, IDisposable
     private async Task EnsureInitializedAsync()
     {
         await InitializeAsync();
+    }
+
+    /// <summary>
+    /// Fire-and-forget лог-запись в хост (VS Output / VS Code OutputChannel) через
+    /// BasicEnum.LogError — как UIReady/SkipSSL, без регистрации в _pendingRequests
+    /// и без ожидания VsResponse. Сбой глотается (лог не имеет права крешить транспорт).
+    /// </summary>
+    internal async Task PostLogAsync(LogEntry entry)
+    {
+        try
+        {
+            await _jsRuntime.InvokeVoidAsync("postVsMessage", new VsRequest
+            {
+                Action = BasicEnum.LogError,
+                Payload = JsonUtils.SerializeCompact(entry),
+            });
+        }
+        catch (Exception ex)
+        {
+            await Console.Error.WriteLineAsync($"[VsBridge] Failed to post log entry: {ex.Message}");
+        }
     }
 
     public void Dispose()

@@ -113,7 +113,7 @@ public class ThrottledComponentBaseTests : BunitContext
         await Task.Delay(800, TestContext.Current.CancellationToken);
 
         // Assert
-        cut.WaitForAssertion(
+        await cut.WaitForAssertionAsync(
             () => Assert.Contains("v6", cut.Markup),
             TimeSpan.FromSeconds(2));
     }
@@ -154,7 +154,7 @@ public class ThrottledComponentBaseTests : BunitContext
         await Task.Delay(800, TestContext.Current.CancellationToken);
 
         // Assert - final content must appear despite the identical re-render
-        cut.WaitForAssertion(
+        await cut.WaitForAssertionAsync(
             () => Assert.Contains("v6", cut.Markup),
             TimeSpan.FromSeconds(2));
     }

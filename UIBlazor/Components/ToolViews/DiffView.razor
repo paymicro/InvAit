@@ -1,6 +1,7 @@
 @inherits ThrottledComponentBase
 @inject IVsBridge VsBridge
 @inject NotificationService NotificationService
+@inject UiErrorLogger UiErrorLogger
 @using DiffPlex
 @using DiffPlex.Chunkers
 @using DiffPlex.DiffBuilder
@@ -55,13 +56,7 @@
         var result = await VsBridge.OpenFileInIdeAsync(FilePath);
         if (!result.Success)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = SharedResource.OpenFileInIde,
-                Detail = result.ErrorMessage,
-                Duration = 10_000,
-            });
+            NotificationService.NotifyError(UiErrorLogger, SharedResource.OpenFileInIde, result.ErrorMessage, "OpenFile", showProgress: false);
         }
     }
 

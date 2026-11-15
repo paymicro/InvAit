@@ -388,7 +388,7 @@ public class SubAgentViewTests : BunitContext
     }
 
     [Fact]
-    public void ControlledExpand_ExternalParameterChange_AppliesToDetails()
+    public async Task ControlledExpand_ExternalParameterChange_AppliesToDetails()
     {
         // Arrange - оркестратор принудительно раскрывает блок при апруве
         // (OnApprovalRequired ставит IsExpanded=true) и сворачивает после Finish.
@@ -410,7 +410,7 @@ public class SubAgentViewTests : BunitContext
         // Assert - Details синхронизировался с внешним состоянием.
         // Рендер структурных изменений проходит через троттлинг 100ms
         // (trailing render) — ждём его через WaitForAssertion.
-        cut.WaitForAssertion(
+        await cut.WaitForAssertionAsync(
             () => Assert.Contains("is-expanded", cut.Find(".subagent-details").ClassList),
             TimeSpan.FromSeconds(2));
 
@@ -421,7 +421,7 @@ public class SubAgentViewTests : BunitContext
             .Add(p => p.SubAgent, subAgent));
 
         // Assert
-        cut.WaitForAssertion(
+        await cut.WaitForAssertionAsync(
             () => Assert.DoesNotContain("is-expanded", cut.Find(".subagent-details").ClassList),
             TimeSpan.FromSeconds(2));
     }
@@ -469,7 +469,7 @@ public class SubAgentViewTests : BunitContext
     }
 
     [Fact]
-    public void Interject_EnterWithText_AddedToSessionAndInputHides()
+    public async Task Interject_EnterWithText_AddedToSessionAndInputHides()
     {
         // Arrange
         var subAgent = CreateSubAgent(SubAgentStatus.Running, isExpanded: true);
@@ -489,7 +489,7 @@ public class SubAgentViewTests : BunitContext
         // (рендер структурных изменений проходит через троттлинг 100ms — ждём его)
         Assert.Equal(1, subAgent.GetMessageCount());
         Assert.True(subAgent.AnyMessage(m => m.IsInterject));
-        cut.WaitForAssertion(
+        await cut.WaitForAssertionAsync(
             () => Assert.Empty(cut.FindAll(".subagent-interject-input")),
             TimeSpan.FromSeconds(2));
     }

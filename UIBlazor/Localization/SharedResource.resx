@@ -378,6 +378,9 @@
   <data name="ErrorFinishByLength" xml:space="preserve">
     <value>Limit Stop. Increase the maximum output tokens.</value>
   </data>
+  <data name="ToolExecutionTime" xml:space="preserve">
+    <value>Tool execution time (approval wait excluded)</value>
+  </data>
   <data name="ToolRequestTimeoutSec" xml:space="preserve">
     <value>Tool result timeout</value>
   </data>
@@ -533,9 +536,6 @@
   </data>
   <data name="SubagentRestrinctions" xml:space="preserve">
     <value>Restrictions for sub-agents</value>
-  </data>
-  <data name="CallingToolAwait" xml:space="preserve">
-    <value>Wait for the result</value>
   </data>
   <data name="NewSession" xml:space="preserve">
     <value>New Session</value>

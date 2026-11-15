@@ -148,7 +148,7 @@ public sealed class AfSubAgentOrchestrator(
                 SystemPrompt = task.SystemPrompt,
                 AllowedTools = task.AllowedTools,
                 Status = SubAgentStatus.Running,
-                IsExpanded = true, // auto-expand while running so the user sees progress
+                IsExpanded = false, // TODO хорошо бы добавить в настройки - открывать ли сабагентов при запуске
                 ToolCallHandler = handler,
             };
 

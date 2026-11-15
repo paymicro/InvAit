@@ -189,6 +189,27 @@ describe('webviewMessageHandler', () => {
     });
 
     // -----------------------------------------------------------------------
+    // log_error
+    // -----------------------------------------------------------------------
+
+    describe('log_error', () => {
+        it('should call logger.logError with source and message and not dispatch VsRequest', async () => {
+            const ctx = createContext();
+            const entry = { level: 'ERROR', source: 'ChatService', message: 'Stream failed', exception: 'System.Exception: boom' };
+            const message = { action: 'log_error', payload: JSON.stringify(entry) };
+
+            await handleWebviewMessage(message, ctx);
+
+            expect(loggerStub.logError.calledOnce).to.be.true;
+            const loggedArg = loggerStub.logError.getCall(0).args[0] as string;
+            expect(loggedArg).to.include('ChatService');
+            expect(loggedArg).to.include('Stream failed');
+            expect(loggedArg).to.include('System.Exception: boom');
+            expect(toolDispatcherStub.handleVsRequest.called).to.be.false;
+        });
+    });
+
+    // -----------------------------------------------------------------------
     // VsRequest (action + correlationId)
     // -----------------------------------------------------------------------
 

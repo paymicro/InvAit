@@ -232,6 +232,7 @@
     [Inject] IProfileManager ProfileManager { get; set; } = null!;
     [Inject] ICommonSettingsProvider CommonSettingsProvider { get; set; } = null!;
     [Inject] DialogService DialogService { get; set; } = null!;
+    [Inject] UiErrorLogger UiErrorLogger { get; set; } = null!;
 
     private readonly ToolCategory[] _toolCategories = [
         ToolCategory.ReadFiles,
@@ -282,14 +283,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = SharedResource.ErrorModelsNotFound,
-                Detail = ex.Message,
-                Duration = 10_000,
-                ShowProgress = true,
-            });
+            NotificationService.NotifyError(UiErrorLogger, SharedResource.ErrorModelsNotFound, ex.Message, "Settings", ex);
         }
         finally
         {

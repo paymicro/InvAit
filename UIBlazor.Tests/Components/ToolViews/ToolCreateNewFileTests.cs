@@ -14,6 +14,7 @@ public class ToolCreateNewFileTests : BunitContext
     {
         Services.AddRadzenComponents();
         Services.AddSingleton(_vsBridgeMock.Object);
+        Services.AddSingleton(new UiErrorLogger(new Mock<IJSRuntime>().Object));
         JSInterop.SetupVoid("highlightCodeElement", _ => true);
     }
 
@@ -55,7 +56,7 @@ public class ToolCreateNewFileTests : BunitContext
     }
 
     [Fact]
-    public void ShouldPassContent_ToHighlightJs()
+    public async Task ShouldPassContent_ToHighlightJs()
     {
         // Arrange - MarkdownBlock pattern: the code element stays empty in the DOM,
         // content is delivered to the highlighter via JS interop (third argument).
@@ -66,7 +67,7 @@ public class ToolCreateNewFileTests : BunitContext
             .Add(p => p.Content, content));
 
         // Assert
-        cut.WaitForAssertion(() =>
+        await cut.WaitForAssertionAsync(() =>
         {
             var invocation = JSInterop.VerifyInvoke("highlightCodeElement");
             Assert.Equal(content, invocation.Arguments[2].ToString());
@@ -90,7 +91,7 @@ public class ToolCreateNewFileTests : BunitContext
         var cut = Render<ToolCreateNewFile>(parameters => parameters
             .Add(p => p.Content, "old content"));
 
-        cut.WaitForAssertion(() => JSInterop.VerifyInvoke("highlightCodeElement", 1));
+        await cut.WaitForAssertionAsync(() => JSInterop.VerifyInvoke("highlightCodeElement", 1));
 
         // Act
         cut.Render(parameters => parameters
@@ -192,7 +193,7 @@ public class ToolCreateNewFileTests : BunitContext
     }
 
     [Fact]
-    public void ShouldInvokeHighlightJs_WithMappedLanguage()
+    public async Task ShouldInvokeHighlightJs_WithMappedLanguage()
     {
         // Act
         var cut = Render<ToolCreateNewFile>(parameters => parameters
@@ -200,7 +201,7 @@ public class ToolCreateNewFileTests : BunitContext
             .Add(p => p.Content, "SELECT 1"));
 
         // Assert - highlightCodeElement invoked with the mapped language
-        cut.WaitForAssertion(() =>
+        await cut.WaitForAssertionAsync(() =>
         {
             var invocation = JSInterop.VerifyInvoke("highlightCodeElement");
             Assert.Contains("sql", invocation.Arguments[1].ToString());
@@ -237,7 +238,7 @@ public class ToolCreateNewFileTests : BunitContext
             .Add(p => p.FilePath, "a.cs")
             .Add(p => p.Content, "code"));
 
-        cut.WaitForAssertion(() =>
+        await cut.WaitForAssertionAsync(() =>
             JSInterop.VerifyInvoke("highlightCodeElement", 1));
 
         // Act - identical re-render (same content + same language)
@@ -259,7 +260,7 @@ public class ToolCreateNewFileTests : BunitContext
             .Add(p => p.FilePath, "a.cs")
             .Add(p => p.Content, "old"));
 
-        cut.WaitForAssertion(() =>
+        await cut.WaitForAssertionAsync(() =>
             JSInterop.VerifyInvoke("highlightCodeElement", 1));
 
         // Act - content changes -> re-highlight
@@ -282,7 +283,7 @@ public class ToolCreateNewFileTests : BunitContext
         var cut = Render<ToolCreateNewFile>(parameters => parameters
             .Add(p => p.FilePath, "a.cs"));
 
-        cut.WaitForAssertion(() =>
+        await cut.WaitForAssertionAsync(() =>
             JSInterop.VerifyInvoke("highlightCodeElement", 1));
 
         // Act - content arrives after the empty first render

@@ -61,6 +61,7 @@ public class SettingsDialogTests : BunitContext
             .Setup(x => x.InvokeAsync<IJSObjectReference>(It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<object[]>()))
             .ReturnsAsync((IJSObjectReference?)null!);
         Services.AddSingleton(mockJsRuntime.Object);
+        Services.AddSingleton(new UiErrorLogger(new Mock<IJSRuntime>().Object));
 
         JSInterop.SetupVoid("Radzen.preventArrows", _ => true);
 

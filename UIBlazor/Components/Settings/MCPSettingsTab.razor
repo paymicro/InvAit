@@ -126,6 +126,7 @@
     [Inject] NotificationService NotificationService { get; set; } = null!;
     [Inject] DialogService DialogService { get; set; } = null!;
     [Inject] IToolManager ToolManager { get; set; } = null!;
+    [Inject] UiErrorLogger UiErrorLogger { get; set; } = null!;
 
     private bool _reloadProcess = false;
     private string? _refreshingServerId;
@@ -172,9 +173,16 @@
             McpSettingsProvider.Current.ServerErrors[server.Name] = result;
         }
 
+        var isSuccess = result.StartsWith("Success");
+
+        if (!isSuccess)
+        {
+            UiErrorLogger.LogError("MCP", $"Refresh tools for server '{server.Name}' failed: {result}");
+        }
+
         NotificationService.Notify(new NotificationMessage
         {
-            Severity = result.StartsWith("Success") ? NotificationSeverity.Success : NotificationSeverity.Error,
+            Severity = isSuccess ? NotificationSeverity.Success : NotificationSeverity.Error,
             Summary = result,
             Duration = 4000,
             ShowProgress = true

@@ -37,6 +37,68 @@ public class ToolCall
     public ToolResult? Result { get; set; }
 
     /// <summary>
+    /// UTC moment when the tool body was actually invoked. Stamped by
+    /// <see cref="ToolCallHandler"/> AFTER the approval was resolved and immediately
+    /// before the tool is executed, so the approval wait (and the wait in the
+    /// sequential batch queue) is never part of the measured interval.
+    /// Never persisted: after a session reload an in-flight call must not show a
+    /// "zombie" countdown for a tool that is not running in this process anymore.
+    /// </summary>
+    [JsonIgnore]
+    public DateTime? ExecutionStartedAtUtc { get; set; }
+
+    /// <summary>
+    /// Measured execution duration in ms (start → result). Persisted with the session,
+    /// so the finished-state badge survives reload and compression.
+    /// </summary>
+    [JsonPropertyName("executionElapsedMs")]
+    public long? ExecutionElapsedMs { get; set; }
+
+    /// <summary>True while the tool body runs: start stamped, duration not measured yet.</summary>
+    [JsonIgnore]
+    public bool IsExecuting => ExecutionStartedAtUtc is not null && ExecutionElapsedMs is null;
+
+    /// <summary>
+    /// Raised when the execution clock changes state (start stamped / duration measured).
+    /// The handler stamps the clock outside the render cascade, and nothing else would make
+    /// the badge re-render at that moment (a running tool produces no parent re-renders).
+    /// The rendering <see cref="ToolTimeoutBadge"/> subscribes to it — same pattern as
+    /// <see cref="SubAgentsChanged"/>.
+    /// </summary>
+    public event Action? ExecutionClockChanged;
+
+    /// <summary>
+    /// Stamps the execution start. Idempotent: a repeated call keeps the first stamp,
+    /// so a re-entered execution path cannot shift the clock.
+    /// </summary>
+    public void MarkExecutionStarted()
+    {
+        if (ExecutionStartedAtUtc is not null)
+            return;
+
+        ExecutionStartedAtUtc = DateTime.UtcNow;
+        NotifyExecutionClockChanged();
+    }
+
+    /// <summary>
+    /// Measures the execution duration from <see cref="ExecutionStartedAtUtc"/>.
+    /// No-op when the clock never started (denied / not executed / ask_user) and when
+    /// the duration is already recorded (first measurement wins).
+    /// </summary>
+    public void MarkExecutionFinished()
+    {
+        if (ExecutionElapsedMs is not null || ExecutionStartedAtUtc is not { } startedAt)
+            return;
+
+        var elapsedMs = (DateTime.UtcNow - startedAt).TotalMilliseconds;
+        ExecutionElapsedMs = (long)Math.Max(0, elapsedMs);
+        NotifyExecutionClockChanged();
+    }
+
+    private void NotifyExecutionClockChanged()
+        => Volatile.Read(ref ExecutionClockChanged)?.Invoke();
+
+    /// <summary>
     /// All sub-agent branches created by this delegate_task call
     /// </summary>
     [JsonIgnore]

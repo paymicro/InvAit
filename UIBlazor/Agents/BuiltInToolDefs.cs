@@ -136,12 +136,11 @@ public static class BuiltInToolDefs
     { }
 
     [DisplayName(BasicEnum.AskUser)]
-    [Description("Ask the user a question and present options for them to choose from. " +
-                 "Use this when you need clarification or user input to proceed. " +
-                 "The user can select one of the provided options or enter their own answer.")]
+    [Description("Ask a question and present options for them to choose from. " +
+                 "Use this when you need clarification to proceed.")]
     public static void AskUser(
-        [Description("The question to ask the user")] string question,
-        [Description("A list of options for the user to choose from. Pass an empty array for a free-form question.")] string[] options)
+        [Description("The question")] string question,
+        [Description("A list of options for the user to choose from. For an open-ended question, provide an empty array. The user can select one of the options or enter their own custom response.")] string[] options)
     { }
 
     [DisplayName(BuiltInToolEnum.DelegateTask)]
