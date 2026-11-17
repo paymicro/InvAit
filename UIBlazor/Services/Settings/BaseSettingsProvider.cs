@@ -7,7 +7,7 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider whe
 {
     private readonly ILocalStorageService _storage;
     private readonly string _storageKey;
-    protected readonly Debouncer Debouncer;
+    protected readonly Throttle SaveThrottler;
     private bool _isInitializing;
     private readonly ILogger _logger;
 
@@ -22,7 +22,9 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider whe
         _storage = storage;
         _logger = logger;
         _storageKey = storageKey;
-        Debouncer = new Debouncer(debounceDelay ?? TimeSpan.FromMilliseconds(750), SaveAsync);
+        // Trailing-only throttle (debounce-семантика): окно отсчитывается от первого
+        // триггера — сейв не позже 750ms после первого изменения, а не «на ближайшем тике».
+        SaveThrottler = new Throttle(SaveAsync, (int)(debounceDelay ?? TimeSpan.FromMilliseconds(750)).TotalMilliseconds, leading: false);
     }
 
     private void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -30,14 +32,14 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider whe
         if (_isInitializing)
             return;
 
-        Debouncer.Trigger();
+        SaveThrottler.Notify();
     }
 
     public void CallSaveTrigger()
     {
         if (_isInitializing)
             return;
-        Debouncer.Trigger();
+        SaveThrottler.Notify();
     }
 
     public event Action? OnSaved;
@@ -102,6 +104,6 @@ public abstract class BaseSettingsProvider<TOptions> : IBaseSettingsProvider whe
     public virtual void Dispose()
     {
         Current.PropertyChanged -= OnPropertyChanged;
-        Debouncer.Dispose();
+        SaveThrottler.Dispose();
     }
 }

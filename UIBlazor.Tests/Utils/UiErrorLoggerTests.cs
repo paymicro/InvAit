@@ -15,12 +15,12 @@ public class UiErrorLoggerTests
         => new(jsMock.Object);
 
     [Fact]
-    public async Task Log_WritesToBrowserConsoleError()
+    public async Task Log_WritesToBrowserConsole()
     {
-        // Arrange - capture Console.Error
-        var original = Console.Error;
+        // Arrange - capture stdout (UiErrorLogger writes via Console.WriteLine with a level tag)
+        var original = Console.Out;
         using var sw = new StringWriter();
-        Console.SetError(sw);
+        Console.SetOut(sw);
         try
         {
             var logger = CreateLogger(new Mock<IJSRuntime>());
@@ -32,14 +32,14 @@ public class UiErrorLoggerTests
             await WaitUntilAsync(() =>
             {
                 var output = sw.ToString();
-                return output.Contains("ERROR")
+                return output.Contains(LogEntry.ErrorLevel)
                     && output.Contains("HTTP transport")
                     && output.Contains("Stream failed");
             });
         }
         finally
         {
-            Console.SetError(original);
+            Console.SetOut(original);
         }
     }
 

@@ -90,12 +90,13 @@ window.postVsMessage = msg => {
     if (window.chrome?.webview) {
         // Код для Visual Studio 2026
         window.chrome.webview.postMessage(msg);
-        console.log("VS Request: ", msg);
+        if (msg.action != 'log_error')
+            console.log(">>> ", msg);
         return "OK";
     } else if (isVSCode) {
         // Код для VS Code (отправляем родителю iframe)
         window.parent.postMessage({ target: 'vscode-webview', packet: msg }, '*');
-        console.log("VSCode Request: ", msg);
+        console.log("VSCode >>> ", msg);
         return "OK";
     } else {
         console.warn("API связи не обнаружено. Сообщение не отправлено:", msg);
@@ -113,7 +114,7 @@ function handleIncomingMessage(data) {
 
     switch (data.type) {
         case 'VsResponse':
-            console.log("VsResponse: ", data.payload);
+            console.log("<<< ", data.payload);
             window.vsBridgeHandler.invokeMethodAsync('HandleVsResponse', data.payload)
                 .catch(err => console.error('Error invoking HandleVsResponse:', err));
             break;

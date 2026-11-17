@@ -2,7 +2,6 @@
 @inject IVsBridge VsBridge
 @inject NotificationService NotificationService
 @inject UiErrorLogger UiErrorLogger
-@inherits ThrottledComponentBase
 
 <div class="diff-view">
     @if (!string.IsNullOrEmpty(FilePath))
@@ -57,10 +56,18 @@
         _language = GetHighlightLanguage(FilePath);
     }
 
+    /// <summary>
+    /// Highlight.js подсветка по расширению файла (паттерн MarkdownBlock:
+    /// контент передаётся в JS параметром, элемент в DOM пустой).
+    /// <para>
+    /// Своего троттлера здесь НЕТ и не нужно: компонент рендерится только от параметров
+    /// родителя, а частоту держит <c>ToolCallBlock</c> (100ms, argsLength в HasChanges).
+    /// Локальный троттлер только отодвигал финальную подсветку и терял её на Dispose.
+    /// </para>
+    /// </summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Highlight.js подсветка по расширению файла (паттерн MarkdownBlock:
-        // контент передаётся в JS параметром, элемент в DOM пустой).
+        // Кэш по контенту + языку: идентичный ре-рендер не должен пере-highlight'ить файл.
         if (Content == _lastHighlightedContent && _language == _lastHighlightedLanguage)
         {
             return;

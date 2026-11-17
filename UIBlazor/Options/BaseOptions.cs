@@ -8,7 +8,7 @@ public abstract class BaseOptions : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>
-    /// При изменении вызывается <see cref="Debouncer"/> в и сохраняет настройки через 750mc
+    /// При изменении вызывается троттлер сейва в <see cref="BaseSettingsProvider"/> и сохраняет настройки через 750ms
     /// </summary>
     protected void SetIfChanged<T>(ref T storage, T value, [CallerMemberName] string prop = "")
     {

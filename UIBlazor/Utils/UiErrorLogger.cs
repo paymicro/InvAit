@@ -1,12 +1,11 @@
-﻿using Microsoft.JSInterop;
+using Microsoft.JSInterop;
 using Radzen;
-using Shared.Contracts;
 
 namespace UIBlazor.Utils;
 
 /// <summary>
 /// Централизованный логгер ошибок UI. Каждый вызов fire-and-forget публикует <see cref="LogEntry"/>:
-/// 1) в Console.Error (браузерная JS-консоль — devtools), через async API;
+/// 1) в Console (браузерная JS-консоль — devtools), через async API;
 /// 2) хосту (VS Output / VS Code OutputChannel) через <see cref="BasicEnum.LogError"/> —
 ///    без VsResponse и без _pendingRequests (как UIReady/SkipSSL).
 /// Синхронная оболочка <see cref="Log"/> не крешит вызывающий код: все сбойные ветки глотаются.
@@ -42,7 +41,7 @@ public class UiErrorLogger
         // 1) Браузерная консоль — всегда.
         try
         {
-            await Console.Error.WriteLineAsync(Format(entry));
+            Console.WriteLine(Format(entry));
         }
         catch
         {
@@ -63,7 +62,7 @@ public class UiErrorLogger
             // Мост может быть ещё не инициализирован или JS недоступен — не крешим UI.
             try
             {
-                await Console.Error.WriteLineAsync($"[UiErrorLogger] Failed to post log entry to host: {ex.Message}");
+                Console.WriteLine($"[UiErrorLogger] Failed to post log entry to host: {ex.Message}");
             }
             catch
             {

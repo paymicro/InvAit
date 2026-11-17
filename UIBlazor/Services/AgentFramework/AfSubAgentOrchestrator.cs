@@ -270,7 +270,7 @@ public sealed class AfSubAgentOrchestrator(
                 // SOURCE coalesces the storm into ~10 events/sec for all subscribers at
                 // once; the trailing fire guarantees the final state always lands.
                 // Structural changes (attach, finish, approval, retry) fire directly.
-                using var uiThrottle = new EventThrottler(subAgent.NotifyStateChanged, SubAgentUiIntervalMs);
+                using var uiThrottle = new Throttle(subAgent.NotifyStateChanged, SubAgentUiIntervalMs);
 
                 void Touch(VisualChatMessage message)
                 {

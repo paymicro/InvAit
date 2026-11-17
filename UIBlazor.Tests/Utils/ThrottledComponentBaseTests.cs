@@ -167,7 +167,7 @@ public class ThrottledComponentBaseTests : BunitContext
     // ----------------------------------------------------------------
 
     [Fact]
-    public async Task Throttle_ReplacedCts_IsDisposed()
+    public async Task Throttle_BurstInsideWindow_SingleTrailingPending()
     {
         var cut = Render<LongIntervalHarness>();
         Assert.Equal(1, cut.Instance.RenderCount);
@@ -176,24 +176,19 @@ public class ThrottledComponentBaseTests : BunitContext
         cut.Instance.MarkChanged();
         cut.Render(parameters => { });
         Assert.Equal(2, cut.Instance.RenderCount);
-        Assert.Null(cut.Instance.PendingCts);
+        Assert.False(cut.Instance.IsTrailingPending);
 
-        // First throttle hit
+        // First throttle hit — schedules the trailing render
         cut.Instance.MarkChanged();
         cut.Render(parameters => { });
-        var firstCts = cut.Instance.PendingCts;
-        Assert.NotNull(firstCts);
-        Assert.False(firstCts.IsCancellationRequested);
+        Assert.True(cut.Instance.IsTrailingPending);
 
-        // Second throttle hit — replaces PendingCts
+        // More hits inside the window — still exactly ONE pending trailing render
         cut.Instance.MarkChanged();
         cut.Render(parameters => { });
-        var secondCts = cut.Instance.PendingCts;
-        Assert.NotSame(firstCts, secondCts);
-
-        // Old CTS must be canceled and disposed
-        Assert.True(firstCts.IsCancellationRequested);
-        Assert.True(IsCtsDisposed(firstCts));
+        cut.Instance.MarkChanged();
+        cut.Render(parameters => { });
+        Assert.True(cut.Instance.IsTrailingPending);
 
         cut.Instance.Dispose();
         await Task.CompletedTask;
@@ -215,19 +210,13 @@ public class ThrottledComponentBaseTests : BunitContext
         cut.Instance.MarkChanged();
         cut.Render(parameters => { });
         Assert.Equal(2, cut.Instance.RenderCount);
-        Assert.NotNull(cut.Instance.PendingCts);
-        Assert.False(cut.Instance.PendingCts.IsCancellationRequested);
+        Assert.True(cut.Instance.IsTrailingPending);
 
         // Unthrottled render (elapsed >= interval)
         await Task.Delay(450, TestContext.Current.CancellationToken);
         cut.Instance.MarkChanged();
         cut.Render(parameters => { });
         Assert.Equal(3, cut.Instance.RenderCount);
-
-        // Pending CTS must be canceled after unthrottled render
-        var cts = cut.Instance.PendingCts;
-        if (cts is not null)
-            Assert.True(cts.IsCancellationRequested);
 
         cut.Instance.Dispose();
     }
@@ -286,31 +275,4 @@ public class ThrottledComponentBaseTests : BunitContext
         cut.Instance.Dispose();
     }
 
-    /// <summary>
-    /// CancellationTokenSource.IsDisposed is internal in .NET.
-    /// Use reflection to check disposal state for test assertions.
-    /// </summary>
-    private static bool IsCtsDisposed(CancellationTokenSource cts)
-    {
-        var field = typeof(CancellationTokenSource)
-            .GetField("_disposed", BindingFlags.NonPublic | BindingFlags.Instance)
-            ?? typeof(CancellationTokenSource)
-                .GetField("m_disposed", BindingFlags.NonPublic | BindingFlags.Instance);
-        if (field is not null)
-        {
-            var value = field.GetValue(cts);
-            if (value is int intVal) return intVal != 0;
-            if (value is bool boolVal) return boolVal;
-        }
-        // Fallback: a disposed CTS throws ObjectDisposedException on Cancel()
-        try
-        {
-            cts.Cancel();
-            return false; // still alive
-        }
-        catch (ObjectDisposedException)
-        {
-            return true;
-        }
-    }
 }

@@ -36,6 +36,6 @@ internal static class Logger
     private static string GetMessage(string message, string level)
     {
         var timestamp = DateTime.Now.ToString("HH:mm:ss");
-        return $"[{timestamp}] [{level}] {message}";
+        return $"{timestamp} [{level}] {message}";
     }
 }

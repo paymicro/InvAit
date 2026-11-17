@@ -43,7 +43,7 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
         }
 
         PropertyChanged?.Invoke(sender, e);
-        Debouncer.Trigger();
+        SaveThrottler.Notify();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -74,7 +74,7 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
         }
         else
         {
-            Debouncer.Trigger();
+            SaveThrottler.Notify();
         }
     }
 
@@ -97,7 +97,7 @@ public class ProfileService(ILocalStorageService localStorage, ILogger<ProfileSe
 
             if (!saveImmediately)
             {
-                Debouncer.Trigger();
+                SaveThrottler.Notify();
             }
             else
             {

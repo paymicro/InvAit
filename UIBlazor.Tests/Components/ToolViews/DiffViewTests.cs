@@ -247,57 +247,55 @@ public class DiffViewTests : BunitContext
     #region Streaming Regression Tests
 
     [Fact]
-    public async Task Streaming_IdenticalReRenderAfterBurst_FinalContentIsDisplayed()
+    public void Streaming_IdenticalReRenderAfterBurst_FinalContentIsDisplayed()
     {
-        // Reproduces production bug: while tool-call arguments stream in, each
-        // parent push grows Edits and DiffView throttles the renders. When the
-        // stream completes, ChatService bumps message state -> parent cascade
-        // re-renders with an identical Edits payload -> ParseDiff computes
-        // HasChanges=false, and when the pending delayed render fires it was
-        // vetoed — the last streamed chunk stayed invisible forever.
+        // Reproduces production bug (todo.md): while tool-call arguments stream in, every
+        // parent push grew Edits. DiffView used to throttle its renders (500ms, deferred
+        // DiffPlex parsing) — on a fast stream the last chunk landed inside the window, the
+        // trailing render was vetoed by HasChanges and the content stayed invisible forever.
+        // DiffView now parses synchronously in OnParametersSet: whatever arrives is parsed
+        // before the closest render, so the assertion below needs no waiting.
         var cut = Render<DiffView>(parameters => parameters
             .Add(p => p.FilePath, "src\\Program.cs")
             .Add(p => p.Edits, [CreateEdit(null!, "chunk-0")]));
         Assert.Contains("chunk-0", cut.Markup);
 
-        // Stream: append tokens strictly INSIDE one throttle window (all pushes
-        // complete within 500ms of the initial render, so none of them can get
-        // an immediate leading render — the trailing delayed render is the only
-        // chance to display them; payload grows monotonically like SSE appends)
+        // Stream: append tokens back-to-back (payload grows monotonically like SSE appends)
         const string baseChunk = "chunk-0";
         const string finalChunk = baseChunk + "\nstream-token-6-xxxxxxxxxxxxxxxxxxxx" +
                                   "\nfinal-line-marker";
         for (var i = 1; i <= 6; i++)
         {
-            await Task.Delay(50, TestContext.Current.CancellationToken);
             var text = i == 6
                 ? finalChunk
                 : baseChunk + $"\nstream-token-{i}-xxxxxxxxxxxxxxxxxxxx";
             cut.Render(parameters => parameters
                 .Add(p => p.FilePath, "src\\Program.cs")
                 .Add(p => p.Edits, [CreateEdit(null!, text)]));
+
+            // Synchronous contract: the payload just pushed is ALREADY parsed — the row
+            // count matches the latest text (CharacterChunker breaks the changed token into
+            // per-character spans, so text markers are not reliable here).
+            var expectedRows = i == 6 ? 3 : 2; // chunk-0 / stream-token-i / final-line-marker
+            Assert.Equal(expectedRows, cut.FindAll("table.diff tr").Count());
         }
 
-        // Stream completed: identical payload pushed again (new array instance,
-        // same values) -> ParseDiff sees no growth -> HasChanges=false
+        // Stream completed: identical payload pushed again (new array instance, same values)
         cut.Render(parameters => parameters
             .Add(p => p.FilePath, "src\\Program.cs")
             .Add(p => p.Edits, [CreateEdit(null!, finalChunk)]));
 
-        // Settle past the interval and assert the final line is displayed
-        await cut.WaitForAssertionAsync(
-            () => Assert.Contains("final-line-marker", cut.Markup),
-            TimeSpan.FromSeconds(3));
+        // Assert - the final line survived the identical re-render cascade
+        Assert.Contains("final-line-marker", cut.Markup);
     }
 
     [Fact]
-    public async Task FilePathChange_WithIdenticalEdits_IsRendered()
+    public void FilePathChange_WithIdenticalEdits_IsRendered()
     {
         // Reproduces production bug: FilePath does NOT contribute to the sum-of-chars
         // change detection. When the final update brings the file path while Edits stay
-        // identical (the path arrives as the last chunk of streaming args), the old code
-        // kept _changed=false → ShouldRender vetoed → the header with the file path was
-        // never displayed.
+        // identical (the path arrives as the last chunk of streaming args), the change
+        // detection must still see "nothing to re-parse" AND the path must be rendered.
         var edits = new[]
         {
             CreateEdit("old", "new")
@@ -308,12 +306,8 @@ public class DiffViewTests : BunitContext
             .Add(p => p.Edits, edits));
         Assert.Throws<ElementNotFoundException>(() => cut.Find(".tool-file-header"));
 
-        // Pause past the throttle window: the final push must get a leading render
-        // (deterministic — no dependence on the deferred trailing render).
-        await Task.Delay(600, TestContext.Current.CancellationToken);
-
         // Final update: identical Edits payload (new array instance, same values) + FilePath.
-        // Without the fix: _changed stays false → render vetoed → no header.
+        // The header is rendered from the parameter directly — no diffuse dependency.
         cut.Render(parameters => parameters
             .Add(p => p.FilePath, "src\\Program.cs")
             .Add(p => p.Edits, edits));
@@ -322,16 +316,13 @@ public class DiffViewTests : BunitContext
     }
 
     [Fact]
-    public async Task FilePathChange_WithGrownEdits_RendersBoth()
+    public void FilePathChange_WithGrownEdits_RendersBoth()
     {
         // FilePath changes AND Edits grow in the same update: both the header and the
-        // new diff content must be rendered (pending parse is scheduled for the growth).
+        // new diff content must be rendered by that very render.
         var cut = Render<DiffView>(parameters => parameters
             .Add(p => p.FilePath, "a.cs")
             .Add(p => p.Edits, [CreateEdit("old", "new")]));
-
-        // Pause past the throttle window: the final push must get a leading render.
-        await Task.Delay(600, TestContext.Current.CancellationToken);
 
         cut.Render(parameters => parameters
             .Add(p => p.FilePath, "b.cs")
