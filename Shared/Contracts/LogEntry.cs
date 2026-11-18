@@ -1,4 +1,4 @@
-﻿namespace Shared.Contracts;
+namespace Shared.Contracts;
 
 /// <summary>
 /// Запись лога из UI (Blazor WASM) в хост (VS Output / VS Code OutputChannel).

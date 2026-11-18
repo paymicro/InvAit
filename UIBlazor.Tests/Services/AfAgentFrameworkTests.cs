@@ -353,7 +353,7 @@ public class AfAgentFrameworkTests
         // Mid-stream: as soon as only reasoning has arrived, CompletionTokens must grow
         // (it always tracks the FULL generation) — otherwise badges look frozen while thinking.
         await using var enumerator = adapter.GetCompletionsAsync(
-            [new WireMessage { Role = ChatMessageRole.User, Content = "hi" }], [], session, capture, TestContext.Current.CancellationToken).GetAsyncEnumerator();
+            [new WireMessage { Role = ChatMessageRole.User, Content = "hi" }], [], session, capture, TestContext.Current.CancellationToken).GetAsyncEnumerator(TestContext.Current.CancellationToken);
 
         Assert.True(await enumerator.MoveNextAsync());
         Assert.NotNull(enumerator.Current.ReasoningContent);

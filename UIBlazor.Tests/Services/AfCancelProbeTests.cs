@@ -392,7 +392,7 @@ public class AfCancelProbeTests
                 [new WireMessage { Role = ChatMessageRole.User, Content = "hi" }], tools, session, capture, cts.Token).ConfigureAwait(false))
             {
             }
-        });
+        }, TestContext.Current.CancellationToken);
 
         // Wait until the tool is waiting for approval, cancel while it is parked there.
         await approvalShown.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);

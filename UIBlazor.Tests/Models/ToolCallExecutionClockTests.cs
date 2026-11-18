@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Tests.Models;
+namespace UIBlazor.Tests.Models;
 
 /// <summary>
 /// Execution clock of <see cref="ToolCall"/>: the single source of truth for the

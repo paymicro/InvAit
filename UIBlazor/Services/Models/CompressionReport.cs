@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Services.Models;
+namespace UIBlazor.Services.Models;
 
 /// <summary>
 /// Result of one successful context compression. Compression rewrites the session history

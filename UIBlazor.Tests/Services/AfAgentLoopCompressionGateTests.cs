@@ -90,11 +90,11 @@ public class AfAgentLoopCompressionGateTests
                 .ConfigureAwait(false))
             {
             }
-        });
+        }, TestContext.Current.CancellationToken);
 
         // Act: the user interjects while turn 2 is still streaming (the stream holds on
         // Turn2Gate) — deterministic ordering, the turn-2 boundary scan must pick it up.
-        await compressionDone.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await compressionDone.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         session.AddMessage(new VisualChatMessage { Role = ChatMessageRole.User, Content = "USER_INTERJECT" });
         client.Turn2Gate!.TrySetResult();
 

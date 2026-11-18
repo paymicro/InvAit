@@ -30,7 +30,7 @@ public partial class BuiltInToolDefsTests
         var result = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.DelegateTask));
 
         var props = result.Function.Parameters.Properties;
-        Assert.Equal(1, props.Count);
+        Assert.Single(props);
         Assert.True(props.ContainsKey("tasks"));
     }
 
@@ -190,7 +190,7 @@ public partial class BuiltInToolDefsTests
         Assert.False(roundtripped.Function.Parameters.AdditionalProperties);
 
         var props = roundtripped.Function.Parameters.Properties;
-        Assert.Equal(1, props.Count);
+        Assert.Single(props);
         Assert.True(props.ContainsKey("tasks"));
 
         // Items is exposed as object; after a JSON roundtrip it comes back as JsonElement —

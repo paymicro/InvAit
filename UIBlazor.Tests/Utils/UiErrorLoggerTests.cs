@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Tests.Utils;
+namespace UIBlazor.Tests.Utils;
 
 using System.Diagnostics;
 using System.Linq.Expressions;

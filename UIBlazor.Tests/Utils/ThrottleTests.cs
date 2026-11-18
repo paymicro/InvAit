@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Tests.Utils;
+namespace UIBlazor.Tests.Utils;
 
 /// <summary>
 /// Tests for the unified <see cref="UIBlazor.Utils.Throttle"/> primitive:

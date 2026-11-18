@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Tests.Components.ToolViews;
+namespace UIBlazor.Tests.Components.ToolViews;
 
 using DiffPlex;
 using DiffPlex.Chunkers;

@@ -80,10 +80,10 @@ public class AfAgentLoopTests
                 if (delta.Content == "DONE")
                     doneReceived.TrySetResult();
             }
-        });
+        }, TestContext.Current.CancellationToken);
 
         // Wait until the tool actually started running.
-        await toolStarted.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        await toolStarted.Task.WaitAsync(TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken);
 
         // The loop must NOT produce the next model turn ("DONE") while the tool
         // is still in flight — the gate is still closed at this point.
@@ -246,9 +246,9 @@ public class AfAgentLoopTests
                 if (delta.Content == "DONE")
                     doneReceived.TrySetResult();
             }
-        });
+        }, TestContext.Current.CancellationToken);
 
-        await toolStarted.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        await toolStarted.Task.WaitAsync(TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken);
 
         // Act: interject while the tool is running (before the turn boundary).
         session.AddMessage(new VisualChatMessage { Role = ChatMessageRole.User, Content = "USER_INTERJECT" });
@@ -304,11 +304,11 @@ public class AfAgentLoopTests
                 .ConfigureAwait(false))
             {
             }
-        });
+        }, TestContext.Current.CancellationToken);
 
         // Wait until turn 1's text is yielded (stream still open), then interject —
         // the message is in the session BEFORE the boundary scan runs.
-        await client.Turn1Yielded.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        await client.Turn1Yielded.Task.WaitAsync(TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken);
         session.AddMessage(new VisualChatMessage { Role = ChatMessageRole.User, Content = "USER_INTERJECT" });
         client.Turn1Gate!.TrySetResult();
         await enumerateTask;

@@ -1,4 +1,4 @@
-﻿namespace ToolCore.Tests;
+namespace ToolCore.Tests;
 
 /// <summary>
 /// Switch for the MCP integration tests that spawn real OS processes

@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Tests.Models;
+namespace UIBlazor.Tests.Models;
 
 /// <summary>
 /// The session model's "I changed" signal — the foundation of the autosave invariant.

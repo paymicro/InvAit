@@ -374,7 +374,7 @@ public class AiChatTests : BunitContext
         await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("during compression"));
 
         var snapshot = _session.GetMessagesSnapshot();
-        Assert.Equal(1, snapshot.Count);
+        Assert.Single(snapshot);
         Assert.Equal(ChatMessageRole.Assistant, snapshot[^1].Role);
         Assert.False(snapshot[^1].Content == "during compression");
 
@@ -805,7 +805,7 @@ public class AiChatTests : BunitContext
         // final error. Without the fix (aggressive wipe) the session would NOT
         // contain run 1's "turn1 partial" — the lost work is the regression.
         Assert.Equal(3, messages.Count); // user + run1 turn1 (kept) + run2 turn (overwritten with error)
-        Assert.Single(messages.Where(m => m.Content == "turn1 partial"));
+        Assert.Single(messages, m => m.Content == "turn1 partial");
         Assert.DoesNotContain("turn2 partial", messages.Select(m => m.Content));
         Assert.Contains("Error:", messages[2].Content);
         Assert.Contains("boom", messages[2].Content);
