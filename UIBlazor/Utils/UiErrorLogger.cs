@@ -41,7 +41,7 @@ public class UiErrorLogger
         // 1) Браузерная консоль — всегда.
         try
         {
-            Console.WriteLine(Format(entry));
+            await Console.Out.WriteLineAsync(Format(entry));
         }
         catch
         {
@@ -62,7 +62,7 @@ public class UiErrorLogger
             // Мост может быть ещё не инициализирован или JS недоступен — не крешим UI.
             try
             {
-                Console.WriteLine($"[UiErrorLogger] Failed to post log entry to host: {ex.Message}");
+                await Console.Out.WriteLineAsync($"[UiErrorLogger] Failed to post log entry to host: {ex.Message}");
             }
             catch
             {

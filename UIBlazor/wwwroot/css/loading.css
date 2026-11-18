@@ -43,7 +43,11 @@
         bottom: 0;
         box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
         box-sizing: border-box;
-        display: none;
+        /* Жесткое скрытие: Blazor-бут показывает плашку инлайн-стилем display:block при
+           любой записи в error-канал консоли (в т.ч. от ожидаемых отказов инструментов).
+           Все реальные ошибки уходят в Output/devtools, поэтому баннер не нужен.
+           !important перебивает инлайн-стиль, который ставит blazor.webassembly.js. */
+        display: none !important;
         left: 0;
         padding: 0.6rem 1.25rem 0.7rem 1.25rem;
         position: fixed;

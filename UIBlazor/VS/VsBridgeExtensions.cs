@@ -7,8 +7,9 @@ public static class VsBridgeExtensions
 {
     /// <summary>
     /// Открывает файл в IDE (open_file уже реализован на хостах VS/VS Code).
-    /// Возвращает результат; исключения моста проглатываются (лог в Console.Error) —
-    /// падение моста не должно крешить UI.
+    /// Возвращает результат; исключения моста проглатываются (лог в обычный консольный канал,
+    /// не в Console.Error) — падение моста не должно крешить UI и не должно поднимать
+    /// плашку #blazor-error-ui из-за недоступного файла.
     /// </summary>
     public static async Task<VsToolResult> OpenFileInIdeAsync(this IVsBridge bridge, string filePath)
     {
@@ -23,7 +24,7 @@ public static class VsBridgeExtensions
         }
         catch (Exception ex)
         {
-            await Console.Error.WriteLineAsync($"Failed to open file '{filePath}': {ex.Message}");
+            await Console.Out.WriteLineAsync($"Failed to open file '{filePath}': {ex.Message}");
             return VsToolResult.Failed(BasicEnum.OpenFile, ex.Message);
         }
     }

@@ -21,13 +21,13 @@ public class RoslynSearchService
             var componentModel = (IComponentModel)sp.GetService(typeof(SComponentModel));
             if (componentModel == null)
             {
-                return new VsResponse { Success = false, Error = "ComponentModel service not found." };
+                return new VsResponse { Success = false, Payload = "ComponentModel service not found." };
             }
 
             var workspace = componentModel.GetService<VisualStudioWorkspace>();
             if (workspace == null)
             {
-                return new VsResponse { Success = false, Error = "VisualStudioWorkspace not found." };
+                return new VsResponse { Success = false, Payload = "VisualStudioWorkspace not found." };
             }
 
             var solution = workspace.CurrentSolution;
@@ -40,7 +40,7 @@ public class RoslynSearchService
 
             if (symbols.Count == 0)
             {
-                return new VsResponse { Success = false, Error = $"Symbol '{symbolName}' isn't found." };
+                return new VsResponse { Success = false, Payload = $"Symbol '{symbolName}' isn't found." };
             }
 
             var sb = new StringBuilder();
@@ -87,7 +87,7 @@ public class RoslynSearchService
         catch (Exception ex)
         {
             // Если Roslyn упадет из-за версий сборок, мы перехватим это здесь
-            return new VsResponse { Success = false, Error = $"Roslyn Error: {ex.Message}\n{ex.StackTrace}" };
+            return new VsResponse { Success = false, Payload = $"Roslyn Error: {ex.Message}\n{ex.StackTrace}" };
         }
     }
 
@@ -102,13 +102,13 @@ public class RoslynSearchService
             var componentModel = (IComponentModel)sp.GetService(typeof(SComponentModel));
             if (componentModel == null)
             {
-                return new VsResponse { Success = false, Error = "ComponentModel service not found." };
+                return new VsResponse { Success = false, Payload = "ComponentModel service not found." };
             }
 
             var workspace = componentModel.GetService<VisualStudioWorkspace>();
             if (workspace == null)
             {
-                return new VsResponse { Success = false, Error = "VisualStudioWorkspace not found." };
+                return new VsResponse { Success = false, Payload = "VisualStudioWorkspace not found." };
             }
 
             var solution = workspace.CurrentSolution;
@@ -121,7 +121,7 @@ public class RoslynSearchService
 
             if (symbols.Count == 0)
             {
-                return new VsResponse { Success = false, Error = $"Symbol '{symbolName}' isn't found." };
+                return new VsResponse { Success = false, Payload = $"Symbol '{symbolName}' isn't found." };
             }
 
             // Собираем строки с информацией о декларациях
@@ -133,7 +133,7 @@ public class RoslynSearchService
         }
         catch (Exception ex)
         {
-            return new VsResponse { Success = false, Error = $"Roslyn Error: {ex.Message}\n{ex.StackTrace}" };
+            return new VsResponse { Success = false, Payload = $"Roslyn Error: {ex.Message}\n{ex.StackTrace}" };
         }
     }
 }

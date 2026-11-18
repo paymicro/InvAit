@@ -62,16 +62,40 @@ public class VsBridge : IVsBridge, IDisposable
 
         var response = await SendRequestAsync(request, cancellationToken);
 
+        if (!response.Success)
+        {
+            // Ожидаемый отказ инструмента (файл не найден, нет прав чтения и т.п.) — это
+            // РЕЗУЛЬТАТ, а не сбой приложения. Логируем его уровнем WARN в обычные каналы
+            // (devtools-консоль через Console.WriteLine + хост-лог), но никогда не пишем
+            // в Console.Error: Blazor WASM реагирует на error-канал показом плашки
+            // #blazor-error-ui, и ожидаемый отказ выглядел бы как падение приложения.
+            _ = PostLogAsync(new LogEntry
+            {
+                Level = LogEntry.WarnLevel,
+                Source = "VsBridge",
+                Message = $"Request '{request.Action}' failed: {response.Payload}",
+            });
+        }
+
         return Convert(request, response);
     }
 
     private VsToolResult Convert(VsRequest vsRequest, VsResponse vsResponse)
     {
+        // Бинарный контракт VsResponse: дискриминатор — Success, отдельного канала ошибки нет.
+        // При отказе весь Payload — причина, поэтому ErrorMessage заполняется из него ЖЕ.
+        // Пустым он быть не должен: ToolResult.Convert показывает LLM именно ErrorMessage,
+        // и пустая строка превратила бы отказ в «успешный» пустой результат инструмента.
+        var payload = vsResponse.Payload ?? string.Empty;
+        var errorMessage = vsResponse.Success
+            ? string.Empty
+            : (string.IsNullOrEmpty(payload) ? "Request failed" : payload);
+
         return new VsToolResult
         {
-            ErrorMessage = vsResponse.Error ?? string.Empty,
+            ErrorMessage = errorMessage,
             Name = vsRequest.Action,
-            Result = vsResponse.Payload ?? vsResponse.Error ?? string.Empty,
+            Result = payload,
             Success = vsResponse.Success
         };
     }
@@ -93,7 +117,7 @@ public class VsBridge : IVsBridge, IDisposable
                 return new VsResponse
                 {
                     Success = false,
-                    Error = $"WebView2 API not found."
+                    Payload = "WebView2 API not found."
                 };
             }
 
@@ -113,12 +137,14 @@ public class VsBridge : IVsBridge, IDisposable
         }
         catch (Exception ex)
         {
-            // Ошибка транспорта моста больше не молчит: логируем в JS-консоль и хост-лог,
-            // но не крешим вызывающий код (ответ остаётся error-результатом). Запись в консоль
-            // не может вылететь из catch и заменить задуманный error-ответ.
+            // Здесь остаются только настоящие аварии транспорта (таймаут, отмена, сбой JS).
+            // Пишем в обычный консольный канал, а не в Console.Error: иначе Blazor WASM
+            // показывает плашку #blazor-error-ui принудительно. Хост-лог получает запись
+            // уровнем ERROR — там она и должна быть видна.
+            // Запись в консоль не может вылететь из catch и заменить задуманный error-ответ.
             try
             {
-                await Console.Error.WriteLineAsync($"[VsBridge] Request '{request.Action}' failed: {ex.Message}");
+                await Console.Out.WriteLineAsync($"[VsBridge] Request '{request.Action}' failed: {ex.Message}");
             }
             catch
             {
@@ -135,7 +161,7 @@ public class VsBridge : IVsBridge, IDisposable
             return new VsResponse
             {
                 Success = false,
-                Error = $"Error getting response: {ex.Message}"
+                Payload = $"Transport failure: {ex.Message}"
             };
         }
         finally
@@ -188,14 +214,10 @@ public class VsBridge : IVsBridge, IDisposable
 
             if (_pendingRequests.TryRemove(response.CorrelationId, out var tcs))
             {
-                if (response.Success)
-                {
-                    tcs.TrySetResult(response);
-                }
-                else
-                {
-                    tcs.TrySetException(new Exception(response.Error ?? "Request failed"));
-                }
+                // Ответ хоста — всегда результат, даже когда Success = false: отказ
+                // инструмента (файл не найден и т.п.) не является исключением транспорта.
+                // Исключения в мосте остаются только для аварий: таймаут и отмена.
+                tcs.TrySetResult(response);
             }
             else
             {
@@ -232,7 +254,8 @@ public class VsBridge : IVsBridge, IDisposable
         }
         catch (Exception ex)
         {
-            await Console.Error.WriteLineAsync($"[VsBridge] Failed to post log entry: {ex.Message}");
+            // Не Console.Error: сбой доставки лога не должен поднимать плашку blazor-error-ui.
+            await Console.Out.WriteLineAsync($"[VsBridge] Failed to post log entry: {ex.Message}");
         }
     }
 

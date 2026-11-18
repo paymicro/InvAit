@@ -19,8 +19,12 @@ export interface VsRequestLike {
 export interface VsResponsePayload {
     correlationId: string;
     success: boolean;
+    /**
+     * Bimodal payload discriminated by `success` (same shape as MCP
+     * `CallToolResult { content, isError }`): on success it is the result content,
+     * on failure it is the human-readable reason. There is no separate error channel.
+     */
     payload?: string;
-    error?: string;
 }
 
 /**
@@ -58,7 +62,7 @@ export async function handleVsRequest(
             };
             sendResponse(panel, message.correlationId, true, JSON.stringify([fileContent]));
         } else {
-            sendResponse(panel, message.correlationId, false, undefined, 'No active document');
+            sendResponse(panel, message.correlationId, false, 'No active document');
         }
         return;
     }
@@ -135,7 +139,7 @@ export async function handleVsRequest(
     if (message.action === 'build') {
         exec('dotnet build', { cwd: workspaceRoot, maxBuffer: 1024 * 1024 * 10 }, (error: any, stdout: string, stderr: string) => {
             const output = (stdout + stderr).substring(0, 30000);
-            sendResponse(panel, message.correlationId, !error, error ? undefined : 'Build successful.\n' + output, error ? output : undefined);
+            sendResponse(panel, message.correlationId, !error, error ? output : 'Build successful.\n' + output);
         });
         return;
     }
@@ -144,7 +148,7 @@ export async function handleVsRequest(
     if (message.action === 'run_tests') {
         exec('dotnet test --nologo --logger "console;verbosity=normal"', { cwd: workspaceRoot, maxBuffer: 1024 * 1024 * 10, timeout: 300000 }, (error: any, stdout: string, stderr: string) => {
             const output = (stdout + stderr).substring(0, 30000);
-            sendResponse(panel, message.correlationId, !error, error ? undefined : output, error ? output : undefined);
+            sendResponse(panel, message.correlationId, !error, output);
         });
         return;
     }
@@ -184,7 +188,7 @@ export async function handleVsRequest(
     if (message.action === 'write_mcp_settings') {
         const content = message.payload || '';
         if (!content || content.trim() === '') {
-            sendResponse(panel, message.correlationId, false, undefined, 'Content is empty');
+            sendResponse(panel, message.correlationId, false, 'Content is empty');
             return;
         }
         // Stop all MCP servers before writing settings
@@ -213,13 +217,13 @@ export async function handleVsRequest(
                 workingDirectory: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
             };
             if (!params.serverId) {
-                sendResponse(panel, message.correlationId, false, undefined, 'serverId is required');
+                sendResponse(panel, message.correlationId, false, 'serverId is required');
                 return;
             }
             const result = await mcpRegistry.listTools(params);
             sendResponse(panel, message.correlationId, true, JSON.stringify(result));
         } catch (e: any) {
-            sendResponse(panel, message.correlationId, false, undefined, e.message);
+            sendResponse(panel, message.correlationId, false, e.message);
         }
         return;
     }
@@ -241,13 +245,13 @@ export async function handleVsRequest(
                 timeoutMs: args.timeoutMs || 600000,
             };
             if (!params.serverId || !params.toolName) {
-                sendResponse(panel, message.correlationId, false, undefined, 'serverId and toolName are required');
+                sendResponse(panel, message.correlationId, false, 'serverId and toolName are required');
                 return;
             }
             const result = await mcpRegistry.callTool(params);
             sendResponse(panel, message.correlationId, true, JSON.stringify(result));
         } catch (e: any) {
-            sendResponse(panel, message.correlationId, false, undefined, e.message);
+            sendResponse(panel, message.correlationId, false, e.message);
         }
         return;
     }
@@ -258,7 +262,7 @@ export async function handleVsRequest(
             const stopped = await mcpRegistry.stopAll();
             sendResponse(panel, message.correlationId, true, `Stopped ${stopped} MCP server(s).`);
         } catch (e: any) {
-            sendResponse(panel, message.correlationId, false, undefined, e.message);
+            sendResponse(panel, message.correlationId, false, e.message);
         }
         return;
     }
@@ -269,7 +273,7 @@ export async function handleVsRequest(
             const args = message.payload ? JSON.parse(message.payload) : {};
             const symbol: string = args.symbol || '';
             if (!symbol) {
-                sendResponse(panel, message.correlationId, false, undefined, 'Symbol name is required.');
+                sendResponse(panel, message.correlationId, false, 'Symbol name is required.');
                 return;
             }
 
@@ -278,7 +282,7 @@ export async function handleVsRequest(
             );
 
             if (!symbols || symbols.length === 0) {
-                sendResponse(panel, message.correlationId, false, undefined, `Symbol '${symbol}' isn't found.`);
+                sendResponse(panel, message.correlationId, false, `Symbol '${symbol}' isn't found.`);
                 return;
             }
 
@@ -304,7 +308,7 @@ export async function handleVsRequest(
 
             sendResponse(panel, message.correlationId, true, header + lines.join('\n'));
         } catch (e: any) {
-            sendResponse(panel, message.correlationId, false, undefined, e.message);
+            sendResponse(panel, message.correlationId, false, e.message);
         }
         return;
     }
@@ -315,7 +319,7 @@ export async function handleVsRequest(
             const args = message.payload ? JSON.parse(message.payload) : {};
             const symbol: string = args.symbol || '';
             if (!symbol) {
-                sendResponse(panel, message.correlationId, false, undefined, 'Symbol name is required.');
+                sendResponse(panel, message.correlationId, false, 'Symbol name is required.');
                 return;
             }
 
@@ -325,7 +329,7 @@ export async function handleVsRequest(
             );
 
             if (!symbols || symbols.length === 0) {
-                sendResponse(panel, message.correlationId, false, undefined, `Symbol '${symbol}' isn't found.`);
+                sendResponse(panel, message.correlationId, false, `Symbol '${symbol}' isn't found.`);
                 return;
             }
 
@@ -375,7 +379,7 @@ export async function handleVsRequest(
 
             sendResponse(panel, message.correlationId, true, header + lines.join('\n'));
         } catch (e: any) {
-            sendResponse(panel, message.correlationId, false, undefined, e.message);
+            sendResponse(panel, message.correlationId, false, e.message);
         }
         return;
     }
@@ -383,9 +387,11 @@ export async function handleVsRequest(
     // All other tools — delegate to toolHandlers
     try {
         const result: ToolResult = dispatchTool(message.action, message.payload, workspaceRoot);
-        sendResponse(panel, message.correlationId, result.success, result.payload, result.error);
+        // Одно поле на провод: дискриминатор — success. error остаётся внутренним
+        // полем toolHandlers (payload — контент, error — причина), но не идёт в VsResponse.
+        sendResponse(panel, message.correlationId, result.success, result.success ? result.payload : (result.error ?? result.payload));
     } catch (e: any) {
-        sendResponse(panel, message.correlationId, false, undefined, e.message);
+        sendResponse(panel, message.correlationId, false, e.message);
     }
 
     // Invalidate solution structure cache for filesystem-modifying tools
@@ -407,12 +413,10 @@ function sendResponse(
     panel: vscode.WebviewPanel,
     correlationId: string,
     success: boolean,
-    payload?: string,
-    error?: string
+    payload?: string
 ): void {
     const response: VsResponsePayload = { correlationId, success };
     if (payload !== undefined) response.payload = payload;
-    if (error !== undefined) response.error = error;
 
     panel.webview.postMessage({
         type: 'VsResponse',

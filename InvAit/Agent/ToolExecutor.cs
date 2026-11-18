@@ -68,7 +68,7 @@ public class ToolExecutor
                 BasicEnum.ReadMcpSettingsFile => await ReadMcpSettingsAsync(),
                 BasicEnum.WriteMcpSettings => await WriteMcpSettingsAsync(vsRequest.Payload),
                 BasicEnum.OpenMcpSettings => await OpenMcpSettingsAsync(),
-                _ => new VsResponse { Success = false, Error = "Unknown action" }
+                _ => new VsResponse { Success = false, Payload = "Unknown action" }
             };
 
             response.CorrelationId = vsRequest.CorrelationId;
@@ -82,7 +82,7 @@ public class ToolExecutor
             {
                 Success = false,
                 CorrelationId = vsRequest.CorrelationId,
-                Error = ex.Message
+                Payload = ex.Message
             };
         }
     }
@@ -94,7 +94,7 @@ public class ToolExecutor
             return new VsResponse
             {
                 Success = false,
-                Error = "No active document"
+                Payload = "No active document"
             };
 
         return await ReadFileAsync(new List<ReadFileParams>
@@ -115,7 +115,7 @@ public class ToolExecutor
 
         if (fileParamsList.Count == 0)
         {
-            return new VsResponse { Success = false, Error = "No files specified." };
+            return new VsResponse { Success = false, Payload = "No files specified." };
         }
 
         fileParamsList = [.. fileParamsList.GroupBy(x => x.Path).Select(g => g.First())]; // DistinctBy
@@ -142,7 +142,9 @@ public class ToolExecutor
                 }
                 catch (Exception ex)
                 {
-                    await Logger.LogAsync($"Error reading file {rp.Path}: {ex.Message}", "ERROR");
+                    // Ожидаемый отказ (нет прав, файл занят, path is a directory): WARN, а не ERROR.
+                    // ERROR в VS ещё и активирует панель Output — это читается как сбой хоста.
+                    await Logger.LogAsync($"Error reading file {rp.Path}: {ex.Message}", "WARN");
                     sb.AppendLine($"Error reading file {rp.Path}: {ex.Message}");
                     isSuccess = false;
                 }
@@ -150,8 +152,8 @@ public class ToolExecutor
             return new VsResponse
             {
                 Success = isSuccess,
-                Payload = isSuccess ? sb.ToString() : null,
-                Error = isSuccess ? null : sb.ToString()
+                // Бинарный контракт: при отказе весь текст — причина отказа, при успехе — контент.
+                Payload = sb.ToString()
             };
         }
 
@@ -214,14 +216,16 @@ public class ToolExecutor
             }
             catch (Exception ex)
             {
-                await Logger.LogAsync($"Error reading file {rp.Path}: {ex.Message}", "ERROR");
+                // Ожидаемый отказ чтения — WARN (ошибка всё равно уйдёт в FileContent.Error).
+                await Logger.LogAsync($"Error reading file {rp.Path}: {ex.Message}", "WARN");
                 results.Add(new FileContent { Path = rp.Path, Error = ex.Message });
             }
         }
 
         // Always return Success = true with structured results — even if all files failed.
         // The LLM needs to see FileContent.Error fields to know which files don't exist.
-        // VsBridge throws on Success=false, which would discard the structured error info.
+        // (VsBridge передаёт такой ответ как есть и не превращает его в исключение, но
+        // структурированные ошибки всё равно информативнее одного текста.)
         return new VsResponse
         {
             Success = true,
@@ -253,11 +257,12 @@ public class ToolExecutor
         }
         catch (Exception e)
         {
-            await Logger.LogAsync(e.Message);
+            // Ожидаемый отказ файловой операции (нет прав, путь занят) — WARN, не ERROR.
+            await Logger.LogAsync(e.Message, "WARN");
             return new VsResponse
             {
                 Success = false,
-                Error = e.Message
+                Payload = e.Message
             };
         }
     }
@@ -283,16 +288,17 @@ public class ToolExecutor
             return new VsResponse
             {
                 Success = false,
-                Error = $"File {fileParam} does not exist."
+                Payload = $"File {fileParam} does not exist."
             };
         }
         catch (Exception e)
         {
-            await Logger.LogAsync(e.Message);
+            // Ожидаемый отказ удаления (нет прав, файл занят) — WARN, не ERROR.
+            await Logger.LogAsync(e.Message, "WARN");
             return new VsResponse
             {
                 Success = false,
-                Error = e.Message
+                Payload = e.Message
             };
         }
     }
@@ -305,11 +311,17 @@ public class ToolExecutor
         // Не переключаемся на главный поток — запуск процесса не требует UI-потока,
         // а блокировка UI-потока на время выполнения недопустима
         var result = await _processExecutor.ExecuteBashAsync(param, solutionPath, 120_000);
+
+        // Одно поле Payload на оба случая: stdout и stderr склеиваем. Раньше при ненулевом коде
+        // возврата UI показывал только stderr, а stdout терялся — теперь виден весь вывод.
+        var payload = string.Join("\n",
+            new[] { TruncateOutput(result.Output), TruncateOutput(result.Error) }
+                .Where(part => !string.IsNullOrWhiteSpace(part)));
+
         return new VsResponse
         {
             Success = result.Success && !result.TimedOut && !result.Cancelled,
-            Payload = TruncateOutput(result.Output),
-            Error = TruncateOutput(result.Error)
+            Payload = payload
         };
     }
 
@@ -344,7 +356,7 @@ public class ToolExecutor
             return new VsResponse
             {
                 Success = false,
-                Error = "Regex pattern should be not empty."
+                Payload = "Regex pattern should be not empty."
             };
         }
 
@@ -401,7 +413,7 @@ public class ToolExecutor
             return new VsResponse
             {
                 Success = false,
-                Error = "Parameter 'query' is required."
+                Payload = "Parameter 'query' is required."
             };
         }
 
@@ -492,13 +504,13 @@ public class ToolExecutor
             return new VsResponse
             {
                 Success = false,
-                Error = $"Roslyn compatibility error in VS 2026. File not found: {ex.FileName}"
+                Payload = $"Roslyn compatibility error in VS 2026. File not found: {ex.FileName}"
             };
         }
         catch (Exception ex)
         {
             await Logger.LogAsync(ex.Message, "ERROR");
-            return new VsResponse { Success = false, Error = $"Critical error: {ex.Message}" };
+            return new VsResponse { Success = false, Payload = $"Critical error: {ex.Message}" };
         }
     }
 
@@ -518,13 +530,13 @@ public class ToolExecutor
             return new VsResponse
             {
                 Success = false,
-                Error = $"Roslyn compatibility error in VS 2026. File not found: {ex.FileName}. Message: {ex.Message}"
+                Payload = $"Roslyn compatibility error in VS 2026. File not found: {ex.FileName}. Message: {ex.Message}"
             };
         }
         catch (Exception ex)
         {
             await Logger.LogAsync(ex.Message, "ERROR");
-            return new VsResponse { Success = false, Error = $"Critical error: {ex.Message}" };
+            return new VsResponse { Success = false, Payload = $"Critical error: {ex.Message}" };
         }
     }
 
@@ -540,7 +552,7 @@ public class ToolExecutor
             return new VsResponse
             {
                 Success = false,
-                Error = $"Directory {path} doesn't exist",
+                Payload = $"Directory {path} doesn't exist",
             };
 
         var searchOption = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
@@ -561,12 +573,12 @@ public class ToolExecutor
         var filepath = GetAbsolutePath(inputFileName, solutionPath);
 
         if (diffEdits is null || diffEdits.Count == 0)
-            return new VsResponse { Success = false, Error = "Failed to get replacements" };
+            return new VsResponse { Success = false, Payload = "Failed to get replacements" };
 
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
         if (!File.Exists(filepath))
-            return new VsResponse { Success = false, Error = "File doesn't exist." };
+            return new VsResponse { Success = false, Payload = "File doesn't exist." };
 
         var fileData = await _fileUtils.ReadFileWithMetadataAsync(filepath);
         var lines = fileData.Lines;
@@ -616,7 +628,7 @@ public class ToolExecutor
 
         if (totalReplacements == 0)
         {
-            return new VsResponse { Success = false, Error = "No valid replacements found." + report };
+            return new VsResponse { Success = false, Payload = "No valid replacements found." + report };
         }
 
         try
@@ -631,7 +643,7 @@ public class ToolExecutor
             return new VsResponse
             {
                 Success = false,
-                Error = $"Changes to {inputFileName} is FAILED. {e.Message}"
+                Payload = $"Changes to {inputFileName} is FAILED. {e.Message}"
             };
         }
 
@@ -667,7 +679,7 @@ public class ToolExecutor
             return new VsResponse
             {
                 Success = false,
-                Error = $"""
+                Payload = $"""
                          Rebuild is failed.
                          ---
                          Errors:
@@ -803,7 +815,7 @@ public class ToolExecutor
             return new VsResponse
             {
                 Success = false,
-                Error = "No test assemblies found."
+                Payload = "No test assemblies found."
             };
         }
 
@@ -851,7 +863,7 @@ public class ToolExecutor
         }
 
         return hasFailures
-            ? new VsResponse { Success = false, Error = TruncateOutput(allOutput.ToString()) }
+            ? new VsResponse { Success = false, Payload = TruncateOutput(allOutput.ToString()) }
             : new VsResponse { Payload = TruncateOutput(allOutput.ToString()) };
     }
 
@@ -986,7 +998,7 @@ public class ToolExecutor
         }
         catch (Exception ex)
         {
-            return new VsResponse { Success = false, Error = $"Error reading rules.md: {ex.Message}" };
+            return new VsResponse { Success = false, Payload = $"Error reading rules.md: {ex.Message}" };
         }
     }
 
@@ -994,7 +1006,7 @@ public class ToolExecutor
     {
         if (string.IsNullOrEmpty(relativePath))
         {
-            return new VsResponse { Success = false, Error = "File path is empty" };
+            return new VsResponse { Success = false, Payload = "File path is empty" };
         }
 
         var solutionPath = await GetSolutionPathAsync();
@@ -1042,7 +1054,7 @@ public class ToolExecutor
         }
         catch (Exception ex)
         {
-            return new VsResponse { Success = false, Error = $"Error opening {relativePath}: {ex.Message}" };
+            return new VsResponse { Success = false, Payload = $"Error opening {relativePath}: {ex.Message}" };
         }
     }
 
@@ -1070,12 +1082,12 @@ public class ToolExecutor
             else
             {
                 // Try to create directory if it doesn't exist? No, better just return error for folder opening
-                return new VsResponse { Success = false, Error = $"Path {folderPath} does not exist" };
+                return new VsResponse { Success = false, Payload = $"Path {folderPath} does not exist" };
             }
         }
         catch (Exception ex)
         {
-            return new VsResponse { Success = false, Error = $"Error opening folder: {ex.Message}" };
+            return new VsResponse { Success = false, Payload = $"Error opening folder: {ex.Message}" };
         }
     }
 
@@ -1190,7 +1202,7 @@ public class ToolExecutor
             return new VsResponse
             {
                 Success = false,
-                Error = $"Skill file not found: {skillName}"
+                Payload = $"Skill file not found: {skillName}"
             };
         }
 
@@ -1199,7 +1211,7 @@ public class ToolExecutor
             return new VsResponse
             {
                 Success = false,
-                Error = $"Skill file not exits: {skillName}"
+                Payload = $"Skill file not exits: {skillName}"
             };
         }
 
@@ -1209,7 +1221,7 @@ public class ToolExecutor
             return new VsResponse
             {
                 Success = false,
-                Error = $"Cannot determine skill folder for: {skillName}"
+                Payload = $"Cannot determine skill folder for: {skillName}"
             };
         }
 
@@ -1225,7 +1237,7 @@ public class ToolExecutor
                 return new VsResponse
                 {
                     Success = false,
-                    Error = $"Invalid file path: '{fileName}' escapes the skill folder."
+                    Payload = $"Invalid file path: '{fileName}' escapes the skill folder."
                 };
             }
 
@@ -1234,7 +1246,7 @@ public class ToolExecutor
                 return new VsResponse
                 {
                     Success = false,
-                    Error = $"File '{fileName}' not found in skill '{skillName}'."
+                    Payload = $"File '{fileName}' not found in skill '{skillName}'."
                 };
             }
 
@@ -1248,7 +1260,7 @@ public class ToolExecutor
                 return new VsResponse
                 {
                     Success = false,
-                    Error = $"Error reading file '{fileName}': {ex.Message}"
+                    Payload = $"Error reading file '{fileName}': {ex.Message}"
                 };
             }
         }
@@ -1294,7 +1306,7 @@ public class ToolExecutor
             return new VsResponse
             {
                 Success = false,
-                Error = $"Error reading skill content: {ex.Message}"
+                Payload = $"Error reading skill content: {ex.Message}"
             };
         }
     }
@@ -1454,7 +1466,7 @@ public class ToolExecutor
         }
         catch (Exception ex)
         {
-            return new VsResponse { Success = false, Error = $"Error reading mcp.json: {ex.Message}" };
+            return new VsResponse { Success = false, Payload = $"Error reading mcp.json: {ex.Message}" };
         }
     }
 
@@ -1464,7 +1476,7 @@ public class ToolExecutor
         {
             if (string.IsNullOrEmpty(content))
             {
-                return new VsResponse { Success = false, Error = "Content is empty" };
+                return new VsResponse { Success = false, Payload = "Content is empty" };
             }
 
             var filePath = GetMcpSettingsPath();
@@ -1481,7 +1493,7 @@ public class ToolExecutor
         }
         catch (Exception ex)
         {
-            return new VsResponse { Success = false, Error = $"Error writing mcp.json: {ex.Message}" };
+            return new VsResponse { Success = false, Payload = $"Error writing mcp.json: {ex.Message}" };
         }
     }
 
@@ -1515,7 +1527,7 @@ public class ToolExecutor
         }
         catch (Exception ex)
         {
-            return new VsResponse { Success = false, Error = $"Error opening mcp.json: {ex.Message}" };
+            return new VsResponse { Success = false, Payload = $"Error opening mcp.json: {ex.Message}" };
         }
     }
 
@@ -1530,23 +1542,25 @@ public class ToolExecutor
             return new VsResponse
             {
                 Success = response.Success,
-                Payload = response.Result is { } result ? result.GetRawText() : null,
-                Error = response.Error,
+                // Успех — JSON-результат; отказ — текст ошибки. Одно поле, дискриминатор Success.
+                Payload = response.Success
+                    ? response.Result is { } result ? result.GetRawText() : null
+                    : response.Error
             };
         }
         catch (McpHostStartupException ex)
         {
             await Logger.LogAsync($"MCP host startup failed: {ex.UserMessage}", "ERROR");
-            return new VsResponse { Success = false, Error = ex.UserMessage };
+            return new VsResponse { Success = false, Payload = ex.UserMessage };
         }
         catch (TimeoutException)
         {
-            return new VsResponse { Success = false, Error = $"MCP host request '{method}' timed out." };
+            return new VsResponse { Success = false, Payload = $"MCP host request '{method}' timed out." };
         }
         catch (Exception ex)
         {
             await Logger.LogAsync($"MCP host request '{method}' failed: {ex.Message}", "ERROR");
-            return new VsResponse { Success = false, Error = ex.Message };
+            return new VsResponse { Success = false, Payload = ex.Message };
         }
     }
 
@@ -1561,7 +1575,7 @@ public class ToolExecutor
 
         if (string.IsNullOrEmpty(serverId))
         {
-            return new VsResponse { Success = false, Error = "serverId is required" };
+            return new VsResponse { Success = false, Payload = "serverId is required" };
         }
 
         var solutionPath = await GetSolutionPathAsync();
@@ -1602,7 +1616,7 @@ public class ToolExecutor
 
         if (string.IsNullOrEmpty(serverId) || string.IsNullOrEmpty(toolName))
         {
-            return new VsResponse { Success = false, Error = "serverId and toolName are required" };
+            return new VsResponse { Success = false, Payload = "serverId and toolName are required" };
         }
 
         var solutionPath = await GetSolutionPathAsync();

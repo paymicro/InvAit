@@ -329,7 +329,7 @@ describe('toolDispatcher', () => {
 
             const response = getLastResponse(panel);
             expect(response.success).to.be.false;
-            expect(response.error).to.equal('No active document');
+            expect(response.payload).to.equal('No active document');
         });
     });
 
@@ -504,7 +504,7 @@ describe('toolDispatcher', () => {
 
             const response = getLastResponse(panel);
             expect(response.success).to.be.false;
-            expect(response.error).to.include('error output');
+            expect(response.payload).to.include('error output');
         });
     });
 
@@ -596,7 +596,7 @@ describe('toolDispatcher', () => {
 
             const response = getLastResponse(panel);
             expect(response.success).to.be.false;
-            expect(response.error).to.equal('Content is empty');
+            expect(response.payload).to.equal('Content is empty');
         });
 
         it('should return error for whitespace-only content', async () => {
@@ -605,7 +605,7 @@ describe('toolDispatcher', () => {
 
             const response = getLastResponse(panel);
             expect(response.success).to.be.false;
-            expect(response.error).to.equal('Content is empty');
+            expect(response.payload).to.equal('Content is empty');
         });
 
         it('should stop all MCP servers and write content', async () => {
@@ -637,7 +637,7 @@ describe('toolDispatcher', () => {
 
             const response = getLastResponse(panel);
             expect(response.success).to.be.false;
-            expect(response.error).to.equal('serverId is required');
+            expect(response.payload).to.equal('serverId is required');
         });
 
         it('should call mcpRegistry.listTools and return result', async () => {
@@ -677,7 +677,7 @@ describe('toolDispatcher', () => {
 
             const response = getLastResponse(panel);
             expect(response.success).to.be.false;
-            expect(response.error).to.equal('serverId and toolName are required');
+            expect(response.payload).to.equal('serverId and toolName are required');
         });
 
         it('should return error when toolName is missing', async () => {
@@ -689,7 +689,7 @@ describe('toolDispatcher', () => {
 
             const response = getLastResponse(panel);
             expect(response.success).to.be.false;
-            expect(response.error).to.equal('serverId and toolName are required');
+            expect(response.payload).to.equal('serverId and toolName are required');
         });
 
         it('should call mcpRegistry.callTool and return result', async () => {
@@ -746,7 +746,7 @@ describe('toolDispatcher', () => {
 
             const response = getLastResponse(panel);
             expect(response.success).to.be.false;
-            expect(response.error).to.equal('Symbol name is required.');
+            expect(response.payload).to.equal('Symbol name is required.');
         });
 
         it('should return error when symbol not found', async () => {
@@ -759,7 +759,7 @@ describe('toolDispatcher', () => {
 
             const response = getLastResponse(panel);
             expect(response.success).to.be.false;
-            expect(response.error).to.include("isn't found");
+            expect(response.payload).to.include("isn't found");
         });
 
         it('should return formatted declarations', async () => {
@@ -830,7 +830,7 @@ describe('toolDispatcher', () => {
 
             const response = getLastResponse(panel);
             expect(response.success).to.be.false;
-            expect(response.error).to.equal('Symbol name is required.');
+            expect(response.payload).to.equal('Symbol name is required.');
         });
 
         it('should return error when symbol not found', async () => {
@@ -843,7 +843,7 @@ describe('toolDispatcher', () => {
 
             const response = getLastResponse(panel);
             expect(response.success).to.be.false;
-            expect(response.error).to.include("isn't found");
+            expect(response.payload).to.include("isn't found");
         });
 
         it('should return "No references found" when no refs', async () => {
@@ -1012,7 +1012,7 @@ describe('toolDispatcher', () => {
 
             const response = getLastResponse(panel);
             expect(response.success).to.be.false;
-            expect(response.error).to.equal('Dispatch failed');
+            expect(response.payload).to.equal('Dispatch failed');
         });
     });
 
