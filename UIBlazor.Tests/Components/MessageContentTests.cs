@@ -226,6 +226,51 @@ public class MessageContentTests : BunitContext
 
     #endregion
 
+    #region Content fallback (no segments)
+
+    /// <summary>
+    /// The compression summary is Content-only in the model unless the compression core builds
+    /// its segments. A message without segments used to render NOTHING (empty bubble that stayed
+    /// invisible) even though it carried real text.
+    /// </summary>
+    [Fact]
+    public void AssistantWithoutSegments_RendersContent()
+    {
+        // Arrange
+        var message = CreateAssistantMessage(content: "## Goal\n- fix compression");
+
+        // Act
+        var cut = Render<MessageContent>(parameters => parameters
+            .Add(p => p.Message, message));
+
+        // Assert
+        var block = Assert.Single(cut.FindAll(".markdown-block-stub"));
+        Assert.Contains("fix compression", block.TextContent);
+    }
+
+    [Fact]
+    public void AssistantWithSegments_DoesNotRenderContentTwice()
+    {
+        // Arrange: segments are the render source when present — the raw Content must not be
+        // rendered on top of them (the streamed text would appear twice).
+        var segment = new ContentSegment();
+        typeof(ContentSegment).GetProperty(nameof(ContentSegment.Type))!
+            .SetValue(segment, SegmentType.Markdown);
+        segment.CurrentLine.Append("segmented text");
+
+        var message = CreateAssistantMessage(content: "segmented text");
+        message.Segments.Add(segment);
+
+        // Act
+        var cut = Render<MessageContent>(parameters => parameters
+            .Add(p => p.Message, message));
+
+        // Assert
+        Assert.Single(cut.FindAll(".markdown-block-stub"));
+    }
+
+    #endregion
+
     #region Tool Calls Tests
 
     [Fact]

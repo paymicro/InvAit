@@ -8,6 +8,12 @@
         JustifyContent="JustifyContent.SpaceBetween"
         Gap="0.5rem">
         <UsageIndicators class="hide-350" />
+        @if (_isCompressing)
+        {
+            <RadzenBadge BadgeStyle="BadgeStyle.Light" title="@SharedResource.Compressing">
+                <i class="fa-solid fa-compress fa-spin"></i> @SharedResource.Compressing
+            </RadzenBadge>
+        }
         <RadzenStack class="rz-chat-header-actions"
             Orientation="Orientation.Horizontal"
             AlignItems="AlignItems.End"

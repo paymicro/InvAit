@@ -29,6 +29,12 @@ public partial class AiChat : RadzenComponent
     /// </summary>
     private bool _acceptInterjects;
 
+    /// <summary>
+    /// True while ANY compression runs, including the invisible ones (mid-run gate): the summary
+    /// stream is swallowed by the loop, so without this flag the UI shows a silently frozen run.
+    /// </summary>
+    private bool _isCompressing;
+
     [Inject] private NotificationService NotificationService { get; set; } = null!;
     [Inject] private DialogService DialogService { get; set; } = null!;
     [Inject] private IChatService ChatService { get; set; } = null!;
@@ -169,6 +175,29 @@ public partial class AiChat : RadzenComponent
         }
     }
 
+    /// <summary>
+    /// Scrolls the chat to a specific message and highlights it. Used for the compression
+    /// summary, which is inserted into the MIDDLE of the history while the user stares at the
+    /// bottom of the chat.
+    /// </summary>
+    private async Task ScrollToMessageAsync(string messageId)
+    {
+        await Task.Yield();
+
+        // Let Blazor render the rewritten history first, otherwise the target node is missing.
+        await InvokeAsync(StateHasChanged);
+        await Task.Yield();
+
+        try
+        {
+            await JsRuntime.InvokeVoidAsync("scrollToMessage", CancellationToken.None, messageId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "ScrollToMessageAsync failed");
+        }
+    }
+
     private async Task GetAiResponseAsync()
     {
         await CancelResponseAsync();
@@ -184,6 +213,7 @@ public partial class AiChat : RadzenComponent
     /// <returns>Сжалась ли сессия. False если завершилось ошибкой</returns>
     private async Task<bool> CompressAsync(int retryCount, CancellationToken cancellationToken)
     {
+        _isCompressing = true;
         var assistantMessage = VisualChatMessage.CreateStreaming("## ♻ \n\n");
         MessageParser.UpdateSegments(assistantMessage.Content, assistantMessage);
         ChatService.Session.AddMessage(assistantMessage);
@@ -217,6 +247,17 @@ public partial class AiChat : RadzenComponent
             {
                 MessageParser.UpdateSegments(message.Content, message);
             }
+
+            // Компрессия вставляет саммари на место сжатой середины истории; служебный
+            // пузырь «♻», в который стримилось саммари, больше не нужен — иначе в конце чата
+            // остался бы второй (невидимый) экземпляр сводки. При ошибке/отмене пузырь
+            // остаётся: в нём текст ошибки.
+            //
+            // НЕ прокручиваем к сводке: она теперь в СЕРЕДИНЕ истории, а пользователь смотрит
+            // в конец чата (там идёт работа). Насильный скролл вверх по длинной истории сбивает
+            // с толку; раскрытие — по клику на уведомление (OnCompressionNotificationClick).
+            ChatService.Session.RemoveMessage(assistantMessage.Id);
+            await ChatService.SaveSessionAsync();
             result = true;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -234,6 +275,7 @@ public partial class AiChat : RadzenComponent
         }
         finally
         {
+            _isCompressing = false;
             assistantMessage.IsStreaming = false;
             await InvokeAsync(StateHasChanged);
         }
@@ -544,6 +586,8 @@ public partial class AiChat : RadzenComponent
 
         _dotNetRef = DotNetObjectReference.Create(this);
         ChatService.SessionChanged += HandleSessionChanged;
+        ChatService.CompressionStarted += OnCompressionStarted;
+        ChatService.CompressionCompleted += OnCompressionCompleted;
         SubAgentExecutor.SubAgentStateChanged += OnSubAgentStateChanged;
         ToolCallHandler.ApprovalRequired += OnApprovalRequired;
 
@@ -559,6 +603,55 @@ public partial class AiChat : RadzenComponent
 
         LoadMessagesFromSession();
         InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Any compression (manual /compact, mid-run gate) makes the chat look frozen: the summary
+    /// stream is consumed by the service, so nothing arrives in the UI. Show the busy badge.
+    /// Sub-agent branches are filtered out — their own view has an indicator.
+    /// </summary>
+    private void OnCompressionStarted(ConversationSession session)
+    {
+        if (!ReferenceEquals(session, ChatService.Session))
+            return;
+
+        _isCompressing = true;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// The history was rewritten and the summary sits in the MIDDLE of the chat, while the user
+    /// keeps looking at the bottom (a mid-run compression happens while the run is still
+    /// streaming). No forced scroll — that would yank the view away from the live output.
+    /// The notification tells what happened and reveals the summary on click.
+    /// </summary>
+    private void OnCompressionCompleted(CompressionReport report)
+    {
+        if (!ReferenceEquals(report.Session, ChatService.Session))
+            return;
+
+        _isCompressing = false;
+        _ = InvokeAsync(() =>
+        {
+            NotificationService.Notify(
+                NotificationSeverity.Info,
+                SharedResource.ContextCompressed,
+                string.Format(SharedResource.ContextCompressedDetail, report.CollapsedCount),
+                8_000,
+                OnCompressionNotificationClick,
+                closeOnClick: false,
+                payload: report.Summary.Id);
+            StateHasChanged();
+        });
+    }
+
+    /// <summary>
+    /// Click-to-reveal: scrolls to the summary ONLY when the user asks for it.
+    /// </summary>
+    private void OnCompressionNotificationClick(NotificationMessage message)
+    {
+        if (message.Payload is string summaryId)
+            _ = ScrollToMessageAsync(summaryId);
     }
 
     /// <summary>
@@ -720,6 +813,8 @@ public partial class AiChat : RadzenComponent
 
         _dotNetRef?.Dispose();
         ChatService.SessionChanged -= HandleSessionChanged;
+        ChatService.CompressionStarted -= OnCompressionStarted;
+        ChatService.CompressionCompleted -= OnCompressionCompleted;
         SubAgentExecutor.SubAgentStateChanged -= OnSubAgentStateChanged;
         ToolCallHandler.ApprovalRequired -= OnApprovalRequired;
 

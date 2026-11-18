@@ -33,13 +33,28 @@ public interface IChatService : IDisposable
     Task NewSessionAsync();
 
     /// <summary>
-    /// Сжатие контекста основной сессии. Остается 2 сообщения + сжатое сообщение.
+    /// Сжатие контекста основной сессии: голова и хвост истории остаются дословно,
+    /// середина заменяется сводкой от LLM на своём месте (живые сообщения запуска не трогаются).
     /// Состояние LLM-вызова записывается в <paramref name="resultCapture"/>.
     /// </summary>
     IAsyncEnumerable<ChatDelta> CompressSessionAsync(CompletionsResult resultCapture, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Сжатие контекста указанной сессии (например, ветки субагента). Остается 2 сообщения + сжатое сообщение.
+    /// Сжатие завершилось и история переписана (сводка вставлена). Поднимается для ЛЮБОГО пути
+    /// сжатия — ручного (/compact), mid-run гейта и веток сабагентов:
+    /// в главном чате нет своего индикатора для невидимых путей.
+    /// </summary>
+    event Action<CompressionReport>? CompressionCompleted;
+
+    /// <summary>
+    /// Сжатие началось: стрим сводки уходит в пользу сервиса (mid-run гейт вообще его глотает),
+    /// поэтому без этого сигнала пользователь видит просто замерший чат.
+    /// </summary>
+    event Action<ConversationSession>? CompressionStarted;
+
+    /// <summary>
+    /// Сжатие контекста указанной сессии (например, ветки субагента): голова и хвост истории
+    /// остаются дословно, середина заменяется сводкой от LLM на своём месте.
     /// Состояние LLM-вызова записывается в <paramref name="resultCapture"/>.
     /// </summary>
     IAsyncEnumerable<ChatDelta> CompressSessionAsync(ConversationSession targetSession, CompletionsResult resultCapture, CancellationToken cancellationToken);

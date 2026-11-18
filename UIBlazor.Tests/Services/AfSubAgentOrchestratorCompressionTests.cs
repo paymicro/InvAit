@@ -181,6 +181,10 @@ public class AfSubAgentOrchestratorCompressionTests
 
         public bool NeedCompression => false;
 
+        public event Action<CompressionReport>? CompressionCompleted;
+
+        public event Action<ConversationSession>? CompressionStarted;
+
         public bool CompressCalled;
         public List<string> CompressedSessionIds { get; } = [];
         public Func<SubAgentMessage?>? SubAgentProvider;

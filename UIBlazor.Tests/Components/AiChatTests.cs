@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using Microsoft.JSInterop.Infrastructure;
 
 namespace UIBlazor.Tests.Components;
 
@@ -445,6 +446,95 @@ public class AiChatTests : BunitContext
         Assert.Contains(_session.GetMessagesSnapshot(),
             m => m.Role == ChatMessageRole.User && m.Content == "after cancel");
         Assert.True(saveCount > 0);
+    }
+
+    /// <summary>
+    /// Compression rewrites the history in the MIDDLE of the chat. The user keeps looking at the
+    /// bottom (a mid-run compression happens while the run still streams), so the view must NOT be
+    /// yanked to the summary. Instead: a badge while it runs, a notification when it is done, and
+    /// the summary is revealed only when the user clicks that notification.
+    /// </summary>
+    [Fact]
+    public async Task Compression_ShowsBadgeAndNotification_ButDoesNotStealTheScroll()
+    {
+        // Arrange
+        var notificationService = Services.GetRequiredService<NotificationService>();
+        var summary = new VisualChatMessage { Role = ChatMessageRole.Assistant, Content = "## Goal\n- summary" };
+        _session.AddMessage(summary);
+
+        // AiChat injects IJSRuntime (mocked in this fixture), so the scroll call is observed on
+        // the mock — bUnit's JSInterop is not in that path.
+        var scrollCalls = new List<object?[]>();
+        _mockJsRuntime
+            .Setup(js => js.InvokeAsync<IJSVoidResult>("scrollToMessage", It.IsAny<CancellationToken>(), It.IsAny<object?[]>()))
+            .Callback<string, CancellationToken, object?[]>((_, _, args) => scrollCalls.Add(args))
+            .Returns(ValueTask.FromResult<IJSVoidResult>(null!));
+
+        var cut = Render<AiChat>();
+
+        // Act 1: compression started mid-run — the chat would otherwise just look frozen.
+        await cut.InvokeAsync(() =>
+        {
+            _mockChatService.Raise(x => x.CompressionStarted += null, _session);
+            return Task.CompletedTask;
+        });
+
+        Assert.Contains(SharedResource.Compressing, cut.Markup);
+
+        // Act 2: compression finished — history rewritten, summary sits in the middle.
+        await cut.InvokeAsync(() =>
+        {
+            _mockChatService.Raise(x => x.CompressionCompleted += null,
+                new CompressionReport(_session, summary, 4));
+            return Task.CompletedTask;
+        });
+
+        // Assert: badge gone, notification explains what happened...
+        Assert.DoesNotContain(SharedResource.Compressing, cut.Markup);
+        var notification = Assert.Single(notificationService.Messages);
+        Assert.Equal(SharedResource.ContextCompressed, notification.Summary);
+        Assert.Equal(summary.Id, notification.Payload);
+
+        // ...and the chat did NOT move: no forced scroll to the middle of the history.
+        Assert.Empty(scrollCalls);
+
+        // Act 3: the user clicks the notification — now (and only now) the summary is revealed.
+        // The click is wired as a Radzen callback; invoke the handler directly (the callback's
+        // own type is an implementation detail of the library).
+        var handler = typeof(AiChat).GetMethod("OnCompressionNotificationClick",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        await cut.InvokeAsync(() =>
+        {
+            handler!.Invoke(cut.Instance, [new NotificationMessage { Payload = summary.Id }]);
+            return Task.CompletedTask;
+        });
+
+        await WaitUntilAsync(() => scrollCalls.Count > 0);
+        var args = Assert.Single(scrollCalls);
+        Assert.Equal(summary.Id, args[0] as string);
+    }
+
+    [Fact]
+    public async Task CompressionCompleted_ForAnotherSession_IsIgnored()
+    {
+        // Arrange: a sub-agent branch compresses its own session — the main chat must not notify
+        // about it (the branch view has its own indicator).
+        var notificationService = Services.GetRequiredService<NotificationService>();
+        var branchSession = new ConversationSession { Id = "subagent" };
+        var summary = new VisualChatMessage { Role = ChatMessageRole.Assistant, Content = "summary" };
+
+        var cut = Render<AiChat>();
+
+        // Act
+        await cut.InvokeAsync(() =>
+        {
+            _mockChatService.Raise(x => x.CompressionCompleted += null,
+                new CompressionReport(branchSession, summary, 3));
+            return Task.CompletedTask;
+        });
+
+        // Assert
+        Assert.Empty(notificationService.Messages);
     }
 
     private static async IAsyncEnumerable<ChatDelta> StreamUntilReleased(

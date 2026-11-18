@@ -364,6 +364,22 @@ code.hljs {
     animation: tool-call-flash 0.8s ease-in-out 3;
 }
 
+/* Подсветка сообщения, к которому программно прокрутил чат (сводка сжатия: она появляется
+   в середине истории, и без визуального акцента выглядит как «сообщения исчезли») */
+.rz-chat-message.message-highlight .rz-chat-message-content {
+    animation: message-highlight-flash 0.9s ease-in-out 2;
+    border-radius: 8px;
+}
+
+@keyframes message-highlight-flash {
+    0%, 100% {
+        background-color: transparent;
+    }
+    50% {
+        background-color: rgba(var(--rz-primary-rgb), 0.14);
+    }
+}
+
 @keyframes tool-call-flash {
     0%, 100% {
         background-color: var(--rz-base-800);

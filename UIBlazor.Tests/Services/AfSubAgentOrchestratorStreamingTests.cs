@@ -171,6 +171,10 @@ public class AfSubAgentOrchestratorStreamingTests
 
         public bool NeedCompression => false;
 
+        public event Action<CompressionReport>? CompressionCompleted;
+
+        public event Action<ConversationSession>? CompressionStarted;
+
         public event PropertyChangedEventHandler? SessionChanged;
         public void Initialize() { }
         public ConnectionProfile? Options => null;
@@ -246,6 +250,10 @@ public class AfSubAgentOrchestratorStreamingTests
         public ConversationSession Session { get; } = new();
 
         public bool NeedCompression => false;
+
+        public event Action<CompressionReport>? CompressionCompleted;
+
+        public event Action<ConversationSession>? CompressionStarted;
 
         public event PropertyChangedEventHandler? SessionChanged;
         public void Initialize() { }

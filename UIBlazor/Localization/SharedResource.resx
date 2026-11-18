@@ -429,6 +429,12 @@
   <data name="CompressionTokenThreshold" xml:space="preserve">
     <value>Compression token threshold</value>
   </data>
+  <data name="ContextCompressed" xml:space="preserve">
+    <value>Context compressed</value>
+  </data>
+  <data name="ContextCompressedDetail" xml:space="preserve">
+    <value>{0} older messages were replaced by a summary. The chat stays where it is — click this notification to jump to the summary.</value>
+  </data>
   <data name="ToolFindDeclarations" xml:space="preserve">
     <value>Find declarations</value>
   </data>

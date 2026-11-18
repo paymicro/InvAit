@@ -15,11 +15,24 @@
             </Details>
         }
 
-        foreach (var segment in Message.Segments)
+        // An assistant message may carry Content WITHOUT render segments (compression summary,
+        // restored/edited history). Segments are the primary render source, but an empty segment
+        // list must not turn real content into an empty bubble.
+        if (Message.Segments.Count == 0)
         {
-            if (segment.Type is SegmentType.Markdown)
+            if (!string.IsNullOrEmpty(Message.Content))
             {
-                <MarkdownBlock @key="segment.Id" Content="@segment.CurrentLine.ToString()" />
+                <MarkdownBlock Content="@Message.Content" />
+            }
+        }
+        else
+        {
+            foreach (var segment in Message.Segments)
+            {
+                if (segment.Type is SegmentType.Markdown)
+                {
+                    <MarkdownBlock @key="segment.Id" Content="@segment.CurrentLine.ToString()" />
+                }
             }
         }
 

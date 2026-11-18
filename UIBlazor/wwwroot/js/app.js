@@ -91,12 +91,12 @@ window.postVsMessage = msg => {
         // Код для Visual Studio 2026
         window.chrome.webview.postMessage(msg);
         if (msg.action != 'log_error')
-            console.log(">>> ", msg);
+            console.log("=> ", msg);
         return "OK";
     } else if (isVSCode) {
         // Код для VS Code (отправляем родителю iframe)
         window.parent.postMessage({ target: 'vscode-webview', packet: msg }, '*');
-        console.log("VSCode >>> ", msg);
+        console.log("VSCode => ", msg);
         return "OK";
     } else {
         console.warn("API связи не обнаружено. Сообщение не отправлено:", msg);
@@ -156,6 +156,17 @@ window.scrollToAnchor = function() {
         // scrollIntoView плавно или мгновенно доведет скролл до низа
         anchor.scrollIntoView({ behavior: 'instant', block: 'end' });
     }
+};
+
+// скролл к конкретному сообщению (например, к сводке сжатия: она встаёт в СЕРЕДИНУ истории,
+// а не в конец чата — пользователь смотрит вниз и решил бы, что сообщения пропали)
+window.scrollToMessage = function(messageId) {
+    const el = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (!el) return;
+
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('message-highlight');
+    setTimeout(() => el.classList.remove('message-highlight'), 2600);
 };
 
 // скролл к инструменту, требующему действия пользователя (апрув или ask_user)

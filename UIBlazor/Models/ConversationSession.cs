@@ -182,6 +182,57 @@ public class ConversationSession : BaseOptions
     }
 
     /// <summary>
+    /// Replaces the collapsed part of the history with ONE summary message, IN PLACE:
+    /// only the given objects are removed (compared by reference), the summary takes the
+    /// position of the first removed message, and every other message keeps its identity
+    /// and order.
+    /// <para>
+    /// Unlike <see cref="SetMessages"/> this never drops messages appended while the
+    /// summary was generated (user interjects) and never orphans the live streaming message
+    /// of the run that triggered the compression — the agent loop keeps writing into that
+    /// exact object, so removing it froze the visible generation.
+    /// </para>
+    /// </summary>
+    /// <param name="toCollapse">Messages to remove (reference match only).</param>
+    /// <param name="summary">Message that replaces them.</param>
+    /// <returns>False when none of the messages is in the history (nothing changed).</returns>
+    public bool CollapseMessages(IReadOnlyList<VisualChatMessage> toCollapse, VisualChatMessage summary)
+    {
+        if (toCollapse.Count == 0)
+            return false;
+
+        var removed = false;
+        lock (_messagesLock)
+        {
+            var insertAt = int.MaxValue;
+            foreach (var message in toCollapse)
+            {
+                var index = Messages.FindIndex(m => ReferenceEquals(m, message));
+                if (index < 0)
+                    continue;
+
+                if (index < insertAt)
+                    insertAt = index;
+
+                Messages.RemoveAt(index);
+                removed = true;
+            }
+
+            if (!removed)
+                return false;
+
+            Messages.Insert(Math.Min(insertAt, Messages.Count), summary);
+            LastUpdated = DateTime.Now;
+        }
+
+        // Outside the lock: subscribers (SubAgentMessage mirrors) update their own copies and
+        // must not re-enter the session.
+        MessagesReplaced?.Invoke(GetMessagesSnapshot());
+        MarkChanged();
+        return true;
+    }
+
+    /// <summary>
     /// Returns the last message matching the predicate, or null if none found.
     /// Thread-safe.
     /// </summary>

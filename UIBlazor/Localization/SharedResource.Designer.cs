@@ -547,6 +547,24 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Context compressed.
+        /// </summary>
+        public static string ContextCompressed {
+            get {
+                return ResourceManager.GetString("ContextCompressed", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to {0} older messages were replaced by a summary. The chat stays where it is — click this notification to jump to the summary..
+        /// </summary>
+        public static string ContextCompressedDetail {
+            get {
+                return ResourceManager.GetString("ContextCompressedDetail", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Context window.
         /// </summary>
         public static string ContextWindow {

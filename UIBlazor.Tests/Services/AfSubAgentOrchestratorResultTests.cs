@@ -93,6 +93,10 @@ public class AfSubAgentOrchestratorResultTests
 
         public bool NeedCompression => false;
 
+        public event Action<CompressionReport>? CompressionCompleted;
+
+        public event Action<ConversationSession>? CompressionStarted;
+
         public event PropertyChangedEventHandler? SessionChanged;
         public void Initialize() { }
         public ConnectionProfile? Options => null;

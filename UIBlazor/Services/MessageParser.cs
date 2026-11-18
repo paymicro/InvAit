@@ -2,6 +2,14 @@ namespace UIBlazor.Services;
 
 public class MessageParser : IMessageParser
 {
+    /// <summary>
+    /// Parses an already complete text into render segments (history load, restored message,
+    /// compression summary). Assistant messages are rendered from their segments ONLY, so a
+    /// message created without them shows up as an empty bubble even though it has Content.
+    /// </summary>
+    public static void BuildHistorySegments(string content, VisualChatMessage message)
+        => new MessageParser().UpdateSegments(content, message, isHistory: true);
+
     public void UpdateSegments(string delta, VisualChatMessage message, bool isHistory = false)
     {
         if (string.IsNullOrEmpty(delta))

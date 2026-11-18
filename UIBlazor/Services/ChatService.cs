@@ -30,6 +30,18 @@ public class ChatService(
     private readonly AfCompletionsAdapter _afAdapter =
         new(() => profileManager.ActiveProfile, httpClient, () => commonSettingsProvider.Current.HttpTimeoutSec);
 
+    private ICompletionsGateway? _compressionGatewayOverride;
+
+    /// <summary>
+    /// Gateway used by context compression (single-shot, no tools). Defaults to
+    /// <see cref="_afAdapter"/>; tests substitute a deterministic summary stream.
+    /// </summary>
+    internal ICompletionsGateway CompressionGateway
+    {
+        get => _compressionGatewayOverride ?? _afAdapter;
+        set => _compressionGatewayOverride = value;
+    }
+
     private readonly AfAgentLoop _afLoop =
         new(() => profileManager.ActiveProfile, httpClient, toolCallHandler);
 
@@ -212,12 +224,18 @@ public class ChatService(
 
     public bool NeedCompression => Options.TokensToCompress > 0 && Session.TotalTokens > Options.TokensToCompress;
 
+    /// <inheritdoc />
+    public event Action<CompressionReport>? CompressionCompleted;
+
+    /// <inheritdoc />
+    public event Action<ConversationSession>? CompressionStarted;
+
     /// <summary>
     /// Compression gate for the main agent loop (checked before every LLM call): when the
     /// session crosses the token threshold mid-run, compress the main session and return the
     /// updated consumed-message baseline for the loop's interject scan.
     /// </summary>
-    private async Task<int> CompressMainSessionIfOverThresholdAsync(ConversationSession targetSession, CancellationToken cancellationToken)
+    internal async Task<int> CompressMainSessionIfOverThresholdAsync(ConversationSession targetSession, CancellationToken cancellationToken)
     {
         // The gate is checked before EVERY LLM call of the loop, so it must read the PINNED
         // session and re-arm its threshold — otherwise the next boundary compresses again.
@@ -227,11 +245,20 @@ public class ChatService(
         logger.LogInformation("Token threshold crossed mid-run ({Tokens} > {Threshold}); compressing session.",
             targetSession.TotalTokens, Options.TokensToCompress);
 
+        var before = targetSession.GetMessagesSnapshot();
+
         await foreach (var _ in CompressSessionAsync(targetSession, new CompletionsResult(), cancellationToken).ConfigureAwait(false)) { }
 
-        // Compression rewrote the session history (SetMessages): the interject scan baseline
-        // must be re-based to the new message count.
-        return targetSession.GetMessageCount();
+        // Compression rewrites the history (CollapseMessages): the interject scan baseline must be
+        // re-based to the NEW layout. Messages the user appended while the summary was generated
+        // sit at the tail of the compacted history and are NOT consumed yet - the baseline must
+        // point at the first of them, otherwise the interject never reaches the model.
+        // Counting "new" messages is not enough: the summary itself is new too (it replaces the
+        // collapsed slice), so the baseline is anchored on the first new USER message.
+        var after = targetSession.GetMessagesSnapshot();
+        var firstNewUser = after.FindIndex(m =>
+            m.Role == ChatMessageRole.User && !before.Any(b => ReferenceEquals(b, m)));
+        return firstNewUser >= 0 ? firstNewUser : after.Count;
     }
 
     public Task ProcessStreamAsync(
@@ -381,20 +408,34 @@ public class ChatService(
 
 
     /// <summary>
-    /// Сжатие контекста указанной сессии (например, ветки субагента): последние сообщения остаются дословно,
-    /// история текст заменяется сводкой от LLM (resultCapture — состояние LLM-вызова).
+    /// Сжатие контекста указанной сессии (например, ветки субагента): голова и хвост истории
+    /// остаются дословно, середина заменяется сводкой от LLM НА МЕСТЕ (CollapseMessages) —
+    /// живые сообщения запуска не теряют идентичность (resultCapture — состояние LLM-вызова).
     /// </summary>
     private async IAsyncEnumerable<ChatDelta> CompressSessionCoreAsync(
         ConversationSession targetSession,
         CompletionsResult resultCapture,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var (Messages, LastUserMessage) = targetSession.GetFormattedMessagesForCompress(contentFilter);
+        // Snapshot BEFORE the LLM call: the plan and the summarizer prompt must describe the
+        // SAME history even if the user appends a message (interject) while the summary is built.
+        var snapshot = targetSession.GetMessagesSnapshot();
+        var collapse = PlanCompression(snapshot);
+
+        // Nothing worth summarizing: do not call the LLM at all. The old code created a summary
+        // unconditionally, so a short history degenerated into [head][tail][summary] noise while
+        // the token threshold stayed armed (the next message compressed again).
+        if (collapse.Count == 0)
+            yield break;
+
+        CompressionStarted?.Invoke(targetSession);
+
+        var (Messages, _) = targetSession.GetFormattedMessagesForCompress(contentFilter);
 
         // Получаем сжатый текст от LLM (compression runs WITHOUT tools - single-shot adapter)
         var contentSb = new StringBuilder();
         resultCapture.Reset();
-        await foreach (var chatDelta in _afAdapter.GetCompletionsAsync(Messages, null, targetSession, resultCapture, cancellationToken))
+        await foreach (var chatDelta in CompressionGateway.GetCompletionsAsync(Messages, null, targetSession, resultCapture, cancellationToken))
         {
             if (chatDelta.Content is not null)
             {
@@ -406,80 +447,113 @@ public class ChatService(
         if (cancellationToken.IsCancellationRequested)
             yield break;
 
+        var summaryContent = contentSb.ToString();
+
+        // An empty summary must never destroy the history: keep the compressed part verbatim.
+        if (string.IsNullOrWhiteSpace(summaryContent))
+            yield break;
+
         // Создаем новый объект сообщения со сжатым контекстом
         var compressedMessage = new VisualChatMessage
         {
-            Content = contentSb.ToString(),
+            Content = summaryContent,
             Role = ChatMessageRole.Assistant,
             IsExpanded = true
         };
 
-        // Snapshot of the TARGET session (main chat or sub-agent branch): the branch
-        // compression must read the branch's own history, not the main chat's.
-        var snapshot = targetSession.GetMessagesSnapshot();
-        var totalCount = snapshot.Count;
-        var windowSize = totalCount < 6 ? 2 : 3;
+        // Assistant messages are rendered from Segments ONLY: a summary without them showed up
+        // as an empty bubble ("invisible goal message") whenever compression ran outside the
+        // manual /compact command (mid-run gate, sub-agent branch).
+        MessageParser.BuildHistorySegments(summaryContent, compressedMessage);
 
-        var topMessages = new List<VisualChatMessage>();
-        var bottomMessages = new List<VisualChatMessage>();
+        // Stub the oversized tool results of the KEPT messages: the collapsed part is gone, but
+        // the verbatim head/tail still carries payloads that no longer fit the compressed context.
+        var collapsed = new HashSet<VisualChatMessage>(collapse, ReferenceEqualityComparer.Instance);
+        StubLongToolResults(snapshot.Where(m => !m.IsEmptyTurn && !collapsed.Contains(m)));
 
-        for (var i = 0; i < totalCount - 1; i++)
-        {
-            var msg = snapshot[i];
+        // Collapse IN PLACE: only the planned middle is replaced by the summary. Every other
+        // message keeps its identity — the live streaming message of the running turn included,
+        // which the agent loop keeps writing into (a whole-list replacement orphaned it: the UI
+        // stopped updating and the generation looked frozen).
+        if (!targetSession.CollapseMessages(collapse, compressedMessage))
+            yield break;
 
-            if (msg.Id == LastUserMessage?.Id)
-                continue;
-
-            // Убираем результаты тулзов в сообщениях
-            if (msg.ToolCalls is { Count: > 0 })
-            {
-                foreach (var toolCall in msg.ToolCalls)
-                {
-                    if (toolCall.Result is { Content.Length: > CompressedToolResultThreshold })
-                    {
-                        toolCall.Result = new ToolResult
-                        {
-                            Content = $"The long result ({toolCall.Result.Content.Length} chars) was removed after compression.",
-                            Name = toolCall.Function.Name,
-                            DisplayName = toolCall.Result.DisplayName,
-                            Success = toolCall.Result.Success,
-                        };
-                    }
-                }
-            }
-
-            // Первые сообщения
-            if (i < windowSize)
-            {
-                topMessages.Add(msg);
-            }
-
-            // Оставшиеся сообщения
-            else if (i >= totalCount - 1 - windowSize)
-            {
-                bottomMessages.Add(msg);
-            }
-        }
-
-        var keptMessages = new List<VisualChatMessage>(topMessages.Count + bottomMessages.Count + 2);
-        keptMessages.AddRange(topMessages);
-        keptMessages.AddRange(bottomMessages);
-        keptMessages.Add(compressedMessage);
-
-        // Восстанавливаем сообщение пользователя после компрессии
-        if (LastUserMessage is not null)
-        {
-            keptMessages.Add(LastUserMessage);
-        }
-
-        // Перезаписываем историю
-        targetSession.SetMessages(keptMessages);
+        CompressionCompleted?.Invoke(new CompressionReport(targetSession, compressedMessage, collapse.Count));
 
         // Re-arm the compression threshold: the context just shrank, so TotalTokens must follow
         // the kept history. Without this the mid-run gate (checked before every LLM call) sees
         // "still over the limit" and re-summarizes the already compressed history at every turn
-        // boundary — an extra LLM call per turn plus a destructive SetMessages on live turns.
-        targetSession.TotalTokens = EstimateContextTokens(keptMessages);
+        // boundary — an extra LLM call per turn plus a destructive history rewrite on live turns.
+        targetSession.TotalTokens = EstimateContextTokens(targetSession.GetMessagesSnapshot());
+    }
+
+    /// <summary>
+    /// Plans the in-place compression: which messages the LLM summary replaces.
+    /// Layout: [head window][summary][tail window]. Only VISIBLE messages are considered —
+    /// empty turn-boundary bubbles carry no payload and must never occupy a window slot
+    /// (they used to fill the head/tail windows, so the visible history looked broken).
+    /// The tail keeps the newest messages verbatim and NEVER the live streaming message of the
+    /// running turn is collapsed; the head keeps the oldest messages verbatim.
+    /// <para>
+    /// The newest user message is not forced into the tail: a long tool-heavy run has its task
+    /// message far behind the last turns, and extending the tail back to it would make the
+    /// collapsed slice empty — the gate would then never compress the very run it was built for.
+    /// The task itself is not lost: it is part of the summarizer input (only the last one-two
+    /// messages are excluded from the prompt) and lands in the summary.
+    /// </para>
+    /// </summary>
+    /// <returns>Messages to collapse; empty when there is nothing a summary could replace.</returns>
+    internal static List<VisualChatMessage> PlanCompression(IReadOnlyList<VisualChatMessage> snapshot)
+    {
+        var visible = snapshot.Where(m => !m.IsEmptyTurn).ToList();
+        var total = visible.Count;
+
+        // Head + tail already cover the whole history: a summary would collapse nothing.
+        if (total < 4)
+            return [];
+
+        var windowSize = total < 6 ? 2 : 3;
+        var tailStart = Math.Max(windowSize, total - windowSize);
+
+        // Live messages of the run that triggered the compression are never collapsed: the agent
+        // loop keeps streaming into these exact objects, so removing them from the history would
+        // orphan the stream (the UI froze and the generation looked stopped).
+        var firstLive = visible.FindIndex(m => m.IsStreaming);
+        if (firstLive >= 0)
+            tailStart = Math.Max(windowSize, Math.Min(tailStart, firstLive));
+
+        // A single collapsed message is not worth an LLM call and would only add noise.
+        if (tailStart - windowSize < 2)
+            return [];
+
+        return visible.GetRange(windowSize, tailStart - windowSize);
+    }
+
+    /// <summary>
+    /// Replaces oversized tool results with a stub: the full text no longer fits the compressed
+    /// context (the tool call itself stays, so the model still sees what was executed).
+    /// </summary>
+    private static void StubLongToolResults(IEnumerable<VisualChatMessage> messages)
+    {
+        foreach (var message in messages)
+        {
+            if (message.ToolCalls is not { Count: > 0 })
+                continue;
+
+            foreach (var toolCall in message.ToolCalls)
+            {
+                if (toolCall.Result is { Content.Length: > CompressedToolResultThreshold })
+                {
+                    toolCall.Result = new ToolResult
+                    {
+                        Content = $"The long result ({toolCall.Result.Content.Length} chars) was removed after compression.",
+                        Name = toolCall.Function.Name,
+                        DisplayName = toolCall.Result.DisplayName,
+                        Success = toolCall.Result.Success,
+                    };
+                }
+            }
+        }
     }
 
     /// <summary>
