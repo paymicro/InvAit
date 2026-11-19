@@ -1,7 +1,7 @@
 <div class="ai-chat-message">
     @if (Message.Role != ChatMessageRole.Assistant)
     {
-        <MarkdownBlock Content="@Message.Content" />
+        <MarkdownBlock Content="@Message.Content" IsStreaming="@Message.IsStreaming" />
     }
     else
     {
@@ -10,8 +10,9 @@
             var header = Message.Timings is { Reasoning.TotalMilliseconds: > 100 } 
                 ? $"{SharedResource.Thinking} {Message.Timings.Reasoning.TotalSeconds.ToString("F1")} sec"
                 : SharedResource.Thinking;
-            <Details Text="@header" Icon="fa-solid fa-lightbulb" class="reasoning-details">
-                <MarkdownBlock Content="@Message.ReasoningContent" />
+            <Details Text="@header" Icon="fa-solid fa-lightbulb" class="reasoning-details"
+                     RenderContentWhenCollapsed="false">
+                <MarkdownBlock Content="@Message.ReasoningContent" IsStreaming="@Message.IsStreaming" />
             </Details>
         }
 
@@ -22,16 +23,26 @@
         {
             if (!string.IsNullOrEmpty(Message.Content))
             {
-                <MarkdownBlock Content="@Message.Content" />
+                <MarkdownBlock Content="@Message.Content" IsStreaming="@Message.IsStreaming" />
             }
         }
         else
         {
+            // Only the segment whose text is STILL GROWING may be gated. A closed segment is the
+            // exact case that used to freeze: the model stops writing text and starts emitting
+            // tool calls, the segment is closed (its text never changes again) while the MESSAGE is
+            // still streaming - so IsStreaming stayed true, the gate never opened and the last
+            // chunk of the markdown never reached the DOM until the whole run finished.
+            var growingSegment = Message.IsStreaming
+                ? Message.Segments.LastOrDefault(s => s.Type is SegmentType.Markdown && !s.IsClosed)
+                : null;
+
             foreach (var segment in Message.Segments)
             {
                 if (segment.Type is SegmentType.Markdown)
                 {
-                    <MarkdownBlock @key="segment.Id" Content="@segment.CurrentLine.ToString()" />
+                    <MarkdownBlock @key="segment.Id" Content="@segment.CurrentLine.ToString()"
+                                   IsStreaming="@ReferenceEquals(segment, growingSegment)" />
                 }
             }
         }

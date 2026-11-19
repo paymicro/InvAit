@@ -1,3 +1,4 @@
+@implements IDisposable
 <div class="custom-details @(_isExpanded ? "is-expanded" : "") @(IsRounded ? "is-rounded" : "") @CustomClass">
     <div class="header" @onclick="Toggle">
         <div class="header-left">
@@ -24,7 +25,15 @@
     </div>
     <div class="content-wrapper">
         <div class="content-inner">
-            @ChildContent
+            @* Collapsed content can be skipped entirely. The wrapper hides it with
+               grid-template-rows: 0fr, but the children still live in the DOM - a streaming
+               reasoning block was re-parsed and re-rendered on every token while invisible.
+               With RenderContentWhenCollapsed=false nothing exists in the DOM until the user
+               opens the block, so a long think-block costs nothing while collapsed. *@
+            @if (RenderContentWhenCollapsed || _isExpanded || _bodyPinned)
+            {
+                @ChildContent
+            }
         </div>
     </div>
 </div>
@@ -38,6 +47,32 @@
     // Задает только НАЧАЛЬНОЕ состояние раскрытости. Дальше состояние внутреннее:
     // повторные перерендеры родителя не должны сбрасывать выбор пользователя.
     [Parameter] public bool IsExpanded { get; set; }
+
+    /// <summary>
+    /// Whether the child content is rendered while collapsed. Default <c>true</c> keeps the
+    /// original behaviour (content always in the DOM, hidden by CSS) - required where the body
+    /// must survive the toggle: tool results, diffs, sub-agent transcripts.
+    /// <para>
+    /// Set to <c>false</c> for content that is expensive and/or streams: a collapsed block then
+    /// holds nothing in the DOM and is built once when the user expands it.
+    /// </para>
+    /// </summary>
+    [Parameter] public bool RenderContentWhenCollapsed { get; set; } = true;
+
+    /// <summary>
+    /// How long the body is kept after a collapse started, so the height can animate.
+    /// Must cover the CSS transition on <c>grid-template-rows</c> (0.3s) plus a frame.
+    /// </summary>
+    private const int CollapseAnimationMs = 320;
+
+    /// <summary>
+    /// True while a collapsing body must stay in the DOM so the transition has something to
+    /// shrink. Without it the body disappears on the same frame the class is removed and the
+    /// block snaps shut - the lazy rendering would silently kill the animation.
+    /// </summary>
+    private bool _bodyPinned;
+
+    private CancellationTokenSource? _unpinCts;
 
     /// <summary>
     /// Колбэк клика по заголовку (контролируемый режим, напр. SubAgentView).
@@ -78,6 +113,73 @@
             OnToggle(!_isExpanded);
             return;
         }
-        _isExpanded = !_isExpanded;
+
+        SetExpanded(!_isExpanded);
+    }
+
+    /// <summary>
+    /// Applies the new expansion state, keeping the body alive for the duration of the collapse
+    /// animation when the content is otherwise rendered lazily.
+    /// </summary>
+    private void SetExpanded(bool expanded)
+    {
+        CancelPendingUnpin();
+
+        if (!expanded && !RenderContentWhenCollapsed)
+        {
+            // Pin first: the body must exist while grid-template-rows animates 1fr -> 0fr.
+            _bodyPinned = true;
+            _isExpanded = false;
+            ScheduleUnpin();
+            return;
+        }
+
+        _bodyPinned = false;
+        _isExpanded = expanded;
+    }
+
+    private void ScheduleUnpin()
+    {
+        var cts = new CancellationTokenSource();
+        _unpinCts = cts;
+        _ = UnpinAsync(cts);
+    }
+
+    private async Task UnpinAsync(CancellationTokenSource cts)
+    {
+        try
+        {
+            await Task.Delay(CollapseAnimationMs, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return; // expanded again before the animation finished
+        }
+
+        // Disposed while waiting: StateHasChanged on a removed component throws.
+        if (cts.IsCancellationRequested)
+            return;
+
+        _bodyPinned = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void CancelPendingUnpin()
+    {
+        var cts = _unpinCts;
+        _unpinCts = null;
+        if (cts is null)
+            return;
+
+        cts.Cancel();
+        cts.Dispose();
+    }
+
+    public void Dispose()
+    {
+        var cts = _unpinCts;
+        _unpinCts = null;
+        cts?.Cancel();
+        cts?.Dispose();
     }
 }

@@ -610,7 +610,14 @@ public class SubAgentViewTests : BunitContext
         var cut = Render<SubAgentView>(parameters => parameters
             .Add(p => p.SubAgent, subAgent));
 
-        // Assert - reasoning content should be in a Details stub
+        // Assert - the reasoning block is LAZY: the header is always there (the user must be able
+        // to open it), while the body exists only once expanded. It used to be rendered eagerly
+        // and hidden by CSS, which made a long think-block re-parse markdown on every token.
+        Assert.NotEmpty(cut.FindAll(".reasoning-details"));
+        Assert.DoesNotContain("Let me think about this problem", cut.Markup);
+
+        // ...and expanding brings it back.
+        cut.Find(".reasoning-details .header").Click();
         Assert.Contains("Let me think about this problem", cut.Markup);
     }
 

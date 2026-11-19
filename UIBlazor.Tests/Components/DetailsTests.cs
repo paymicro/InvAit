@@ -234,6 +234,94 @@ public class DetailsTests : BunitContext
 
     #endregion
 
+    #region Lazy Content Tests
+
+    /// <summary>
+    /// The default keeps the original behaviour: the body is always in the DOM and only hidden by
+    /// CSS. Tool results, diffs and sub-agent transcripts rely on it (they must survive a toggle).
+    /// </summary>
+    [Fact]
+    public void Collapsed_ByDefault_StillRendersChildContent()
+    {
+        var cut = Render<Details>(parameters => parameters
+            .Add(p => p.Text, "Header")
+            .AddChildContent("body"));
+
+        Assert.Contains("body", cut.Markup);
+    }
+
+    /// <summary>
+    /// Expensive, streaming content can opt out: while collapsed nothing exists in the DOM, so a
+    /// long think-block costs neither a re-parse nor a re-render on every token.
+    /// </summary>
+    [Fact]
+    public void Collapsed_WithLazyContent_RendersNothingUntilExpanded()
+    {
+        var cut = Render<Details>(parameters => parameters
+            .Add(p => p.Text, "Header")
+            .Add(p => p.RenderContentWhenCollapsed, false)
+            .AddChildContent("body"));
+
+        Assert.DoesNotContain("body", cut.Markup);
+
+        // Act - the user opens the block.
+        cut.Find(".header").Click();
+
+        // Assert - content is built exactly then.
+        Assert.Contains("body", cut.Markup);
+        Assert.Contains("is-expanded", cut.Find(".custom-details").ClassList);
+    }
+
+    /// <summary>
+    /// Collapsing must still ANIMATE: the body is kept for the duration of the CSS transition and
+    /// dropped afterwards. Removing it on the same frame made the block snap shut.
+    /// </summary>
+    [Fact]
+    public async Task Expanded_WithLazyContent_CollapsingKeepsBodyForAnimationThenDropsIt()
+    {
+        var cut = Render<Details>(parameters => parameters
+            .Add(p => p.Text, "Header")
+            .Add(p => p.IsExpanded, true)
+            .Add(p => p.RenderContentWhenCollapsed, false)
+            .AddChildContent("body"));
+
+        Assert.Contains("body", cut.Markup);
+
+        // Act - collapse. The class flips immediately, the body stays for the transition.
+        cut.Find(".header").Click();
+
+        Assert.DoesNotContain("is-expanded", cut.Find(".custom-details").ClassList);
+        Assert.Contains("body", cut.Markup);
+
+        // Assert - once the transition is over the body is gone, so the collapsed block is free.
+        cut.WaitForAssertion(() => Assert.DoesNotContain("body", cut.Markup), TimeSpan.FromSeconds(2));
+    }
+
+    /// <summary>
+    /// Re-expanding during the collapse animation must cancel the pending removal - otherwise the
+    /// body would vanish while the block opens.
+    /// </summary>
+    [Fact]
+    public async Task Expanded_WithLazyContent_ReExpandDuringAnimation_KeepsBody()
+    {
+        var cut = Render<Details>(parameters => parameters
+            .Add(p => p.Text, "Header")
+            .Add(p => p.IsExpanded, true)
+            .Add(p => p.RenderContentWhenCollapsed, false)
+            .AddChildContent("body"));
+
+        cut.Find(".header").Click(); // collapse
+        cut.Find(".header").Click(); // expand again within the animation window
+
+        Assert.Contains("is-expanded", cut.Find(".custom-details").ClassList);
+
+        // Still there well after the animation window would have expired.
+        await Task.Delay(500);
+        Assert.Contains("body", cut.Markup);
+    }
+
+    #endregion
+
     #region Controlled Mode (OnToggle) Tests
 
     [Fact]

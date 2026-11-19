@@ -1,3 +1,4 @@
+@implements IDisposable
 <div class="rz-chat-message rz-chat-message-@Message.Role" data-message-id="@Message.Id">
     @if (Message.Role == ChatMessageRole.User)
     {
@@ -164,6 +165,16 @@
     [Parameter] public EventCallback<VisualChatMessage> OnDelete { get; set; }
     [Parameter] public EventCallback OnRegenerate { get; set; }
 
+    /// <summary>Message currently subscribed for streaming notifications.</summary>
+    private VisualChatMessage? _subscribedMessage;
+
+    /// <summary>
+    /// Set when the message itself asked for a repaint. A token does not go through the parent any
+    /// more, so ShouldRender must honour the request explicitly - otherwise the render is skipped
+    /// because the snapshot comparison sees the state it is about to receive.
+    /// </summary>
+    private bool _renderRequested;
+
     /// <summary>
     /// Tooltip of the token badge. Timings.Tokens already includes reasoning tokens
     /// (full generation), so the tooltip only clarifies the breakdown.
@@ -252,7 +263,8 @@
                                tc.Function.Arguments.Length != oldArgsLength;
         }
 
-        return Message.IsShouldRender ||
+        return _renderRequested ||
+               Message.IsShouldRender ||
                Message.IsStreaming || _oldIsStreaming ||
                Message.IsRetrying || _oldRetryCountdown != Message.RetryCountdown ||
                Message.IsEditing || _oldIsEditing ||
@@ -264,9 +276,46 @@
                toolCallsChanged;
     }
 
+    /// <summary>
+    /// Re-binds the streaming subscription when the parameter points at a different message.
+    /// A view that streamed one message may be reused for another (keyed list, history rewrite),
+    /// and a stale subscription would repaint the bubble for a message it no longer shows.
+    /// </summary>
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(_subscribedMessage, Message))
+            return;
+
+        if (_subscribedMessage is not null)
+            _subscribedMessage.Changed -= OnMessageChanged;
+
+        _subscribedMessage = Message;
+
+        if (_subscribedMessage is not null)
+            _subscribedMessage.Changed += OnMessageChanged;
+    }
+
+    /// <summary>
+    /// A token of THIS message: repaint this bubble only. The parent is deliberately not
+    /// re-rendered - walking a long transcript on every token was the dominant cost, and exactly
+    /// one message changes per token.
+    /// </summary>
+    private void OnMessageChanged()
+    {
+        _renderRequested = true;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        if (_subscribedMessage is not null)
+            _subscribedMessage.Changed -= OnMessageChanged;
+    }
+
     protected override void OnAfterRender(bool firstRender)
     {
         // Фиксируем состояния ПОСЛЕ рендера, чтобы в следующем цикле ShouldRender сравнение работало корректно
+        _renderRequested = false;
         _oldIsLoading = IsLoading;
         _oldIsLast = IsLast;
 

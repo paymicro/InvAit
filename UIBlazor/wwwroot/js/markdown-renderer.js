@@ -195,63 +195,81 @@ function renderMarkdown(text) {
     return renderer.parse(processedText);
 }
 
+// mermaid.initialize is O(library-wide reconfiguration) and used to run on EVERY markdown
+// render - i.e. on every streamed token of a message that happens to contain a diagram.
+// It only needs to run when the theme actually changes.
+let mermaidThemeApplied = null;
+
+function ensureMermaidTheme() {
+    if (!window.mermaid) return false;
+
+    const theme = isDarkMode ? 'dark' : 'base';
+    if (mermaidThemeApplied === theme) return true;
+
+    window.mermaid.initialize({
+        startOnLoad: false,
+        suppressErrorRendering: true,
+        // isDarkMode берется из app.js
+        theme: theme
+    });
+
+    mermaidThemeApplied = theme;
+    return true;
+}
+
 function renderMarkdownToElement(elementId, text) {
     const element = document.getElementById(elementId);
-    if (element) {
-        element.innerHTML = renderMarkdown(text);
+    if (!element) return;
 
-        // Initialize mermaid diagrams
-        if (window.mermaid) {
-            window.mermaid.initialize({
-                startOnLoad: false,
-                suppressErrorRendering: true,
-                // isDarkMode берется из app.js
-                theme: isDarkMode ? 'dark' : 'base'
-            });
+    element.innerHTML = renderMarkdown(text);
 
-            const diagrams = element.querySelectorAll('.mermaid');
-            diagrams.forEach((diagram, index) => {
-                const content = diagram.textContent;
-                // Use a globally unique ID for rendering to avoid conflicts
-                const renderId = 'mermaid-svg-' + elementId.replace(/[^a-zA-Z0-9]/g, '') + '-' + index;
+    // mermaid is expensive enough that an unconditional querySelectorAll is wasteful: the common
+    // streaming case has no diagram at all.
+    if (text.indexOf('```mermaid') === -1) return;
 
-                // Check cache
-                const cached = mermaidCache.get(renderId);
-                if (cached && cached.code === content) {
-                    if (cached.error) {
-                        renderMermaidError(diagram, content, cached.errorMessage);
-                    } else {
-                        wrapMermaidWithZoom(diagram, cached.svg);
-                    }
-                    return;
+    if (ensureMermaidTheme()) {
+        const diagrams = element.querySelectorAll('.mermaid');
+        diagrams.forEach((diagram, index) => {
+            const content = diagram.textContent;
+            // Use a globally unique ID for rendering to avoid conflicts
+            const renderId = 'mermaid-svg-' + elementId.replace(/[^a-zA-Z0-9]/g, '') + '-' + index;
+
+            // Check cache
+            const cached = mermaidCache.get(renderId);
+            if (cached && cached.code === content) {
+                if (cached.error) {
+                    renderMermaidError(diagram, content, cached.errorMessage);
+                } else {
+                    wrapMermaidWithZoom(diagram, cached.svg);
                 }
+                return;
+            }
 
-                window.mermaid.render(renderId, content)
-                    .then((result) => {
-                        wrapMermaidWithZoom(diagram, result.svg);
-                        mermaidCache.set(renderId, { code: content, svg: result.svg });
+            window.mermaid.render(renderId, content)
+                .then((result) => {
+                    wrapMermaidWithZoom(diagram, result.svg);
+                    mermaidCache.set(renderId, { code: content, svg: result.svg });
 
-                        // Simple cleanup to prevent memory leaks
-                        if (mermaidCache.size > 200) {
-                            const firstKey = mermaidCache.keys().next().value;
-                            mermaidCache.delete(firstKey);
-                        }
-                    })
-                    .catch((error) => {
-                        console.error('Mermaid render error:', error);
-                        const errorMessage = error.message || error.toString();
+                    // Simple cleanup to prevent memory leaks
+                    if (mermaidCache.size > 200) {
+                        const firstKey = mermaidCache.keys().next().value;
+                        mermaidCache.delete(firstKey);
+                    }
+                })
+                .catch((error) => {
+                    console.error('Mermaid render error:', error);
+                    const errorMessage = error.message || error.toString();
 
-                        // Save failure to cache so we don't try again for the same content/id
-                        mermaidCache.set(renderId, {
-                            code: content,
-                            error: true,
-                            errorMessage: errorMessage
-                        });
-
-                        renderMermaidError(diagram, content, errorMessage);
+                    // Save failure to cache so we don't try again for the same content/id
+                    mermaidCache.set(renderId, {
+                        code: content,
+                        error: true,
+                        errorMessage: errorMessage
                     });
-            });
-        }
+
+                    renderMermaidError(diagram, content, errorMessage);
+                });
+        });
     }
 }
 

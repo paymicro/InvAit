@@ -86,13 +86,14 @@
                         <div class="subagent-message-content">
                             @if (!string.IsNullOrEmpty(msg.ReasoningContent))
                             {
-                                <Details Text="@SharedResource.Thinking" Icon="fa-solid fa-lightbulb" class="reasoning-details">
-                                    <MarkdownBlock Content="@msg.ReasoningContent" />
+                                <Details Text="@SharedResource.Thinking" Icon="fa-solid fa-lightbulb" class="reasoning-details"
+                                         RenderContentWhenCollapsed="false">
+                                    <MarkdownBlock Content="@msg.ReasoningContent" IsStreaming="@msg.IsStreaming" />
                                 </Details>
                             }
                             @if (!string.IsNullOrEmpty(msg.Content))
                             {
-                                <MarkdownBlock Content="@msg.Content" />
+                                <MarkdownBlock Content="@msg.Content" IsStreaming="@msg.IsStreaming" />
                             }
                             @if (msg.ToolCalls is { Count: > 0 })
                             {

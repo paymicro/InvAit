@@ -47,6 +47,20 @@ public class VisualChatMessage
     public bool IsShouldRender { get; set; }
 
     /// <summary>
+    /// Raised when a rendered field changed while this message streams.
+    /// <para>
+    /// The subscribing <c>ChatMessageView</c> repaints ONE bubble from it, so a token no longer
+    /// requires the parent to re-render the whole transcript. With a long history that was the
+    /// dominant cost: every token ran SetParameters + ShouldRender over all messages in the
+    /// session, though exactly one of them changed.
+    /// </para>
+    /// </summary>
+    public event Action? Changed;
+
+    /// <summary>Notifies the subscribing view that a rendered field changed.</summary>
+    public void NotifyChanged() => Changed?.Invoke();
+
+    /// <summary>
     /// Gets or sets whether this message is currently streaming.
     /// </summary>
     [JsonIgnore]

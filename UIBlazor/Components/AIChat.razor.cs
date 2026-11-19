@@ -367,9 +367,12 @@ public partial class AiChat : RadzenComponent
             runSession.AddMessage(turnMessage);
             await InvokeAsync(StateHasChanged);
 
-            // Re-render after a payload arrived. The message is already in the session, so this
-            // only paints its new content.
-            void Refresh() => _ = InvokeAsync(StateHasChanged);
+            // A payload repaints THIS message only. Going through the parent re-rendered the
+            // whole transcript on every token (SetParameters + ShouldRender over every message in
+            // the session); with a long history that dominated the frame budget. The bubble
+            // subscribes to the message itself, so the cost per token is one component.
+            // Parent-level renders stay at structural moments (message added/removed, run end).
+            void Refresh() => turnMessage.NotifyChanged();
 
             try
             {

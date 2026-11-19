@@ -18,9 +18,11 @@ public class MessageContentTests : BunitContext
         ComponentFactories.AddStub<MarkdownBlock>(parameters => builder =>
         {
             var content = parameters.Get(p => p.Content);
+            var streaming = parameters.Get(p => p.IsStreaming);
             builder.OpenElement(0, "div");
             builder.AddAttribute(1, "class", "markdown-block-stub");
-            builder.AddContent(2, content ?? string.Empty);
+            builder.AddAttribute(2, "data-streaming", streaming ? "true" : "false");
+            builder.AddContent(3, content ?? string.Empty);
             builder.CloseElement();
         });
 
@@ -222,6 +224,67 @@ public class MessageContentTests : BunitContext
         Assert.Equal(2, blocks.Count);
         Assert.Contains("First segment line", blocks[0].TextContent);
         Assert.Contains("Second segment line", blocks[1].TextContent);
+    }
+
+    /// <summary>
+    /// Only the LAST markdown segment is still growing. Handing <c>IsStreaming=true</c> to a
+    /// CLOSED segment would freeze it with up to one render-gate of text missing: its text stops
+    /// changing, so the gate never opens again and the trailing characters are never rendered.
+    /// </summary>
+    [Fact]
+    public void ClosedSegment_IsNotMarkedStreaming_LastOneIs()
+    {
+        var closed = new ContentSegment();
+        typeof(ContentSegment).GetProperty(nameof(ContentSegment.Type))!
+            .SetValue(closed, SegmentType.Markdown);
+        closed.CurrentLine.Append("closed segment");
+        closed.IsClosed = true;
+
+        var growing = new ContentSegment();
+        typeof(ContentSegment).GetProperty(nameof(ContentSegment.Type))!
+            .SetValue(growing, SegmentType.Markdown);
+        growing.CurrentLine.Append("still streaming");
+
+        var message = CreateAssistantMessage();
+        message.IsStreaming = true;
+        message.Segments.Add(closed);
+        message.Segments.Add(growing);
+
+        // Act
+        var cut = Render<MessageContent>(parameters => parameters
+            .Add(p => p.Message, message));
+
+        // Assert - the closed block must render immediately, the growing one may gate.
+        var streamingFlags = cut.FindAll(".markdown-block-stub")
+            .Select(e => e.GetAttribute("data-streaming") == "true")
+            .ToList();
+
+        Assert.Equal(2, streamingFlags.Count);
+        Assert.False(streamingFlags[0], "a closed segment never receives more text - gating it would lose its tail");
+        Assert.True(streamingFlags[1], "the last markdown segment is the one still growing");
+    }
+
+    /// <summary>
+    /// A finished message is never treated as streaming, so every change renders.
+    /// </summary>
+    [Fact]
+    public void FinishedMessage_SegmentsAreNotMarkedStreaming()
+    {
+        var segment = new ContentSegment();
+        typeof(ContentSegment).GetProperty(nameof(ContentSegment.Type))!
+            .SetValue(segment, SegmentType.Markdown);
+        segment.CurrentLine.Append("done");
+
+        var message = CreateAssistantMessage();
+        message.IsStreaming = false;
+        message.Segments.Add(segment);
+
+        // Act
+        var cut = Render<MessageContent>(parameters => parameters
+            .Add(p => p.Message, message));
+
+        Assert.All(cut.FindAll(".markdown-block-stub"),
+            e => Assert.Equal("false", e.GetAttribute("data-streaming")));
     }
 
     #endregion

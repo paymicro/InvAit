@@ -6,24 +6,125 @@
 @code {
     [Parameter] public string Content { get; set; } = string.Empty;
 
-    private readonly string _blockId = $"md-{Guid.NewGuid()}";
-    private string _lastRenderedContent = string.Empty;
+    /// <summary>
+    /// True while the text is still being appended (streaming). While streaming the block is
+    /// re-rendered lazily - see <see cref="StreamingRenderGrowthChars"/> and
+    /// <see cref="StreamingRenderMaxDelayMs"/>. When the stream ends the final text is rendered
+    /// unconditionally, so nothing is ever left behind unrendered.
+    /// </summary>
+    [Parameter] public bool IsStreaming { get; set; }
 
-    protected override bool ShouldRender() => Content != _lastRenderedContent;
+    private readonly string _blockId = $"md-{Guid.NewGuid()}";
+
+    /// <summary>Text the DOM currently holds.</summary>
+    private string _renderedContent = string.Empty;
+
+    /// <summary>When the DOM was last written, for the time-based ceiling.</summary>
+    private long _lastRenderTicks;
+
+    private Timer? _trailingTimer;
+
+    /// <summary>
+    /// How much new text justifies a re-render while streaming.
+    /// <para>
+    /// Each render replaces the whole block (markdown parse + DOM rebuild), so rendering on every
+    /// token is quadratic over one answer and stalls a long reasoning block.
+    /// </para>
+    /// </summary>
+    private const int StreamingRenderGrowthChars = 100;
+
+    /// <summary>
+    /// Hard ceiling on how stale the block may look while streaming.
+    /// <para>
+    /// A character gate alone is wrong for slow models: at 20 tokens/s a 250-character gate left
+    /// the text frozen for seconds. The timer bounds the delay regardless of how fast text
+    /// arrives, so the block always looks alive; the character gate still saves renders when the
+    /// model is fast. Both conditions are "render if true", whichever comes first.
+    /// </para>
+    /// </summary>
+    private const int StreamingRenderMaxDelayMs = 120;
+
+    protected override bool ShouldRender() => Content != _renderedContent;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (Content != _lastRenderedContent)
+        if (Content == _renderedContent)
+            return;
+
+        if (_renderedContent.Length > 0 && IsStreaming && !DueForRender())
         {
-            _lastRenderedContent = Content;
-            try 
-            {
-                await Js.InvokeVoidAsync("renderMarkdownToElement", _blockId, Content);
-            }
-            catch (JSException)
-            {
-                // Ignore JS errors during rendering if element is disposed
-            }
+            // Not yet worth a full rebuild: guarantee the pending text is flushed by the ceiling.
+            ScheduleTrailingRender();
+            return;
         }
+
+        await RenderAsync();
+    }
+
+    /// <summary>
+    /// A render is due either because enough text accumulated or because the ceiling expired.
+    /// </summary>
+    private bool DueForRender()
+    {
+        if (Content.Length - _renderedContent.Length >= StreamingRenderGrowthChars)
+            return true;
+
+        return Environment.TickCount64 - _lastRenderTicks >= StreamingRenderMaxDelayMs;
+    }
+
+    /// <summary>
+    /// One-shot timer for the remaining part of the ceiling window. Re-armed on every change, so a
+    /// steady stream renders once per window and the LAST text always reaches the DOM.
+    /// </summary>
+    private void ScheduleTrailingRender()
+    {
+        var elapsed = Environment.TickCount64 - _lastRenderTicks;
+        var remaining = (int)Math.Max(1, StreamingRenderMaxDelayMs - elapsed);
+
+        if (_trailingTimer is null)
+            _trailingTimer = new Timer(_ => _ = RenderPendingAsync(), null, remaining, Timeout.Infinite);
+        else
+            _trailingTimer.Change(remaining, Timeout.Infinite);
+    }
+
+    /// <summary>
+    /// Timer callback: runs off the renderer's synchronisation context, so hop back before touching
+    /// the DOM. Renders whatever the latest text is - not the text captured when the timer fired.
+    /// </summary>
+    private async Task RenderPendingAsync()
+    {
+        await InvokeAsync(async () =>
+        {
+            if (Content == _renderedContent)
+                return;
+
+            await RenderAsync();
+        });
+    }
+
+    private async Task RenderAsync()
+    {
+        _renderedContent = Content;
+        _lastRenderTicks = Environment.TickCount64;
+
+        try
+        {
+            await Js.InvokeVoidAsync("renderMarkdownToElement", _blockId, Content);
+        }
+        catch (JSException)
+        {
+            // Ignore JS errors during rendering if element is disposed
+        }
+        catch (ObjectDisposedException)
+        {
+            // The component was removed while the call was in flight.
+        }
+    }
+
+    public void Dispose()
+    {
+        var timer = _trailingTimer;
+        _trailingTimer = null;
+        timer?.Dispose();
     }
 }
