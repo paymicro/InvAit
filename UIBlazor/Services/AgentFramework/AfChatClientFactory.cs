@@ -19,6 +19,15 @@ internal static class AfChatClientFactory
     /// through the SDK ResponsesClient. Both gateways (single-shot adapter and
     /// tool-invocation loop) support both protocols unchanged.
     /// </summary>
+    /// <param name="profile">Provider profile.</param>
+    /// <param name="httpClient">DI transport.</param>
+    /// <param name="httpTimeoutSec">
+    /// Optional request timeout for the TRANSPORT. Leave it <c>null</c> (the default) when a
+    /// gateway above already bounds the request: <see cref="AfCompletionsAdapter"/> is the
+    /// single timeout owner and arms its own CTS, so a transport timeout here would bound the
+    /// request a second time — and because a transport CTS covers the whole body-read, it
+    /// would cut long streams mid-generation. Non-positive values mean "no timeout".
+    /// </param>
     public static IChatClient Create(ConnectionProfile profile, HttpClient httpClient, Func<int>? httpTimeoutSec = null)
         => profile.ApiProviderType switch
         {

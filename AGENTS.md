@@ -35,6 +35,47 @@ VS Extension (VSIX) embedding Blazor WebAssembly UI in WebView2.
 - **`McpHost`** (net10 exe, `InvAit.McpHost.exe`) — Out-of-process MCP client host on official `ModelContextProtocol` SDK. Named-pipe IPC (length-prefixed JSON): `ping/status/list_tools/call_tool/stop_server/stop_all/shutdown`. Registry lazily starts stdio or HTTP/SSE servers by fingerprint; idle-reap 10 min. One host per VS instance.
 - **`invaitcode`** — VS Code extension (TypeScript). Hosts the same Blazor WASM UI in a webview panel via a local static HTTP server. `extension.ts` handles tool dispatch, context publishing, and network proxy (streaming SSE through `postMessage`). `toolHandlers.ts` implements file/git/bash tools in Node.js. `DynamicEnvironmentHttpMessageHandler` (in UIBlazor) routes HTTP requests through the extension host when running inside VS Code. localStorage is proxied to `globalState` for persistence.
 
+### Agent turn loop
+
+**The turn loop lives in the CALLER, not in a gateway.** `ChatService.GetTurnCompletionsAsync`
+streams exactly ONE LLM turn: it rebuilds the request from the session at call time
+(`ConversationSession.BuildWire`), resolves the tools of the session's CURRENT mode and makes a
+single gateway call. It executes no tools.
+
+Orchestration belongs to two callers, which share the same shape:
+
+| Caller | Loop |
+|--------|------|
+| `AIChat.RunTurnsAsync` | main agent |
+| `AfSubAgentOrchestrator.RunBranchAsync` | sub-agent branch |
+
+Each iteration: check compression → build wire → stream one turn → collect tool calls →
+approve + execute → append results → repeat. Consequences to keep in mind when editing:
+
+- Every between-turn mutation (compression, edit, delete, interject, `switch_mode`) reaches the
+  model on the NEXT turn, because the wire is rebuilt from the session each time. There is no
+  cached history to invalidate.
+- `VisualChatMessage` objects are the single source of truth; `BuildWire` mutates them (orphan
+  tool-call stubs) and dedupes by REFERENCE (`Id` is `[JsonIgnore]`, regenerated on load).
+- The system prompt is cached in `SystemPromptBuilder` by `(Mode, canDelegate, revision)`;
+  `revision` bumps on IDE context push and profile edit. Rebuilds are what break the provider
+  prompt cache, so keep consecutive builds byte-identical.
+- Timeout: `AfCompletionsAdapter` is the ONLY owner. Transport clients get no timeout. Streaming
+  uses an IDLE window (re-armed per chunk), non-streaming a total budget, `HttpTimeoutSec <= 0`
+  disables it. A burned window is an `LlmApiException`; the retry decision is
+  `LlmApiException.IsRetryable` (only a permanent 4xx or a non-`LlmApiException` bug skips the
+  budget).
+
+**Deep documentation lives in [`docs/dev/`](docs/dev/README.md)** — read the relevant file before
+changing a subtle area, and update it in the SAME change:
+
+| Document | Covers |
+|----------|--------|
+| [docs/dev/agent-turn-loop.md](docs/dev/agent-turn-loop.md) | who owns the turn cycle, between-turn semantics, traps |
+| [docs/dev/llm-transport.md](docs/dev/llm-transport.md) | timeout ownership, retry policy, error classification, UI trace of a failed turn |
+| [docs/dev/session-and-context.md](docs/dev/session-and-context.md) | `BuildWire` validation rules, compression planning, prompt cache, token accounting |
+| [docs/dev/chat-service.md](docs/dev/chat-service.md) | `IChatService` members, guarantees, invariants, test seams |
+
 ## Communication
 
 JSON-RPC over WebView2. UI → VS: `VsRequest` (Action, Payload, CorrelationId). VS → UI: `VsResponse` (result) or `VsMessage` (push, e.g. `UpdateCodeContext`).

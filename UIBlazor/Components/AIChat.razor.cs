@@ -109,7 +109,7 @@ public partial class AiChat : RadzenComponent
                 await InvokeAsync(StateHasChanged);
                 try
                 {
-                    await CompressAsync(0, _cts.Token);
+                    await CompressAsync(ChatService.Session, 0, _cts.Token);
                 }
                 finally
                 {
@@ -198,28 +198,392 @@ public partial class AiChat : RadzenComponent
         }
     }
 
+    /// <summary>Result content of a tool call that never produced one.</summary>
+    private const string InterruptedToolResultContent =
+        "The tool call was not executed (run interrupted before the result was produced).";
+
     private async Task GetAiResponseAsync()
     {
         await CancelResponseAsync();
+
+        // ONE token source per RUN (not per turn): every turn and every retry of the run shares
+        // it. The old code re-entered GetAiResponseAsync after each tool turn, which cancelled
+        // its own token and created a new one - inside a turn loop that breaks approval and
+        // compression cancellation (the re-entry cancelled the approval gate of the next turn).
         _cts = new CancellationTokenSource();
-        await GetAiResponseInternalAsync(0, _cts.Token);
+        await GetAiResponseInternalAsync(_cts.Token);
+    }
+
+    /// <summary>
+    /// One agent run: pins the session, opens the interject window, runs the turn loop and
+    /// guarantees the terminal state (IsLoading, closed messages, persisted session).
+    /// </summary>
+    private async Task GetAiResponseInternalAsync(CancellationToken runToken)
+    {
+        IsLoading = true;
+
+        // Paint the loading state NOW, not on the first token. IsLoading is a plain auto-property
+        // (no re-render on set), so without this the Cancel button and the busy state stayed
+        // invisible until the first delta arrived - a run that had not produced a byte yet looked
+        // like a frozen input with no way out.
+        await InvokeAsync(StateHasChanged);
+
+        // The run is PINNED to the session it started in: every turn message, tool result and
+        // error goes there even if the current session reference changes underneath (autosave
+        // persists by instance, so nothing is lost).
+        var runSession = ChatService.Session;
+
+        try
+        {
+            // Interject window: while the loop streams, user messages are appended to the
+            // session and picked up at the END of the current turn (the next turn rebuilds the
+            // request from the session). Closed during compression - that stream is swallowed.
+            _acceptInterjects = true;
+            await RunTurnsAsync(runSession, runToken);
+        }
+        finally
+        {
+            _acceptInterjects = false;
+
+            // A turn may be abandoned mid-stream (error without retry budget, cancellation,
+            // interrupted tool batch): close every message. A message left IsStreaming=true is
+            // filtered out of the wire history forever and renders as a frozen bubble.
+            foreach (var openMessage in runSession.GetMessagesSnapshot())
+            {
+                if (!openMessage.IsStreaming)
+                    continue;
+                openMessage.IsStreaming = false;
+                openMessage.IsShouldRender = true;
+            }
+
+            // Terminal state of the run (success, error or cancellation) is always persisted:
+            // this is the safety net on top of the autosave invariant (nothing may be lost
+            // because a caller forgot to save). ONE write per run, not per turn.
+            await ChatService.SaveSessionAsync();
+            IsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>
+    /// The agent turn loop: ONE LLM call per iteration, tools executed between the calls, the
+    /// request history rebuilt from the session at the start of EVERY turn (see
+    /// <see cref="IChatService.GetTurnCompletionsAsync"/>). Compression, message edits,
+    /// deletions, interjects and mode switches applied between turns therefore reach the model
+    /// without any extra sync plumbing.
+    /// </summary>
+    private async Task RunTurnsAsync(ConversationSession runSession, CancellationToken runToken)
+    {
+        // Run-level state (FinishReason / Error / iteration cap), reported ONCE per run.
+        var lastCapture = new CompletionsResult();
+
+        try
+        {
+            for (var iteration = 0; ; iteration++)
+            {
+                if (runToken.IsCancellationRequested)
+                    return;
+
+                // Compression gate: checked before EVERY turn (the first check covers the
+                // start-of-run threshold too). The summary stream is swallowed here; the user
+                // sees the badge + the notification raised by the service events.
+                if (ChatService.NeedsCompression(runSession))
+                {
+                    var compressed = await CompressAsync(runSession, 0, runToken);
+                    if (!compressed || runToken.IsCancellationRequested)
+                        return;
+                }
+
+                // Interject baseline for THIS turn: message identity (Revision as a cheap gate),
+                // never a numeric index - compression rewrites the history and shifts every
+                // position, an index would re-read old turns or miss the new one.
+                var revisionBeforeTurn = runSession.Revision;
+                var userIdsBeforeTurn = UserMessageIds(runSession);
+
+                // Per-turn state: a FRESH capture and FRESH callbacks per turn (a stale closure
+                // would keep writing the previous turn's capture - message.Model got lost).
+                var capture = new CompletionsResult();
+                lastCapture = capture;
+
+                var message = await RunSingleTurnAsync(runSession, capture, runToken);
+                if (message is null)
+                    return; // cancelled, or the retry budget of this turn is exhausted
+
+                // The user cancelled between the turn and the batch: nothing may execute now
+                // (PrepareToolsForApprovals would re-register waiters of an aborted run).
+                if (runToken.IsCancellationRequested)
+                    return;
+
+                var calls = capture.AccumulatedToolCalls;
+                if (calls is not { Count: > 0 })
+                {
+                    // A plain text turn ends the run - unless the user interjected while it
+                    // streamed: the new user message must be answered by another turn.
+                    if (!HasNewUserMessage(runSession, revisionBeforeTurn, userIdsBeforeTurn))
+                        return;
+                    continue;
+                }
+
+                if (!await ExecuteToolBatchAsync(message, calls, runSession, runToken))
+                    return; // cancelled / interrupted mid-batch: no further LLM call
+            }
+        }
+        finally
+        {
+            NotifyIfNeeded(lastCapture);
+        }
+    }
+
+    /// <summary>
+    /// Streams exactly ONE LLM turn into its own message and returns that message, or
+    /// <c>null</c> when the run must stop (cancelled, or the retry budget is exhausted).
+    /// <para>
+    /// The turn message is created LAZILY: the object exists from the start (it is the stream
+    /// target and the message excluded from its own request by reference), and it enters the
+    /// session IMMEDIATELY, before the first token. The bubble is the user's feedback that the
+    /// turn started: without it the input froze with no indicator and no Cancel button for as long
+    /// as the provider took to send the first byte. It still cannot pollute the history: a turn that
+    /// ends without payload is removed from the session again, and while it streams it is excluded
+    /// from the wire by <c>IsStreaming</c> and by being the <c>live</c> message of its own request.
+    /// </para>
+    /// <para>
+    /// Retries are scoped to THIS turn: <see cref="HandleErrorAsync"/> owns the countdown UI and
+    /// the budget, and after it allowed a retry the loop below re-enters the very same request.
+    /// It never recurses into the run loop, so a retried turn neither starts a second run nor
+    /// cancels its own token.
+    /// </para>
+    /// </summary>
+    private async Task<VisualChatMessage?> RunSingleTurnAsync(
+        ConversationSession runSession, CompletionsResult capture, CancellationToken runToken)
+    {
+        for (var retryCount = 0; ;)
+        {
+            var turnMessage = VisualChatMessage.CreateStreaming();
+
+            // The bubble exists from the first millisecond. Eager, not on-first-token: the run
+            // looks hung otherwise - no placeholder, no streaming indicator and no Cancel button
+            // until the provider's first byte (which can take seconds). The empty turn is still
+            // impossible to persist: no payload means it is removed again at the end of this method.
+            runSession.AddMessage(turnMessage);
+            await InvokeAsync(StateHasChanged);
+
+            // Re-render after a payload arrived. The message is already in the session, so this
+            // only paints its new content.
+            void Refresh() => _ = InvokeAsync(StateHasChanged);
+
+            try
+            {
+                await ChatService.ProcessStreamAsync(
+                    turnMessage,
+                    ChatService.GetTurnCompletionsAsync(runSession, turnMessage, null, capture, runToken),
+                    onContentUpdate: content =>
+                    {
+                        MessageParser.UpdateSegments(content, turnMessage);
+                        Refresh();
+                    },
+                    onToolCallsUpdate: toolCalls =>
+                    {
+                        turnMessage.ToolCalls = toolCalls;
+                        turnMessage.IsShouldRender = true;
+                        Refresh();
+                    },
+                    onStateChange: () =>
+                    {
+                        turnMessage.Model ??= capture.Model;
+                        Refresh();
+                    },
+                    capture,
+                    runToken);
+
+                // The badge (Tokens/ReasoningTokens/Timings) is stamped by ProcessStreamAsync
+                // against THIS turn's capture: timings are per-turn, never per-run.
+                turnMessage.Model ??= capture.Model;
+
+                if (!HasPayload(turnMessage))
+                {
+                    // Nothing arrived: an empty assistant bubble is noise, and an empty assistant
+                    // turn is rejected by some providers. Drop it - the run itself continues.
+                    runSession.RemoveMessage(turnMessage.Id);
+                    await InvokeAsync(StateHasChanged);
+                    return null;
+                }
+
+                ParsePlan(turnMessage);
+                turnMessage.IsShouldRender = true;
+                await InvokeAsync(StateHasChanged);
+                return turnMessage;
+            }
+            catch (OperationCanceledException) when (runToken.IsCancellationRequested)
+            {
+                // Payload is read BEFORE HandleCancellation: the handler writes
+                // "Cancelled by user..." into an empty message, so asking afterwards always says
+                // "non-empty" and a bubble that carries nothing survives the cancel.
+                if (!HasPayload(turnMessage))
+                {
+                    // Cancelled before the first token: nothing arrived, so nothing stays. The user
+                    // knows they cancelled - a bubble reporting it is noise, and an assistant turn
+                    // with no text is unusable context for the next request.
+                    runSession.RemoveMessage(turnMessage.Id);
+                    await InvokeAsync(StateHasChanged);
+                    return null;
+                }
+
+                // A partial answer or an open tool batch must stay: the tool calls need results in
+                // the wire history, and the text the model already produced is worth keeping.
+                HandleCancellation(turnMessage);
+                return turnMessage;
+            }
+            catch (Exception ex)
+            {
+                // The failure must be visible: the bubble is already in the session and carries
+                // the error text after HandleErrorAsync.
+                if (!await HandleErrorAsync(turnMessage, ex, ++retryCount, runSession, runToken))
+                    return null;
+
+                // HandleErrorAsync removed the partial turn from the session: retry the SAME
+                // turn with a FRESH message (reusing the object would duplicate its content).
+            }
+        }
+    }
+
+    /// <summary>
+    /// Executes the tool calls of ONE turn through the existing approval/execution path.
+    /// <para>
+    /// Approvals are prepared EXACTLY ONCE for the whole batch: the method cancels every pending
+    /// gate and re-registers the ask_user waiters first, so a second call would drop decisions
+    /// the user already made. ProcessToolCallsAsync then runs the batch.
+    /// </para>
+    /// <para>
+    /// A <c>switch_mode</c> call inside the batch changes the mode for the REST of the batch
+    /// (the handler receives ONE mode per call), so the batch is split at the switch and the
+    /// remainder runs under the NEW mode: a call the new mode forbids is rejected by the
+    /// handler with a stub result instead of being executed.
+    /// </para>
+    /// </summary>
+    /// <returns>True when the batch completed; false when the run was cancelled or failed.</returns>
+    private async Task<bool> ExecuteToolBatchAsync(VisualChatMessage message, List<ToolCall> calls,
+        ConversationSession runSession, CancellationToken runToken)
+    {
+        // Same objects: the results render live on this turn message.
+        message.ToolCalls = calls;
+        message.IsShouldRender = true;
+
+        ToolCallHandler.PrepareToolsForApprovals(calls);
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var start = 0;
+            while (start < calls.Count)
+            {
+                runToken.ThrowIfCancellationRequested();
+
+                // Up to and INCLUDING the next switch_mode call (or the whole remainder):
+                // the mode change must be visible to the handler of the following slice.
+                var switchIndex = calls.FindIndex(start, call => call.Function.Name == BasicEnum.SwitchMode);
+                var end = switchIndex < 0 ? calls.Count : switchIndex + 1;
+
+                await ToolCallHandler.ProcessToolCallsAsync(calls.GetRange(start, end - start), runSession.Mode, runToken);
+                start = end;
+            }
+        }
+        catch (OperationCanceledException) when (runToken.IsCancellationRequested)
+        {
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Tool batch execution failed");
+            NotificationService.NotifyError(UiErrorLogger, "Tool execution failed", ex.Message, "Tools", ex);
+            return false;
+        }
+        finally
+        {
+            // Whatever interrupted the batch, EVERY call needs a Result - an
+            // assistant(tool_calls) turn without matching tool messages is a hard API 400 on
+            // the next turn.
+            EnsureToolResults(calls);
+            message.IsShouldRender = true;
+            await InvokeAsync(StateHasChanged);
+        }
+
+        return !runToken.IsCancellationRequested;
+    }
+
+    /// <summary>
+    /// True when the session carries payload a turn could stream into the UI. Used to decide
+    /// whether a turn message enters the session at all.
+    /// </summary>
+    private static bool HasPayload(VisualChatMessage message)
+        => !string.IsNullOrEmpty(message.Content)
+           || !string.IsNullOrEmpty(message.ReasoningContent)
+           || message.ToolCalls is { Count: > 0 };
+
+    /// <summary>Ids of the user messages of the session (interject baseline).</summary>
+    private static HashSet<string> UserMessageIds(ConversationSession session)
+        => session.GetMessagesSnapshot()
+            .Where(m => m.Role == ChatMessageRole.User)
+            .Select(m => m.Id)
+            .ToHashSet();
+
+    /// <summary>
+    /// True when the user appended a message while the turn streamed. Detected by message
+    /// identity (Revision only as a cheap "something changed" gate), never by a numeric index:
+    /// compression rewrites the history and shifts every position.
+    /// </summary>
+    private static bool HasNewUserMessage(ConversationSession session, long revisionBeforeTurn, HashSet<string> userIdsBeforeTurn)
+    {
+        if (session.Revision == revisionBeforeTurn)
+            return false;
+
+        return session.GetMessagesSnapshot()
+            .Any(m => m.Role == ChatMessageRole.User && !userIdsBeforeTurn.Contains(m.Id));
+    }
+
+    /// <summary>
+    /// Guarantees a Result for EVERY call of a batch: a batch interrupted by cancellation, an
+    /// exception or an unresolved approval must not leave a tool call without an answer.
+    /// </summary>
+    private void EnsureToolResults(IEnumerable<ToolCall>? calls)
+    {
+        if (calls is null)
+            return;
+
+        foreach (var toolCall in calls)
+        {
+            if (toolCall.Result is not null)
+                continue;
+
+            toolCall.ApprovalStatus = ToolApprovalStatus.Rejected;
+            toolCall.Result = new ToolResult
+            {
+                Success = false,
+                Content = InterruptedToolResultContent,
+                Name = toolCall.Function.Name,
+                DisplayName = ToolResult.GetDisplayName(false,
+                    ToolManager.GetTool(toolCall.Function.Name)?.DisplayName ?? toolCall.Function.Name)
+            };
+        }
     }
 
     /// <summary>
     /// Сжатие сессии. Полностью прозрачный для пользователя процесс.
     /// Выглядит как еще один промежуточный запрос и реорганизация сообщений.
     /// </summary>
+    /// <remarks>
+    /// The session is passed in explicitly: a run compresses the session it is PINNED to, not
+    /// whatever <see cref="IChatService.Session"/> currently points at. The summary stream is
+    /// swallowed here - the user only sees the compression badge + notification.
+    /// </remarks>
     /// <param name="retryCount">Количество повторов</param>
-    /// <returns>Сжалась ли сессия. False если завершилось ошибкой</returns>
-    private async Task<bool> CompressAsync(int retryCount, CancellationToken cancellationToken)
+    /// <returns>Сжалась ли сессия. False если завершилось ошибкой или отменой</returns>
+    private async Task<bool> CompressAsync(ConversationSession session, int retryCount, CancellationToken cancellationToken)
     {
         _isCompressing = true;
         var assistantMessage = VisualChatMessage.CreateStreaming("## ♻ \n\n");
         MessageParser.UpdateSegments(assistantMessage.Content, assistantMessage);
-        ChatService.Session.AddMessage(assistantMessage);
+        session.AddMessage(assistantMessage);
         await InvokeAsync(StateHasChanged);
-
-        var result = false;
 
         var completions = new CompletionsResult();
 
@@ -227,7 +591,7 @@ public partial class AiChat : RadzenComponent
         {
             await ChatService.ProcessStreamAsync(
                  assistantMessage,
-                 ChatService.CompressSessionAsync(completions, cancellationToken),
+                 ChatService.CompressSessionAsync(session, completions, cancellationToken),
                  onContentUpdate: content => MessageParser.UpdateSegments(content, assistantMessage),
                  onToolCallsUpdate: toolCalls =>
                  {
@@ -241,8 +605,9 @@ public partial class AiChat : RadzenComponent
                  },
                  completions,
                  cancellationToken);
+
             // обновление потерянных сегментов
-            var messages = ChatService.Session.GetMessagesSnapshot().Where(m => m.Segments.Count == 0).ToList();
+            var messages = session.GetMessagesSnapshot().Where(m => m.Segments.Count == 0).ToList();
             foreach (var message in messages)
             {
                 MessageParser.UpdateSegments(message.Content, message);
@@ -256,181 +621,28 @@ public partial class AiChat : RadzenComponent
             // НЕ прокручиваем к сводке: она теперь в СЕРЕДИНЕ истории, а пользователь смотрит
             // в конец чата (там идёт работа). Насильный скролл вверх по длинной истории сбивает
             // с толку; раскрытие — по клику на уведомление (OnCompressionNotificationClick).
-            ChatService.Session.RemoveMessage(assistantMessage.Id);
+            session.RemoveMessage(assistantMessage.Id);
             await ChatService.SaveSessionAsync();
-            result = true;
+            return true;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             HandleCancellation(assistantMessage);
+            return false;
         }
         catch (Exception ex)
         {
-            await HandleErrorAsync(assistantMessage, ex, ++retryCount,
-                async () =>
-                {
-                    result = await CompressAsync(retryCount, cancellationToken);
-                },
-                cancellationToken, ChatService.Session);
+            // Retry the COMPRESSION (not the run): HandleErrorAsync removed the partial bubble.
+            if (!await HandleErrorAsync(assistantMessage, ex, ++retryCount, session, cancellationToken))
+                return false;
+
+            return await CompressAsync(session, retryCount, cancellationToken);
         }
         finally
         {
             _isCompressing = false;
             assistantMessage.IsStreaming = false;
             await InvokeAsync(StateHasChanged);
-        }
-
-        return result;
-    }
-
-    private async Task GetAiResponseInternalAsync(int retryCount, CancellationToken cancellationToken)
-    {
-        IsLoading = true;
-
-        if (ChatService.NeedCompression)
-        {
-            var result = await CompressAsync(0, cancellationToken);
-            if (!result || cancellationToken.IsCancellationRequested)
-            {
-                IsLoading = false;
-                return;
-            }
-        }
-
-        // The run is PINNED to the session it started in: every turn message, tool result and
-        // error goes there even if the current session reference changes underneath (autosave
-        // persists by instance, so nothing is lost).
-        var runSession = ChatService.Session;
-
-        var assistantMessage = VisualChatMessage.CreateStreaming();
-
-        runSession.AddMessage(assistantMessage);
-        await ChatService.SaveSessionAsync();
-        await InvokeAsync(StateHasChanged);
-
-        var completions = new CompletionsResult();
-
-        // Agent-loop run: a single stream may span several assistant turns.
-        // Every callback must target the *current* turn's message, not the first one.
-        var currentMessage = assistantMessage;
-
-        try
-        {
-            // Interject-окно: пока цикл стримит, пользовательские сообщения добавляются в сессию
-            // и подхватываются циклом на границе туров (AfAgentLoop.TakeNewUserMessages).
-            _acceptInterjects = true;
-
-            await ChatService.ProcessStreamAsync(
-                assistantMessage,
-                ChatService.GetCompletionsAsync(completions, cancellationToken),
-                onContentUpdate: content => MessageParser.UpdateSegments(content, currentMessage),
-                onToolCallsUpdate: toolCalls =>
-                {
-                    currentMessage.ToolCalls = toolCalls;
-                    currentMessage.IsShouldRender = true;
-                },
-                onStateChange: () =>
-                {
-                    currentMessage.Model ??= completions.Model;
-                    InvokeAsync(StateHasChanged);
-                },
-                completions,
-                cancellationToken,
-                onNewTurn: () =>
-                {
-                    // ChatClientAgent loop: every new assistant turn is its own message
-                    // (the tool calls of the previous turn stay rendered on it).
-                    var nextMessage = VisualChatMessage.CreateStreaming();
-                    runSession.AddMessage(nextMessage);
-                    currentMessage = nextMessage;
-                    _ = InvokeAsync(StateHasChanged);
-                    return nextMessage;
-                });
-            await HandleStreamCompletionAsync(currentMessage, completions, runSession, cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            HandleCancellation(currentMessage);
-        }
-        catch (Exception ex)
-        {
-            // currentMessage (не assistantMessage): onNewTurn мог создать следующие туры —
-            // финальная ошибка относится к последнему стримившемуся сообщению.
-            var attempt = ++retryCount;
-            var maxRetries = CommonSettingsProvider.Current.MaxRetries;
-
-            // Ретраебельная ошибка: удаляется ТОЛЬКО незавершённый хвост (currentMessage —
-            // его удалит HandleErrorAsync перед retryAction). Завершённые туры рана
-            // (1..N-1) остаются в сессии: их tool calls имеют результаты (результаты
-            // добавляются до IsStartOfTurn), wire-история консистентна — ретрай
-            // ПРОДОЛЖАЕТ с них, а не начинает заного (перетирание всей цепочки после
-            // пользовательского сообщения теряло выполненную работу). Interject-сообщения
-            // пользователя (Role=User) тоже остаются — новый прогон увидит их через
-            // GetFormattedMessages. При финальной ошибке ничего не удаляется — частичный
-            // прогресс остаётся как история попытки.
-            await HandleErrorAsync(currentMessage, ex, attempt,
-                async () => await GetAiResponseInternalAsync(retryCount, cancellationToken),
-                cancellationToken, runSession);
-        }
-        finally
-        {
-            _acceptInterjects = false;
-            assistantMessage.IsStreaming = false;
-            // onNewTurn may have created streaming messages that the
-            // loop never streamed into (cancelled / failed mid-turn) - close them all.
-            foreach (var openMessage in runSession.GetMessagesSnapshot())
-            {
-                if (openMessage.IsStreaming)
-                {
-                    openMessage.IsStreaming = false;
-                    openMessage.IsShouldRender = true;
-                }
-            }
-            // Terminal state of the run (success, error or cancellation) is always persisted:
-            // this is the safety net on top of the autosave invariant (nothing may be lost
-            // because a caller forgot to save).
-            await ChatService.SaveSessionAsync();
-            IsLoading = false;
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-
-    private async Task HandleStreamCompletionAsync(
-        VisualChatMessage message, CompletionsResult result, ConversationSession session, CancellationToken cancellationToken)
-    {
-        NotifyIfNeeded(result);
-        ParsePlan(message);
-        await ChatService.SaveSessionAsync();
-
-        // Handle native tool_calls from the API response.
-        // Guard (дефект 2): НЕ перезаписываем отрисованные на сообщении ToolCalls значением null —
-        // после cap-исполнения цикл сбрасывает AccumulatedToolCalls, и прежняя строка стирала бы
-        // блоки тулзов с результатами с последнего сообщения. При ToolsExecutedByAgent вызовы уже
-        // исполнены в цикле — return до перезаписи.
-        if (result.ToolsExecutedByAgent)
-        {
-            // tools were already executed inside the loop
-            // (approval + Result per toolCall); the UI must not re-process them.
-            return;
-        }
-        message.ToolCalls = result.AccumulatedToolCalls ?? message.ToolCalls;
-
-        if (message.ToolCalls is { Count: > 0 })
-        {
-            ToolCallHandler.PrepareToolsForApprovals(message.ToolCalls);
-            message.IsShouldRender = true;
-            await InvokeAsync(StateHasChanged);
-            await ToolCallHandler.ProcessToolCallsAsync(message.ToolCalls, session.Mode, cancellationToken);
-            session.TotalTokens += message.ToolCalls?.Sum(t => t.Tokens) ?? 0;
-            await ChatService.SaveSessionAsync();
-            message.IsShouldRender = true;
-            await InvokeAsync(StateHasChanged);
-
-            if (!cancellationToken.IsCancellationRequested)
-            {
-                await GetAiResponseAsync();
-            }
-            return;
         }
     }
 
@@ -463,7 +675,9 @@ public partial class AiChat : RadzenComponent
                 toolCall.Result ??= new ToolResult
                 {
                     Success = false,
-                    Content = string.Empty,
+                    // Never an EMPTY tool message: it is part of the wire history of the next
+                    // turn and some providers reject empty tool content.
+                    Content = InterruptedToolResultContent,
                     Name = toolCall.Function.Name,
                     DisplayName = "❌ Cancelled"
                 };
@@ -471,25 +685,56 @@ public partial class AiChat : RadzenComponent
         }
     }
 
-    private async Task HandleErrorAsync(VisualChatMessage message, Exception ex,
-        int retryCount, Func<Task> retryAction, CancellationToken cancellationToken,
-        ConversationSession session)
+    /// <summary>
+    /// Owns the UI retry protocol of ONE turn: the notification, the retry badge with its
+    /// countdown, and the removal of the partial turn so the next attempt starts from a clean
+    /// history.
+    /// </summary>
+    /// <returns>
+    /// True when the caller should re-enter the SAME turn; false when the failure is terminal
+    /// (retry budget exhausted, or the user cancelled during the countdown).
+    /// </returns>
+    private async Task<bool> HandleErrorAsync(VisualChatMessage message, Exception ex,
+        int retryCount, ConversationSession session, CancellationToken cancellationToken)
     {
         var maxRetries = CommonSettingsProvider.Current.MaxRetries;
         Logger.LogError(ex, "Getting response error");
-        NotificationService.NotifyError(UiErrorLogger, $"[{retryCount}/{maxRetries}] Response error", ex.Message, "HTTP transport", ex, duration: 25_000);
 
-        if (retryCount >= maxRetries)
+        // A failure that cannot succeed on a repeat must not spend the budget. Without this the
+        // user waited ~19 minutes (10 attempts, 2/5/10/20s backoff) to be told about a wrong API
+        // key or a model that does not exist - answers that were knowable immediately.
+        // A non-LlmApiException is our own bug, not a transport hiccup: fail loudly at once.
+        var retryable = ex is LlmApiException { IsRetryable: true };
+
+        // The counter is only meaningful when the budget is actually being spent: a permanent
+        // failure would otherwise announce "[1/10]" while no second attempt will ever happen.
+        NotificationService.NotifyError(
+            UiErrorLogger,
+            retryable ? $"[{retryCount}/{maxRetries}] Response error" : "Response error",
+            ex.Message, "HTTP transport", ex, duration: 25_000);
+
+        if (!retryable && retryCount < maxRetries)
+        {
+            Logger.LogWarning(ex, "Permanent failure, not retried (would fail identically).");
+        }
+
+        if (!retryable || retryCount >= maxRetries)
         {
             // Финал: перезаписываем контент текстом ошибки. При ретраебельной ошибке контент
-            // НЕ трогаем — сообщение будет удалено перед retryAction, перезапись + перестройка
+            // НЕ трогаем — сообщение будет удалено перед retry, перезапись + перестройка
             // сегментов здесь была бы мёртвой работой (и затирала бы частичный ответ модели).
-            message.Content = $"Error: {ex.Message} [{retryCount}/{maxRetries}]";
+            // The attempt counter is only meaningful when the budget was actually spent; a
+            // permanent failure reports the reason alone ("[1/10]" would claim nine attempts).
+            message.Content = retryable
+                ? $"Error: {ex.Message} [{retryCount}/{maxRetries}]"
+                : $"Error: {ex.Message}";
             message.Segments.Clear();
             MessageParser.UpdateSegments(message.Content, message);
+            // Tool calls of the abandoned turn still need an answer for the wire history.
+            EnsureToolResults(message.ToolCalls);
             // The error text is part of the history: persist it now, not only on the next run.
             await ChatService.SaveSessionAsync();
-            return;
+            return false;
         }
 
         var delay = RetryHandler.GetRetryDelay(retryCount);
@@ -507,16 +752,48 @@ public partial class AiChat : RadzenComponent
         }
         catch (OperationCanceledException)
         {
-            return;
+            return false;
         }
         finally
         {
             message.RetryCountdown = 0;
         }
 
+        // Only the failed turn is dropped: completed turns keep their content and tool results,
+        // so the retried turn sees a consistent history instead of a wiped chain.
         session.RemoveMessage(message.Id);
-        await retryAction.Invoke();
+
+        // ...but the failed attempt leaves a trace. The partial turn is gone, so without this the
+        // transcript would show retries only in the log — and only the LAST failure would ever be
+        // visible, as the error text of the terminal turn. The note is added AFTER the removal so
+        // it lands where the failed turn was, and it is added AFTER the countdown so a run the
+        // user cancels mid-wait leaves no "retrying" line behind.
+        session.AddMessage(VisualChatMessage.CreateTechnical(
+            $"Retry {retryCount}/{maxRetries} in {delay}s — {DescribeError(ex)}"));
+
+        return true;
     }
+
+    /// <summary>
+    /// Longest error text kept in a technical note. Provider error bodies are sometimes a whole
+    /// HTML page; the note is a one-line trace, not a dump (the full text stays in the log and in
+    /// the terminal error message).
+    /// </summary>
+    private const int TechnicalNoteMaxLength = 200;
+
+    /// <summary>
+    /// One-line description of a failure for a technical note: the first line, truncated.
+    /// </summary>
+    private static string DescribeError(Exception ex)
+    {
+        var text = ex.Message.ReplaceLineEndings(" ").Trim();
+        if (text.Length == 0)
+            text = ex.GetType().Name;
+        return text.Length <= TechnicalNoteMaxLength
+            ? text
+            : text[..TechnicalNoteMaxLength] + "…";
+    }
+
 
     private static void ParsePlan(VisualChatMessage message)
     {

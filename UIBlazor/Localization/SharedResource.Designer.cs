@@ -1411,6 +1411,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Bash.
+        /// </summary>
+        public static string ToolBash {
+            get {
+                return ResourceManager.GetString("ToolBash", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Build solution.
         /// </summary>
         public static string ToolBuild {
@@ -1461,15 +1470,6 @@ namespace UIBlazor.Localization {
         public static string ToolEditFile {
             get {
                 return ResourceManager.GetString("ToolEditFile", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Exec.
-        /// </summary>
-        public static string ToolExec {
-            get {
-                return ResourceManager.GetString("ToolExec", resourceCulture);
             }
         }
         

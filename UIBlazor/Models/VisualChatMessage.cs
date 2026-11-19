@@ -53,8 +53,10 @@ public class VisualChatMessage
     public bool IsStreaming { get; set; }
 
     /// <summary>
-    /// Turn boundary created this message but no payload ever arrived.
-    /// Serialized: the flag must survive a session reload so the empty bubble stays filtered.
+    /// LEGACY: set by the retired eager <c>onNewTurn</c> turn boundary when no payload arrived.
+    /// Never written anymore — turns are created lazily on the first payload — and kept only so
+    /// old sessions still deserialize. <see cref="ConversationSession.PurgeLegacyEmptyTurns"/>
+    /// removes such messages when a session is loaded, so no code filters on this flag.
     /// </summary>
     public bool IsEmptyTurn { get; set; }
 
@@ -121,6 +123,35 @@ public class VisualChatMessage
 
     [JsonIgnore]
     public bool IsRetrying => RetryCountdown > 0;
+
+    /// <summary>
+    /// A technical note about the transport, not a conversation turn: a retry that is about to
+    /// happen, a rejected request, a timeout.
+    /// <para>
+    /// Such a note is rendered as a compact line and is <b>never sent to the model</b>
+    /// (<see cref="ConversationSession.BuildWire"/> skips it, so do compression and the token
+    /// estimate). The model must not pay for our transport noise, and a "timeout" line in the
+    /// context invites the model to comment on it.
+    /// </para>
+    /// <para>
+    /// Persisted with the session on purpose: after a reload the user can still see that a run
+    /// spent six attempts on a flapping endpoint — exactly the context needed to explain a slow
+    /// run.
+    /// </para>
+    /// </summary>
+    public bool IsTechnical { get; set; }
+
+    /// <summary>
+    /// Creates a technical note (see <see cref="IsTechnical"/>).
+    /// </summary>
+    /// <param name="content">Already-formatted single-line text; rendered as plain text, not markdown.</param>
+    public static VisualChatMessage CreateTechnical(string content) => new()
+    {
+        Role = ChatMessageRole.Assistant,
+        IsTechnical = true,
+        IsExpanded = true,
+        Content = content
+    };
 
     /// <summary>
     /// Creates an assistant message marked as streaming (used while receiving an LLM response).

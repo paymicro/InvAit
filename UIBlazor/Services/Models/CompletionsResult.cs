@@ -15,13 +15,6 @@ public sealed class CompletionsResult
     public List<ToolCall>? AccumulatedToolCalls { get; set; }
 
     /// <summary>
-    /// true when the agent loop already executed tools
-    /// through ToolCallHandler (approval + execution + Result stored on toolCall).
-    /// Callers must NOT re-process AccumulatedToolCalls in that case.
-    /// </summary>
-    public bool ToolsExecutedByAgent { get; set; }
-
-    /// <summary>
     /// Responses API: ID of the last response (e.g. "resp_...").
     /// Stored for potential future use with previous_response_id.
     /// Null for Chat Completions API.
@@ -55,7 +48,6 @@ public sealed class CompletionsResult
         Error = null;
         FinishReason = null;
         AccumulatedToolCalls = null;
-        ToolsExecutedByAgent = false;
         ResetPerTurnCounters();
     }
 

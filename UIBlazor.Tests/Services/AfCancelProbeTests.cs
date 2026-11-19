@@ -252,22 +252,26 @@ public class AfCancelProbeTests
         }
     }
 
-    private static AfAgentLoop CreateLoop(TrickleHandler handler)
+    /// <summary>
+    /// Single-shot adapter over the given transport — the SAME gateway every run uses today
+    /// (the turn loop lives in the caller, so the adapter owns the cancel race and the timeout).
+    /// </summary>
+    private static AfCompletionsAdapter CreateAdapter(TrickleHandler handler)
     {
         var client = new HttpClient(handler);
-        return new AfAgentLoop(
+        return new AfCompletionsAdapter(
             () => new UIBlazor.Models.ConnectionProfile { Endpoint = "http://proxy.local", ApiKey = "key", Model = "m", Stream = true, Temperature = 0.7f, MaxTokens = 1000 },
             client,
-            new StubToolCallHandler());
+            () => 100);
     }
 
-    private static async Task<string> ConsumeAll(AfAgentLoop loop, CancellationToken token)
+    private static async Task<string> ConsumeAll(AfCompletionsAdapter adapter, CancellationToken token)
     {
         var session = new UIBlazor.Models.ConversationSession { Id = "s" };
         var capture = new UIBlazor.Services.Models.CompletionsResult();
         var text = new System.Text.StringBuilder();
 
-        await foreach (var delta in loop.GetCompletionsAsync(
+        await foreach (var delta in adapter.GetCompletionsAsync(
             [new WireMessage { Role = ChatMessageRole.User, Content = "hi" }], null, session, capture, token))
         {
             text.Append(delta.Content);
@@ -283,7 +287,7 @@ public class AfCancelProbeTests
         // loop must race the MoveNext against the token and surface cancellation
         // immediately, NOT wait for the read (10s) to finish downstream.
         var handler = new TrickleHandler(ignoresCancel: true, delayMs: 10_000, chunkCount: 500);
-        var loop = CreateLoop(handler);
+        var loop = CreateAdapter(handler);
         using var cts = new CancellationTokenSource();
 
         var enumeration = ConsumeAll(loop, cts.Token);
@@ -301,7 +305,7 @@ public class AfCancelProbeTests
         // Honest transport (reads observe the request token): cancel mid-stream →
         // OperationCanceled surfaces and the source stops producing quickly.
         var handler = new TrickleHandler(ignoresCancel: false, delayMs: 100, chunkCount: 500);
-        var loop = CreateLoop(handler);
+        var loop = CreateAdapter(handler);
         using var cts = new CancellationTokenSource();
 
         var enumeration = ConsumeAll(loop, cts.Token);
@@ -314,15 +318,22 @@ public class AfCancelProbeTests
     }
 
     /// <summary>
-    /// Full-stack regression for the 33s freeze on cancel: a tool awaits approval, the user
-    /// cancels, FICC proceeds to its next model request whose transport is stuck forever
-    /// (WASM fetch cannot abort a streaming body). The guard race must surface OCE promptly
-    /// instead of hanging on the stuck MoveNext.
+    /// Full-stack regression for the 33s freeze on cancel, split by OWNER because the turn loop
+    /// no longer lives inside a gateway:
+    /// <list type="number">
+    /// <item>a tool parked on approval must release the cancel promptly (the handler must not
+    /// hang on the gate) — otherwise the run cannot even reach its next turn;</item>
+    /// <item>the NEXT request, whose transport is stuck forever (a WASM fetch cannot abort a
+    /// streaming body), must surface cancellation through the adapter's guard race instead of
+    /// hanging on the stuck <c>MoveNext</c>.</item>
+    /// </list>
     /// </summary>
     [Fact(Timeout = 20000)]
     public async Task Cancel_PendingApproval_StuckNextRequest_RaceSurfaces()
     {
+        // ── Part 1: cancel while a tool waits for approval ──────────────────────────────
         var approvalShown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var executed = false;
 
         var toolManagerMock = new Mock<IToolManager>();
         toolManagerMock.Setup(t => t.GetTool("delegate_task")).Returns(new Tool
@@ -345,96 +356,86 @@ public class AfCancelProbeTests
                     }
                 }
             },
-            ExecuteAsync = (_, _) => throw new InvalidOperationException("must not execute without approval")
+            ExecuteAsync = (_, _) =>
+            {
+                executed = true;
+                throw new InvalidOperationException("must not execute without approval");
+            }
         });
         toolManagerMock.Setup(t => t.GetApprovalModeByToolName("delegate_task")).Returns(ToolApprovalMode.Ask);
 
-        var realHandler = new ToolCallHandler(toolManagerMock.Object);
-        realHandler.ApprovalRequired += _ => approvalShown.TrySetResult();
+        var handler = new ToolCallHandler(toolManagerMock.Object);
+        handler.ApprovalRequired += _ => approvalShown.TrySetResult();
 
-        var client = new HangOnSecondCallChatClient();
-        var loop = new AfAgentLoop(
-            () => new UIBlazor.Models.ConnectionProfile { Endpoint = "https://api.test", ApiKey = "key", Model = "m", Stream = true, Temperature = 0.7f, MaxTokens = 1000 },
-            new HttpClient(),
-            realHandler,
-            (_, _) => client);
+        var parkedCall = new ToolCall
+        {
+            Id = "c1",
+            Function = new ToolCallFunction { Name = "delegate_task", Arguments = "{}" }
+        };
+        handler.PrepareToolsForApprovals([parkedCall]);
+
+        using var approvalCts = new CancellationTokenSource();
+        var batch = Task.Run(() => handler.ProcessToolCallsAsync([parkedCall], AppMode.Agent, approvalCts.Token),
+            TestContext.Current.CancellationToken);
+
+        await approvalShown.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        var cancelSw = System.Diagnostics.Stopwatch.StartNew();
+        await approvalCts.CancelAsync();
+        await batch.WaitAsync(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
+
+        Assert.True(cancelSw.ElapsedMilliseconds < 3000,
+            $"approval wait released after {cancelSw.ElapsedMilliseconds}ms");
+
+        // Nothing was executed (the tool body throws when invoked without an approval) and the
+        // batch returned instead of hanging. The caller's EnsureToolResults fills in the Result
+        // of a call the interrupted batch left unanswered.
+        Assert.False(executed, "the tool must not run without an approval");
+
+        // ── Part 2: the stuck NEXT request surfaces cancellation via the guard race ─────
         var session = new ConversationSession { Id = "s" };
         var capture = new UIBlazor.Services.Models.CompletionsResult();
-        using var cts = new CancellationTokenSource();
+        using var requestCts = new CancellationTokenSource();
 
-        var tools = new[]
-        {
-            new Tool
+        var adapter = new AfCompletionsAdapter(
+            () => new UIBlazor.Models.ConnectionProfile
             {
-                Name = "delegate_task",
-                NativeTool = new NativeToolDefinition
-                {
-                    Function = new NativeToolFunction
-                    {
-                        Name = "delegate_task",
-                        Description = "test",
-                        Strict = true,
-                        Parameters = new NativeParameters
-                        {
-                            Type = NativeToolType.Object,
-                            Properties = new() { ["task"] = new NativePropertyDefinition { Type = NativeToolType.String, Description = "task" } },
-                            Required = ["task"]
-                        }
-                    }
-                },
-                ExecuteAsync = (_, _) => throw new InvalidOperationException("must not execute without approval")
-            }
-        };
+                Endpoint = "https://api.test",
+                ApiKey = "key",
+                Model = "m",
+                Stream = true,
+                Temperature = 0.7f,
+                MaxTokens = 1000
+            },
+            new HttpClient(),
+            () => 100,
+            (_, _) => new HangForeverChatClient());
 
-        var enumerateTask = Task.Run(async () =>
+        var enumeration = Task.Run(async () =>
         {
-            await foreach (var _ in loop.GetCompletionsAsync(
-                [new WireMessage { Role = ChatMessageRole.User, Content = "hi" }], tools, session, capture, cts.Token).ConfigureAwait(false))
+            await foreach (var _ in adapter.GetCompletionsAsync(
+                [new WireMessage { Role = ChatMessageRole.User, Content = "hi" }], null, session, capture, requestCts.Token)
+                .ConfigureAwait(false))
             {
             }
         }, TestContext.Current.CancellationToken);
 
-        // Wait until the tool is waiting for approval, cancel while it is parked there.
-        await approvalShown.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         await Task.Delay(200, TestContext.Current.CancellationToken);
-        await cts.CancelAsync();
+        await requestCts.CancelAsync();
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => enumerateTask);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => enumeration);
         Assert.True(sw.ElapsedMilliseconds < 3000, $"cancel observable after {sw.ElapsedMilliseconds}ms");
     }
 
     /// <summary>
-    /// IChatClient: first call streams a delegate_task FunctionCallContent, second call returns
-    /// a stream whose MoveNextAsync never completes and whose DisposeAsync hangs - the shape of
-    /// a WASM fetch that cannot be aborted once issued.
+    /// IChatClient whose stream never produces an update — the shape of a WASM fetch that cannot
+    /// be aborted once issued.
     /// </summary>
-    private sealed class HangOnSecondCallChatClient : IChatClient
+    private sealed class HangForeverChatClient : IChatClient
     {
-        private int _call;
-
         public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
             IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
-        {
-            var call = Interlocked.Increment(ref _call);
-            return call == 1
-                ? FirstTurn()
-                : HangForever();
-        }
-
-        private static async IAsyncEnumerable<ChatResponseUpdate> FirstTurn()
-        {
-            yield return new ChatResponseUpdate(ChatRole.Assistant, (string?)null)
-            {
-                MessageId = "m1",
-                Contents = [new FunctionCallContent("c1", "delegate_task", new Dictionary<string, object?> { ["task"] = "do it" })]
-            };
-            yield return new ChatResponseUpdate(ChatRole.Assistant, (string?)null)
-            {
-                MessageId = "m1",
-                FinishReason = Microsoft.Extensions.AI.ChatFinishReason.ToolCalls
-            };
-        }
+            => HangForever();
 
         private static async IAsyncEnumerable<ChatResponseUpdate> HangForever()
         {
@@ -451,14 +452,4 @@ public class AfCancelProbeTests
         public void Dispose() { }
     }
 
-    private sealed class StubToolCallHandler : UIBlazor.Services.Interfaces.IToolCallHandler
-    {
-        public event Action<string>? ApprovalRequired;
-        public event Action<string>? ApprovalResolved;
-        public void PrepareToolsForApprovals(List<UIBlazor.Services.Models.ToolCall> toolCalls) { }
-        public Task ProcessToolCallsAsync(List<UIBlazor.Services.Models.ToolCall> toolCalls, Shared.Contracts.AppMode appMode, CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task HandleApprovalAsync(string segmentId, bool approved) => Task.CompletedTask;
-        public Task HandleAskUserAnswerAsync(string toolCallId, string answer) => Task.CompletedTask;
-        public void CancelPendingApprovals() { }
-    }
 }

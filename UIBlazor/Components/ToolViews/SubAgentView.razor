@@ -72,7 +72,7 @@
         <div class="subagent-body">
             @* Sub-agent conversation messages *@
             <div class="subagent-conversation">
-            @foreach (var msg in SubAgent.GetMessages().Where(m => !m.IsEmptyTurn))
+            @foreach (var msg in SubAgent.GetMessages())
                 {
                     @if (msg.Role is ChatMessageRole.User && msg.IsInterject)
                     {

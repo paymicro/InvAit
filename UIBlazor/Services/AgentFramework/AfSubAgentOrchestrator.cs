@@ -2,9 +2,10 @@ namespace UIBlazor.Services.AgentFramework;
 
 /// <summary>
 /// Sub-agents run as parallel branches (Task.WhenAll fan-out).
-/// One delegate_task call carries a list of tasks; each task becomes a branch with a
-/// full tool-invocation loop via <see cref="AfAgentLoop"/>, all branches run concurrently
-/// and the call returns only after every branch has finished. Nested delegation (recursion)
+/// One delegate_task call carries a list of tasks; each task becomes a branch that runs the
+/// SAME turn loop as the main agent (one LLM call per turn through
+/// <see cref="IChatService.GetTurnCompletionsAsync"/>, tools executed between the turns), all
+/// branches run concurrently and the call returns only after every branch has finished. Nested delegation (recursion)
 /// works the same way: a branch's toolset includes delegate_task when depth &lt; MaxSubAgentDepth,
 /// and the nested call builds its own fan-out inside the branch's tool execution.
 /// Streaming/approvals per branch are routed into its own <see cref="SubAgentMessage"/>
@@ -175,10 +176,28 @@ public sealed class AfSubAgentOrchestrator(
     }
 
     /// <summary>
-    /// One branch run: a full tool-invocation loop through <see cref="AfAgentLoop"/> with an
-    /// isolated handler/session. Deltas stream into the branch's <see cref="SubAgentMessage"/>
-    /// (one VisualChatMessage per assistant turn, same semantics as ChatService.ProcessStreamAsync
-    /// on the main loop). The resulting text lands on the ticket for <see cref="ComposeResult"/>.
+    /// Result content of a tool call that never produced one (batch interrupted by
+    /// cancellation, an exception or an unresolved approval).
+    /// </summary>
+    private const string InterruptedToolResultContent =
+        "The tool call was not executed (run interrupted before the result was produced).";
+
+    /// <summary>
+    /// One branch run: the SAME turn protocol as the main agent (<c>AiChat.RunTurnsAsync</c>)
+    /// with an isolated handler/session.
+    /// <para>
+    /// Each iteration performs exactly ONE LLM call through
+    /// <see cref="IChatService.GetTurnCompletionsAsync"/> (no hidden tool loop behind it) and
+    /// executes the tool calls of that turn in between. The request history is rebuilt from the
+    /// branch session at the start of EVERY turn, so compression, edits, deletions, interjects
+    /// and mode-dependent tool sets applied between turns reach the branch model without any
+    /// extra sync plumbing.
+    /// </para>
+    /// <para>
+    /// Deltas stream into the branch's <see cref="SubAgentMessage"/> (one VisualChatMessage per
+    /// assistant turn, created lazily on the first payload). The resulting text lands on the
+    /// ticket for <see cref="ComposeResult"/>.
+    /// </para>
     /// </summary>
     private async Task RunBranchAsync(SubAgentTicket ticket, CancellationToken cancellationToken)
     {
@@ -197,6 +216,15 @@ public sealed class AfSubAgentOrchestrator(
             timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeLimitSeconds));
         subAgent.SetCancellationTokenSource(timeoutCts);
 
+        var runToken = timeoutCts.Token;
+
+        // ONE trailing throttle per RUN (not per turn): every delta of every turn raises
+        // NotifyStateChanged, and each raise re-renders EVERY subscriber (SubAgentView + the
+        // owning ToolCallBlock). At token rate that floods the WASM sync queue and freezes
+        // clicks, so the SOURCE is coalesced into ~10 events/sec for all subscribers at once.
+        // Structural changes (attach, finish, approval, retry) fire directly.
+        using var uiThrottle = new Throttle(subAgent.NotifyStateChanged, SubAgentUiIntervalMs);
+
         try
         {
             var session = new ConversationSession
@@ -205,158 +233,103 @@ public sealed class AfSubAgentOrchestrator(
                 Mode = AppMode.Agent
             };
             subAgent.AttachSession(session); // message mutations propagate to the session
+
+            // Branch instructions. The per-turn seam builds the wire from the SESSION only, so
+            // the sub-agent prompt (the LLM-provided custom prompt + rules/skills/solution
+            // context) travels as the leading System message of the branch history; it is not
+            // rendered by SubAgentView (only user interjects and assistant turns are).
+            var systemPrompt = await systemPromptBuilder
+                .PrepareSubAgentSystemPromptAsync(ticket.Task.SystemPrompt, runToken)
+                .ConfigureAwait(false);
+            subAgent.AddMessage(new VisualChatMessage
+            {
+                Role = ChatMessageRole.System,
+                Content = systemPrompt,
+                IsExpanded = false
+            });
+
             AddUserMessage(subAgent, ticket.Task.Task);
 
-            var systemPrompt = await systemPromptBuilder.PrepareSubAgentSystemPromptAsync(
-                ticket.Task.SystemPrompt, timeoutCts.Token).ConfigureAwait(false);
-            var tools = BuildSubAgentTools(ticket.Task.AllowedTools, ticket.Depth, subAgent).ToList();
+            // The branch's OWN tool list, passed EXPLICITLY to the seam: null would make it
+            // resolve the enabled tools of the current MAIN mode.
+            var allowedTools = BuildSubAgentTools(ticket.Task.AllowedTools, ticket.Depth, subAgent).ToList();
 
             NotifyStructuralChange(subAgent);
 
-            // Retry loop around the LLM call (AIChat.HandleErrorAsync parity): a transient
-            // failure shows the countdown badges (IsRetrying/RetryAttempt/RetryCountdown) and
-            // re-runs the call; OperationCanceledException is never retried (user cancellation
-            // and the per-branch time limit are handled by the outer catches below).
-            var maxRetries = commonSettingsProvider.Current.MaxRetries;
-            for (var attempt = 1; ; attempt++)
+            // Iteration cap: 0 = unlimited (the 40-turn default of the retired AfAgentLoop is
+            // NOT inherited — MaxIterationsPerSubAgent is authoritative for branches).
+            var maxIterations = profileManager.ActiveProfile.MaxIterationsPerSubAgent;
+            var run = new BranchRun(
+                ticket,
+                session,
+                allowedTools,
+                uiThrottle,
+                runToken,
+                commonSettingsProvider.Current.MaxRetries,
+                maxIterations > 0 ? maxIterations : int.MaxValue);
+
+            for (var iteration = 0; ; iteration++)
             {
-                var tokensToCompress = profileManager.ActiveProfile.TokensToCompress;
-                if (tokensToCompress > 0 && session.TotalTokens > tokensToCompress)
-                {
-                    subAgent.IsCompressing = true;
-                    subAgent.NotifyStateChanged();
-                    try
-                    {
-                        await foreach (var _ in chatService.CompressSessionAsync(session, new CompletionsResult(), timeoutCts.Token).ConfigureAwait(false)) { }
-                    }
-                    finally
-                    {
-                        subAgent.IsCompressing = false;
-                        subAgent.NotifyStateChanged();
-                    }
-                }
+                // Pause/cancel gate #1: BEFORE the LLM call. A user-paused branch stops making
+                // progress immediately; cancellation (user / time limit) unwinds here too.
+                await subAgent.WaitIfPausedAsync(runToken).ConfigureAwait(false);
 
-                var messages = session.GetFormattedMessages(systemPrompt, contentFilter);
+                // Compression gate: checked before EVERY turn, so a long tool-heavy branch
+                // compacts its own session instead of growing until the provider rejects it.
+                await CompressBranchIfNeededAsync(run).ConfigureAwait(false);
 
+                // Interject baseline for THIS turn: message identity (Revision as a cheap
+                // gate), never a numeric index - compression rewrites the history and shifts
+                // every position, an index would re-read old turns or miss the new one.
+                var revisionBeforeTurn = session.Revision;
+                var userIdsBeforeTurn = UserMessageIds(session);
+
+                // Per-turn state: a FRESH capture and FRESH callbacks per turn (a stale closure
+                // would keep writing the previous turn's capture - message.Model got lost).
                 var capture = new CompletionsResult();
-                var assistant = VisualChatMessage.CreateStreaming();
-                subAgent.AddMessage(assistant);
+                var turn = await RunBranchTurnAsync(run, capture).ConfigureAwait(false);
+
+                subAgent.TotalTokens = session.TotalTokens;
                 subAgent.NotifyStateChanged();
 
-                var gateway = new AfAgentLoop(
-                    () => profileManager.ActiveProfile,
-                    httpClient,
-                    handler)
+                var calls = capture.AccumulatedToolCalls;
+                if (calls is not { Count: > 0 })
                 {
-                    // Pause gate: the loop checks it before each LLM call and each tool
-                    // execution, so a paused branch stops immediately (not only between
-                    // ProcessStreamAsync calls — the whole LLM↔tool round-trip runs
-                    // inside one call). Cancellation propagates normally.
-                    PauseGate = subAgent.WaitIfPausedAsync,
-                    // Iteration cap continuation (legacy parity): 0 = unlimited.
-                    MaximumIterations = profileManager.ActiveProfile.MaxIterationsPerSubAgent > 0
-                        ? profileManager.ActiveProfile.MaxIterationsPerSubAgent
-                        : null
-                };
-
-                // Mirror of AIChat.GetAiResponseInternalAsync: `current` is reassigned by
-                // every onNewTurn so all delta callbacks always target the streaming message.
-                var current = assistant;
-
-                // Trailing throttle for the per-token UI event: every delta (content,
-                // reasoning, state) raises NotifyStateChanged, and each raise re-renders
-                // EVERY subscriber (SubAgentView + owning ToolCallBlock). At token rate
-                // that floods the WASM sync queue and freezes clicks. Throttling the
-                // SOURCE coalesces the storm into ~10 events/sec for all subscribers at
-                // once; the trailing fire guarantees the final state always lands.
-                // Structural changes (attach, finish, approval, retry) fire directly.
-                using var uiThrottle = new Throttle(subAgent.NotifyStateChanged, SubAgentUiIntervalMs);
-
-                void Touch(VisualChatMessage message)
-                {
-                    message.IsShouldRender = true;
-                    subAgent.TotalTokens = session.TotalTokens;
-                    uiThrottle.Notify();
+                    // A plain text turn ends the run - unless the user wrote into the branch
+                    // while it streamed: that message must be answered by another turn.
+                    if (!HasNewUserMessage(session, revisionBeforeTurn, userIdsBeforeTurn))
+                        break;
+                    continue;
                 }
 
-                try
+                if (!await ExecuteBranchToolBatchAsync(run, turn, calls).ConfigureAwait(false))
                 {
-                    await chatService.ProcessStreamAsync(
-                        assistant,
-                        gateway.GetCompletionsAsync(messages, tools, session, capture, timeoutCts.Token),
-                        onContentUpdate: _ => Touch(current),
-                        onToolCallsUpdate: toolCalls =>
-                        {
-                            current.ToolCalls = toolCalls;
-                            Touch(current);
-                        },
-                        onStateChange: () =>
-                        {
-                            current.Model ??= capture.Model;
-                            subAgent.TotalTokens = session.TotalTokens;
-                            // Reasoning-only deltas (и пустые маркеры) приходят только сюда:
-                            // без Touch текущий Revision не растёт и SubAgentView.HasChanges()
-                            // отсекает рендер по fast-path — блок размышлений не обновляется
-                            // при стриминге. Touch идемпотентен для content-дельт
-                            // (IsShouldRender + NotifyStateChanged уже вызываются там).
-                            Touch(current);
-                        },
-                        cancellationToken: timeoutCts.Token,
-                        onNewTurn: () =>
-                        {
-                            var next = VisualChatMessage.CreateStreaming();
-                            subAgent.AddMessage(next);
-                            subAgent.NotifyStateChanged();
-                            current = next;
-                            return next;
-                        },
-                        resultCapture: capture).ConfigureAwait(false);
-
-                    break; // success
+                    // No further LLM call either way. ROOT cancellation must unwind the whole
+                    // batch, so the delegate_task result reports Cancelled (the branch finally
+                    // would otherwise leave a "completed" ticket next to a cancelled status);
+                    // only a per-branch TIME LIMIT finishes gracefully with its own report.
+                    cancellationToken.ThrowIfCancellationRequested();
+                    break;
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+
+                // Iteration cap: the calls of the cap turn were just EXECUTED (their results
+                // belong into the history), now the run stops with a note for the parent.
+                // iteration is 0-based, so turn number N is iteration + 1: comparing the raw
+                // counter would allow ONE turn more than the limit.
+                if (iteration + 1 >= run.IterationLimit)
                 {
-                    if (attempt >= maxRetries)
-                        throw; // retry budget exhausted: the outer catch records the branch failure
-
-                    logger.LogWarning(ex, "Sub-agent branch {Index} attempt {Attempt}/{MaxRetries} failed, retrying.",
-                        ticket.Index, attempt, maxRetries);
-
-                    subAgent.IsRetrying = true;
-                    subAgent.RetryAttempt = attempt;
-                    subAgent.MaxRetryAttempts = maxRetries;
-                    subAgent.NotifyStateChanged();
-
-                    var delay = retryHandler.GetRetryDelay(attempt);
-                    try
-                    {
-                        await retryHandler.WaitForRetryAsync(delay, i =>
-                        {
-                            subAgent.RetryCountdown = i;
-                            subAgent.NotifyStateChanged();
-                        }, timeoutCts.Token).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        throw; // cancellation while waiting is NOT retried
-                    }
-                    finally
-                    {
-                        subAgent.IsRetrying = false;
-                        subAgent.RetryCountdown = 0;
-                        subAgent.NotifyStateChanged();
-                    }
-
-                    // Close the abandoned streaming assistant message before the next attempt.
-                    assistant.IsStreaming = false;
-                    assistant.IsShouldRender = true;
+                    run.AddNote($"(Iteration limit reached ({run.IterationLimit} turns).)");
+                    logger.LogWarning("Sub-agent branch {Index} stopped at the iteration limit ({Limit} turns).",
+                        ticket.Index, run.IterationLimit);
+                    break;
                 }
             }
 
-            ticket.ResultText = LastAssistantContent(subAgent);
+            ticket.ResultText = LastAssistantContent(subAgent) + run.NoteText;
 
-            // Token budget (MaxTokensPerSubAgent): 0 = disabled. An over-budget branch still
-            // reports its answer, with a warning appended for the parent agent.
+            // Token budget (MaxTokensPerSubAgent): 0 = disabled. The budget covers the WHOLE
+            // run (session.TotalTokens accumulates across all turns and tool round-trips).
+            // An over-budget branch still reports its answer, with a warning for the parent.
             var budget = profileManager.ActiveProfile.MaxTokensPerSubAgent;
             if (budget > 0 && session.TotalTokens > budget)
                 ticket.ResultText += $"(Token budget exceeded: {session.TotalTokens} / {budget} tokens.)";
@@ -394,13 +367,324 @@ public sealed class AfSubAgentOrchestrator(
         {
             handler.CancelPendingApprovals();
 
-            // Per-branch finalize: a branch that finishes early must switch to its
-            // terminal status immediately (Completed/Failed), not stay "Running"
-            // until the whole batch completes. ComposeResult only fills in what is
-            // still missing (e.g. a branch that never entered this method).
+            // A turn may be abandoned mid-stream (cancellation, exhausted retries): close it,
+            // otherwise it stays a frozen bubble in SubAgentView forever.
+            foreach (var message in subAgent.GetMessages())
+            {
+                if (!message.IsStreaming)
+                    continue;
+                message.IsStreaming = false;
+                message.IsShouldRender = true;
+            }
+
+            // Per-branch finalize: a branch that finishes early must switch to its terminal
+            // status immediately, not stay "Running" until the whole batch completes.
+            // ComposeResult only fills in what is still missing (e.g. a branch that never
+            // entered this method). Root cancellation is a CANCELLED branch, not a completed
+            // one - the branch's own finally runs before RunBatchAsync can classify it.
             if (!subAgent.IsFinished)
-                Finish(subAgent, ticket.Failed ? SubAgentStatus.Failed : SubAgentStatus.Completed,
-                    ticket.ErrorMessage, ticket.OwnerSubAgent);
+            {
+                var status = cancellationToken.IsCancellationRequested
+                    ? SubAgentStatus.Cancelled
+                    : ticket.Failed ? SubAgentStatus.Failed : SubAgentStatus.Completed;
+                Finish(subAgent, status, ticket.ErrorMessage, ticket.OwnerSubAgent);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Streams exactly ONE branch turn into its own message and returns that message.
+    /// <para>
+    /// The turn message is created LAZILY: the object exists from the start (it is the stream
+    /// target and the message excluded from its own request by reference), but it enters the
+    /// branch history on the FIRST payload. A turn that ends without payload therefore leaves
+    /// nothing behind - no empty bubble and no empty assistant turn in the next request.
+    /// </para>
+    /// <para>
+    /// Retries happen HERE, around one turn, and share the RUN-level counter: a branch may
+    /// burn its whole retry budget across turns, but never N retries per turn. Before a retry
+    /// the failed turn is dropped from the history BY ID, otherwise the partially streamed
+    /// answer would ride into the next request.
+    /// </para>
+    /// </summary>
+    private async Task<VisualChatMessage> RunBranchTurnAsync(BranchRun run, CompletionsResult capture)
+    {
+        while (true)
+        {
+            var turn = VisualChatMessage.CreateStreaming();
+            var materialized = false;
+
+            // The ONLY place the turn message enters the branch history.
+            void Materialize()
+            {
+                if (materialized || !HasPayload(turn))
+                    return;
+                materialized = true;
+                run.SubAgent.AddMessage(turn);
+                run.SubAgent.NotifyStateChanged();
+            }
+
+            try
+            {
+                await chatService.ProcessStreamAsync(
+                    turn,
+                    chatService.GetTurnCompletionsAsync(run.Session, turn, run.Tools, capture, run.Token),
+                    onContentUpdate: _ =>
+                    {
+                        run.Touch(turn);
+                        Materialize();
+                    },
+                    onToolCallsUpdate: toolCalls =>
+                    {
+                        // Same objects: the results render live on this turn message.
+                        turn.ToolCalls = toolCalls;
+                        run.Touch(turn);
+                        Materialize();
+                    },
+                    onStateChange: () =>
+                    {
+                        turn.Model ??= capture.Model;
+                        // Reasoning-only deltas arrive ONLY here: without Touch the branch
+                        // Revision does not grow and SubAgentView skips the render, leaving the
+                        // thinking block frozen while it streams.
+                        run.Touch(turn);
+                        Materialize();
+                    },
+                    capture,
+                    run.Token).ConfigureAwait(false);
+
+                // ProcessStreamAsync closes the message and stamps the per-turn timings.
+                turn.Model ??= capture.Model;
+                Materialize();
+                turn.IsShouldRender = true;
+                run.SubAgent.NotifyStateChanged();
+                return turn;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // The failure must be visible: materialize the message that carries it.
+                if (!materialized)
+                {
+                    materialized = true;
+                    run.SubAgent.AddMessage(turn);
+                }
+
+                var attempt = ++run.RetriesUsed;
+
+                // Only a failure that can succeed on a repeat may spend the budget: a wrong API
+                // key or a rejected request answers identically ten times, and a non-LlmApiException
+                // is our own bug. Failing at once keeps the branch's tokens and time for the
+                // parent agent's fallback instead of burning them on a certain failure.
+                var retryable = ex is LlmApiException { IsRetryable: true };
+
+                if (!retryable || attempt >= run.MaxRetries)
+                {
+                    // Retry budget of the WHOLE run exhausted (or spent needlessly): the outer
+                    // catch records the branch failure. Tool calls of the abandoned turn still
+                    // need an answer, otherwise the wire history has assistant(tool_calls)
+                    // without results.
+                    EnsureToolResults(turn.ToolCalls);
+                    throw;
+                }
+
+                logger.LogWarning(ex,
+                    "Sub-agent branch {Index} attempt {Attempt}/{MaxAttempts} failed, retrying.",
+                    run.Index, attempt, run.MaxRetries);
+
+                run.SubAgent.IsRetrying = true;
+                run.SubAgent.RetryAttempt = attempt;
+                run.SubAgent.MaxRetryAttempts = run.MaxRetries;
+                run.SubAgent.NotifyStateChanged();
+
+                try
+                {
+                    var delay = retryHandler.GetRetryDelay(attempt);
+                    await retryHandler.WaitForRetryAsync(delay, i =>
+                    {
+                        run.SubAgent.RetryCountdown = i;
+                        run.SubAgent.NotifyStateChanged();
+                    }, run.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw; // cancellation while waiting is NOT retried
+                }
+                finally
+                {
+                    run.SubAgent.IsRetrying = false;
+                    run.SubAgent.RetryCountdown = 0;
+                    run.SubAgent.NotifyStateChanged();
+                }
+
+                // Drop the failed turn: the session BY ID first (the mirror removal below then
+                // becomes a no-op for the session), then the UI copy. Reusing the object would
+                // duplicate its content; keeping it would poison the next request.
+                run.Session.RemoveMessage(turn.Id);
+                run.SubAgent.RemoveMessage(turn);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Compresses the branch session when it crossed <c>TokensToCompress</c>. The summary stream
+    /// is swallowed here (only the badge is visible); <see cref="SubAgentMessage.IsCompressing"/>
+    /// is raised around the call because <see cref="SubAgentMessage.TryAddInterject"/> must
+    /// reject interjects while the history is being rewritten from a snapshot.
+    /// </summary>
+    private async Task CompressBranchIfNeededAsync(BranchRun run)
+    {
+        var tokensToCompress = profileManager.ActiveProfile.TokensToCompress;
+        if (tokensToCompress <= 0 || run.Session.TotalTokens <= tokensToCompress)
+            return;
+
+        var subAgent = run.SubAgent;
+        subAgent.IsCompressing = true;
+        subAgent.NotifyStateChanged();
+        try
+        {
+            await foreach (var _ in chatService
+                .CompressSessionAsync(run.Session, new CompletionsResult(), run.Token)
+                .ConfigureAwait(false))
+            {
+            }
+        }
+        finally
+        {
+            subAgent.IsCompressing = false;
+            subAgent.NotifyStateChanged();
+        }
+    }
+
+    /// <summary>
+    /// Executes the tool calls of ONE branch turn through the existing approval/execution path.
+    /// <para>
+    /// Approvals are prepared EXACTLY ONCE for the whole batch: the method cancels every pending
+    /// gate and re-registers the ask_user waiters first, so a second call would drop decisions
+    /// the user already made.
+    /// </para>
+    /// <para>
+    /// A <c>switch_mode</c> call inside the batch changes the mode for the REST of the batch
+    /// (the handler receives ONE mode per call), so the batch is split at the switch and the
+    /// remainder runs under the NEW mode.
+    /// </para>
+    /// </summary>
+    /// <returns>
+    /// True when the batch completed; false when it was cancelled or interrupted (the caller
+    /// must not start another LLM turn then).
+    /// </returns>
+    private async Task<bool> ExecuteBranchToolBatchAsync(BranchRun run, VisualChatMessage turn, List<ToolCall> calls)
+    {
+        var subAgent = run.SubAgent;
+
+        // Same objects: the results render live on this turn message.
+        turn.ToolCalls = calls;
+        turn.IsShouldRender = true;
+
+        run.Handler.PrepareToolsForApprovals(calls);
+        subAgent.NotifyStateChanged();
+
+        var completed = true;
+        try
+        {
+            var start = 0;
+            while (start < calls.Count)
+            {
+                run.Token.ThrowIfCancellationRequested();
+
+                // Up to and INCLUDING the next switch_mode call (or the whole remainder).
+                var switchIndex = calls.FindIndex(start, call => call.Function.Name == BasicEnum.SwitchMode);
+                var end = switchIndex < 0 ? calls.Count : switchIndex + 1;
+
+                // Pause/cancel gate #2: BEFORE the tool execution. A paused branch does not run
+                // the tool even if its approval arrived while paused.
+                for (var i = start; i < end; i++)
+                    await subAgent.WaitIfPausedAsync(run.Token).ConfigureAwait(false);
+
+                await run.Handler
+                    .ProcessToolCallsAsync(calls.GetRange(start, end - start), run.Session.Mode, run.Token)
+                    .ConfigureAwait(false);
+
+                start = end;
+            }
+        }
+        catch (OperationCanceledException) when (run.Token.IsCancellationRequested)
+        {
+            completed = false;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Sub-agent branch {Index} tool batch failed.", run.Index);
+            run.AddNote($"(Tool batch failed: {ex.Message})");
+            completed = false;
+        }
+        finally
+        {
+            // Whatever interrupted the batch, EVERY call needs a Result: an
+            // assistant(tool_calls) turn without matching tool messages is a hard API 400 on
+            // the next turn (and the branch continues with tool results in its history).
+            EnsureToolResults(calls);
+            turn.IsShouldRender = true;
+            subAgent.TotalTokens = run.Session.TotalTokens;
+            subAgent.NotifyStateChanged();
+        }
+
+        return completed && !run.Token.IsCancellationRequested;
+    }
+
+    /// <summary>
+    /// True when the message carries payload a turn could stream into the UI. Decides whether
+    /// a turn message enters the branch history at all.
+    /// </summary>
+    private static bool HasPayload(VisualChatMessage message)
+        => !string.IsNullOrEmpty(message.Content)
+           || !string.IsNullOrEmpty(message.ReasoningContent)
+           || message.ToolCalls is { Count: > 0 };
+
+    /// <summary>Ids of the user messages of the branch session (interject baseline).</summary>
+    private static HashSet<string> UserMessageIds(ConversationSession session)
+        => session.GetMessagesSnapshot()
+            .Where(m => m.Role == ChatMessageRole.User)
+            .Select(m => m.Id)
+            .ToHashSet();
+
+    /// <summary>
+    /// True when the user wrote into the branch while the turn streamed. Detected by message
+    /// identity (<see cref="ConversationSession.Revision"/> only as a cheap "something changed"
+    /// gate), never by a numeric index: compression rewrites the history and shifts every
+    /// position.
+    /// </summary>
+    private static bool HasNewUserMessage(ConversationSession session, long revisionBeforeTurn, HashSet<string> userIdsBeforeTurn)
+    {
+        if (session.Revision == revisionBeforeTurn)
+            return false;
+
+        return session.GetMessagesSnapshot()
+            .Any(m => m.Role == ChatMessageRole.User && !userIdsBeforeTurn.Contains(m.Id));
+    }
+
+    /// <summary>
+    /// Guarantees a Result for EVERY call of a batch: a batch interrupted by cancellation, an
+    /// exception or an unresolved approval must not leave a tool call without an answer.
+    /// </summary>
+    private void EnsureToolResults(IEnumerable<ToolCall>? calls)
+    {
+        if (calls is null)
+            return;
+
+        foreach (var toolCall in calls)
+        {
+            if (toolCall.Result is not null)
+                continue;
+
+            toolCall.ApprovalStatus = ToolApprovalStatus.Rejected;
+            toolCall.Result = new ToolResult
+            {
+                Success = false,
+                Content = InterruptedToolResultContent,
+                Name = toolCall.Function.Name,
+                DisplayName = ToolResult.GetDisplayName(false,
+                    toolManager.GetTool(toolCall.Function.Name)?.DisplayName ?? toolCall.Function.Name)
+            };
         }
     }
 
@@ -561,6 +845,69 @@ public sealed class AfSubAgentOrchestrator(
             }
         };
         return self;
+    }
+
+    /// <summary>
+    /// Run-scoped state of ONE branch run: the pinned session, the branch's own tool list, its
+    /// tool handler and the RUN-level counters.
+    /// <para>
+    /// One instance is created per <see cref="RunBranchAsync"/> and shared by every turn. That
+    /// is the point: the retry counter belongs to the RUN, so a branch may burn its whole retry
+    /// budget across turns - it never gets N retries per turn (which would multiply the LLM
+    /// calls and the tokens counted against <c>MaxTokensPerSubAgent</c>). The compression notes
+    /// accumulated between the turns are reported to the parent agent once, with the answer.
+    /// </para>
+    /// </summary>
+    private sealed class BranchRun(
+        SubAgentTicket ticket,
+        ConversationSession session,
+        IReadOnlyList<Tool> tools,
+        Throttle uiThrottle,
+        CancellationToken token,
+        int maxRetries,
+        int iterationLimit)
+    {
+        private readonly List<string> _notes = [];
+
+        public SubAgentMessage SubAgent { get; } = ticket.SubAgent;
+
+        public ToolCallHandler Handler { get; } = ticket.Handler;
+
+        public ConversationSession Session { get; } = session;
+
+        /// <summary>Explicit tool list of this branch (never null - see RunBranchAsync).</summary>
+        public IReadOnlyList<Tool> Tools { get; } = tools;
+
+        /// <summary>Run token: fires on the branch time limit AND on root cancellation.</summary>
+        public CancellationToken Token { get; } = token;
+
+        /// <summary>Total attempts allowed for the WHOLE run (not per turn).</summary>
+        public int MaxRetries { get; } = maxRetries;
+
+        /// <summary>Turn cap of the run (<see cref="int.MaxValue"/> when unlimited).</summary>
+        public int IterationLimit { get; } = iterationLimit;
+
+        public int Index { get; } = ticket.Index;
+
+        /// <summary>Retry attempts consumed by the WHOLE run.</summary>
+        public int RetriesUsed;
+
+        /// <summary>Appends a note reported to the parent agent together with the answer.</summary>
+        public void AddNote(string note) => _notes.Add(note);
+
+        /// <summary>All notes as one text (empty when nothing was recorded).</summary>
+        public string NoteText => _notes.Count == 0 ? string.Empty : string.Join(" ", _notes);
+
+        /// <summary>
+        /// Per-delta UI touch: marks the streaming message for render and reports the change
+        /// through the RUN-wide throttle (one subscriber notification per window for all
+        /// messages of all turns).
+        /// </summary>
+        public void Touch(VisualChatMessage message)
+        {
+            message.IsShouldRender = true;
+            uiThrottle.Notify();
+        }
     }
 
     /// <summary>

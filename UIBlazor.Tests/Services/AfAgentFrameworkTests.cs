@@ -87,7 +87,7 @@ public class AfAgentFrameworkTests
     public void Map_PartialArgumentsJson_RepairsArguments()
     {
         // Truncated JSON (e.g. arguments cut when the session was saved mid-tool-call):
-        // the repair path (same as AfAgentLoop.ParseArgs) must restore what it can —
+        // the repair path must restore what it can —
         // the model sees the partial arguments instead of an empty {}.
         var assistant = new WireMessage
         {

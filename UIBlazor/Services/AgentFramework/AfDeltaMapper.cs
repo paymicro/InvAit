@@ -4,17 +4,18 @@ using Microsoft.Extensions.AI;
 namespace UIBlazor.Services.AgentFramework;
 
 /// <summary>
-/// Single shared converter from streaming updates into UI deltas - used by BOTH gateways
-/// (<see cref="AfCompletionsAdapter"/> single-shot and the <see cref="AfAgentLoop"/> tool loop;
-/// capacity for a whole multi-turn run).
+/// Single shared converter from streaming updates into UI deltas - used by the single-shot
+/// gateway (<see cref="AfCompletionsAdapter"/>), which is now the only LLM seam.
 /// Responsibilities per update:
 /// - text/reasoning extraction incl. Kimi/DeepSeek inline think blocks;
-/// - per-turn tool-call accumulation (turn = new MessageId) with output as
-///   <see cref="ChatDelta.IsStartOfTurn"/> marker + <see cref="CompletionsResult.AccumulatedToolCalls"/>;
+/// - per-call tool-call accumulation (a new <c>MessageId</c> inside ONE HTTP response means a new
+///   assistant message) exposed through <see cref="CompletionsResult.AccumulatedToolCalls"/>;
 /// - usage capture and heuristic token estimation (legacy parity: ~4 chars per token)
 ///   rebased from the pre-run base <paramref name="estimateBase"/> (re-based again on every
-///   turn boundary together with the per-turn counter reset);
-/// - legacy finish_reason fallback applied by <see cref="FinalizeStream"/> after the stream ends.
+///   in-call message boundary together with the per-turn counter reset);
+/// - legacy finish_reason fallback applied by <see cref="FinalizeStream"/>﻿ after the stream ends.
+/// Turn boundaries BETWEEN LLM calls are NOT signalled here: the caller owns the turn cycle
+/// and calls the gateway once per turn.
 /// Per-call state lives in the mapper: never wire it into instance fields of callers.
 /// </summary>
 internal sealed class AfDeltaMapper(ConversationSession targetSession, CompletionsResult capture, int estimateBase)
@@ -31,9 +32,10 @@ internal sealed class AfDeltaMapper(ConversationSession targetSession, Completio
     private readonly Dictionary<string, int> _lastArgsLength = [];
 
     /// <summary>
-    /// Shared run pump for BOTH gateways: creates the mapper rebased from the pre-run
-    /// session token base, clears the per-run tool-call accumulator and yields every update
-    /// mapped into deltas (turn-start marker before a new turn's delta).
+    /// The run pump: creates the mapper rebased from the pre-run session token base, clears
+    /// the per-run tool-call accumulator and yields every update mapped into a delta.
+    /// No turn-boundary marker is emitted: one gateway call is ONE turn, the caller owns the
+    /// cycle.
     /// Exceptions from <paramref name="updates"/> propagate to the consumer as thrown
     /// (callers wrap the stream in <see cref="AfCancelRace.GuardAsync{T}"/> for classification).
     /// </summary>
@@ -47,23 +49,13 @@ internal sealed class AfDeltaMapper(ConversationSession targetSession, Completio
         capture.AccumulatedToolCalls = null;
 
         // Per-turn counters reset at the START of every LLM call: each PumpAsync invocation
-        // is ONE turn (one HTTP request), and the agent loop reuses the same capture across
-        // the whole multi-turn run. The turn boundary in the real loop does NOT pass through
-        // Map (the loop itself emits IsStartOfTurn between calls), so the in-Map reset below
-        // never fires between iterations - without this reset the next turn's badge
-        // duplicated the previous message's count (the heuristic kept adding to the run-wide
-        // counter) or froze on it (usage arrived in an earlier turn, disabling the heuristic
-        // for the rest of the run). The final usage chunk of the turn overwrites the
+        // is ONE turn (one HTTP request). The final usage chunk of the turn overwrites the
         // estimate with the provider-reported number.
         capture.ResetPerTurnCounters();
 
         await foreach (var raw in updates.WithCancellation(cancellationToken).ConfigureAwait(false))
         {
-            var delta = mapper.Map(raw, out var turnStart);
-            if (turnStart)
-            {
-                yield return new ChatDelta { IsStartOfTurn = true };
-            }
+            var delta = mapper.Map(raw);
 
             if (delta is not null)
             {
@@ -75,22 +67,23 @@ internal sealed class AfDeltaMapper(ConversationSession targetSession, Completio
     }
 
     /// <summary>
-    /// Converts one update. On a new assistant turn <paramref name="turnStart"/> is set and
-    /// the caller must emit the <see cref="ChatDelta.IsStartOfTurn"/> marker BEFORE yielding
-    /// the returned delta. Returns null when the update carries no renderable payload
+    /// Converts one update. Returns null when the update carries no renderable payload
     /// (e.g. usage-only or empty chunk).
+    /// <para>
+    /// A changed <c>MessageId</c> inside ONE HTTP response (non-streaming replay, Responses
+    /// item ids, a final usage chunk) resets the per-message counters and re-bases the token
+    /// estimate - but it is NOT a turn boundary for the caller: the turn cycle lives in
+    /// <c>AIChat</c>, one gateway call per turn.
+    /// </para>
     /// </summary>
-    public ChatDelta? Map(ChatResponseUpdate update, out bool turnStart)
+    public ChatDelta? Map(ChatResponseUpdate update)
     {
-        turnStart = false;
-
-        // New assistant turn: emit the marker (the UI swaps the streaming message),
-        // reset per-turn accumulators and think-block state.
+        // New assistant message inside the SAME HTTP call: reset per-message accumulators and
+        // think-block state.
         if (!string.IsNullOrEmpty(update.MessageId) && update.MessageId != _lastMessageId)
         {
             if (!_isFirst)
             {
-                turnStart = true;
                 _turnAcc = [];
                 _isStart = true;
                 _inThink = false;
@@ -103,13 +96,12 @@ internal sealed class AfDeltaMapper(ConversationSession targetSession, Completio
                 // цикл видел null и молча завершался, не исполнив вызовы, уже отрисованные в UI
                 // («вызывается, но ничего не происходит»). Per-call reset по-прежнему делает
                 // PumpAsync (граница HTTP-туров), а цикл сбрасывает аккумулятор перед исполнением.
-                // In-call turn boundary (several MessageIds inside ONE HTTP call — e.g. the
-                // non-streaming adapter replaying messages): the UI closes the previous
-                // message on the marker (CalcTimings already stamped its badge with the
-                // turn-1 count). The multi-CALL boundary is handled by
-                // ResetPerTurnCounters in PumpAsync. The heuristic re-bases from the CURRENT
-                // session total (visible tokens of turn 1 included — correct context
-                // position); the final usage chunk overwrites capture.Usage for the last turn.
+                // In-call message boundary (several MessageIds inside ONE HTTP call — e.g. the
+                // non-streaming adapter replaying messages): the previous message is already
+                // closed by the caller at the end of the turn. The multi-CALL boundary is
+                // handled by ResetPerTurnCounters in PumpAsync. The heuristic re-bases from the
+                // CURRENT session total (visible tokens of the previous message included —
+                // correct context position); the final usage chunk overwrites capture.Usage.
                 capture.CompletionTokens = 0;
                 capture.ReasoningTokens = 0;
                 capture.Usage = null;

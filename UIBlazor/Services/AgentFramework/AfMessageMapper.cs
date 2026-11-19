@@ -9,7 +9,7 @@ namespace UIBlazor.Services.AgentFramework;
 internal static class AfMessageMapper
 {
     /// <summary>
-    /// messages — WireMessage из ConversationSession.GetFormattedMessages: та же форма,
+    /// messages — WireMessage из ConversationSession.BuildWire: та же форма,
     /// которую сериализовал легаси-запрос Chat Completions.
     /// Возвращает List: тул-цикл добавляет assistant/tool сообщения между итерациями —
     /// копия уже готова, вызывающему не нужен лишний ToList().
@@ -64,8 +64,8 @@ internal static class AfMessageMapper
 
     /// <summary>
     /// Аргументы вызова приходят строкой JSON; FunctionCallContent ожидает словарь.
-    /// Repair-путь как в AfAgentLoop.ParseArgs: непарсируемые args (обрезанные при
-    /// сохранении сессии) чинятся — модель видит частичные аргументы вместо пустых {}.
+    /// Repair-путь: непарсируемые args (обрезанные при сохранении сессии или при
+    /// оборванном стриме) чинятся — модель видит частичные аргументы вместо пустых {}.
     /// </summary>
     private static Dictionary<string, object?>? ParseArguments(string? arguments)
     {

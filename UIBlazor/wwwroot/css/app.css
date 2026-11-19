@@ -952,3 +952,36 @@ code.hljs {
         display: none;
     }
 }
+/* ── Technical notes ─────────────────────────────────────────────────────────
+   A transport diagnostic inside the transcript (retry about to happen, rejected
+   request, timeout). Never sent to the model — see docs/llm-transport.md.
+   Deliberately quiet: it must be readable on a second look, not compete with the
+   conversation. */
+.tech-note {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--rz-text-tertiary-color);
+    font-style: italic;
+    padding: 0.1rem 0.4rem;
+    border-left: 2px solid var(--rz-warning);
+    overflow-wrap: anywhere;
+}
+
+    .tech-note i {
+        flex-shrink: 0;
+    }
+
+/* ── Tooltips must never swallow clicks ──────────────────────────────────────
+   Radzen renders the tooltip overlay as a positioned div with pointer-events left
+   at its default (only chart tooltips opt out). A tooltip opened 150 ms after
+   mouseenter therefore sits between the cursor and the control it describes, and
+   mousedown+mouseup never land on the same element: the click is lost. Visible as
+   "the Send button does nothing while a stream runs", because during a stream the
+   cursor already rests on the button and the tooltip is open by the time the user
+   clicks. Our tooltips are plain text, so they need no hit area at all. */
+.rz-tooltip,
+.rz-tooltip * {
+    pointer-events: none !important;
+}

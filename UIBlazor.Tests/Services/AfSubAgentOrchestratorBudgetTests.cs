@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging.Abstractions;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
@@ -10,7 +11,7 @@ namespace UIBlazor.Tests.Services;
 /// still reports its answer, but the delegate_task result carries a
 /// "(Token budget exceeded: ...)" warning for the parent agent. budget = 0 disables the check.
 /// </summary>
-public class AfSubAgentOrchestratorBudgetTests
+public class AfSubAgentOrchestratorBudgetTests : IDisposable
 {
     // "Hello world!" = 12 chars -> >= 3 estimated tokens (~4 chars/token) in any chunking,
     // so budget = 1 is always exceeded while the branch itself completes successfully.
@@ -32,6 +33,7 @@ public class AfSubAgentOrchestratorBudgetTests
     private readonly Mock<ICommonSettingsProvider> _commonSettings = new();
     private readonly Mock<IRetryHandler> _retryHandler = new();
     private readonly WireMockServer _server = WireMockServer.Start();
+    private ScriptedChatService? _chatService;
 
     public AfSubAgentOrchestratorBudgetTests()
     {
@@ -49,6 +51,8 @@ public class AfSubAgentOrchestratorBudgetTests
         _toolManager.Setup(t => t.GetEnabledTools(AppMode.Agent)).Returns([]);
     }
 
+    public void Dispose() => _chatService?.Dispose();
+
     private AfSubAgentOrchestrator CreateOrchestrator(int maxTokensPerSubAgent)
     {
         _profileManager.SetupGet(p => p.ActiveProfile).Returns(new ConnectionProfile
@@ -65,11 +69,18 @@ public class AfSubAgentOrchestratorBudgetTests
             .Setup(r => r.WaitForRetryAsync(It.IsAny<int>(), It.IsAny<Action<int>>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
+        // REAL ChatService + its own AfCompletionsAdapter against the WireMock endpoint: the
+        // branch produces real content and real token accounting (the budget is read from
+        // session.TotalTokens), and ProcessStreamAsync is the production one.
+        _chatService = ScriptedChatService.CreateWithRealAdapter(
+            profileManager: _profileManager.Object,
+            commonSettings: _commonSettings.Object);
+
         return new AfSubAgentOrchestrator(
             _profileManager.Object,
             _promptBuilder.Object,
             _toolManager.Object,
-            new StubChatService(),
+            _chatService.Service,
             _contentFilter.Object,
             new HttpClient(),
             _commonSettings.Object,
@@ -123,97 +134,5 @@ public class AfSubAgentOrchestratorBudgetTests
 
         Assert.Contains("Hello world!", result.Result);
         Assert.DoesNotContain("Token budget exceeded", result.Result);
-    }
-
-    /// <summary>
-    /// Minimal IChatService stub: only ProcessStreamAsync is used by the orchestrator
-    /// (it pipes branch deltas into the SubAgent streaming message).
-    /// </summary>
-    private sealed class StubChatService : IChatService
-    {
-        public ConversationSession Session { get; } = new();
-
-        public bool NeedCompression => false;
-
-        public event Action<CompressionReport>? CompressionCompleted;
-
-        public event Action<ConversationSession>? CompressionStarted;
-
-        public event PropertyChangedEventHandler? SessionChanged;
-        public void Initialize() { }
-        public ConnectionProfile? Options => null;
-
-        public Task ProcessStreamAsync(
-            VisualChatMessage message,
-            IAsyncEnumerable<ChatDelta> deltas,
-            Action<string>? onContentUpdate,
-            Action<List<ToolCall>>? onToolCallsUpdate,
-            Action? onStateChange,
-            CompletionsResult resultCapture,
-            CancellationToken cancellationToken)
-            => ProcessStreamAsync(message, deltas, onContentUpdate, onToolCallsUpdate, onStateChange,
-                resultCapture, cancellationToken, onNewTurn: null);
-
-        public async Task ProcessStreamAsync(
-            VisualChatMessage message,
-            IAsyncEnumerable<ChatDelta> deltas,
-            Action<string>? onContentUpdate,
-            Action<List<ToolCall>>? onToolCallsUpdate,
-            Action? onStateChange,
-            CompletionsResult resultCapture,
-            CancellationToken cancellationToken,
-            Func<VisualChatMessage>? onNewTurn)
-        {
-            var content = new StringBuilder();
-            await foreach (var delta in deltas.WithCancellation(cancellationToken))
-            {
-                if (delta.IsStartOfTurn && onNewTurn is not null && message.IsStreaming)
-                {
-                    message.IsStreaming = false;
-                    message = onNewTurn();
-                }
-
-                if (delta.Content is not null)
-                {
-                    content.Append(delta.Content);
-                    message.Content = content.ToString();
-                    onContentUpdate?.Invoke(delta.Content);
-                }
-
-                if (delta.ToolCalls is { Count: > 0 } && resultCapture.AccumulatedToolCalls is not null)
-                {
-                    onToolCallsUpdate?.Invoke(resultCapture.AccumulatedToolCalls);
-                }
-
-                onStateChange?.Invoke();
-            }
-
-            message.IsStreaming = false;
-        }
-
-        public IAsyncEnumerable<ChatDelta> GetCompletionsAsync(CompletionsResult resultCapture, CancellationToken cancellationToken)
-            => EmptyDeltas();
-
-        public IAsyncEnumerable<ChatDelta> CompressSessionAsync(CompletionsResult resultCapture, CancellationToken cancellationToken)
-            => EmptyDeltas();
-
-        public IAsyncEnumerable<ChatDelta> CompressSessionAsync(ConversationSession targetSession, CompletionsResult resultCapture, CancellationToken cancellationToken)
-            => EmptyDeltas();
-
-        public Task<List<SessionSummary>> GetRecentSessionsAsync(int count) => Task.FromResult(new List<SessionSummary>());
-        public Task LoadSessionAsync(string id) => Task.CompletedTask;
-        public Task DeleteSessionAsync(string id) => Task.CompletedTask;
-        public Task SaveSessionAsync() => Task.CompletedTask;
-        public Task NewSessionAsync() => Task.CompletedTask;
-        public Task<AiModelList> GetModelsAsync(CancellationToken cancellationToken)
-            => throw new NotImplementedException();
-
-        private static async IAsyncEnumerable<ChatDelta> EmptyDeltas()
-        {
-            await Task.CompletedTask;
-            yield break;
-        }
-
-        public void Dispose() { }
     }
 }

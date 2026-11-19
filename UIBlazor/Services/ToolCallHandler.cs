@@ -70,14 +70,14 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
         return (categoryMode, classification) switch
         {
             // Category Allow: trust more — safe + unknown auto-execute, destructive asks
-            (ToolApprovalMode.Allow, BashCommandClassification.Safe)        => ToolApprovalMode.Allow,
-            (ToolApprovalMode.Allow, BashCommandClassification.Unknown)     => ToolApprovalMode.Allow,
+            (ToolApprovalMode.Allow, BashCommandClassification.Safe) => ToolApprovalMode.Allow,
+            (ToolApprovalMode.Allow, BashCommandClassification.Unknown) => ToolApprovalMode.Allow,
             (ToolApprovalMode.Allow, BashCommandClassification.Destructive) => ToolApprovalMode.Ask,
 
             // Category Ask: safe auto-execute, unknown + destructive ask
-            (ToolApprovalMode.Ask, BashCommandClassification.Safe)          => ToolApprovalMode.Allow,
-            (ToolApprovalMode.Ask, BashCommandClassification.Unknown)       => ToolApprovalMode.Ask,
-            (ToolApprovalMode.Ask, BashCommandClassification.Destructive)   => ToolApprovalMode.Ask,
+            (ToolApprovalMode.Ask, BashCommandClassification.Safe) => ToolApprovalMode.Allow,
+            (ToolApprovalMode.Ask, BashCommandClassification.Unknown) => ToolApprovalMode.Ask,
+            (ToolApprovalMode.Ask, BashCommandClassification.Destructive) => ToolApprovalMode.Ask,
 
             // Deny already handled above, UserDenied already handled above
             _ => ToolApprovalMode.Ask,

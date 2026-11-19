@@ -14,6 +14,32 @@ public class SystemPromptBuilder : ISystemPromptBuilder
     /// </summary>
     private string? _cachedSolutionTree;
 
+    /// <summary>
+    /// Cache key of a built prompt. Two builds with an equal key produce byte-identical text,
+    /// so the cached prompt can be reused verbatim.
+    /// <para>
+    /// <see cref="Revision"/> covers every input that is not visible as a discrete property:
+    /// it is bumped when the IDE pushes new context (active file, solution tree) or when the
+    /// active profile changes (prompt text, section toggles, mermaid, date).
+    /// </para>
+    /// <para>
+    /// <see cref="CanDelegate"/> is part of the key because the delegation section depends on
+    /// whether <c>delegate_task</c> is currently enabled — a tool toggle changes the prompt
+    /// without touching the profile or the code context.
+    /// </para>
+    /// </summary>
+    private readonly record struct PromptCacheKey(AppMode Mode, bool CanDelegate, int Revision);
+
+    /// <summary>
+    /// Immutable cache entry: key and text travel together as ONE reference, so a concurrent
+    /// refresh can never pair a fresh key with a stale text (no lock needed — a single
+    /// reference read/write is atomic and the worst case is a redundant rebuild).
+    /// </summary>
+    private sealed record CachedPrompt(PromptCacheKey Key, string Text);
+
+    private CachedPrompt? _cachedPrompt;
+    private int _promptRevision;
+
     public SystemPromptBuilder(
         IProfileManager profileManager,
         IToolManager toolManager,
@@ -27,22 +53,67 @@ public class SystemPromptBuilder : ISystemPromptBuilder
         _ruleService = ruleService;
         _сontextService = сontextService;
 
-        сontextService.OnContextChanged += InvalidateSolutionTreeCache;
+        сontextService.OnContextChanged += OnIdeContextChanged;
+
+        // Any profile edit (prompt text, section toggles, ...) changes the prompt content.
+        profileManager.PropertyChanged += OnProfileChanged;
     }
 
-    private void InvalidateSolutionTreeCache() => _cachedSolutionTree = null;
+    /// <summary>
+    /// The IDE pushed new code context: both the formatted solution tree and the whole prompt
+    /// are stale (active file content is part of the prompt).
+    /// </summary>
+    private void OnIdeContextChanged()
+    {
+        _cachedSolutionTree = null;
+        InvalidatePromptCache();
+    }
+
+    /// <summary>The active profile changed: the prompt text is stale, the solution tree is not.</summary>
+    private void OnProfileChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        => InvalidatePromptCache();
+
+    /// <summary>
+    /// Drops the cached prompt. The next build re-reads skills, rules, agents.md and the code
+    /// context; the solution tree keeps its own cache.
+    /// </summary>
+    public void InvalidatePromptCache()
+    {
+        Interlocked.Increment(ref _promptRevision);
+        Volatile.Write(ref _cachedPrompt, null);
+    }
 
     public ConnectionProfile Options => _profileManager.ActiveProfile;
 
+    /// <summary>
+    /// Builds the main-agent system prompt, reusing the previous build when none of its inputs
+    /// changed.
+    /// <para>
+    /// The turn loop rebuilds the request on EVERY turn (<c>ChatService.GetTurnCompletionsAsync</c>),
+    /// so without this cache a 40-turn run assembles the prompt — with its skills scan, rules,
+    /// agents.md and full active-file content — 40 times, and any byte-level difference between
+    /// two consecutive builds silently breaks the provider-side prompt cache (every turn is then
+    /// billed and processed as a cold prefix).
+    /// </para>
+    /// </summary>
     public async Task<string> PrepareSystemPromptAsync(AppMode mode, CancellationToken cancellationToken)
     {
         var profile = _profileManager.ActiveProfile;
 
-        // Delegation instructions are only included if delegate_task is actually available
+        // Delegation instructions are only included if delegate_task is actually available.
+        // Cheap on purpose (a LINQ filter over the already-registered tools), so it can stay
+        // outside the cached region and act as part of the key.
         var canDelegate = profile.SendModeInstructions &&
             _toolManager.GetEnabledTools(mode).Any(t => t.Name == BuiltInToolEnum.DelegateTask);
 
-        return await BuildPromptAsync(
+        var key = new PromptCacheKey(mode, canDelegate, Volatile.Read(ref _promptRevision));
+        var cached = Volatile.Read(ref _cachedPrompt);
+        if (cached is not null && cached.Key == key)
+        {
+            return cached.Text;
+        }
+
+        var prompt = await BuildPromptAsync(
             new PromptSpec(
                 BasePrompt: profile.SystemPrompt,
                 Mode: mode,
@@ -50,6 +121,10 @@ public class SystemPromptBuilder : ISystemPromptBuilder
                 IncludeActiveFile: true,
                 UseMermaid: profile.UseMermaidDiagrams),
             cancellationToken);
+
+        Volatile.Write(ref _cachedPrompt, new CachedPrompt(key, prompt));
+
+        return prompt;
     }
 
     /// <summary>

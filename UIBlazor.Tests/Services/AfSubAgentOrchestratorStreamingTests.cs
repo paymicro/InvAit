@@ -8,6 +8,11 @@ namespace UIBlazor.Tests.Services;
 /// previously the orchestrator's onStateChange callback did not call NotifyStateChanged,
 /// so SubAgentView.HasChanges() saw no Revision bump and the thinking block never
 /// re-rendered while streaming.
+/// <para>
+/// The real <see cref="ChatService.ProcessStreamAsync"/> runs here (see
+/// <see cref="ScriptedChatService"/>): only the LLM turn is scripted. The probe fires from
+/// INSIDE the delta stream, between the reasoning update and the text update — the exact
+/// moment the service has already applied the reasoning and invoked onStateChange.
 /// </summary>
 public class AfSubAgentOrchestratorStreamingTests
 {
@@ -55,23 +60,39 @@ public class AfSubAgentOrchestratorStreamingTests
     [Fact]
     public async Task ExecuteAsync_ReasoningOnlyDelta_BranchRevisionIsBumped()
     {
-        // Arrange
-        var chatService = new ReasoningOnlyChatService();
-        var orchestrator = CreateOrchestrator(chatService);
+        // Arrange: the probe runs INSIDE the delta stream, right after the service applied the
+        // reasoning update and invoked onStateChange - the state the branch UI would render from.
+        SubAgentMessage? branch = null;
+        long revisionBefore = -1;
+        long revisionAfter = -1;
+        var sawReasoningDelta = false;
+
+        using var chatService = ScriptedChatService.Create(Turns.ReasoningThenText(
+            reasoning: "thinking hard",
+            content: "sub-agent answer",
+            // Nothing of the reasoning update is applied yet.
+            onBeforeReasoning: () =>
+            {
+                revisionBefore = branch!.Revision;
+                return Task.CompletedTask;
+            },
+            // The service has applied the reasoning and invoked onStateChange by now.
+            onReasoningApplied: () =>
+            {
+                sawReasoningDelta = true;
+                revisionAfter = branch!.Revision;
+                return Task.CompletedTask;
+            }));
+
+        var orchestrator = CreateOrchestrator(chatService.Service);
         var toolCall = new ToolCall
         {
             Id = "tc-1",
             Function = new ToolCallFunction { Name = BuiltInToolEnum.DelegateTask }
         };
 
-        // Grab the branch reference as soon as the orchestrator attaches it,
-        // and arm the revision probe used by the stub during streaming.
-        SubAgentMessage? branch = null;
-        toolCall.SubAgentsChanged += () =>
-        {
-            branch = toolCall.SubAgents![0];
-            chatService.ProbeRevision = () => branch!.Revision;
-        };
+        // Grab the branch reference as soon as the orchestrator attaches it.
+        toolCall.SubAgentsChanged += () => branch ??= toolCall.SubAgents![0];
 
         // Act
         await orchestrator.ExecuteAsync(Args, toolCall, TestContext.Current.CancellationToken);
@@ -79,14 +100,17 @@ public class AfSubAgentOrchestratorStreamingTests
         // Assert - the reasoning-only delta (onStateChange, no onContentUpdate)
         // bumped the branch Revision: SubAgentView will re-render the thinking block.
         Assert.NotNull(branch);
-        Assert.True(chatService.SawReasoningDelta, "stub must stream a reasoning-only delta");
+        Assert.True(sawReasoningDelta, "the scripted turn must deliver a reasoning-only update");
+
+        // Both readings straddle exactly ONE delta, so the bump is caused by the reasoning update
+        // alone (not by the turn close or the terminal status, which happen later).
         Assert.True(
-            chatService.RevisionAfterReasoning > chatService.RevisionBeforeReasoning,
+            revisionAfter > revisionBefore,
             $"reasoning-only delta must bump the branch Revision " +
-            $"(before: {chatService.RevisionBeforeReasoning}, after: {chatService.RevisionAfterReasoning})");
+            $"(before: {revisionBefore}, after: {revisionAfter})");
 
         // The branch completed normally.
-        Assert.Equal(SubAgentStatus.Completed, branch!.Status);
+        Assert.Equal(SubAgentStatus.Completed, branch.Status);
     }
 
     [Fact]
@@ -94,24 +118,31 @@ public class AfSubAgentOrchestratorStreamingTests
     {
         // The same reasoning delta must also set IsShouldRender on the streaming
         // message (the throttled content-update path in SubAgentView).
-        var chatService = new ReasoningOnlyChatService();
-        var orchestrator = CreateOrchestrator(chatService);
+        SubAgentMessage? branch = null;
+        var shouldRenderAfterReasoning = false;
+
+        using var chatService = ScriptedChatService.Create(Turns.ReasoningThenText(
+            reasoning: "thinking hard",
+            content: "sub-agent answer",
+            onReasoningApplied: () =>
+            {
+                shouldRenderAfterReasoning = branch!.GetMessages().Any(m => m.IsShouldRender);
+                return Task.CompletedTask;
+            }));
+
+        var orchestrator = CreateOrchestrator(chatService.Service);
         var toolCall = new ToolCall
         {
             Id = "tc-1",
             Function = new ToolCallFunction { Name = BuiltInToolEnum.DelegateTask }
         };
 
-        toolCall.SubAgentsChanged += () =>
-        {
-            var branch = toolCall.SubAgents![0];
-            chatService.ProbeShouldRender = () => branch.GetMessages().Any(m => m.IsShouldRender);
-        };
+        toolCall.SubAgentsChanged += () => branch ??= toolCall.SubAgents![0];
 
         await orchestrator.ExecuteAsync(Args, toolCall, TestContext.Current.CancellationToken);
 
         Assert.True(
-            chatService.ShouldRenderAfterReasoning,
+            shouldRenderAfterReasoning,
             "reasoning-only delta must set IsShouldRender on the streaming message");
     }
 
@@ -121,8 +152,8 @@ public class AfSubAgentOrchestratorStreamingTests
         // Regression: with several parallel branches, a branch that finishes first
         // must switch to Completed immediately (its own finally), not stay Running
         // until the whole batch completes.
-        var chatService = new TwoBranchChatService();
-        var orchestrator = CreateOrchestrator(chatService);
+        using var chatService = ScriptedChatService.Create(Turns.Text("branch answer"));
+        var orchestrator = CreateOrchestrator(chatService.Service);
         var toolCall = new ToolCall
         {
             Id = "tc-1",
@@ -150,165 +181,5 @@ public class AfSubAgentOrchestratorStreamingTests
         // The first branch was finalized by its own finally block, not only by ComposeResult.
         Assert.True(first.CompletedAt is not null);
         Assert.True(second.CompletedAt is not null);
-    }
-
-    /// <summary>
-    /// IChatService stub: streams a reasoning-only delta (onStateChange fires,
-    /// onContentUpdate does NOT) and then a content delta. Probes capture the branch
-    /// state around the reasoning delta to verify the UI event stream was reached.
-    /// </summary>
-    private sealed class ReasoningOnlyChatService : IChatService
-    {
-        public Func<long>? ProbeRevision { get; set; }
-        public Func<bool>? ProbeShouldRender { get; set; }
-
-        public bool SawReasoningDelta { get; private set; }
-        public long RevisionBeforeReasoning { get; private set; }
-        public long RevisionAfterReasoning { get; private set; }
-        public bool ShouldRenderAfterReasoning { get; private set; }
-
-        public ConversationSession Session { get; } = new();
-
-        public bool NeedCompression => false;
-
-        public event Action<CompressionReport>? CompressionCompleted;
-
-        public event Action<ConversationSession>? CompressionStarted;
-
-        public event PropertyChangedEventHandler? SessionChanged;
-        public void Initialize() { }
-        public ConnectionProfile? Options => null;
-
-        public Task ProcessStreamAsync(
-            VisualChatMessage message,
-            IAsyncEnumerable<ChatDelta> deltas,
-            Action<string>? onContentUpdate,
-            Action<List<ToolCall>>? onToolCallsUpdate,
-            Action? onStateChange,
-            CompletionsResult resultCapture,
-            CancellationToken cancellationToken)
-            => ProcessStreamAsync(message, deltas, onContentUpdate, onToolCallsUpdate, onStateChange,
-                resultCapture, cancellationToken, onNewTurn: null);
-
-        public async Task ProcessStreamAsync(
-            VisualChatMessage message,
-            IAsyncEnumerable<ChatDelta> deltas,
-            Action<string>? onContentUpdate,
-            Action<List<ToolCall>>? onToolCallsUpdate,
-            Action? onStateChange,
-            CompletionsResult resultCapture,
-            CancellationToken cancellationToken,
-            Func<VisualChatMessage>? onNewTurn)
-        {
-            // Reasoning-only delta: ChatService reports it via onStateChange ONLY.
-            SawReasoningDelta = true;
-            RevisionBeforeReasoning = ProbeRevision?.Invoke() ?? -1;
-            onStateChange?.Invoke();
-            RevisionAfterReasoning = ProbeRevision?.Invoke() ?? -1;
-            ShouldRenderAfterReasoning = ProbeShouldRender?.Invoke() ?? false;
-
-            // Content delta: normal path (onContentUpdate fires).
-            message.Content = "sub-agent answer";
-            onContentUpdate?.Invoke("sub-agent answer");
-
-            message.IsStreaming = false;
-            await Task.CompletedTask;
-        }
-
-        public IAsyncEnumerable<ChatDelta> GetCompletionsAsync(CompletionsResult resultCapture, CancellationToken cancellationToken)
-            => EmptyDeltas();
-
-        public IAsyncEnumerable<ChatDelta> CompressSessionAsync(CompletionsResult resultCapture, CancellationToken cancellationToken)
-            => EmptyDeltas();
-
-        public IAsyncEnumerable<ChatDelta> CompressSessionAsync(ConversationSession targetSession, CompletionsResult resultCapture, CancellationToken cancellationToken)
-            => EmptyDeltas();
-
-        public Task<List<SessionSummary>> GetRecentSessionsAsync(int count) => Task.FromResult(new List<SessionSummary>());
-        public Task LoadSessionAsync(string id) => Task.CompletedTask;
-        public Task DeleteSessionAsync(string id) => Task.CompletedTask;
-        public Task SaveSessionAsync() => Task.CompletedTask;
-        public Task NewSessionAsync() => Task.CompletedTask;
-        public Task<AiModelList> GetModelsAsync(CancellationToken cancellationToken)
-            => throw new NotImplementedException();
-
-        private static async IAsyncEnumerable<ChatDelta> EmptyDeltas()
-        {
-            await Task.CompletedTask;
-            yield break;
-        }
-
-        public void Dispose() { }
-    }
-
-    /// <summary>
-    /// IChatService stub for the two-branch batch: each ProcessStreamAsync call
-    /// completes immediately with a small answer.
-    /// </summary>
-    private sealed class TwoBranchChatService : IChatService
-    {
-        public ConversationSession Session { get; } = new();
-
-        public bool NeedCompression => false;
-
-        public event Action<CompressionReport>? CompressionCompleted;
-
-        public event Action<ConversationSession>? CompressionStarted;
-
-        public event PropertyChangedEventHandler? SessionChanged;
-        public void Initialize() { }
-        public ConnectionProfile? Options => null;
-
-        public Task ProcessStreamAsync(
-            VisualChatMessage message,
-            IAsyncEnumerable<ChatDelta> deltas,
-            Action<string>? onContentUpdate,
-            Action<List<ToolCall>>? onToolCallsUpdate,
-            Action? onStateChange,
-            CompletionsResult resultCapture,
-            CancellationToken cancellationToken)
-            => ProcessStreamAsync(message, deltas, onContentUpdate, onToolCallsUpdate, onStateChange,
-                resultCapture, cancellationToken, onNewTurn: null);
-
-        public async Task ProcessStreamAsync(
-            VisualChatMessage message,
-            IAsyncEnumerable<ChatDelta> deltas,
-            Action<string>? onContentUpdate,
-            Action<List<ToolCall>>? onToolCallsUpdate,
-            Action? onStateChange,
-            CompletionsResult resultCapture,
-            CancellationToken cancellationToken,
-            Func<VisualChatMessage>? onNewTurn)
-        {
-            message.Content = "branch answer";
-            onContentUpdate?.Invoke("branch answer");
-            message.IsStreaming = false;
-            await Task.CompletedTask;
-        }
-
-        public IAsyncEnumerable<ChatDelta> GetCompletionsAsync(CompletionsResult resultCapture, CancellationToken cancellationToken)
-            => EmptyDeltas();
-
-        public IAsyncEnumerable<ChatDelta> CompressSessionAsync(CompletionsResult resultCapture, CancellationToken cancellationToken)
-            => EmptyDeltas();
-
-        public IAsyncEnumerable<ChatDelta> CompressSessionAsync(ConversationSession targetSession, CompletionsResult resultCapture, CancellationToken cancellationToken)
-            => EmptyDeltas();
-
-        public Task<List<SessionSummary>> GetRecentSessionsAsync(int count) => Task.FromResult(new List<SessionSummary>());
-        public Task LoadSessionAsync(string id) => Task.CompletedTask;
-        public Task DeleteSessionAsync(string id) => Task.CompletedTask;
-        public Task SaveSessionAsync() => Task.CompletedTask;
-        public Task NewSessionAsync() => Task.CompletedTask;
-        public Task<AiModelList> GetModelsAsync(CancellationToken cancellationToken)
-            => throw new NotImplementedException();
-
-        private static async IAsyncEnumerable<ChatDelta> EmptyDeltas()
-        {
-            await Task.CompletedTask;
-            yield break;
-        }
-
-        public void Dispose() { }
     }
 }

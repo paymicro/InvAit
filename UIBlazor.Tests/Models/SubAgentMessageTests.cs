@@ -227,7 +227,7 @@ public class SubAgentMessageTests
         var accepted = subAgent.TryAddInterject("  уточни требования  ");
 
         // Assert: accepted — the interject lands in BOTH the UI copy and the session
-        // (the branch's AfAgentLoop reads the session at the next turn boundary).
+        // (the branch loop rebuilds its wire from the session at the next turn boundary).
         Assert.True(accepted);
         Assert.Equal(2, subAgent.GetMessageCount());
         Assert.Equal(2, session.GetMessageCount());

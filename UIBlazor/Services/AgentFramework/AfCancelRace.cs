@@ -52,10 +52,14 @@ internal static class AfCancelRace
                 {
                     throw new LlmApiException(timeoutMessage());
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                catch (Exception ex) when (ex is not OperationCanceledException and not LlmApiException)
                 {
                     // Inner preserves the original type/stack — avoids hiding the origin of
                     // bugs (the message alone used to hide it).
+                    // An LlmApiException is EXCLUDED from this filter: re-wrapping it would build
+                    // a new instance with StatusCode = null, and the retry policy reads exactly
+                    // that status. A 401 would arrive at the caller as "status unknown" and burn
+                    // the full budget — the transport already classified it, so let it through.
                     throw new LlmApiException(ex.Message, ex);
                 }
 

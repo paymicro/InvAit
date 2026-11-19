@@ -1,4 +1,4 @@
-﻿namespace UIBlazor.Tests.VS;
+namespace UIBlazor.Tests.VS;
 
 using System.Diagnostics;
 
@@ -55,7 +55,7 @@ public class VsBridgeTests
         FailHostRequests(js, bridge);
 
         // Act
-        var result = await bridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, "{}");
+        var result = await bridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, "{}", TestContext.Current.CancellationToken);
 
         // Assert — the original host text survives verbatim (no exception was thrown and wrapped)
         Assert.False(result.Success);
@@ -73,7 +73,7 @@ public class VsBridgeTests
         FailHostRequests(js, bridge, payload: null);
 
         // Act
-        var result = await bridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, "{}");
+        var result = await bridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, "{}", TestContext.Current.CancellationToken);
 
         // Assert — never empty: ToolResult.Convert feeds ErrorMessage to the model on failure
         Assert.False(result.Success);
@@ -90,7 +90,7 @@ public class VsBridgeTests
         FailHostRequests(js, bridge);
 
         // Act
-        await bridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, "{}");
+        await bridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, "{}", TestContext.Current.CancellationToken);
 
         // Assert — the failure is still logged (WARN), so it stays visible in devtools/Output
         await WaitUntilAsync(() => js.Logs.Count > 0);
@@ -117,7 +117,7 @@ public class VsBridgeTests
         });
 
         // Act
-        var result = await bridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, "{}");
+        var result = await bridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, "{}", TestContext.Current.CancellationToken);
         await Task.Delay(100, TestContext.Current.CancellationToken);
 
         // Assert
@@ -146,8 +146,8 @@ public class VsBridgeTests
         };
 
         // Act
-        var first = await bridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, "{}");
-        var second = await bridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, "{}");
+        var first = await bridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, "{}", TestContext.Current.CancellationToken);
+        var second = await bridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, "{}", TestContext.Current.CancellationToken);
 
         // Assert — a failed request leaves nothing pending and does not poison the next one
         Assert.False(first.Success);

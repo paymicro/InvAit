@@ -408,11 +408,12 @@ public class AfToolCallStreamingTests
     }
 
     /// <summary>
-    /// REAL agent-loop shape: each turn is a SEPARATE PumpAsync call (one HTTP request per
-    /// turn) reusing the SAME capture across the run. The turn boundary does NOT pass
-    /// through Map (the loop itself emits IsStartOfTurn between calls), so the reset must
-    /// happen in PumpAsync: the turn-2 estimate counts ONLY turn-2 chars, not turn-1 —
-    /// without the reset the turn-2 badge duplicated the previous message's count.
+    /// REAL turn-loop shape: each turn is a SEPARATE PumpAsync call (one HTTP request per
+    /// turn) reusing the SAME capture across the run. Since the loop moved to the caller
+    /// (<c>AIChat.RunTurnsAsync</c> / <c>AfSubAgentOrchestrator.RunBranchAsync</c>) nothing
+    /// signals a turn boundary through Map at all, so the reset must happen in PumpAsync:
+    /// the turn-2 estimate counts ONLY turn-2 chars, not turn-1 — without the reset the
+    /// turn-2 badge duplicated the previous message's count.
     /// </summary>
     [Fact]
     public async Task PumpAsync_SecondCall_SameCapture_TokenCountersReset()

@@ -31,6 +31,75 @@ public partial class ToolManagerTests
     }
 
     [Fact]
+    public void GetMcpTools_ToolsArriveWithoutOnSaved_AppearWithoutAnyEvent()
+    {
+        // The reported defect: at startup the servers are known but their TOOLS are not - the
+        // schemas arrive from the MCP host afterwards. A cache filled in that window held an empty
+        // list, and recovering it depended on the OnSaved event. No event ever came, so the chat
+        // offered no MCP tools while the settings tab (reading Current.Servers directly) showed
+        // them enabled. Toggling a checkbox raised OnSaved and "fixed" it.
+        var server = new McpServerConfig { Name = "srv", Enabled = true, Tools = [] };
+        _mcpOptions.Servers.Add(server);
+        _toolManager.RegisterAllTools();
+
+        // Startup: the server exists, the tools have not been fetched yet - cache warms up empty.
+        Assert.Empty(_toolManager.GetMcpTools());
+
+        // The host answers; the config is filled in place, exactly as UpdateServerToolsAsync does
+        // (server.Tools = newTools). No OnSaved is raised here on purpose.
+        server.Tools = [new McpToolConfig
+        {
+            Name = "sequentialthinking",
+            Description = "Thinking",
+            InputSchema = JsonSerializer.SerializeToElement(new { type = "object", properties = new { } })
+        }];
+
+        // Act - no refresh call, no event.
+        var tools = _toolManager.GetMcpTools().ToList();
+
+        // Assert - the cache noticed the change on its own.
+        var tool = Assert.Single(tools);
+        Assert.Equal("mcp__srv__sequentialthinking", tool.Name);
+        Assert.Equal("sequentialthinking", tool.DisplayName);
+        Assert.Equal(ToolCategory.Mcp, tool.Category);
+    }
+
+    [Fact]
+    public void GetMcpTools_ServersReloaded_ClosuresPointAtTheNewConfig()
+    {
+        // A reload replaces the server LIST (a new instance from storage). Names and tool names can
+        // be identical, so a cache keyed on names alone would keep closures over the OLD server and
+        // call a stale command/url.
+        var oldServer = new McpServerConfig
+        {
+            Name = "srv",
+            Enabled = true,
+            Command = "old-cmd",
+            Tools = [new McpToolConfig { Name = "t", InputSchema = JsonSerializer.SerializeToElement(new { type = "object" }) }]
+        };
+        _mcpOptions.Servers.Add(oldServer);
+        _toolManager.RegisterAllTools();
+        var oldTool = Assert.Single(_toolManager.GetMcpTools());
+
+        // Act - the settings file is re-read into a NEW list with the same names.
+        var newServer = new McpServerConfig
+        {
+            Name = "srv",
+            Enabled = true,
+            Command = "new-cmd",
+            Tools = [new McpToolConfig { Name = "t", InputSchema = JsonSerializer.SerializeToElement(new { type = "object" }) }]
+        };
+        _mcpOptions.Servers = [newServer];
+
+        // Assert - the old cached Tool captured a closure over the OLD config; it must not be
+        // reused, otherwise the call would be sent with the retired command/url.
+        var newTool = Assert.Single(_toolManager.GetMcpTools());
+        Assert.NotSame(oldTool, newTool);
+        Assert.Same("srv", newTool.Server);
+        Assert.Equal("mcp__srv__t", newTool.Name);
+    }
+
+    [Fact]
     public void GetEnabledTools_McpDisableKey_FiltersByServerAndDisplayName()
     {
         var schema = JsonSerializer.SerializeToElement(new { type = "object", properties = new { } });

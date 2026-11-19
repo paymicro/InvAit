@@ -11,6 +11,11 @@ namespace UIBlazor.Tests.Services;
 /// is re-armed after every delivered chunk, so the window covers the GAP between chunks —
 /// not the whole body-read. The old code planned one full-window CTS over the entire
 /// body-read: a long stream with steady chunks was cut mid-generation ("Request timed out").
+/// <para>
+/// OWNERSHIP: the adapter is the only timeout owner of an LLM request — the transport clients
+/// get none. The retired <c>AfAgentLoop</c> gave the MAIN agent no window at all, so these
+/// tests pin the semantics the main agent inherited from the sub-agent / compression path.
+/// </para>
 /// </summary>
 public class AfIdleTimeoutTests
 {
@@ -114,5 +119,51 @@ public class AfIdleTimeoutTests
             TestContext.Current.CancellationToken)));
 
         Assert.Contains("timed out", exception.Message);
+    }
+
+    /// <summary>
+    /// A non-positive window DISABLES the timeout (the codebase convention is
+    /// <c>TokensToCompress = 0</c> for "unlimited"). A CTS built from zero seconds would fire
+    /// before the request is even sent and turn every call into a timeout error — so this pins
+    /// that the stalled gap is tolerated and the whole stream arrives.
+    /// </summary>
+    [Fact(Timeout = 20000)]
+    public async Task Streaming_ZeroTimeout_DisablesWindow_StalledGapTolerated()
+    {
+        // Arrange: a 3s gap with a DISABLED window — everything must be delivered.
+        var fake = new DelayedChatClient(TimeSpan.Zero, TimeSpan.FromSeconds(3), chunks: 2);
+        var adapter = CreateAdapter(fake, timeoutSec: 0);
+        var session = new ConversationSession { Id = "s" };
+
+        // Act
+        var deltas = await Collect(adapter.GetCompletionsAsync(
+            [new WireMessage { Role = ChatMessageRole.User, Content = "hi" }], [], session, new CompletionsResult(),
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Equal(2, deltas.Count);
+    }
+
+    /// <summary>
+    /// A burned window is TRANSIENT: the caller's retry path must be able to re-issue the
+    /// turn. The retired loop had no window at all, so this is the guarantee that replaced
+    /// "wait forever".
+    /// </summary>
+    [Fact(Timeout = 20000)]
+    public async Task Streaming_Timeout_IsTransientAndNamesTheConfiguredWindow()
+    {
+        // Arrange: 3s stall, 1s window.
+        var fake = new DelayedChatClient(TimeSpan.Zero, TimeSpan.FromSeconds(3), chunks: 3);
+        var adapter = CreateAdapter(fake, timeoutSec: 1);
+        var session = new ConversationSession { Id = "s" };
+
+        // Act
+        var exception = await Assert.ThrowsAsync<LlmApiException>(() => Collect(adapter.GetCompletionsAsync(
+            [new WireMessage { Role = ChatMessageRole.User, Content = "hi" }], [], session, new CompletionsResult(),
+            TestContext.Current.CancellationToken)));
+
+        // Assert: the message names the window (the retry banner shows it verbatim) and the
+        // type is the transient one the retry policy classifies as retryable.
+        Assert.Contains("timed out after 1s", exception.Message);
     }
 }

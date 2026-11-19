@@ -43,7 +43,7 @@ public class SubAgentMessage
 
     /// <summary>
     /// The <see cref="ConversationSession"/> that mirrors this sub-agent's messages
-    /// for LLM API calls (via <see cref="ConversationSession.GetFormattedMessages"/>).
+    /// for LLM API calls (via <see cref="ConversationSession.BuildWire"/>).
     /// When attached, all message mutations (Add/Remove/Set) automatically propagate
     /// to the session, eliminating the need for callers to manually synchronize both lists.
     /// </summary>
@@ -111,8 +111,10 @@ public class SubAgentMessage
     /// <summary>
     /// Adds a user interject message to the RUNNING sub-agent conversation ("write to the
     /// branch while it works"). The message lands in the UI history and the attached session
-    /// immediately; the branch's <c>AfAgentLoop</c> picks it up at the next turn boundary
-    /// (after the current tool turn completes, before the next LLM call).
+    /// immediately; the branch turn loop (<c>AfSubAgentOrchestrator.RunBranchAsync</c>) rebuilds
+    /// its request from the session before every turn, so the next LLM call of the branch sees
+    /// it — the turn after the current one runs even when the current turn was a plain text
+    /// answer that would otherwise have ended the branch.
     /// Rejected when the branch is not running or is compressing (compression rewrites the
     /// session history from a snapshot and would silently drop the interject).
     /// </summary>

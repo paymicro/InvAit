@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace UIBlazor.Tests.Services;
 
 /// <summary>
@@ -221,88 +223,36 @@ public partial class ChatServiceTests
         Assert.Equal(0, message.Timings.ReasoningTokens);
     }
 
+    /// <summary>
+    /// A cancelled turn must still CLOSE its message. The old code returned from inside the
+    /// delta loop, so the final <c>IsStreaming = false</c> never ran: the message stayed
+    /// streaming forever - rendered as a frozen bubble AND filtered out of the wire history
+    /// by the <c>IsStreaming</c> filter (the next turn silently lost it).
+    /// </summary>
     [Fact]
-    public async Task ProcessStreamAsync_OnNewTurn_WithPayload_CreatesNextMessage()
+    public async Task ProcessStreamAsync_CancelledMidStream_ClosesMessage()
     {
-        // Arrange - two assistant turns: the boundary marker is followed by turn-2 content
-        var first = VisualChatMessage.CreateStreaming();
-        var second = VisualChatMessage.CreateStreaming();
-        var created = 0;
-
-        var deltas = CreateAsyncEnumerable(
-            new ChatDelta { Content = "A" },
-            new ChatDelta { IsStartOfTurn = true },
-            new ChatDelta { Content = "B" }
-        );
+        // Arrange
+        var message = VisualChatMessage.CreateStreaming();
+        using var cts = new CancellationTokenSource();
+        var deltas = CancelAfterFirstDelta(cts, TestContext.Current.CancellationToken);
 
         // Act
-        await CreateChatService().ProcessStreamAsync(
-            first, deltas, null, null, null, new CompletionsResult(),
-            TestContext.Current.CancellationToken,
-            onNewTurn: () => { created++; return second; });
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => CreateChatService().ProcessStreamAsync(
+            message, deltas, null, null, null, new CompletionsResult(), cts.Token));
 
         // Assert
-        Assert.Equal(1, created);
-        Assert.Equal("A", first.Content);
-        Assert.False(first.IsStreaming);
-        Assert.Equal("B", second.Content);
-        Assert.False(second.IsEmptyTurn);
+        Assert.Equal("A", message.Content);
+        Assert.False(message.IsStreaming);
+        Assert.NotNull(message.Timings);
     }
 
-    [Fact]
-    public async Task ProcessStreamAsync_OnNewTurn_WithoutPayload_CreatesNoEmptyMessage()
+    /// <summary>Yields one delta, cancels the token, then observes the cancellation.</summary>
+    private static async IAsyncEnumerable<ChatDelta> CancelAfterFirstDelta(
+        CancellationTokenSource cts, [EnumeratorCancellation] CancellationToken ct = default)
     {
-        // Arrange - the turn boundary is the last delta (blank/cancelled turn)
-        var first = VisualChatMessage.CreateStreaming();
-        var pending = VisualChatMessage.CreateStreaming();
-        var created = 0;
-
-        var deltas = CreateAsyncEnumerable(
-            new ChatDelta { Content = "A" },
-            new ChatDelta { IsStartOfTurn = true }
-        );
-
-        // Act
-        await CreateChatService().ProcessStreamAsync(
-            first, deltas, null, null, null, new CompletionsResult(),
-            TestContext.Current.CancellationToken,
-            onNewTurn: () => { created++; return pending; });
-
-        // Assert - onNewTurn is called eagerly on the boundary; the turn produced no
-        // payload, so the eagerly created message is marked as an empty turn and closed.
-        Assert.Equal(1, created);
-        Assert.Equal("A", first.Content);
-        Assert.False(first.IsStreaming);
-        Assert.True(pending.IsEmptyTurn);
-        Assert.False(pending.IsStreaming);
-    }
-
-    [Fact]
-    public async Task ProcessStreamAsync_OnNewTurn_CalledExactlyOncePerBoundary()
-    {
-        // Arrange - one boundary followed by several payload deltas: the turn message
-        // is created exactly once (eagerly) and every payload lands in it.
-        var first = VisualChatMessage.CreateStreaming();
-        var second = VisualChatMessage.CreateStreaming();
-        var created = 0;
-
-        var deltas = CreateAsyncEnumerable(
-            new ChatDelta { Content = "A" },
-            new ChatDelta { IsStartOfTurn = true },
-            new ChatDelta { Content = "B" },
-            new ChatDelta { Content = "C" }
-        );
-
-        // Act
-        await CreateChatService().ProcessStreamAsync(
-            first, deltas, null, null, null, new CompletionsResult(),
-            TestContext.Current.CancellationToken,
-            onNewTurn: () => { created++; return second; });
-
-        // Assert
-        Assert.Equal(1, created);
-        Assert.Equal("BC", second.Content);
-        Assert.False(second.IsEmptyTurn);
-        Assert.False(second.IsStreaming);
+        yield return new ChatDelta { Content = "A" };
+        await cts.CancelAsync();
+        await Task.Delay(Timeout.Infinite, ct);
     }
 }

@@ -27,8 +27,9 @@ internal sealed class AfResponsesClient(ConnectionProfile profile, HttpClient ht
     {
         var payload = BuildPayload(messages, options, stream: true);
 
-        using var timeoutCts = httpTimeoutSec is { } timeoutSeconds
-            ? new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds()))
+        // Non-positive / absent window means "no timeout" (single owner is the gateway above).
+        using var timeoutCts = httpTimeoutSec?.Invoke() is > 0 and var seconds
+            ? new CancellationTokenSource(TimeSpan.FromSeconds(seconds))
             : new CancellationTokenSource();
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
@@ -40,7 +41,7 @@ internal sealed class AfResponsesClient(ConnectionProfile profile, HttpClient ht
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync(linkedCts.Token).ConfigureAwait(false);
-            throw new LlmApiException($"HttpCode: {(int)response.StatusCode} | server failed: {body}");
+            throw LlmApiException.ForHttpStatus((int)response.StatusCode, $"HttpCode: {(int)response.StatusCode} | server failed: {body}");
         }
 
         using var stream = await response.Content.ReadAsStreamAsync(linkedCts.Token).ConfigureAwait(false);
@@ -178,8 +179,9 @@ internal sealed class AfResponsesClient(ConnectionProfile profile, HttpClient ht
     {
         var payload = BuildPayload(messages, options, stream: false);
 
-        using var timeoutCts = httpTimeoutSec is { } timeoutSeconds
-            ? new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds()))
+        // Non-positive / absent window means "no timeout" (single owner is the gateway above).
+        using var timeoutCts = httpTimeoutSec?.Invoke() is > 0 and var seconds
+            ? new CancellationTokenSource(TimeSpan.FromSeconds(seconds))
             : new CancellationTokenSource();
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
@@ -191,12 +193,13 @@ internal sealed class AfResponsesClient(ConnectionProfile profile, HttpClient ht
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync(linkedCts.Token).ConfigureAwait(false);
-            throw new LlmApiException($"HttpCode: {(int)response.StatusCode} | server failed: {body}");
+            throw LlmApiException.ForHttpStatus((int)response.StatusCode, $"HttpCode: {(int)response.StatusCode} | server failed: {body}");
         }
 
         var json = await response.Content.ReadAsStringAsync(linkedCts.Token).ConfigureAwait(false);
         var completion = JsonUtils.Deserialize<ResponsesApiResponse>(json)
-            ?? throw new LlmApiException($"HttpCode: {(int)response.StatusCode} | server failed: {json}");
+            // 2xx with an unparsable body: the status makes it retryable (a broken relay).
+            ?? throw LlmApiException.ForHttpStatus((int)response.StatusCode, $"HttpCode: {(int)response.StatusCode} | server failed: {json}");
 
         if (completion.Error is not null)
         {

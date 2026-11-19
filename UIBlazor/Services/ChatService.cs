@@ -22,15 +22,14 @@ public class ChatService(
     /// ( "~4000 chars ≈ 1K tokens"); the full result no longer fits the compressed context.</summary>
     private const int CompressedToolResultThreshold = 4000;
 
-    // LLM gateways (Microsoft Agent Framework paths):
-    // - AfAgentLoop: the tool-invocation loop with tool execution routed through ToolCallHandler
-    //   (main agent chat and sub-agent branches via AfSubAgentOrchestrator);
-    // - AfCompletionsAdapter: single-shot IChatClient gateway without automatic tool execution
-    //   (context compression).
+    // LLM gateway: a SINGLE-SHOT IChatClient call with no automatic tool execution and no
+    // hidden turn loop. The turn cycle lives in the caller (AiChat / AfSubAgentOrchestrator),
+    // which calls this gateway once per turn and executes the tools in between.
     private readonly AfCompletionsAdapter _afAdapter =
         new(() => profileManager.ActiveProfile, httpClient, () => commonSettingsProvider.Current.HttpTimeoutSec);
 
     private ICompletionsGateway? _compressionGatewayOverride;
+    private ICompletionsGateway? _chatGatewayOverride;
 
     /// <summary>
     /// Gateway used by context compression (single-shot, no tools). Defaults to
@@ -42,8 +41,16 @@ public class ChatService(
         set => _compressionGatewayOverride = value;
     }
 
-    private readonly AfAgentLoop _afLoop =
-        new(() => profileManager.ActiveProfile, httpClient, toolCallHandler);
+    /// <summary>
+    /// Gateway used by the per-turn chat seam (<see cref="GetTurnCompletionsAsync"/>). Defaults
+    /// to <see cref="_afAdapter"/>; tests substitute a scripted stream to observe the request
+    /// the seam builds without a transport.
+    /// </summary>
+    internal ICompletionsGateway ChatGateway
+    {
+        get => _chatGatewayOverride ?? _afAdapter;
+        set => _chatGatewayOverride = value;
+    }
 
     public ConnectionProfile Options => profileManager.ActiveProfile;
 
@@ -56,9 +63,9 @@ public class ChatService(
 
     /// <summary>
     /// Idempotent one-time wiring of the invariants that must never depend on app startup order:
-    /// autosave of the current session and the loop's mid-run mode refresh. Called from
-    /// <see cref="Initialize"/> and lazily from the <see cref="Session"/> getter, so a host that
-    /// skips Initialize cannot silently lose persistence or the switch_mode refresh.
+    /// the autosave of the current session. Called from <see cref="Initialize"/> and lazily from
+    /// the <see cref="Session"/> getter, so a host that skips Initialize cannot silently lose
+    /// persistence.
     /// </summary>
     private void EnsureWired()
     {
@@ -69,24 +76,6 @@ public class ChatService(
         Session.PropertyChanged -= SessionPropertyChanged;
         Session.PropertyChanged += SessionPropertyChanged;
         AttachAutosave(Session);
-
-        // Mid-run compression gate: checked before EVERY LLM call of the loop (parity with
-        // AfSubAgentOrchestrator). The start-of-run check in AiChat covers the first call only.
-        // Compression rewrites the session history (SetMessages), so the gate returns the new
-        // interject-scan baseline. Wired here: a field initializer cannot reference an
-        // instance method.
-        _afLoop.CompressionGate = CompressMainSessionIfOverThresholdAsync;
-
-        // Mid-run mode switch: switch_mode mutates Session.Mode while the loop is running.
-        // The loop rebuilds its system prompt and tool set from this provider before the next
-        // LLM call, so the switch takes effect immediately instead of after the run.
-        _afLoop.ModeContextProvider = BuildModeContextAsync;
-    }
-
-    private async Task<ModeContext> BuildModeContextAsync(AppMode mode, CancellationToken cancellationToken)
-    {
-        var systemPrompt = await systemPromptBuilder.PrepareSystemPromptAsync(mode, cancellationToken).ConfigureAwait(false);
-        return new ModeContext(systemPrompt, toolManager.GetEnabledTools(mode).ToList());
     }
 
     public ConversationSession Session
@@ -222,7 +211,9 @@ public class ChatService(
                ?? throw new JsonException("Models deserialization exception");
     }
 
-    public bool NeedCompression => Options.TokensToCompress > 0 && Session.TotalTokens > Options.TokensToCompress;
+    /// <inheritdoc />
+    public bool NeedsCompression(ConversationSession targetSession)
+        => Options.TokensToCompress > 0 && targetSession.TotalTokens > Options.TokensToCompress;
 
     /// <inheritdoc />
     public event Action<CompressionReport>? CompressionCompleted;
@@ -231,46 +222,15 @@ public class ChatService(
     public event Action<ConversationSession>? CompressionStarted;
 
     /// <summary>
-    /// Compression gate for the main agent loop (checked before every LLM call): when the
-    /// session crosses the token threshold mid-run, compress the main session and return the
-    /// updated consumed-message baseline for the loop's interject scan.
+    /// Pumps exactly ONE LLM turn into the given message: every delta is applied monotonically
+    /// (content/reasoning appended, tool calls mirrored) and the message is ALWAYS closed
+    /// (<c>IsStreaming = false</c> + final timings) - cancellation and failure included.
+    /// <para>
+    /// The stream is ONE turn: the turn cycle belongs to the caller (<c>AIChat</c> /
+    /// <c>AfSubAgentOrchestrator</c>), which calls the gateway once per turn and owns the
+    /// per-turn message.
+    /// </para>
     /// </summary>
-    internal async Task<int> CompressMainSessionIfOverThresholdAsync(ConversationSession targetSession, CancellationToken cancellationToken)
-    {
-        // The gate is checked before EVERY LLM call of the loop, so it must read the PINNED
-        // session and re-arm its threshold — otherwise the next boundary compresses again.
-        if (Options.TokensToCompress <= 0 || targetSession.TotalTokens <= Options.TokensToCompress)
-            return targetSession.GetMessageCount();
-
-        logger.LogInformation("Token threshold crossed mid-run ({Tokens} > {Threshold}); compressing session.",
-            targetSession.TotalTokens, Options.TokensToCompress);
-
-        var before = targetSession.GetMessagesSnapshot();
-
-        await foreach (var _ in CompressSessionAsync(targetSession, new CompletionsResult(), cancellationToken).ConfigureAwait(false)) { }
-
-        // Compression rewrites the history (CollapseMessages): the interject scan baseline must be
-        // re-based to the NEW layout. Messages the user appended while the summary was generated
-        // sit at the tail of the compacted history and are NOT consumed yet - the baseline must
-        // point at the first of them, otherwise the interject never reaches the model.
-        // Counting "new" messages is not enough: the summary itself is new too (it replaces the
-        // collapsed slice), so the baseline is anchored on the first new USER message.
-        var after = targetSession.GetMessagesSnapshot();
-        var firstNewUser = after.FindIndex(m =>
-            m.Role == ChatMessageRole.User && !before.Any(b => ReferenceEquals(b, m)));
-        return firstNewUser >= 0 ? firstNewUser : after.Count;
-    }
-
-    public Task ProcessStreamAsync(
-        VisualChatMessage message,
-        IAsyncEnumerable<ChatDelta> deltas,
-        Action<string>? onContentUpdate,
-        Action<List<ToolCall>>? onToolCallsUpdate,
-        Action? onStateChange,
-        CompletionsResult resultCapture,
-        CancellationToken cancellationToken)
-        => ProcessStreamAsync(message, deltas, onContentUpdate, onToolCallsUpdate, onStateChange, resultCapture, cancellationToken, onNewTurn: null);
-
     public async Task ProcessStreamAsync(
         VisualChatMessage message,
         IAsyncEnumerable<ChatDelta> deltas,
@@ -278,8 +238,7 @@ public class ChatService(
         Action<List<ToolCall>>? onToolCallsUpdate,
         Action? onStateChange,
         CompletionsResult resultCapture,
-        CancellationToken cancellationToken,
-        Func<VisualChatMessage>? onNewTurn)
+        CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
         var reasoning = new StringBuilder();
@@ -288,104 +247,74 @@ public class ChatService(
         double firstContentTokenMs = 0;
 
         message.Timings ??= new MessageTimings { Tokens = 0 };
-        // Agent-loop run: the next turn's message is created eagerly on the turn boundary
-        // so the pending bubble appears immediately; a turn that ends without payload is
-        // marked IsEmptyTurn and filtered out of the UI and the LLM history.
-        var pendingNewTurn = false;
-        VisualChatMessage? pendingMessage = null;
 
-        await foreach (var delta in deltas.WithCancellation(cancellationToken))
+        try
         {
-            var hasPayload = !string.IsNullOrEmpty(delta.Content)
-                             || !string.IsNullOrEmpty(delta.ReasoningContent)
-                             || delta.ToolCalls is { Count: > 0 };
-
-            if (cancellationToken.IsCancellationRequested)
-                return;
-
-            // Agent-loop run: a new assistant turn started - close the previous
-            // message (it stays as a completed part of the answer) and create the
-            // next turn's message eagerly (pending bubble shows immediately).
-            if (delta.IsStartOfTurn && onNewTurn is not null && message.IsStreaming)
+            await foreach (var delta in deltas.WithCancellation(cancellationToken))
             {
-                message.IsStreaming = false;
+                var hasPayload = !string.IsNullOrEmpty(delta.Content)
+                                 || !string.IsNullOrEmpty(delta.ReasoningContent)
+                                 || delta.ToolCalls is { Count: > 0 };
+
+                if (!hasPayload)
+                {
+                    // Empty update (usage-only chunk, legacy turn marker): nothing to render.
+                    onStateChange?.Invoke();
+                    continue;
+                }
+
+                if (firstTokenMs == 0)
+                    firstTokenMs = sw.ElapsedMilliseconds;
+
+                if (!string.IsNullOrEmpty(delta.ReasoningContent))
+                {
+                    reasoning.Append(delta.ReasoningContent);
+                    message.ReasoningContent = reasoning.ToString();
+                }
+
+                // Первый ВИДИМЫЙ payload (content или tool_calls — reasoning не в счёт) —
+                // начало сегмента "Reasoning" таймингов. Дублирующиеся проверки в обеих
+                // ветках payload слиты в одну.
+                var hasVisibleContent = !string.IsNullOrEmpty(delta.Content)
+                                        || (delta.ToolCalls is { Count: > 0 } && resultCapture.AccumulatedToolCalls is not null);
+                if (firstContentTokenMs == 0 && hasVisibleContent)
+                {
+                    firstContentTokenMs = sw.ElapsedMilliseconds;
+                    message.Timings.Reasoning = TimeSpan.FromMilliseconds(firstContentTokenMs - firstTokenMs);
+                }
+
+                if (!string.IsNullOrEmpty(delta.Content))
+                {
+                    response.Append(delta.Content);
+                    message.Content = response.ToString();
+                    onContentUpdate?.Invoke(delta.Content);
+                }
+
+                if (delta.ToolCalls is { Count: > 0 } && resultCapture.AccumulatedToolCalls is not null)
+                {
+                    onToolCallsUpdate?.Invoke(resultCapture.AccumulatedToolCalls);
+                }
+
+                if (firstContentTokenMs > 0)
+                {
+                    message.Timings.Content = TimeSpan.FromMilliseconds(sw.ElapsedMilliseconds - firstContentTokenMs);
+                }
+
+                // Динамический подсчет таймингов для UI
                 CalcTimings(message, sw, firstTokenMs, resultCapture);
-                pendingNewTurn = true;
-                pendingMessage = onNewTurn();
-                pendingMessage.Timings ??= new MessageTimings { Tokens = 0 };
-                reasoning.Clear();
-                response.Clear();
-                firstTokenMs = sw.ElapsedMilliseconds;
-                firstContentTokenMs = 0;
-            }
 
-            if (pendingNewTurn && hasPayload)
-            {
-                message = pendingMessage!;
-                pendingNewTurn = false;
-            }
-
-            if (!hasPayload)
-            {
-                // Marker-only delta (turn boundary) or an empty update: nothing to render yet.
                 onStateChange?.Invoke();
-                continue;
             }
-
-            if (firstTokenMs == 0)
-                firstTokenMs = sw.ElapsedMilliseconds;
-
-            if (!string.IsNullOrEmpty(delta.ReasoningContent))
-            {
-                reasoning.Append(delta.ReasoningContent);
-                message.ReasoningContent = reasoning.ToString();
-            }
-
-            // Первый ВИДИМЫЙ payload (content или tool_calls — reasoning не в счёт) —
-            // начало сегмента "Reasoning" таймингов. Дублирующиеся проверки в обеих
-            // ветках payload слиты в одну.
-            var hasVisibleContent = !string.IsNullOrEmpty(delta.Content)
-                                    || (delta.ToolCalls is { Count: > 0 } && resultCapture.AccumulatedToolCalls is not null);
-            if (firstContentTokenMs == 0 && hasVisibleContent)
-            {
-                firstContentTokenMs = sw.ElapsedMilliseconds;
-                message.Timings.Reasoning = TimeSpan.FromMilliseconds(firstContentTokenMs - firstTokenMs);
-            }
-
-            if (!string.IsNullOrEmpty(delta.Content))
-            {
-                response.Append(delta.Content);
-                message.Content = response.ToString();
-                onContentUpdate?.Invoke(delta.Content);
-            }
-
-            if (delta.ToolCalls is { Count: > 0 } && resultCapture.AccumulatedToolCalls is not null)
-            {
-                onToolCallsUpdate?.Invoke(resultCapture.AccumulatedToolCalls);
-            }
-
-            if (firstContentTokenMs > 0)
-            {
-                message.Timings.Content = TimeSpan.FromMilliseconds(sw.ElapsedMilliseconds - firstContentTokenMs);
-            }
-
-            // Динамический подсчет таймингов для UI
-            CalcTimings(message, sw, firstTokenMs, resultCapture);
-
-            onStateChange?.Invoke();
         }
-
-        // Финальный подсчет таймингов. Нужен т.к. токен с Usage не запускает цикл выше (он без дельты).
-        // IsStreaming сбрасывается ДО расчета: завершенный бейдж должен показать видимые токены.
-        if (pendingNewTurn && pendingMessage is not null)
+        finally
         {
-            // Turn ended without payload: the eagerly created message is marked as an
-            // empty turn so it is filtered out of the UI and the LLM history.
-            pendingMessage.IsEmptyTurn = true;
-            pendingMessage.IsStreaming = false;
+            // Финальный подсчет таймингов. Нужен т.к. токен с Usage не запускает цикл выше (он без дельты).
+            // Выполняется ВСЕГДА, включая отмену/исключение: незакрытое сообщение навсегда
+            // выпадает из wire-истории (фильтр IsStreaming) и висит замороженным пузырём.
+            // IsStreaming сбрасывается ДО расчета: завершенный бейдж должен показать видимые токены.
+            message.IsStreaming = false;
+            CalcTimings(message, sw, firstTokenMs, resultCapture);
         }
-        message.IsStreaming = false;
-        CalcTimings(message, sw, firstTokenMs, resultCapture);
     }
 
     private static void CalcTimings(VisualChatMessage message, Stopwatch sw, double firstTokenMs, CompletionsResult completionsResult)
@@ -469,7 +398,7 @@ public class ChatService(
         // Stub the oversized tool results of the KEPT messages: the collapsed part is gone, but
         // the verbatim head/tail still carries payloads that no longer fit the compressed context.
         var collapsed = new HashSet<VisualChatMessage>(collapse, ReferenceEqualityComparer.Instance);
-        StubLongToolResults(snapshot.Where(m => !m.IsEmptyTurn && !collapsed.Contains(m)));
+        StubLongToolResults(snapshot.Where(m => !collapsed.Contains(m)));
 
         // Collapse IN PLACE: only the planned middle is replaced by the summary. Every other
         // message keeps its identity — the live streaming message of the running turn included,
@@ -484,14 +413,17 @@ public class ChatService(
         // the kept history. Without this the mid-run gate (checked before every LLM call) sees
         // "still over the limit" and re-summarizes the already compressed history at every turn
         // boundary — an extra LLM call per turn plus a destructive history rewrite on live turns.
-        targetSession.TotalTokens = EstimateContextTokens(targetSession.GetMessagesSnapshot());
+        // The tool schemas ride along with every request, so they belong to the re-armed value.
+        targetSession.TotalTokens = EstimateContextTokens(
+            targetSession.GetMessagesSnapshot(),
+            toolManager.GetEnabledTools(targetSession.Mode));
     }
 
     /// <summary>
     /// Plans the in-place compression: which messages the LLM summary replaces.
     /// Layout: [head window][summary][tail window]. Only VISIBLE messages are considered —
-    /// empty turn-boundary bubbles carry no payload and must never occupy a window slot
-    /// (they used to fill the head/tail windows, so the visible history looked broken).
+    /// an assistant turn without payload can never occupy a window slot (legacy empty-turn
+    /// bubbles used to fill the head/tail windows, so the visible history looked broken).
     /// The tail keeps the newest messages verbatim and NEVER the live streaming message of the
     /// running turn is collapsed; the head keeps the oldest messages verbatim.
     /// <para>
@@ -505,7 +437,11 @@ public class ChatService(
     /// <returns>Messages to collapse; empty when there is nothing a summary could replace.</returns>
     internal static List<VisualChatMessage> PlanCompression(IReadOnlyList<VisualChatMessage> snapshot)
     {
-        var visible = snapshot.Where(m => !m.IsEmptyTurn).ToList();
+        // Technical notes are not context (BuildWire drops them), so they must not occupy window
+        // slots either: collapsing one into the summary would edit a line the model never saw.
+        var visible = snapshot
+            .Where(m => !m.IsTechnical && !ConversationSession.IsEmptyAssistant(m))
+            .ToList();
         var total = visible.Count;
 
         // Head + tail already cover the whole history: a summary would collapse nothing.
@@ -557,15 +493,26 @@ public class ChatService(
     }
 
     /// <summary>
-    /// Rough context size of a message list (~4 chars per token — the same heuristic the
-    /// streaming estimate uses). Only used to re-arm the compression threshold after a
-    /// successful compression, where no provider usage number is available.
+    /// Rough context size of a request (~4 chars per token — the same heuristic the streaming
+    /// estimate uses). Used to re-arm the compression threshold after a successful compression,
+    /// where no provider usage number is available.
+    /// <para>
+    /// Tool schemas are part of every request, so they are counted too: a strict-mode toolset
+    /// (JSON schema per tool, descriptions included) is several thousand tokens of constant
+    /// overhead. Leaving it out made the re-armed value systematically lower than the
+    /// provider-reported usage it replaces, so the next gate check diverged from reality.
+    /// </para>
     /// </summary>
-    private static int EstimateContextTokens(IEnumerable<VisualChatMessage> messages)
+    private static int EstimateContextTokens(
+        IEnumerable<VisualChatMessage> messages, IEnumerable<Tool>? tools = null)
     {
         var chars = 0;
         foreach (var message in messages)
         {
+            // Same rule as BuildWire: a message the request does not carry is not context.
+            if (message.IsTechnical)
+                continue;
+
             chars += message.Content?.Length ?? 0;
             if (message.ToolCalls is not { Count: > 0 })
                 continue;
@@ -573,6 +520,16 @@ public class ChatService(
             {
                 chars += toolCall.Function.Arguments?.Length ?? 0;
                 chars += toolCall.Result?.Content?.Length ?? 0;
+            }
+        }
+
+        if (tools is not null)
+        {
+            foreach (var tool in tools)
+            {
+                // Serialised the same way the request serialises it, so the estimate tracks the
+                // real payload instead of a hand-maintained guess at the schema size.
+                chars += JsonUtils.SerializeCompact(tool.NativeTool).Length;
             }
         }
 
@@ -674,54 +631,64 @@ public class ChatService(
     private static string TruncatePreview(string content)
         => content.Length > 40 ? content[..40] + "..." : content;
 
-    private async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(
-        IReadOnlyList<WireMessage> messages,
-        bool withTools,
+    /// <summary>
+    /// Streams exactly ONE LLM turn for the pinned session.
+    /// <para>
+    /// The request history is rebuilt from the session AT CALL TIME and validated by
+    /// <see cref="ConversationSession.BuildWire"/> (orphan tool calls stubbed, empty assistant turns
+    /// dropped, streaming messages excluded). This is the single invariant that makes every
+    /// between-turn mutation reach the model: compression (CollapseMessages), message edit,
+    /// message deletion, interject, mode switch — instead of only after the whole run ends.
+    /// </para>
+    /// <para>
+    /// Tool execution does NOT happen here: the returned deltas carry tool calls outward
+    /// (capture.AccumulatedToolCalls) and the caller runs the approval + execution path.
+    /// </para>
+    /// </summary>
+    /// <param name="targetSession">Pinned run session.</param>
+    /// <param name="live">Message the caller is about to write into; excluded from the request by reference.</param>
+    /// <param name="tools">Explicit tool list (sub-agent branch); null resolves the enabled tools of the session's CURRENT mode.</param>
+    /// <param name="resultCapture">Per-turn state accumulator (reset at entry).</param>
+    public async IAsyncEnumerable<ChatDelta> GetTurnCompletionsAsync(
         ConversationSession targetSession,
+        VisualChatMessage? live,
+        IReadOnlyList<Tool>? tools,
         CompletionsResult resultCapture,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         resultCapture.Reset();
 
-        // The session is PASSED IN, never re-read from the Session property: the whole run
-        // (history, mode, tools, compression gate) must stay pinned to the session it started in.
-        var tools = withTools ? toolManager.GetEnabledTools(targetSession.Mode) : null;
+        var systemPrompt = await systemPromptBuilder
+            .PrepareSystemPromptAsync(targetSession.Mode, cancellationToken)
+            .ConfigureAwait(false);
 
-        // Runs WITH tools go through the tool-invocation loop (AfAgentLoop); runs WITHOUT
-        // tools (context compression) go through the single-shot adapter. Sub-agent
-        // branches build their own AfAgentLoop (AfSubAgentOrchestrator.RunBranchAsync).
-        ICompletionsGateway gateway = withTools ? _afLoop : _afAdapter;
+        var (messages, _) = targetSession.BuildWire(systemPrompt, contentFilter, live);
 
-        await foreach (var delta in gateway.GetCompletionsAsync(messages, tools, targetSession, resultCapture, cancellationToken))
+        // tools == null: resolve from the session's CURRENT mode, so a switch_mode executed by a
+        // tool of the previous turn changes the tool set of THIS turn without extra plumbing.
+        var resolved = tools ?? toolManager.GetEnabledTools(targetSession.Mode).ToList();
+
+        // ONE LLM call per turn: the tool loop is deliberately OUT of this path. The caller owns
+        // the turn cycle and executes tools between calls; running the loop here would perform
+        // several hidden LLM rounds per "turn" and re-freeze the history we just rebuilt.
+        await foreach (var delta in ChatGateway.GetCompletionsAsync(messages, resolved, targetSession, resultCapture, cancellationToken))
         {
             yield return delta;
         }
     }
 
     /// <summary>
-    /// Asynchronously generates a sequence of chat completion deltas for the current conversation session.
+    /// Streams ONE LLM turn for the CURRENT session (no live message, tools resolved from the
+    /// session's mode). Thin convenience wrapper over
+    /// <see cref="GetTurnCompletionsAsync"/>: the turn cycle still belongs to the caller.
     /// </summary>
-    /// <remarks>
-    /// This method streams chat completion results as they become available, allowing for real-time
-    /// processing of partial responses. The returned sequence may include reasoning content or message content
-    /// depending on the model and response format. If streaming is not enabled, the method yields a single completion
-    /// result.
-    /// </remarks>
-    /// <param name="cancellationToken">A cancellation token that can be used to cancel the asynchronous operation.</param>
-    /// <returns>
-    /// An asynchronous stream of <see cref="ChatDelta"/> objects representing incremental updates to the chat
-    /// completion. The stream completes when the response is fully received.
-    /// </returns>
-    /// <exception cref="Exception">Thrown if the chat completion request fails or the server returns an unsuccessful response.</exception>
-    public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(CompletionsResult resultCapture, [EnumeratorCancellation] CancellationToken cancellationToken)
+    public async IAsyncEnumerable<ChatDelta> GetCompletionsAsync(
+        CompletionsResult resultCapture, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // Pin the session: system prompt, history and tools belong to the session the run
         // started in (a run never spans two sessions - NewSession is blocked while it runs).
-        var session = Session;
-        var messages = session.GetFormattedMessages(
-            await systemPromptBuilder.PrepareSystemPromptAsync(session.Mode, cancellationToken), contentFilter);
-
-        await foreach (var chatDelta in GetCompletionsAsync(messages, true, session, resultCapture, cancellationToken))
+        await foreach (var chatDelta in GetTurnCompletionsAsync(
+            Session, live: null, tools: null, resultCapture, cancellationToken))
         {
             yield return chatDelta;
         }
@@ -811,6 +778,17 @@ public class ChatService(
 
         if (HasPendingWork(Session))
             await SaveSessionAsync();
+
+        // Legacy cleanup at the load boundary: sessions written before the turn loop owned the
+        // turn messages carry "empty turn" bubbles (eager onNewTurn placeholders). They must not
+        // render and must not reach the model - new turns are created lazily, so nothing
+        // recreates them.
+        var purged = loaded.PurgeLegacyEmptyTurns();
+        if (purged > 0)
+        {
+            logger.LogInformation("Removed {Count} legacy empty-turn message(s) from session {Id}.", purged, id);
+            await SaveSessionCoreAsync(loaded);
+        }
 
         Session = loaded;
     }

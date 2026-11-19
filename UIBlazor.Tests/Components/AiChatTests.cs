@@ -17,6 +17,7 @@ public class AiChatTests : BunitContext
     private readonly Mock<IVsBridge> _mockVsBridge;
     private readonly Mock<IMessageParser> _mockMessageParser;
     private readonly Mock<IJSRuntime> _mockJsRuntime;
+    private readonly Mock<IToolCallHandler> _mockToolCallHandler;
     private readonly ConversationSession _session;
     private readonly ProfileOptions _profileOptions;
     private readonly ConnectionProfile _activeProfile;
@@ -31,6 +32,16 @@ public class AiChatTests : BunitContext
         _mockVsBridge = new Mock<IVsBridge>();
         _mockMessageParser = new Mock<IMessageParser>();
         _mockJsRuntime = new Mock<IJSRuntime>();
+        _mockToolCallHandler = new Mock<IToolCallHandler>();
+
+        // The turn loop owns the tool batch: approvals are prepared once and the batch runs
+        // through the handler exactly once. Verified by the tests below.
+        _mockToolCallHandler
+            .Setup(x => x.ProcessToolCallsAsync(It.IsAny<List<ToolCall>>(), It.IsAny<AppMode>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        _mockToolCallHandler
+            .Setup(x => x.HandleApprovalAsync(It.IsAny<string>(), It.IsAny<bool>()))
+            .Returns(Task.CompletedTask);
 
         // Setup session with empty messages list
         _session = new ConversationSession
@@ -80,7 +91,7 @@ public class AiChatTests : BunitContext
         Services.AddSingleton(new Mock<ILogger<AiChat>>().Object);
 
         Services.AddSingleton<IRetryHandler>(new RetryHandler());
-        Services.AddSingleton<IToolCallHandler>(new ToolCallHandler(_mockToolManager.Object));
+        Services.AddSingleton(_mockToolCallHandler.Object);
         Services.AddSingleton(new Mock<ISubAgentExecutor>().Object);
         Services.AddSingleton(new Mock<ISkillService>().Object);
 
@@ -98,11 +109,14 @@ public class AiChatTests : BunitContext
     private void RegisterComponentStubs()
     {
         // Stub for AiChatInput
-        ComponentFactories.AddStub<AiChatInput>(builder =>
+        // IsLoading is projected into the DOM so a test can assert that the parent painted the
+        // busy state BEFORE the first token (the Cancel button lives inside this child).
+        ComponentFactories.AddStub<AiChatInput>(parameters => builder =>
             {
                 builder.OpenElement(0, "div");
                 builder.AddAttribute(1, "class", "ai-chat-input-stub");
-                builder.AddContent(2, "AiChatInput Stub");
+                builder.AddAttribute(2, "data-loading", parameters.Get(p => p.IsLoading) ? "true" : "false");
+                builder.AddContent(3, "AiChatInput Stub");
                 builder.CloseElement();
             });
 
@@ -289,9 +303,11 @@ public class AiChatTests : BunitContext
     [Fact]
     public async Task ShouldSendMessage_WhenContentProvided()
     {
-        // Arrange
+        // Arrange - the turn produces no payload at all
         var content = "Test message";
-        _mockChatService.Setup(x => x.GetCompletionsAsync(It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
+        _mockChatService
+            .Setup(x => x.GetTurnCompletionsAsync(It.IsAny<ConversationSession>(), It.IsAny<VisualChatMessage?>(),
+                It.IsAny<IReadOnlyList<Tool>?>(), It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
             .Returns(AsyncEnumerable.Empty<ChatDelta>);
         _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
 
@@ -300,21 +316,24 @@ public class AiChatTests : BunitContext
         // Act - call SendMessageAsync directly
         await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync(content));
 
-        // Assert - SendMessageAsync adds user message and then GetAiResponseAsync adds assistant placeholder
-        Assert.Equal(2, _session.GetMessageCount());
+        // Assert - the user message is appended, and a turn WITHOUT payload leaves no
+        // empty assistant bubble behind (lazy turn message).
+        Assert.Equal(1, _session.GetMessageCount());
         var sessionMessages = _session.GetMessagesSnapshot();
         Assert.Equal(content, sessionMessages[0].Content);
         Assert.Equal(ChatMessageRole.User, sessionMessages[0].Role);
-        Assert.Equal(ChatMessageRole.Assistant, sessionMessages[1].Role);
     }
 
     [Fact]
     public async Task SendMessageAsync_WhileStreaming_InterjectAddedWithoutNewRun()
     {
-        // Arrange: the agent loop streams until released — IsLoading stays true.
+        // Arrange: the turn streams until released — IsLoading stays true.
         var release = new TaskCompletionSource();
-        _mockChatService.Setup(x => x.GetCompletionsAsync(It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
-            .Returns((CompletionsResult capture, CancellationToken ct) => StreamUntilReleased(release, capture, ct));
+        _mockChatService
+            .Setup(x => x.GetTurnCompletionsAsync(It.IsAny<ConversationSession>(), It.IsAny<VisualChatMessage?>(),
+                It.IsAny<IReadOnlyList<Tool>?>(), It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
+            .Returns((ConversationSession _, VisualChatMessage? _, IReadOnlyList<Tool>? _, CompletionsResult capture, CancellationToken ct)
+                => StreamUntilReleased(release, capture, ct));
         _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
         SetupProcessStreamConsume();
 
@@ -336,7 +355,7 @@ public class AiChatTests : BunitContext
         Assert.Equal(3, snapshot.Count);
         Assert.Equal(ChatMessageRole.User, snapshot[^1].Role);
         Assert.Equal("interject", snapshot[^1].Content);
-        Assert.Equal(1, _runCount); // GetCompletionsAsync called exactly once (no new run)
+        Assert.Equal(1, _runCount); // GetTurnCompletionsAsync called exactly once (no new run)
 
         // Finish the run.
         release.TrySetResult();
@@ -350,7 +369,7 @@ public class AiChatTests : BunitContext
         // the interject window is closed (_acceptInterjects is only open for the agent loop).
         // ProcessStreamAsync blocks until released, so IsLoading stays true.
         var release = new TaskCompletionSource();
-        _mockChatService.Setup(x => x.CompressSessionAsync(It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
+        _mockChatService.Setup(x => x.CompressSessionAsync(It.IsAny<ConversationSession>(), It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
             .Returns(AsyncEnumerable.Empty<ChatDelta>);
         _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
         _mockChatService.Setup(x => x.ProcessStreamAsync(
@@ -409,8 +428,10 @@ public class AiChatTests : BunitContext
         var runCount = 0;
         // Local stream factory: does NOT touch the static _runCount that
         // SendMessageAsync_WhileStreaming_InterjectAddedWithoutNewRun asserts on.
-        _mockChatService.Setup(x => x.GetCompletionsAsync(It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
-            .Returns((CompletionsResult capture, CancellationToken ct) =>
+        _mockChatService
+            .Setup(x => x.GetTurnCompletionsAsync(It.IsAny<ConversationSession>(), It.IsAny<VisualChatMessage?>(),
+                It.IsAny<IReadOnlyList<Tool>?>(), It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
+            .Returns((ConversationSession _, VisualChatMessage? _, IReadOnlyList<Tool>? _, CompletionsResult capture, CancellationToken ct) =>
             {
                 Interlocked.Increment(ref runCount);
                 capture.Model = "test-model";
@@ -547,8 +568,10 @@ public class AiChatTests : BunitContext
     }
 
     /// <summary>
-    /// Mocks the agent-loop ProcessStreamAsync overload to consume the deltas (append Content
-    /// to the message) — the run stays active while the stream blocks on the release gate.
+    /// Mocks <see cref="IChatService.ProcessStreamAsync"/> with the REAL semantics of one turn:
+    /// content/reasoning applied to the message, tool calls mirrored into the capture, the
+    /// message closed in a <c>finally</c> (also on cancellation/failure). One stream = one turn.
+    /// The run stays active while the stream blocks on a release gate.
     /// </summary>
     private void SetupProcessStreamConsume()
     {
@@ -559,18 +582,322 @@ public class AiChatTests : BunitContext
                 It.IsAny<Action<List<ToolCall>>>(),
                 It.IsAny<Action?>(),
                 It.IsAny<CompletionsResult>(),
-                It.IsAny<CancellationToken>(),
-                It.IsAny<Func<VisualChatMessage>?>()))
+                It.IsAny<CancellationToken>()))
             .Returns(async (VisualChatMessage msg, IAsyncEnumerable<ChatDelta> deltas,
                 Action<string>? onContent, Action<List<ToolCall>>? onTools, Action? onState,
-                CompletionsResult capture, CancellationToken ct, Func<VisualChatMessage>? onNewTurn) =>
+                CompletionsResult capture, CancellationToken ct) =>
             {
-                await foreach (var delta in deltas.WithCancellation(ct))
+                msg.IsStreaming = true;
+                try
                 {
-                    if (delta.Content is not null)
-                        msg.Content += delta.Content;
+                    await foreach (var delta in deltas.WithCancellation(ct))
+                    {
+                        if (delta.Content is not null)
+                        {
+                            msg.Content += delta.Content;
+                            onContent?.Invoke(delta.Content);
+                        }
+
+                        if (delta.ToolCalls is { Count: > 0 })
+                        {
+                            // AfDeltaMapper parity: the accumulated calls flow through the capture.
+                            capture.AccumulatedToolCalls = [.. delta.ToolCalls];
+                            msg.ToolCalls = capture.AccumulatedToolCalls;
+                            onTools?.Invoke(capture.AccumulatedToolCalls);
+                        }
+
+                        onState?.Invoke();
+                    }
+                }
+                finally
+                {
+                    msg.IsStreaming = false;
                 }
             });
+    }
+
+    /// <summary>Runs the private <c>CancelResponseAsync</c> (the Cancel button path) on a rendered cut.</summary>
+    private static async Task CancelRunAsync(AiChat instance)
+    {
+        var cancelMethod = typeof(AiChat).GetMethod("CancelResponseAsync",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        await (Task)cancelMethod!.Invoke(instance, null)!;
+    }
+
+    [Fact]
+    public async Task TurnLoop_CompressionBetweenTurns_NextTurnRequestIsCompacted()
+    {
+        // The headline defect (todo.md line 3): the UI showed a compressed session while the
+        // RUN kept sending the uncompressed history. The wire history is now rebuilt from the
+        // session at the start of every turn, so compaction between turns must reach the model.
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+
+        // The service owns the accounting: the threshold is "crossed" once turn 1 exists.
+        _mockChatService
+            .Setup(x => x.NeedsCompression(It.IsAny<ConversationSession>()))
+            .Returns((ConversationSession session) =>
+                session.GetMessagesSnapshot().Any(m => m.Content == "turn1"));
+
+        // Real compaction as the service performs it: the history is rewritten IN PLACE.
+        _mockChatService
+            .Setup(x => x.CompressSessionAsync(It.IsAny<ConversationSession>(),
+                It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
+            .Returns((ConversationSession session, CompletionsResult _, CancellationToken _) =>
+            {
+                var toCollapse = session.GetMessagesSnapshot()
+                    .Where(m => m.Role != ChatMessageRole.System)
+                    .ToList();
+                session.CollapseMessages(toCollapse, new VisualChatMessage
+                {
+                    Role = ChatMessageRole.Assistant,
+                    Content = "SUMMARY"
+                });
+                return AsyncEnumerable.Empty<ChatDelta>();
+            });
+
+        var toolCall = CreateToolCall("call_1", "read_file");
+        List<VisualChatMessage>? historyAtTurn2 = null;
+        SetupTurnScripts(
+            (_, ct) => StreamDeltasAsync([new ChatDelta { Content = "turn1", ToolCalls = [toolCall] }], ct),
+            (_, ct) =>
+            {
+                historyAtTurn2 = [.. _session.GetMessagesSnapshot()];
+                return StreamDeltasAsync([new ChatDelta { Content = "turn2" }], ct);
+            });
+        SetupProcessStreamConsume();
+
+        var cut = Render<AiChat>();
+
+        // Act
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        // The compaction ran exactly once, BETWEEN the turns.
+        _mockChatService.Verify(x => x.CompressSessionAsync(It.IsAny<ConversationSession>(),
+            It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()), Times.Once);
+
+        // Turn 2 was requested from the COMPACTED history: the pre-compression turn is gone,
+        // the summary travels instead.
+        Assert.NotNull(historyAtTurn2);
+        Assert.Contains(historyAtTurn2!, m => m.Content == "SUMMARY");
+        Assert.DoesNotContain(historyAtTurn2!, m => m.Content == "turn1");
+    }
+
+    [Fact]
+    public async Task TurnLoop_MessageEditedBetweenTurns_NextTurnSeesEditedContent()
+    {
+        // An edit applied between the turns (there was NO compensation for this before: the
+        // wire history was frozen for the whole run).
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+
+        var toolCall = CreateToolCall("call_1", "read_file");
+
+        _mockToolCallHandler
+            .Setup(x => x.ProcessToolCallsAsync(It.IsAny<List<ToolCall>>(), It.IsAny<AppMode>(), It.IsAny<CancellationToken>()))
+            .Returns((List<ToolCall> _, AppMode _, CancellationToken _) =>
+            {
+                // Between the turns: the user edits the original request.
+                var userMessage = _session.GetMessagesSnapshot().First(m => m.Role == ChatMessageRole.User);
+                _session.UpdateMessage(userMessage.Id, "edited request");
+                return Task.CompletedTask;
+            });
+
+        List<VisualChatMessage>? historyAtTurn2 = null;
+        SetupTurnScripts(
+            (_, ct) => StreamDeltasAsync([new ChatDelta { Content = "turn1", ToolCalls = [toolCall] }], ct),
+            (_, ct) =>
+            {
+                historyAtTurn2 = [.. _session.GetMessagesSnapshot()];
+                return StreamDeltasAsync([new ChatDelta { Content = "turn2" }], ct);
+            });
+        SetupProcessStreamConsume();
+
+        var cut = Render<AiChat>();
+
+        // Act
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        // The second turn saw the edited text, not the original one.
+        Assert.NotNull(historyAtTurn2);
+        Assert.Contains(historyAtTurn2!, m => m.Content == "edited request");
+        Assert.DoesNotContain(historyAtTurn2!, m => m.Content == "hi");
+    }
+
+    [Fact]
+    public async Task TurnLoop_MessageDeletedBetweenTurns_NextTurnOmitsIt()
+    {
+        // A deletion applied between the turns (also without compensation before the refactor).
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+
+        var toolCall = CreateToolCall("call_1", "read_file");
+
+        _mockToolCallHandler
+            .Setup(x => x.ProcessToolCallsAsync(It.IsAny<List<ToolCall>>(), It.IsAny<AppMode>(), It.IsAny<CancellationToken>()))
+            .Returns((List<ToolCall> _, AppMode _, CancellationToken _) =>
+            {
+                var userMessage = _session.GetMessagesSnapshot().First(m => m.Role == ChatMessageRole.User);
+                _session.RemoveMessage(userMessage.Id);
+                return Task.CompletedTask;
+            });
+
+        List<VisualChatMessage>? historyAtTurn2 = null;
+        SetupTurnScripts(
+            (_, ct) => StreamDeltasAsync([new ChatDelta { Content = "turn1", ToolCalls = [toolCall] }], ct),
+            (_, ct) =>
+            {
+                historyAtTurn2 = [.. _session.GetMessagesSnapshot()];
+                return StreamDeltasAsync([new ChatDelta { Content = "turn2" }], ct);
+            });
+        SetupProcessStreamConsume();
+
+        var cut = Render<AiChat>();
+
+        // Act
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        // The deleted message is gone from the second request.
+        Assert.NotNull(historyAtTurn2);
+        Assert.DoesNotContain(historyAtTurn2!, m => m.Content == "hi");
+    }
+
+    [Fact]
+    public async Task TurnLoop_ModeSwitchedBetweenTurns_SecondTurnUsesNewMode()
+    {
+        // switch_mode must affect the NEXT turn: the system prompt and the tool set are derived
+        // from the session mode when the request is built.
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+
+        var toolCall = CreateToolCall("call_1", BasicEnum.SwitchMode);
+
+        _mockToolCallHandler
+            .Setup(x => x.ProcessToolCallsAsync(It.IsAny<List<ToolCall>>(), It.IsAny<AppMode>(), It.IsAny<CancellationToken>()))
+            .Returns((List<ToolCall> _, AppMode _, CancellationToken _) =>
+            {
+                _session.Mode = AppMode.Plan;
+                return Task.CompletedTask;
+            });
+
+        AppMode? modeAtTurn2 = null;
+        SetupTurnScripts(
+            (_, ct) => StreamDeltasAsync([new ChatDelta { Content = "turn1", ToolCalls = [toolCall] }], ct),
+            (_, ct) =>
+            {
+                modeAtTurn2 = _session.Mode;
+                return StreamDeltasAsync([new ChatDelta { Content = "turn2" }], ct);
+            });
+        SetupProcessStreamConsume();
+
+        var cut = Render<AiChat>();
+
+        // Act
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        // The second turn ran under the NEW mode.
+        Assert.Equal(AppMode.Plan, modeAtTurn2);
+        _mockChatService.Verify(x => x.GetTurnCompletionsAsync(It.IsAny<ConversationSession>(),
+            It.IsAny<VisualChatMessage?>(), It.IsAny<IReadOnlyList<Tool>?>(), It.IsAny<CompletionsResult>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Fact]
+    public async Task TurnLoop_InterjectBetweenTurns_ReachesModel()
+    {
+        // A message written BETWEEN the turns (while the tool batch runs) must be answered:
+        // afterwards the run continues with another turn that carries it.
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+
+        var toolCall = CreateToolCall("call_1", "read_file");
+        _mockToolCallHandler
+            .Setup(x => x.ProcessToolCallsAsync(It.IsAny<List<ToolCall>>(), It.IsAny<AppMode>(), It.IsAny<CancellationToken>()))
+            .Returns((List<ToolCall> _, AppMode _, CancellationToken _) =>
+            {
+                _session.AddMessage(VisualChatMessage.CreateUser("also check the tests"));
+                return Task.CompletedTask;
+            });
+
+        List<VisualChatMessage>? historyAtTurn2 = null;
+        SetupTurnScripts(
+            (_, ct) => StreamDeltasAsync([new ChatDelta { Content = "turn1", ToolCalls = [toolCall] }], ct),
+            (_, ct) =>
+            {
+                historyAtTurn2 = [.. _session.GetMessagesSnapshot()];
+                return StreamDeltasAsync([new ChatDelta { Content = "turn2" }], ct);
+            });
+        SetupProcessStreamConsume();
+
+        var cut = Render<AiChat>();
+
+        // Act
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        // The interject reaches the model in the second turn.
+        Assert.NotNull(historyAtTurn2);
+        Assert.Contains(historyAtTurn2!, m => m.Content == "also check the tests");
+        _mockChatService.Verify(x => x.GetTurnCompletionsAsync(It.IsAny<ConversationSession>(),
+            It.IsAny<VisualChatMessage?>(), It.IsAny<IReadOnlyList<Tool>?>(), It.IsAny<CompletionsResult>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    private static ToolCall CreateToolCall(string id, string name, string arguments = "{}")
+        => new() { Id = id, Function = new ToolCallFunction { Name = name, Arguments = arguments } };
+
+    /// <summary>
+    /// Scripts one stream per turn (the LAST script repeats for any further turn). Linearly
+    /// enumerable sequences: a turn script may throw after yielding to simulate a transport
+    /// failure mid-turn.
+    /// </summary>
+    private void SetupTurnScripts(params Func<CompletionsResult, CancellationToken, IAsyncEnumerable<ChatDelta>>[] turns)
+    {
+        var call = 0;
+        _mockChatService
+            .Setup(x => x.GetTurnCompletionsAsync(It.IsAny<ConversationSession>(), It.IsAny<VisualChatMessage?>(),
+                It.IsAny<IReadOnlyList<Tool>?>(), It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
+            .Returns((ConversationSession _, VisualChatMessage? _, IReadOnlyList<Tool>? _, CompletionsResult capture, CancellationToken ct) =>
+            {
+                var index = Interlocked.Increment(ref call) - 1;
+                capture.Model = "test-model";
+                if (turns.Length == 0)
+                    return AsyncEnumerable.Empty<ChatDelta>(); // a turn without payload
+
+                return turns[Math.Min(index, turns.Length - 1)](capture, ct);
+            });
+    }
+
+    /// <summary>Shortcut for <see cref="SetupTurnScripts"/>: a scripted content stream per turn.</summary>
+    private void SetupTurnStreams(params ChatDelta[][] turns)
+        => SetupTurnScripts([.. turns.Select<ChatDelta[], Func<CompletionsResult, CancellationToken, IAsyncEnumerable<ChatDelta>>>(
+            deltas => (_, ct) => StreamDeltasAsync(deltas, ct))]);
+
+    private static async IAsyncEnumerable<ChatDelta> StreamDeltasAsync(ChatDelta[] deltas, [EnumeratorCancellation] CancellationToken ct)
+    {
+        foreach (var delta in deltas)
+        {
+            ct.ThrowIfCancellationRequested();
+            yield return delta;
+        }
+        await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// A stream that delivers its deltas and then fails the way the REAL transport fails.
+    /// <para>
+    /// The exception type matters: retry eligibility is decided by
+    /// <see cref="LlmApiException.IsRetryable"/>, and a generic exception means "a bug in our own
+    /// code" — which is deliberately NOT retried. Production never surfaces a raw
+    /// <c>InvalidOperationException</c> from the LLM path: <c>AfCancelRace</c> wraps every
+    /// transport failure into <see cref="LlmApiException"/>. A test that threw a plain
+    /// <c>Exception</c> here would assert a retry path the application cannot reach.
+    /// </para>
+    /// </summary>
+    private static async IAsyncEnumerable<ChatDelta> StreamThenThrowAsync(
+        ChatDelta[] deltas, string failureMessage, [EnumeratorCancellation] CancellationToken ct)
+    {
+        foreach (var delta in deltas)
+        {
+            yield return delta;
+        }
+
+        await Task.CompletedTask;
+        throw new LlmApiException(failureMessage);
     }
 
     private static async IAsyncEnumerable<ChatDelta> BlockedStream(
@@ -697,9 +1024,123 @@ public class AiChatTests : BunitContext
 
         // Retry budget exhausted: the final message DOES show the error.
         var messages = _session.GetMessagesSnapshot();
-        Assert.Equal(2, messages.Count); // user + assistant with error
+        // user + the technical note of the retried attempt + assistant with error.
+        Assert.Equal(3, messages.Count);
+
+        // The retried attempt did not vanish silently: a technical note records it in place of
+        // the removed turn. It is a trace, never context — BuildWire must not send it.
+        var note = Assert.Single(messages, m => m.IsTechnical);
+        Assert.Contains("Retry 1/2", note.Content);
+        Assert.Contains("boom", note.Content);
+        var wireContents = _session.BuildWire("sys").Messages.Select(m => m.Content ?? string.Empty).ToList();
+        Assert.DoesNotContain(note.Content, wireContents);
+
+        Assert.Contains("Error:", messages[2].Content);
+        Assert.Contains("boom", messages[2].Content);
+    }
+
+    /// <summary>
+    /// A permanent failure is reported on the FIRST attempt. Before the classification existed
+    /// the user waited through the whole budget (~19 minutes with the defaults) to be told about a
+    /// wrong API key — an answer that never changed and was knowable immediately.
+    /// </summary>
+    [Fact]
+    public async Task PermanentFailure_NotRetried_ReportedImmediately()
+    {
+        // Arrange: plenty of budget, but the failure cannot succeed on a repeat.
+        _commonOptions.MaxRetries = 10;
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+        SetupTurnScripts((_, ct) => ThrowLlmAsync(
+            LlmApiException.ForHttpStatus(401, "HttpCode: 401 | invalid api key"), ct));
+        // The pump is what enumerates the scripted stream — without it the failure never surfaces.
+        SetupProcessStreamConsume();
+
+        var cut = Render<AiChat>();
+
+        // Act
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        // Assert: exactly ONE turn was requested.
+        _mockChatService.Verify(x => x.GetTurnCompletionsAsync(It.IsAny<ConversationSession>(),
+            It.IsAny<VisualChatMessage?>(), It.IsAny<IReadOnlyList<Tool>?>(), It.IsAny<CompletionsResult>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        // No retry badge was armed, and no countdown was shown for an attempt that never happened.
+        var messages = _session.GetMessagesSnapshot();
+        Assert.Equal(2, messages.Count); // user + error, no technical note
+        Assert.DoesNotContain(messages, m => m.IsTechnical);
+
+        // The counter is omitted: "[1/10]" would claim nine attempts that will not happen.
         Assert.Contains("Error:", messages[1].Content);
-        Assert.Contains("boom", messages[1].Content);
+        Assert.Contains("401", messages[1].Content);
+        Assert.DoesNotContain("/10]", messages[1].Content);
+    }
+
+    /// <summary>
+    /// An exception that is not an <see cref="LlmApiException"/> means a bug in our own code (the
+    /// transport wraps everything it produces). Retrying it hides the bug behind minutes of
+    /// waiting; it must surface at once with its original type preserved in the log.
+    /// </summary>
+    [Fact]
+    public async Task NonLlmException_NotRetried_ReportedImmediately()
+    {
+        _commonOptions.MaxRetries = 10;
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+        SetupTurnScripts((_, ct) => ThrowLlmAsync(new InvalidOperationException("bug in our code"), ct));
+        SetupProcessStreamConsume();
+
+        var cut = Render<AiChat>();
+
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        _mockChatService.Verify(x => x.GetTurnCompletionsAsync(It.IsAny<ConversationSession>(),
+            It.IsAny<VisualChatMessage?>(), It.IsAny<IReadOnlyList<Tool>?>(), It.IsAny<CompletionsResult>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        var messages = _session.GetMessagesSnapshot();
+        Assert.Equal(2, messages.Count);
+        Assert.Contains("bug in our code", messages[1].Content);
+        Assert.DoesNotContain(messages, m => m.IsTechnical);
+    }
+
+    /// <summary>
+    /// A retryable failure still spends the budget exactly as before: the classification only
+    /// narrows what is retried, it never widens it.
+    /// </summary>
+    [Fact]
+    public async Task RetryableFailure_StillConsumesBudget()
+    {
+        _commonOptions.MaxRetries = 2;
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+
+        // No status: a timeout / transport failure — the cause is unknown, so the retry is kept.
+        SetupTurnScripts((_, ct) => ThrowLlmAsync(new LlmApiException("Request timed out after 100s"), ct));
+        SetupProcessStreamConsume();
+
+        var cut = Render<AiChat>();
+
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        // Two attempts (budget of 2) and one technical note left where the first turn was dropped.
+        _mockChatService.Verify(x => x.GetTurnCompletionsAsync(It.IsAny<ConversationSession>(),
+            It.IsAny<VisualChatMessage?>(), It.IsAny<IReadOnlyList<Tool>?>(), It.IsAny<CompletionsResult>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(2));
+
+        var messages = _session.GetMessagesSnapshot();
+        Assert.Single(messages, m => m.IsTechnical);
+        Assert.Contains("Error:", messages[^1].Content);
+        Assert.Contains("[2/2]", messages[^1].Content);
+    }
+
+    /// <summary>Fails the turn with the given exception, the way the real transport does.</summary>
+    private static async IAsyncEnumerable<ChatDelta> ThrowLlmAsync(
+        Exception exception, [EnumeratorCancellation] CancellationToken ct)
+    {
+        await Task.Yield();
+        throw exception;
+#pragma warning disable CS0162 // Unreachable: keeps this method an async iterator (throw on MoveNext).
+        yield break;
+#pragma warning restore CS0162
     }
 
     [Fact]
@@ -723,74 +1164,319 @@ public class AiChatTests : BunitContext
     }
 
     /// <summary>
-    /// Multi-turn run fails with retry budget left: COMPLETED turns (1..N-1) must be
-    /// KEPT — their tool calls have results, the wire history stays consistent, so the
-    /// retry CONTINUES from them instead of wiping the whole chain after the user
-    /// message (which lost all completed work). Only the incomplete tail
-    /// (<c>currentMessage</c>) is removed before the retry.
+    /// A retryable failure of the LAST turn must not wipe the COMPLETED turns: only the partial
+    /// turn is removed before the retry (it is never re-sent), so the retried turn sees a
+    /// consistent wire history and the finished work stays in the session.
     /// </summary>
     [Fact]
     public async Task RetryableError_MultiTurn_CompletedTurnsKept_RetryContinues()
     {
-        // Arrange - run 1: turn 1 streams content, onNewTurn starts turn 2, turn 2
-        // streams content, then the stream fails. MaxRetries = 2 → one retry; run 2
-        // CONTINUES from the kept turn 1 (a real model sees it in the wire history),
-        // streams new content, then fails again → final error.
+        // Arrange - MaxRetries = 2 → exactly ONE retry of the failing turn.
         _commonOptions.MaxRetries = 2;
-
         _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
 
-        _mockChatService
-            .Setup(x => x.ProcessStreamAsync(
-                It.IsAny<VisualChatMessage>(),
-                It.IsAny<IAsyncEnumerable<ChatDelta>>(),
-                It.IsAny<Action<string>?>(),
-                It.IsAny<Action<List<ToolCall>>?>(),
-                It.IsAny<Action?>(),
-                It.IsAny<CompletionsResult>(),
-                It.IsAny<CancellationToken>(),
-                It.IsAny<Func<VisualChatMessage>?>()))
-            .Returns(async (VisualChatMessage message,
-                IAsyncEnumerable<ChatDelta> deltas,
-                Action<string>? onContentUpdate,
-                Action<List<ToolCall>>? onToolCallsUpdate,
-                Action? onStateChange,
-                CompletionsResult resultCapture,
-                CancellationToken cancellationToken,
-                Func<VisualChatMessage>? onNewTurn) =>
-            {
-                await foreach (var delta in deltas.WithCancellation(cancellationToken))
-                {
-                    if (delta.IsStartOfTurn && onNewTurn is not null && message.IsStreaming)
-                    {
-                        message = onNewTurn();
-                    }
+        var toolCall = CreateToolCall("call_1", "read_file");
+        SetupTurnScripts(
+            // Turn 1: text + a tool call → the turn completes, the loop continues.
+            (_, ct) => StreamDeltasAsync([new ChatDelta { Content = "turn1 partial", ToolCalls = [toolCall] }], ct),
+            // Turn 2 and every retry of it: partial content, then the transport dies.
+            (_, ct) => StreamThenThrowAsync([new ChatDelta { Content = "turn2 partial" }], "boom", ct));
 
-                    if (delta.Content is not null)
-                    {
-                        message.Content += delta.Content;
-                        onContentUpdate?.Invoke(delta.Content);
-                    }
+        SetupProcessStreamConsume();
 
-                    onStateChange?.Invoke();
-                }
-            });
+        var cut = Render<AiChat>();
 
-        // Run 1: turn 1 + turn 2, then fail. Run 2: the model continues from the kept
-        // turn 1 — different content (not a repeat of "turn1 partial").
-        _mockChatService
-            .SetupSequence(x => x.GetCompletionsAsync(It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
-            .Returns(CreateFailingStreamAsync(
-                [
-                    new ChatDelta { Content = "turn1 partial" },
-                    new ChatDelta { Content = "turn2 partial", IsStartOfTurn = true }
-                ],
-                "boom", TestContext.Current.CancellationToken))
-            .Returns(CreateFailingStreamAsync(
-                [
-                    new ChatDelta { Content = "turn1 continued" }
-                ],
-                "boom", TestContext.Current.CancellationToken));
+        // Act
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        // Assert - turn 1 (completed) survives; the failed turn 2 was dropped before the retry
+        // and replaced by the retry's message carrying the final error.
+        _mockChatService.Verify(x => x.GetTurnCompletionsAsync(It.IsAny<ConversationSession>(),
+            It.IsAny<VisualChatMessage?>(), It.IsAny<IReadOnlyList<Tool>?>(), It.IsAny<CompletionsResult>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(3)); // turn 1 + turn 2 + one retry
+
+        var messages = _session.GetMessagesSnapshot();
+        // user + turn1 (kept) + technical note of the retried turn2 + turn2 (error).
+        Assert.Equal(4, messages.Count);
+        Assert.Single(messages, m => m.Content == "turn1 partial");
+        Assert.DoesNotContain("turn2 partial", messages.Select(m => m.Content));
+
+        // The retried turn left a note where it was dropped — after the completed turn 1.
+        var note = Assert.Single(messages, m => m.IsTechnical);
+        Assert.Contains("Retry 1/2", note.Content);
+        Assert.Equal(2, messages.IndexOf(note));
+
+        Assert.Contains("Error:", messages[3].Content);
+        Assert.Contains("boom", messages[3].Content);
+        Assert.All(messages, m => Assert.False(m.IsStreaming));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  Turn loop: ONE GetTurnCompletionsAsync + ONE ProcessStreamAsync per turn,
+    //  the turn message created lazily on the first payload.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task TurnLoop_TwoTurns_ExactlyTwoCompletionsCalls_AndTwoAssistantMessages()
+    {
+        // Arrange - turn 1 asks for a tool (that is what continues the run), turn 2 answers.
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+
+        var toolCall = CreateToolCall("call_1", "read_file");
+        SetupTurnStreams(
+            [new ChatDelta { Content = "turn1", ToolCalls = [toolCall] }],
+            [new ChatDelta { Content = "turn2" }]);
+        SetupProcessStreamConsume();
+
+        var cut = Render<AiChat>();
+
+        // Act
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        // Assert - exactly two LLM turns, no empty placeholder anywhere.
+        _mockChatService.Verify(x => x.GetTurnCompletionsAsync(It.IsAny<ConversationSession>(),
+            It.IsAny<VisualChatMessage?>(), It.IsAny<IReadOnlyList<Tool>?>(), It.IsAny<CompletionsResult>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(2));
+
+        var messages = _session.GetMessagesSnapshot();
+        Assert.Equal(3, messages.Count); // user + two assistant turns
+        Assert.Equal(2, messages.Count(m => m.Role == ChatMessageRole.Assistant));
+        Assert.DoesNotContain(messages, m => m.Role == ChatMessageRole.Assistant
+                                             && string.IsNullOrEmpty(m.Content)
+                                             && m.ToolCalls is not { Count: > 0 });
+        Assert.Equal("turn1", messages[1].Content);
+        Assert.Equal("turn2", messages[2].Content);
+        Assert.All(messages, m => Assert.False(m.IsStreaming));
+    }
+
+    [Fact]
+    public async Task TurnLoop_TurnWithoutPayload_LeavesNoMessage()
+    {
+        // Arrange - the turn produces nothing at all (no content, no reasoning, no tool calls)
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+        SetupTurnStreams([]);
+        SetupProcessStreamConsume();
+
+        var cut = Render<AiChat>();
+
+        // Act
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        // Assert - no payload, so the eagerly added bubble was removed again:
+        // an empty turn leaves NO message behind.
+        var messages = _session.GetMessagesSnapshot();
+        Assert.Single(messages);
+        Assert.Equal(ChatMessageRole.User, messages[0].Role);
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task TurnLoop_BeforeFirstToken_ShowsPlaceholderAndCancelButton()
+    {
+        // The dead window: the request was accepted but the provider has not sent a single byte.
+        // The UI looked frozen there - no bubble, no streaming indicator and no way to cancel -
+        // because the turn message was only added on the first payload AND IsLoading was set
+        // without a re-render.
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        SetupTurnScripts((_, ct) => BlockingStreamAsync(gate.Task, ct));
+        SetupProcessStreamConsume();
+
+        var cut = Render<AiChat>();
+
+        var run = cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        // Wait for the run to reach the transport: nothing has been delivered at this point.
+        await WaitUntilAsync(() => _session.GetMessagesSnapshot()
+            .Any(m => m.Role == ChatMessageRole.Assistant));
+
+        // The bubble exists, is empty and open for streaming.
+        var placeholder = Assert.Single(_session.GetMessagesSnapshot(),
+            m => m.Role == ChatMessageRole.Assistant);
+        Assert.True(placeholder.IsStreaming);
+        Assert.Equal(string.Empty, placeholder.Content);
+
+        // It is on screen (the view itself is stubbed in bUnit: the session entry is rendered)...
+        Assert.NotEmpty(cut.FindAll($"[data-message-id='{placeholder.Id}']"));
+
+        // ...and the parent already painted the busy state, so the Cancel button (which lives in
+        // the input child) is available while nothing has arrived.
+        Assert.Equal("true", cut.Find(".ai-chat-input-stub").GetAttribute("data-loading"));
+
+        gate.TrySetResult();
+        await run;
+
+        // A run that ends without payload still leaves no bubble behind.
+        Assert.DoesNotContain(_session.GetMessagesSnapshot(),
+            m => m.Role == ChatMessageRole.Assistant);
+    }
+
+    /// <summary>
+    /// An update stream that delivers nothing until <paramref name="gate"/> completes: models a
+    /// request whose first token is still pending.
+    /// </summary>
+    private static async IAsyncEnumerable<ChatDelta> BlockingStreamAsync(Task gate,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await gate.WaitAsync(cancellationToken);
+        yield break;
+    }
+
+    [Fact]
+    public async Task TurnLoop_CancelAfterFirstTurn_NoSecondCall_AllMessagesClosed()
+    {
+        // Arrange - turn 1 asks for a tool; the cancellation arrives while the batch runs.
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+
+        var toolCall = CreateToolCall("call_1", "read_file");
+        SetupTurnStreams(
+            [new ChatDelta { Content = "turn1", ToolCalls = [toolCall] }],
+            [new ChatDelta { Content = "turn2" }]);
+        SetupProcessStreamConsume();
+
+        AiChat? instance = null;
+        _mockToolCallHandler
+            .Setup(x => x.ProcessToolCallsAsync(It.IsAny<List<ToolCall>>(), It.IsAny<AppMode>(), It.IsAny<CancellationToken>()))
+            .Returns(async () => await CancelRunAsync(instance!));
+
+        var cut = Render<AiChat>();
+        instance = cut.Instance;
+
+        // Act
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        // Assert - ONE token source per run: the cancelled run never starts another turn and
+        // every message it created is closed (otherwise it would be filtered out of the wire).
+        _mockChatService.Verify(x => x.GetTurnCompletionsAsync(It.IsAny<ConversationSession>(),
+            It.IsAny<VisualChatMessage?>(), It.IsAny<IReadOnlyList<Tool>?>(), It.IsAny<CompletionsResult>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+        Assert.All(_session.GetMessagesSnapshot(), m => Assert.False(m.IsStreaming));
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task TurnLoop_CancelBeforeFirstToken_LeavesNoBubble()
+    {
+        // The turn message is added EAGERLY now (the bubble is the feedback that the run started).
+        // Cancelling inside that window must not leave it behind: nothing arrived, so there is
+        // nothing to show and nothing to send. Regression guard - the cancel handler writes
+        // "Cancelled by user..." into an empty message, so a payload check placed AFTER it always
+        // said "non-empty" and the bubble survived.
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        SetupTurnScripts((_, ct) => BlockingStreamAsync(gate.Task, ct));
+        SetupProcessStreamConsume();
+
+        var cut = Render<AiChat>();
+
+        var run = cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        // The run has reached the transport and nothing has been delivered yet.
+        await WaitUntilAsync(() => _session.GetMessagesSnapshot()
+            .Any(m => m.Role == ChatMessageRole.Assistant));
+
+        // Act - the Cancel button path.
+        await cut.InvokeAsync(async () => await CancelRunAsync(cut.Instance));
+        gate.TrySetResult();
+        await run;
+
+        // Assert - only the user message survives, and it is not "Cancelled by user...".
+        var messages = _session.GetMessagesSnapshot();
+        Assert.Single(messages);
+        Assert.Equal(ChatMessageRole.User, messages[0].Role);
+        Assert.DoesNotContain("Cancelled by user", string.Join('|', messages.Select(m => m.Content)));
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task TurnLoop_CancelAfterPartialContent_KeepsPartialAnswer()
+    {
+        // The counterpart: once the model produced text, cancelling keeps it. The user asked to
+        // stop, not to discard what was already written - and the handler must not overwrite it.
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        SetupTurnScripts((_, ct) => PartialThenBlockAsync(gate.Task, ct));
+        SetupProcessStreamConsume();
+
+        var cut = Render<AiChat>();
+
+        var run = cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        await WaitUntilAsync(() => _session.GetMessagesSnapshot()
+            .Any(m => m.Content == "partial"));
+
+        // Act
+        await cut.InvokeAsync(async () => await CancelRunAsync(cut.Instance));
+        gate.TrySetResult();
+        await run;
+
+        // Assert - the partial answer is intact and was not replaced by the cancel notice.
+        var turn = Assert.Single(_session.GetMessagesSnapshot(),
+            m => m.Role == ChatMessageRole.Assistant);
+        Assert.Equal("partial", turn.Content);
+        Assert.False(turn.IsStreaming);
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task TurnLoop_CancelBeforeTokenWithOpenToolCalls_KeepsCallsAndFillsResults()
+    {
+        // Tool calls are payload: the wire history needs assistant(tool_calls) followed by a tool
+        // message for EVERY call, so the bubble must stay and its results must be stubbed.
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+
+        var toolCall = CreateToolCall("call_1", "read_file");
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        SetupTurnScripts((_, ct) => ToolCallThenBlockAsync(toolCall, gate.Task, ct));
+        SetupProcessStreamConsume();
+
+        var cut = Render<AiChat>();
+
+        var run = cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        await WaitUntilAsync(() => _session.GetMessagesSnapshot()
+            .Any(m => m.ToolCalls is { Count: > 0 }));
+
+        // Act
+        await cut.InvokeAsync(async () => await CancelRunAsync(cut.Instance));
+        gate.TrySetResult();
+        await run;
+
+        // Assert
+        var turn = Assert.Single(_session.GetMessagesSnapshot(),
+            m => m.Role == ChatMessageRole.Assistant);
+        var call = Assert.Single(turn.ToolCalls!);
+        Assert.NotNull(call.Result);
+        Assert.False(call.Result!.Success);
+    }
+
+    /// <summary>Streams one content delta, then blocks until <paramref name="gate"/> completes.</summary>
+    private static async IAsyncEnumerable<ChatDelta> PartialThenBlockAsync(Task gate,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        yield return new ChatDelta { Content = "partial" };
+        await gate.WaitAsync(cancellationToken);
+    }
+
+    /// <summary>Streams one tool call, then blocks until <paramref name="gate"/> completes.</summary>
+    private static async IAsyncEnumerable<ChatDelta> ToolCallThenBlockAsync(ToolCall toolCall, Task gate,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        yield return new ChatDelta { ToolCalls = [toolCall] };
+        await gate.WaitAsync(cancellationToken);
+    }
+
+    [Fact]
+    public async Task TurnLoop_ToolBatch_PreparesApprovalsAndExecutesExactlyOnce()
+    {
+        // Arrange - PrepareToolsForApprovals cancels every pending gate first, so a second call
+        // per batch would drop an approval the user already made.
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+
+        var toolCall = CreateToolCall("call_1", "read_file");
+        SetupTurnStreams(
+            [new ChatDelta { Content = "turn1", ToolCalls = [toolCall] }],
+            [new ChatDelta { Content = "turn2" }]);
+        SetupProcessStreamConsume();
 
         var cut = Render<AiChat>();
 
@@ -798,18 +1484,52 @@ public class AiChatTests : BunitContext
         await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
 
         // Assert
-        var messages = _session.GetMessagesSnapshot();
-
-        // Run 1's completed turn 1 is KEPT; its incomplete turn 2 is removed before
-        // the retry. Run 2 continues (new content), fails with exhausted budget →
-        // final error. Without the fix (aggressive wipe) the session would NOT
-        // contain run 1's "turn1 partial" — the lost work is the regression.
-        Assert.Equal(3, messages.Count); // user + run1 turn1 (kept) + run2 turn (overwritten with error)
-        Assert.Single(messages, m => m.Content == "turn1 partial");
-        Assert.DoesNotContain("turn2 partial", messages.Select(m => m.Content));
-        Assert.Contains("Error:", messages[2].Content);
-        Assert.Contains("boom", messages[2].Content);
+        _mockToolCallHandler.Verify(x => x.PrepareToolsForApprovals(It.IsAny<List<ToolCall>>()), Times.Once);
+        _mockToolCallHandler.Verify(x => x.ProcessToolCallsAsync(It.IsAny<List<ToolCall>>(),
+            It.IsAny<AppMode>(), It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task TurnLoop_CancelledMidBatch_EveryToolCallHasResult()
+    {
+        // Arrange - two calls in the batch; the run is cancelled after the first one finished.
+        // An assistant(tool_calls) turn without matching tool messages is a hard API 400 on the
+        // next turn, so the remainder must be stubbed.
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+
+        var first = CreateToolCall("call_1", "read_file");
+        var second = CreateToolCall("call_2", "read_file");
+        SetupTurnStreams(
+            [new ChatDelta { Content = "turn1", ToolCalls = [first, second] }],
+            [new ChatDelta { Content = "turn2" }]);
+        SetupProcessStreamConsume();
+
+        AiChat? instance = null;
+        _mockToolCallHandler
+            .Setup(x => x.ProcessToolCallsAsync(It.IsAny<List<ToolCall>>(), It.IsAny<AppMode>(), It.IsAny<CancellationToken>()))
+            .Returns(async (List<ToolCall> calls, AppMode _, CancellationToken ct) =>
+            {
+                calls[0].Result = new ToolResult { Name = calls[0].Function.Name, Content = "done", Success = true };
+                await CancelRunAsync(instance!);
+                throw new OperationCanceledException(ct);
+            });
+
+        var cut = Render<AiChat>();
+        instance = cut.Instance;
+
+        // Act
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        // Assert
+        var turn = _session.GetMessagesSnapshot()[1];
+        Assert.NotNull(turn.ToolCalls);
+        Assert.Equal(2, turn.ToolCalls.Count);
+        Assert.All(turn.ToolCalls, call => Assert.NotNull(call.Result));
+        Assert.True(turn.ToolCalls[0].Result!.Success);
+        Assert.False(turn.ToolCalls[1].Result!.Success);
+        Assert.All(_session.GetMessagesSnapshot(), m => Assert.False(m.IsStreaming));
+    }
+
 
     // ═══════════════════════════════════════════════════════════════════════
     //  Persistence invariant: the terminal state of a run always reaches storage,
@@ -851,8 +1571,10 @@ public class AiChatTests : BunitContext
         // would scatter turns of one run across two sessions.
         var release = new TaskCompletionSource();
         _mockChatService
-            .Setup(x => x.GetCompletionsAsync(It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
-            .Returns((CompletionsResult capture, CancellationToken ct) => StreamUntilReleasedLocal(release, capture, ct));
+            .Setup(x => x.GetTurnCompletionsAsync(It.IsAny<ConversationSession>(), It.IsAny<VisualChatMessage?>(),
+                It.IsAny<IReadOnlyList<Tool>?>(), It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
+            .Returns((ConversationSession _, VisualChatMessage? _, IReadOnlyList<Tool>? _, CompletionsResult capture, CancellationToken ct)
+                => StreamUntilReleasedLocal(release, capture, ct));
         _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
         _mockChatService.Setup(x => x.NewSessionAsync()).Returns(Task.CompletedTask);
         SetupProcessStreamConsume();
@@ -889,26 +1611,20 @@ public class AiChatTests : BunitContext
                 It.IsAny<Action<List<ToolCall>>>(),
                 It.IsAny<Action?>(),
                 It.IsAny<CompletionsResult>(),
-                It.IsAny<CancellationToken>(),
-                It.IsAny<Func<VisualChatMessage>?>()))
+                It.IsAny<CancellationToken>()))
             .Returns(async (VisualChatMessage message,
                 IAsyncEnumerable<ChatDelta> deltas,
                 Action<string>? onContentUpdate,
                 Action<List<ToolCall>>? onToolCallsUpdate,
                 Action? onStateChange,
                 CompletionsResult resultCapture,
-                CancellationToken cancellationToken,
-                Func<VisualChatMessage>? onNewTurn) =>
+                CancellationToken cancellationToken) =>
             {
+                message.IsStreaming = true;
                 try
                 {
                     await foreach (var delta in deltas.WithCancellation(cancellationToken))
                     {
-                        if (delta.IsStartOfTurn && onNewTurn is not null && message.IsStreaming)
-                        {
-                            message = onNewTurn();
-                        }
-
                         if (delta.Content is not null)
                         {
                             message.Content += delta.Content;
@@ -920,19 +1636,23 @@ public class AiChatTests : BunitContext
                 }
                 finally
                 {
+                    // Real ProcessStreamAsync parity: the message is ALWAYS closed, also when
+                    // the stream throws.
+                    message.IsStreaming = false;
                     // AFTER the pump returns: HandleErrorAsync (called by the component's
                     // catch) may have overwritten the content — the snapshot includes it.
                     postStreamContentSnapshots?.Add(message.Content);
                 }
             });
 
-        _mockChatService
-            .Setup(x => x.GetCompletionsAsync(It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()))
-            .Returns((CompletionsResult _, CancellationToken _) => CreateFailingStreamAsync(
-                [new ChatDelta { Content = "Partial answer before failure" }],
-                failureMessage, TestContext.Current.CancellationToken));
+        SetupTurnScripts((_, ct) => CreateFailingStreamAsync(
+            [new ChatDelta { Content = "Partial answer before failure" }], failureMessage, ct));
     }
 
+    /// <summary>
+    /// Fails the turn with the exception the real transport produces (see
+    /// <see cref="StreamThenThrowAsync"/> for why the type is part of the contract).
+    /// </summary>
     private static async IAsyncEnumerable<ChatDelta> CreateFailingStreamAsync(
         ChatDelta[] deltas, string failureMessage,
         [EnumeratorCancellation] CancellationToken ct)
@@ -942,7 +1662,7 @@ public class AiChatTests : BunitContext
             yield return delta;
         }
 
-        throw new Exception(failureMessage);
+        throw new LlmApiException(failureMessage);
     }
 }
 

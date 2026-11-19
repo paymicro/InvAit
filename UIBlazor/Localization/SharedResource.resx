@@ -318,8 +318,8 @@
   <data name="ToolGetSolutionStructure" xml:space="preserve">
     <value>Solution structure</value>
   </data>
-  <data name="ToolExec" xml:space="preserve">
-    <value>Exec</value>
+  <data name="ToolBash" xml:space="preserve">
+    <value>Bash</value>
   </data>
   <data name="ToolGitStatus" xml:space="preserve">
     <value>Git status</value>

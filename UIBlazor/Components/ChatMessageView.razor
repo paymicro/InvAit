@@ -16,6 +16,15 @@
             }
         </RadzenStack>
             <div class="rz-chat-message-text" style="display: grid; width: 100%; position: relative;">
+                @if (Message.IsTechnical)
+                {
+                    <div class="tech-note">
+                        <i class="fa-solid fa-circle-info" style="font-size: 0.9rem;" aria-hidden="true"></i>
+                        <span>@Message.Content</span>
+                    </div>
+                }
+                else
+                {
                 <div class="message-content-wrapper @(Message.IsExpanded ? "expanded" : "collapsed")" 
                      style="grid-area: 1/1; opacity: @(Message.IsEditing ? 0 : 1); visibility: @(Message.IsEditing ? "hidden" : "visible"); pointer-events: @(Message.IsEditing ? "none" : "all");">
 
@@ -55,6 +64,8 @@
                     </div>
                 }
                 
+                }
+
                 @if (Message.IsStreaming)
                 {
                     <RadzenIcon Icon="more_horiz" class="rz-chat-message-streaming-icon" />
@@ -79,14 +90,17 @@
                     var showEditAndDel = !IsLast || lastAssistantDone || Message.Role is not ChatMessageRole.Assistant;
                     if (showEditAndDel)
                     {
-                        <Tooltip Text="@SharedResource.MessageEdit">
-                            <RadzenButton
-                                Icon="edit"
-                                Variant="Variant.Text"
-                                ButtonStyle="ButtonStyle.Base"
-                                Size="ButtonSize.ExtraSmall"
-                                Click="@(() => OnEdit.InvokeAsync(Message))" />
-                        </Tooltip>
+                        @if (!Message.IsTechnical)
+                        {
+                            <Tooltip Text="@SharedResource.MessageEdit">
+                                <RadzenButton
+                                    Icon="edit"
+                                    Variant="Variant.Text"
+                                    ButtonStyle="ButtonStyle.Base"
+                                    Size="ButtonSize.ExtraSmall"
+                                    Click="@(() => OnEdit.InvokeAsync(Message))" />
+                            </Tooltip>
+                        }
                         <Tooltip Text="@SharedResource.MessageDelete">
                             <RadzenButton
                                 Icon="delete"
@@ -96,7 +110,7 @@
                                 Click="@(() => OnDelete.InvokeAsync(Message))" />
                         </Tooltip>
                     }
-                    @if (lastAssistantDone)
+                    @if (lastAssistantDone && !Message.IsTechnical)
                     {
                         <Tooltip Text="@SharedResource.MessageRegenerate">
                             <RadzenButton

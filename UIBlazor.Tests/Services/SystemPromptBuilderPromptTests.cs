@@ -483,4 +483,147 @@ public partial class SystemPromptBuilderTests
         Assert.Contains("Your current mode: Chat", result);
         Assert.DoesNotContain("Sub-Agent Delegation", result);
     }
+
+    // ─── Prompt cache ───────────────────────────────────────────────────────────
+    // The turn loop rebuilds the request on EVERY turn; the prompt must be assembled once
+    // per (mode, delegate availability, revision) and reused verbatim in between, otherwise
+    // a 40-turn run re-scans skills/rules/agents.md 40 times and busts the provider cache.
+
+    [Fact]
+    public async Task PrepareSystemPromptAsync_TwoConsecutiveCalls_SecondCallIsServedFromCache()
+    {
+        // Arrange — the skill scan is the expensive part; it must run exactly once.
+        _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>())).Returns(string.Empty);
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsContext?)null);
+        _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync("rules");
+        _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync("agents");
+
+        var builder = CreateBuilder();
+
+        // Act
+        var first = await builder.PrepareSystemPromptAsync(AppMode.Agent, TestContext.Current.CancellationToken);
+        var second = await builder.PrepareSystemPromptAsync(AppMode.Agent, TestContext.Current.CancellationToken);
+
+        // Assert — byte-identical text (the provider prompt cache stays warm) built from ONE scan.
+        Assert.Equal(first, second);
+        _skillServiceMock.Verify(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _ruleServiceMock.Verify(r => r.GetRulesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _ruleServiceMock.Verify(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task PrepareSystemPromptAsync_ModeChanged_RebuildsPrompt()
+    {
+        // Arrange
+        _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>())).Returns(string.Empty);
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsContext?)null);
+        _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
+        _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
+
+        var builder = CreateBuilder();
+
+        // Act — a switch_mode between two turns must produce the NEW mode prompt.
+        var agent = await builder.PrepareSystemPromptAsync(AppMode.Agent, TestContext.Current.CancellationToken);
+        var plan = await builder.PrepareSystemPromptAsync(AppMode.Plan, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Contains("Your current mode: Agent", agent);
+        Assert.Contains("Your current mode: Plan", plan);
+        Assert.Contains("PLANNING MODE", plan);
+        Assert.DoesNotContain("PLANNING MODE", agent);
+    }
+
+    [Fact]
+    public async Task PrepareSystemPromptAsync_ProfileChanged_RebuildsPrompt()
+    {
+        // Arrange — start with a distinctive prompt text, then swap the profile.
+        _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>())).Returns(string.Empty);
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsContext?)null);
+        _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
+        _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
+
+        var builder = CreateBuilder();
+        var before = await builder.PrepareSystemPromptAsync(AppMode.Agent, TestContext.Current.CancellationToken);
+
+        _profileManagerMock.SetupGet(p => p.ActiveProfile).Returns(new ConnectionProfile
+        {
+            SystemPrompt = "EDITED system prompt",
+            SendCurrentDate = false,
+            SendModeInstructions = true
+        });
+        _profileManagerMock.Raise(p => p.PropertyChanged += null, new System.ComponentModel.PropertyChangedEventArgs(nameof(IProfileManager.ActiveProfile)));
+
+        // Act
+        var after = await builder.PrepareSystemPromptAsync(AppMode.Agent, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Contains("Test system prompt from profile", before);
+        Assert.Contains("EDITED system prompt", after);
+        Assert.DoesNotContain("EDITED system prompt", before);
+    }
+
+    [Fact]
+    public async Task PrepareSystemPromptAsync_ContextChanged_RebuildsPrompt()
+    {
+        // Arrange — the IDE pushes new context between turns (file switch).
+        _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>())).Returns(string.Empty);
+        _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
+        _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns(new VsContext
+        {
+            ActiveFilePath = "B:\\Before.cs",
+            ActiveFileContent = "class Before { }",
+            SolutionFiles = []
+        });
+
+        var builder = CreateBuilder();
+        var before = await builder.PrepareSystemPromptAsync(AppMode.Agent, TestContext.Current.CancellationToken);
+
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns(new VsContext
+        {
+            ActiveFilePath = "B:\\After.cs",
+            ActiveFileContent = "class After { }",
+            SolutionFiles = []
+        });
+        _vsCodeContextServiceMock.Raise(v => v.OnContextChanged += null);
+
+        // Act
+        var after = await builder.PrepareSystemPromptAsync(AppMode.Agent, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Contains("class Before { }", before);
+        Assert.Contains("class After { }", after);
+        Assert.DoesNotContain("class After { }", before);
+    }
+
+    [Fact]
+    public async Task PrepareSystemPromptAsync_DelegateToolToggled_RebuildsPrompt()
+    {
+        // Arrange — delegate_task is available, so the delegation section is included.
+        _skillServiceMock.Setup(s => s.GetSkillsMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _skillServiceMock.Setup(s => s.FormatSkillsForSystemPrompt(It.IsAny<List<SkillMetadata>>())).Returns(string.Empty);
+        _vsCodeContextServiceMock.SetupGet(v => v.CurrentContext).Returns((VsContext?)null);
+        _ruleServiceMock.Setup(r => r.GetRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
+        _ruleServiceMock.Setup(r => r.GetAgentsMdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(string.Empty);
+
+        var builder = CreateBuilder();
+        var before = await builder.PrepareSystemPromptAsync(AppMode.Agent, TestContext.Current.CancellationToken);
+
+        // The user disables delegate_task: neither the profile nor the context changes, so only
+        // the tool availability can invalidate the cached prompt.
+        _toolManagerMock
+            .Setup(t => t.GetEnabledTools(AppMode.Agent))
+            .Returns([]);
+
+        // Act
+        var after = await builder.PrepareSystemPromptAsync(AppMode.Agent, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Contains("Sub-Agent Delegation", before);
+        Assert.DoesNotContain("Sub-Agent Delegation", after);
+    }
 }

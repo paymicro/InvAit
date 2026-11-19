@@ -16,6 +16,13 @@ public class ToolManager(
 
     private IEnumerable<Tool>? _mcpToolsCache;
 
+    /// <summary>
+    /// Snapshot of the MCP settings the cache was built from. The cache is rebuilt when it no
+    /// longer matches, so a stale entry cannot survive a change that happened without an
+    /// <c>OnSaved</c> event.
+    /// </summary>
+    private (int Servers, int Tools, int Names, int ServersIdentity) _mcpToolsCacheSignature;
+
     public override async Task SaveAsync()
     {
         try
@@ -172,11 +179,45 @@ public class ToolManager(
 
     public IEnumerable<Tool> GetMcpTools()
     {
-        if (_mcpToolsCache != null)
+        // The cache is VALIDATED, not merely invalidated by event. Tools arrive from the MCP host
+        // after the settings file is read, so a cache built at startup holds an empty list for
+        // servers that only had names back then. Recovery used to depend on the OnSaved event -
+        // and a cache filled before the subscription (or before that save) stayed empty forever,
+        // while the settings tab read Current.Servers directly and showed the tools as present and
+        // enabled. Toggling any checkbox raised OnSaved and "magically" fixed it.
+        var signature = ComputeMcpSignature();
+        if (_mcpToolsCache is not null && _mcpToolsCacheSignature == signature)
             return _mcpToolsCache;
 
         _mcpToolsCache = [.. BuildMcpTools()];
+        _mcpToolsCacheSignature = signature;
         return _mcpToolsCache;
+    }
+
+    /// <summary>
+    /// Identity of the inputs <see cref="BuildMcpTools"/> reads: the server list instance (a
+    /// reload replaces it, and a replaced config would otherwise leave the cache holding closures
+    /// over the OLD command/url), the number of tools, and their names.
+    /// </summary>
+    private (int Servers, int Tools, int Names, int ServersIdentity) ComputeMcpSignature()
+    {
+        var servers = mcpSettingsProvider.Current.Servers;
+
+        var names = 0;
+        var tools = 0;
+        foreach (var server in servers)
+        {
+            tools += server.Tools.Count;
+            foreach (var tool in server.Tools)
+            {
+                names = HashCode.Combine(
+                    names,
+                    server.Name.GetHashCode(StringComparison.Ordinal),
+                    tool.Name.GetHashCode(StringComparison.Ordinal));
+            }
+        }
+
+        return (servers.Count, tools, names, servers.GetHashCode());
     }
 
     public void RefreshMcpTools() => _mcpToolsCache = null;

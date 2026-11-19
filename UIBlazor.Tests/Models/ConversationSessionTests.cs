@@ -1,15 +1,17 @@
 namespace UIBlazor.Tests.Models;
 
 /// <summary>
-/// GetFormattedMessages filters empty turn-boundary messages (turn started but no payload
-/// arrived) out of the LLM history — the wire messages must carry the real conversation only.
+/// <see cref="ConversationSession.BuildWire"/> is the SINGLE assembly point of the LLM request
+/// history: it filters out the live/streaming message, empty assistant turns and normalises
+/// orphaned tool calls — the wire messages must carry the real conversation only.
 /// </summary>
 public class ConversationSessionTests
 {
     [Fact]
-    public void GetFormattedMessages_IsEmptyTurnMessage_ExcludedFromHistory()
+    public void BuildWire_EmptyAssistantMessage_ExcludedFromHistory()
     {
-        // Arrange
+        // Arrange - a turn that produced no payload: the bubble never enters the history
+        // (turns are created lazily today; a reloaded legacy session may still carry one).
         var session = new ConversationSession { Id = "s" };
         session.AddMessage(VisualChatMessage.CreateUser("hello"));
         session.AddMessage(new VisualChatMessage
@@ -20,7 +22,7 @@ public class ConversationSessionTests
         });
 
         // Act
-        var messages = session.GetFormattedMessages("sys");
+        var (messages, _) = session.BuildWire("sys");
 
         // Assert: system + the real user message; the empty assistant turn must not reach the LLM.
         Assert.Equal(2, messages.Count);
@@ -32,7 +34,7 @@ public class ConversationSessionTests
     }
 
     [Fact]
-    public void GetFormattedMessages_StreamingTailWithToolResults_NoOrphanedToolCalls()
+    public void BuildWire_StreamingMessageWithToolResults_NoOrphanedToolCalls()
     {
         // Arrange - streaming assistant carrying tool results: PrepareMessages unfolds it into
         // SEVERAL wire messages [assistant(tool_calls), tool(r1), tool(r2)]. The old drop-by-wire-count
@@ -63,9 +65,9 @@ public class ConversationSessionTests
         });
 
         // Act
-        var messages = session.GetFormattedMessages("sys");
+        var (messages, _) = session.BuildWire("sys");
 
-        // Assert: system + user only — the streaming tail is dropped WHOLE (no orphaned
+        // Assert: system + user only — the streaming message is dropped WHOLE (no orphaned
         // assistant(tool_calls) and no tool messages answering a dropped call).
         Assert.Equal(2, messages.Count);
         Assert.Equal(ChatMessageRole.System, messages[0].Role);
@@ -75,9 +77,9 @@ public class ConversationSessionTests
     }
 
     [Fact]
-    public void GetFormattedMessages_CompletedTailWithToolResults_KeptVerbatim()
+    public void BuildWire_CompletedTailWithToolResults_KeptVerbatim()
     {
-        // Arrange - the same shape but NOT streaming: the tail must stay in the history verbatim
+        // Arrange - the same shape but NOT streaming: the message stays in the history verbatim
         // (assistant + its tool results), proving the drop is tied to the streaming flag only.
         var session = new ConversationSession { Id = "s" };
         session.AddMessage(VisualChatMessage.CreateUser("do work"));
@@ -96,7 +98,7 @@ public class ConversationSessionTests
         });
 
         // Act
-        var messages = session.GetFormattedMessages("sys");
+        var (messages, _) = session.BuildWire("sys");
 
         // Assert: system + user + assistant(tool_calls) + tool(result) — nothing dropped.
         Assert.Equal(4, messages.Count);

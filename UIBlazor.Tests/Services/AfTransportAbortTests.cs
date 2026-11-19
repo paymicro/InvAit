@@ -163,19 +163,18 @@ public class AfTransportAbortTests
     }
 
     /// <summary>
-    /// END-TO-END: the REAL AfAgentLoop gateway + real HTTP server. Cancellation must
+    /// END-TO-END: the REAL gateway (single-shot adapter) + real HTTP server. Cancellation must
     /// reach the server as a disconnect, not just detach the consumer.
     /// </summary>
     [Fact(Timeout = 20000)]
-    public async Task AfAgentLoop_Cancel_DisconnectsServer()
+    public async Task AfCompletionsAdapter_Cancel_DisconnectsServer()
     {
         Console.WriteLine("[gw-test] start");
         await using var server = new TerminatingSseServer();
         var baseAddress = server.Start();
 
-        var connectionStub = new StubToolCallHandler();
-        // Loop bound to the test server only (no DI client)
-        var loop = new AfAgentLoop(
+        // Adapter bound to the test server only (no DI client)
+        var loop = new AfCompletionsAdapter(
             () => new ConnectionProfile
             {
                 Endpoint = baseAddress,
@@ -186,7 +185,7 @@ public class AfTransportAbortTests
                 MaxTokens = 8000
             },
             new HttpClient(),
-            connectionStub);
+            () => 100);
 
         using var cts = new CancellationTokenSource();
         var result = new CompletionsResult();

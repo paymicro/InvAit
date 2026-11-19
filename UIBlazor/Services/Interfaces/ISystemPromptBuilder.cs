@@ -9,6 +9,14 @@ public interface ISystemPromptBuilder
     Task<string> PrepareSystemPromptAsync(AppMode mode, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Drops the cached main-agent prompt, forcing the next <see cref="PrepareSystemPromptAsync"/>
+    /// to rebuild it. The cache invalidates itself on profile edits and IDE context pushes; this
+    /// method exists as an explicit seam for callers that know an input changed without an event
+    /// (e.g. skills or rules files edited on disk).
+    /// </summary>
+    void InvalidatePromptCache();
+
+    /// <summary>
     /// Builds a system prompt for a sub-agent.
     /// Combines the LLM-provided custom prompt with the same context sections as the main agent
     /// (rules, skills, solution structure, mode instructions, etc.), with exceptions:

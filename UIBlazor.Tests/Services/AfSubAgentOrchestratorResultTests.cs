@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging.Abstractions;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
@@ -45,22 +46,43 @@ public class AfSubAgentOrchestratorResultTests
             .Returns(Task.CompletedTask);
     }
 
-    private AfSubAgentOrchestrator CreateOrchestrator()
+    /// <summary>
+    /// The branch fails on the TRANSPORT (404 from the endpoint), exactly like production.
+    /// Neither gateway is substituted here: the REAL <see cref="ChatService"/> runs its own
+    /// <see cref="AfCompletionsAdapter"/> against the mock server, so the failure surfaces where
+    /// the orchestrator expects it - inside <c>ProcessStreamAsync</c>, from shipping code.
+    /// </summary>
+    private static AfSubAgentOrchestrator CreateOrchestrator(
+        ScriptedChatService chatService,
+        IProfileManager profileManager,
+        ISystemPromptBuilder promptBuilder,
+        IToolManager toolManager,
+        IContentFilter contentFilter,
+        ICommonSettingsProvider commonSettings,
+        IRetryHandler retryHandler)
         => new(
-            _profileManager.Object,
-            _promptBuilder.Object,
-            _toolManager.Object,
-            new StubChatService(),
-            _contentFilter.Object,
+            profileManager,
+            promptBuilder,
+            toolManager,
+            chatService.Service,
+            contentFilter,
             new HttpClient(),
-            _commonSettings.Object,
-            _retryHandler.Object,
+            commonSettings,
+            retryHandler,
             NullLogger<AfSubAgentOrchestrator>.Instance);
 
     [Fact]
     public async Task ExecuteAsync_BranchFails_ResultTextReachesToolResult()
     {
-        var orchestrator = CreateOrchestrator();
+        using var chatService = ScriptedChatService.CreateWithRealAdapter(_profileManager.Object.ActiveProfile);
+        var orchestrator = CreateOrchestrator(
+            chatService,
+            _profileManager.Object,
+            _promptBuilder.Object,
+            _toolManager.Object,
+            _contentFilter.Object,
+            _commonSettings.Object,
+            _retryHandler.Object);
         var toolCall = new ToolCall
         {
             Id = "tc-1",
@@ -81,97 +103,5 @@ public class AfSubAgentOrchestratorResultTests
         Assert.Contains("(Sub-agent branch failed", result.Result);
         Assert.False(result.Success);
         Assert.Equal("One or more delegated task(s) failed.", result.ErrorMessage);
-    }
-
-    /// <summary>
-    /// Minimal IChatService stub: only ProcessStreamAsync is used by the orchestrator
-    /// (it pipes branch deltas into the SubAgent streaming message).
-    /// </summary>
-    private sealed class StubChatService : IChatService
-    {
-        public ConversationSession Session { get; } = new();
-
-        public bool NeedCompression => false;
-
-        public event Action<CompressionReport>? CompressionCompleted;
-
-        public event Action<ConversationSession>? CompressionStarted;
-
-        public event PropertyChangedEventHandler? SessionChanged;
-        public void Initialize() { }
-        public ConnectionProfile? Options => null;
-
-        public Task ProcessStreamAsync(
-            VisualChatMessage message,
-            IAsyncEnumerable<ChatDelta> deltas,
-            Action<string>? onContentUpdate,
-            Action<List<ToolCall>>? onToolCallsUpdate,
-            Action? onStateChange,
-            CompletionsResult resultCapture,
-            CancellationToken cancellationToken)
-            => ProcessStreamAsync(message, deltas, onContentUpdate, onToolCallsUpdate, onStateChange,
-                resultCapture, cancellationToken, onNewTurn: null);
-
-        public async Task ProcessStreamAsync(
-            VisualChatMessage message,
-            IAsyncEnumerable<ChatDelta> deltas,
-            Action<string>? onContentUpdate,
-            Action<List<ToolCall>>? onToolCallsUpdate,
-            Action? onStateChange,
-            CompletionsResult resultCapture,
-            CancellationToken cancellationToken,
-            Func<VisualChatMessage>? onNewTurn)
-        {
-            var content = new StringBuilder();
-            await foreach (var delta in deltas.WithCancellation(cancellationToken))
-            {
-                if (delta.IsStartOfTurn && onNewTurn is not null && message.IsStreaming)
-                {
-                    message.IsStreaming = false;
-                    message = onNewTurn();
-                }
-
-                if (delta.Content is not null)
-                {
-                    content.Append(delta.Content);
-                    message.Content = content.ToString();
-                    onContentUpdate?.Invoke(delta.Content);
-                }
-
-                if (delta.ToolCalls is { Count: > 0 } && resultCapture.AccumulatedToolCalls is not null)
-                {
-                    onToolCallsUpdate?.Invoke(resultCapture.AccumulatedToolCalls);
-                }
-
-                onStateChange?.Invoke();
-            }
-
-            message.IsStreaming = false;
-        }
-
-        public IAsyncEnumerable<ChatDelta> GetCompletionsAsync(CompletionsResult resultCapture, CancellationToken cancellationToken)
-            => EmptyDeltas();
-
-        public IAsyncEnumerable<ChatDelta> CompressSessionAsync(CompletionsResult resultCapture, CancellationToken cancellationToken)
-            => EmptyDeltas();
-
-        public IAsyncEnumerable<ChatDelta> CompressSessionAsync(ConversationSession targetSession, CompletionsResult resultCapture, CancellationToken cancellationToken)
-            => EmptyDeltas();
-
-        public Task<List<SessionSummary>> GetRecentSessionsAsync(int count) => Task.FromResult(new List<SessionSummary>());
-        public Task LoadSessionAsync(string id) => Task.CompletedTask;
-        public Task DeleteSessionAsync(string id) => Task.CompletedTask;
-        public Task SaveSessionAsync() => Task.CompletedTask;
-        public Task NewSessionAsync() => Task.CompletedTask;
-        public Task<AiModelList> GetModelsAsync(CancellationToken cancellationToken)
-            => throw new NotImplementedException();
-
-        private static async IAsyncEnumerable<ChatDelta> EmptyDeltas()
-        {
-            await Task.CompletedTask;
-            yield break;
-        }
-
-        public void Dispose() { }
     }
 }

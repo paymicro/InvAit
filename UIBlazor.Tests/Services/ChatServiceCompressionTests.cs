@@ -39,15 +39,22 @@ public class ChatServiceCompressionTests
         _commonSettingsProvider.Setup(s => s.Current).Returns(new CommonOptions());
     }
 
-    private ChatService CreateService(ICompletionsGateway gateway)
+    private ChatService CreateService(ICompletionsGateway gateway, params Tool[] tools)
     {
+        // The compression path re-arms TotalTokens from the enabled tools of the session's mode,
+        // so the toolset must be injectable instead of the empty Moq default.
+        var toolManagerMock = new Mock<IToolManager>();
+        toolManagerMock
+            .Setup(t => t.GetEnabledTools(It.IsAny<AppMode>()))
+            .Returns(tools);
+
         var service = new ChatService(
             new HttpClient(),
             _profileManagerMock.Object,
             Mock.Of<ISystemPromptBuilder>(),
             _localStorageMock.Object,
             new LoggerMock<IChatService>(),
-            Mock.Of<IToolManager>(),
+            toolManagerMock.Object,
             Mock.Of<IContentFilter>(),
             _commonSettingsProvider.Object,
             Mock.Of<IToolCallHandler>())
@@ -235,11 +242,12 @@ public class ChatServiceCompressionTests
     }
 
     [Fact]
-    public async Task CompressMainSessionIfOverThreshold_InterjectDuringCompression_SurvivesAndIsNotConsumed()
+    public async Task Compress_SessionInterjectDuringCompression_SurvivesAndIsNotConsumed()
     {
         // Arrange: the user sends a message while the summary is being generated. It is appended
-        // AFTER the compression snapshot, must survive the collapse and must still reach the model
-        // at the next turn boundary — the returned baseline is the interject-scan index.
+        // AFTER the compression snapshot and must survive the in-place collapse, so the NEXT turn
+        // still sees it — the turn loop detects it by Revision + message identity (there is no
+        // numeric scan baseline anymore).
         VisualChatMessage? interject = null;
         var gateway = new FakeCompressionGateway("## Goal\n- summary", session =>
         {
@@ -249,10 +257,10 @@ public class ChatServiceCompressionTests
         using var service = CreateService(gateway);
         Fill(service.Session, 8);
         service.Session.TotalTokens = 5000; // above TokensToCompress (1000)
+        var revisionBefore = service.Session.Revision;
 
         // Act
-        var baseline = await service.CompressMainSessionIfOverThresholdAsync(
-            service.Session, TestContext.Current.CancellationToken);
+        await ConsumeAsync(service.CompressSessionAsync(new CompletionsResult(), TestContext.Current.CancellationToken));
 
         // Assert
         Assert.NotNull(interject);
@@ -260,9 +268,13 @@ public class ChatServiceCompressionTests
         Assert.Contains(interject, messages);
         Assert.Same(interject, messages[^1]);
 
-        // The baseline points AT the interject: the loop's scan starts from it (not past it).
-        Assert.Equal(messages.Count - 1, baseline);
-        Assert.Same(interject, messages[baseline]);
+        // The interject is NOT consumed by the collapse: it is still part of the next request.
+        var wire = service.Session.BuildWire("sys", contentFilter: null, live: null).Messages;
+        Assert.Contains(wire, m => m.Role == ChatMessageRole.User
+                                   && m.Content == "interject during compression");
+
+        // The compression is one observable history mutation on top of the interject append.
+        Assert.True(service.Session.Revision > revisionBefore + 1);
 
         // The context was re-armed to the compacted size.
         Assert.Equal(8, messages.Count);
@@ -316,6 +328,90 @@ public class ChatServiceCompressionTests
         // Assert
         Assert.Equal(0, raised);
     }
+
+    /// <summary>
+    /// Re-arming the compression threshold must measure the whole REQUEST, not just the message
+    /// text: the tool schemas ride along with every turn (a strict-mode toolset is several
+    /// thousand tokens of constant overhead), so leaving them out made the re-armed value
+    /// systematically lower than the provider usage it replaces.
+    /// </summary>
+    [Fact]
+    public async Task Compress_ReArmedTokenEstimate_IncludesToolSchemaOverhead()
+    {
+        // Arrange: identical history compressed twice - once without tools, once with a tool
+        // carrying a large schema.
+        using var bare = CreateService(new FakeCompressionGateway("## Goal\n- summary"));
+        Fill(bare.Session, 8);
+        await ConsumeAsync(bare.CompressSessionAsync(new CompletionsResult(), TestContext.Current.CancellationToken));
+
+        using var withSchema = CreateService(
+            new FakeCompressionGateway("## Goal\n- summary"),
+            BuildToolWithLargeSchema(new string('x', 4000)));
+        Fill(withSchema.Session, 8);
+        await ConsumeAsync(withSchema.CompressSessionAsync(new CompletionsResult(), TestContext.Current.CancellationToken));
+
+        // Assert: the same history re-arms HIGHER when the request also carries a big schema.
+        Assert.True(bare.Session.TotalTokens > 0);
+        Assert.True(
+            withSchema.Session.TotalTokens > bare.Session.TotalTokens,
+            $"expected the schema overhead to be counted: {withSchema.Session.TotalTokens} !> {bare.Session.TotalTokens}");
+    }
+
+    /// <summary>
+    /// Technical notes must not take part in compression planning: they are not context
+    /// (BuildWire drops them), so collapsing one into the summary would edit a line the model
+    /// never saw — and the plan windows would be computed over messages that do not exist in the
+    /// request.
+    /// </summary>
+    [Fact]
+    public async Task Compress_TechnicalNotes_DoNotOccupyWindowSlots()
+    {
+        // Arrange: 8 visible messages (just below the planner's head+tail coverage) plus 4 notes.
+        // Counting the notes would make the planner collapse the notes themselves.
+        var gateway = new FakeCompressionGateway("## Goal\n- summary");
+        using var service = CreateService(gateway);
+        Fill(service.Session, 8);
+        var notes = new List<VisualChatMessage>();
+        for (var i = 0; i < 4; i++)
+        {
+            var note = VisualChatMessage.CreateTechnical($"Retry {i + 1}/10 in 20s — boom");
+            notes.Add(note);
+            service.Session.AddMessage(note);
+        }
+
+        // Act
+        await ConsumeAsync(service.CompressSessionAsync(new CompletionsResult(), TestContext.Current.CancellationToken));
+
+        // Assert: compression ran (the visible middle was collapsed) ...
+        Assert.Equal(1, gateway.Calls);
+
+        // ... and EVERY note survived. Counting notes in the plan would let them fill the head and
+        // tail windows, and the collapsed slice would then consist of diagnostics the model never
+        // received (a summary of retry lines is worthless).
+        var survivors = service.Session.GetMessagesSnapshot();
+        Assert.All(notes, note => Assert.Contains(note, survivors));
+        Assert.Contains(survivors, m => m.Content == "## Goal\n- summary");
+    }
+
+    /// <summary>Minimal tool whose JSON schema is dominated by <paramref name="description"/>.</summary>
+    private static Tool BuildToolWithLargeSchema(string description) => new()
+    {
+        Name = "probe_tool",
+        NativeTool = new NativeToolDefinition
+        {
+            Function = new NativeToolFunction
+            {
+                Name = "probe_tool",
+                Description = description,
+                Parameters = new NativeParameters
+                {
+                    Type = NativeToolType.Object,
+                    Properties = []
+                }
+            }
+        },
+        ExecuteAsync = (_, _) => Task.FromResult(new VsToolResult { Result = "ok" })
+    };
 
     /// <summary>
     /// before the summary is produced (simulates a user interject during the LLM call).

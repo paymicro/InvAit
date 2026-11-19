@@ -20,9 +20,28 @@ public interface IChatService : IDisposable
     Task<List<SessionSummary>> GetRecentSessionsAsync(int count);
 
     /// <summary>
-    /// Нужно ли сжимать сессию
+    /// Нужно ли сжимать ПИННУТУЮ сессию прогона. Прогон никогда не читает мутабельное
+    /// свойство <see cref="Session"/>: он принадлежит той сессии, в которой стартовал.
     /// </summary>
-    bool NeedCompression { get; }
+    bool NeedsCompression(ConversationSession targetSession);
+
+    /// <summary>
+    /// Streams exactly ONE LLM turn for the pinned session: the request history is rebuilt from
+    /// the session at call time (validated by <see cref="ConversationSession.BuildWire"/>), so
+    /// compression / edits / deletions / interjects / mode switches applied between turns take
+    /// effect immediately. Tool execution is NOT performed here — tool calls flow outward through
+    /// <paramref name="resultCapture"/> and the caller runs the approval/execution path.
+    /// </summary>
+    /// <param name="targetSession">Pinned run session.</param>
+    /// <param name="live">Message the caller is about to write into; excluded by reference.</param>
+    /// <param name="tools">Explicit tool list (sub-agent branch); null resolves the session's current mode.</param>
+    /// <param name="resultCapture">Per-turn state accumulator.</param>
+    IAsyncEnumerable<ChatDelta> GetTurnCompletionsAsync(
+        ConversationSession targetSession,
+        VisualChatMessage? live,
+        IReadOnlyList<Tool>? tools,
+        CompletionsResult resultCapture,
+        CancellationToken cancellationToken);
 
     Task LoadSessionAsync(string id);
 
@@ -75,8 +94,14 @@ public interface IChatService : IDisposable
     Task<AiModelList> GetModelsAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// Обертка над стримингом <seealso cref="ChatDelta"/>.
-    /// Вызывает события по обновлению контента и считает токены.
+    /// Wrapper over the <seealso cref="ChatDelta"/> stream: applies the deltas of exactly ONE
+    /// LLM turn to the given message, raises the content/state callbacks, counts tokens and
+    /// ALWAYS closes the message (<c>IsStreaming = false</c> + final timings), cancellation and
+    /// failure included.
+    /// <para>
+    /// The turn cycle belongs to the caller: one <c>GetTurnCompletionsAsync</c> → one
+    /// <c>ProcessStreamAsync</c>.
+    /// </para>
     /// </summary>
     /// <param name="message">Сообщение с которым работаем</param>
     /// <param name="deltas">Функция получения <seealso cref="ChatDelta"/></param>
@@ -91,19 +116,4 @@ public interface IChatService : IDisposable
         Action? onStateChange,
         CompletionsResult resultCapture,
         CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Agent-loop runs (FunctionInvokingChatClient): same as the base <see cref="ProcessStreamAsync(VisualChatMessage, ...)"/>;
-    /// the factory is invoked when the agent run starts a new assistant turn and its returned
-    /// message becomes the current streaming target.
-    /// </summary>
-    Task ProcessStreamAsync(
-        VisualChatMessage message,
-        IAsyncEnumerable<ChatDelta> deltas,
-        Action<string>? onContentUpdate,
-        Action<List<ToolCall>> onToolCallsUpdate,
-        Action? onStateChange,
-        CompletionsResult resultCapture,
-        CancellationToken cancellationToken,
-        Func<VisualChatMessage>? onNewTurn);
 }

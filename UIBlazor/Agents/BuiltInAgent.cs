@@ -128,7 +128,7 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
         new()
         {
             Name = BuiltInToolEnum.Bash,
-            DisplayName = SharedResource.ToolExec,
+            DisplayName = SharedResource.ToolBash,
             Category = ToolCategory.Execution,
             NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.Bash)),
             ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Bash, args, c)

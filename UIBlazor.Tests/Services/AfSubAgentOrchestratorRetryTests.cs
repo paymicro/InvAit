@@ -3,11 +3,18 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace UIBlazor.Tests.Services;
 
 /// <summary>
-/// Retries inside a sub-agent branch: IChatService.ProcessStreamAsync throws on the first
-/// attempts and succeeds on the last one. The branch must complete successfully, the retry
+/// Retries inside a sub-agent branch: the LLM turn throws on the first attempts and succeeds
+/// on the last one. The transport is scripted, but ChatService.ProcessStreamAsync is the REAL
+/// one (see <see cref="ScriptedChatService"/>), so the failure surfaces from production code
+/// exactly as it does in the app. The branch must complete successfully, the retry
 /// handler must be consulted (GetRetryDelay/WaitForRetryAsync), and the final answer must
 /// reach the delegate_task result. When the retry budget is exhausted, the last exception
 /// escapes the retry loop and the branch fails (previous single-attempt behavior).
+/// <para>
+/// Only a RETRYABLE failure spends the budget (<see cref="LlmApiException.IsRetryable"/>): a
+/// permanent one fails the branch on the first attempt, because a wrong API key or a model that
+/// does not exist answers identically every time.
+/// </para>
 /// </summary>
 public class AfSubAgentOrchestratorRetryTests
 {
@@ -64,8 +71,10 @@ public class AfSubAgentOrchestratorRetryTests
     [Fact]
     public async Task ExecuteAsync_TransientFailures_RetriedAndBranchSucceeds()
     {
-        var chatService = new FailingThenSuccessChatService(failures: 2);
-        var orchestrator = CreateOrchestrator(chatService);
+        // REAL ChatService, scripted transport: the production ProcessStreamAsync applies the
+        // deltas and closes the message, so the assertion covers shipping code.
+        using var chatService = ScriptedChatService.Create(Turns.FailFirst(failures: 2));
+        var orchestrator = CreateOrchestrator(chatService.Service);
         var toolCall = CreateToolCall();
 
         var result = await orchestrator.ExecuteAsync(Args, toolCall, TestContext.Current.CancellationToken);
@@ -95,8 +104,8 @@ public class AfSubAgentOrchestratorRetryTests
     [Fact]
     public async Task ExecuteAsync_RetriesExhausted_BranchFails()
     {
-        var chatService = new FailingThenSuccessChatService(failures: 10);
-        var orchestrator = CreateOrchestrator(chatService);
+        using var chatService = ScriptedChatService.Create(Turns.FailFirst(failures: 10));
+        var orchestrator = CreateOrchestrator(chatService.Service);
         var toolCall = CreateToolCall();
 
         var result = await orchestrator.ExecuteAsync(Args, toolCall, TestContext.Current.CancellationToken);
@@ -114,82 +123,58 @@ public class AfSubAgentOrchestratorRetryTests
     }
 
     /// <summary>
-    /// IChatService stub: throws on the first <c>failures</c> calls, then completes with an
-    /// answer. Only ProcessStreamAsync is used by the orchestrator.
+    /// A permanent failure does not spend the retry budget. Before this, a branch with a wrong
+    /// API key made three identical attempts with backoff between them: minutes of waiting for an
+    /// answer that was knowable on the first attempt, billed against the parent agent's patience.
     /// </summary>
-    private sealed class FailingThenSuccessChatService : IChatService
+    [Fact]
+    public async Task ExecuteAsync_PermanentFailure_NotRetried()
     {
-        private readonly int _failures;
+        using var chatService = ScriptedChatService.Create(
+            Turns.HttpStatus(401, "HttpCode: 401 | invalid api key"));
+        var orchestrator = CreateOrchestrator(chatService.Service);
+        var toolCall = CreateToolCall();
 
-        public FailingThenSuccessChatService(int failures) => _failures = failures;
+        var result = await orchestrator.ExecuteAsync(Args, toolCall, TestContext.Current.CancellationToken);
 
-        public int Calls { get; private set; }
+        // Exactly ONE attempt: the failure is knowable and repeating it changes nothing.
+        Assert.Equal(1, chatService.Calls);
+        _retryHandler.Verify(
+            r => r.WaitForRetryAsync(It.IsAny<int>(), It.IsAny<Action<int>>(), It.IsAny<CancellationToken>()),
+            Times.Never);
 
-        public ConversationSession Session { get; } = new();
+        var branch = Assert.Single(toolCall.SubAgents!);
+        Assert.Equal(SubAgentStatus.Failed, branch.Status);
+        Assert.Contains("401", branch.ErrorMessage);
+        Assert.False(result.Success);
 
-        public bool NeedCompression => false;
+        // No retry badge was ever armed for a failure that was not going to be retried.
+        Assert.False(branch.IsRetrying);
+        Assert.Equal(0, branch.RetryAttempt);
+    }
 
-        public event Action<CompressionReport>? CompressionCompleted;
+    /// <summary>
+    /// A failure that is NOT an <see cref="LlmApiException"/> is a bug in our own code (the
+    /// transport wraps everything it produces). Retrying it hides the bug behind minutes of
+    /// waiting and makes the stack trace harder to reach.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_NonLlmException_NotRetried()
+    {
+        using var chatService = ScriptedChatService.Create(
+            Turns.Throw(new NullReferenceException("Object reference not set")));
+        var orchestrator = CreateOrchestrator(chatService.Service);
+        var toolCall = CreateToolCall();
 
-        public event Action<ConversationSession>? CompressionStarted;
+        var result = await orchestrator.ExecuteAsync(Args, toolCall, TestContext.Current.CancellationToken);
 
-        public event PropertyChangedEventHandler? SessionChanged;
-        public void Initialize() { }
-        public ConnectionProfile? Options => null;
+        Assert.Equal(1, chatService.Calls);
+        _retryHandler.Verify(
+            r => r.WaitForRetryAsync(It.IsAny<int>(), It.IsAny<Action<int>>(), It.IsAny<CancellationToken>()),
+            Times.Never);
 
-        public Task ProcessStreamAsync(
-            VisualChatMessage message,
-            IAsyncEnumerable<ChatDelta> deltas,
-            Action<string>? onContentUpdate,
-            Action<List<ToolCall>>? onToolCallsUpdate,
-            Action? onStateChange,
-            CompletionsResult resultCapture,
-            CancellationToken cancellationToken)
-            => ProcessStreamAsync(message, deltas, onContentUpdate, onToolCallsUpdate, onStateChange,
-                resultCapture, cancellationToken, onNewTurn: null);
-
-        public async Task ProcessStreamAsync(
-            VisualChatMessage message,
-            IAsyncEnumerable<ChatDelta> deltas,
-            Action<string>? onContentUpdate,
-            Action<List<ToolCall>>? onToolCallsUpdate,
-            Action? onStateChange,
-            CompletionsResult resultCapture,
-            CancellationToken cancellationToken,
-            Func<VisualChatMessage>? onNewTurn)
-        {
-            Calls++;
-            if (Calls <= _failures)
-                throw new InvalidOperationException("transient failure");
-
-            message.Content = "sub-agent answer";
-            message.IsStreaming = false;
-            await Task.CompletedTask;
-        }
-
-        public IAsyncEnumerable<ChatDelta> GetCompletionsAsync(CompletionsResult resultCapture, CancellationToken cancellationToken)
-            => EmptyDeltas();
-
-        public IAsyncEnumerable<ChatDelta> CompressSessionAsync(CompletionsResult resultCapture, CancellationToken cancellationToken)
-            => EmptyDeltas();
-
-        public IAsyncEnumerable<ChatDelta> CompressSessionAsync(ConversationSession targetSession, CompletionsResult resultCapture, CancellationToken cancellationToken)
-            => EmptyDeltas();
-
-        public Task<List<SessionSummary>> GetRecentSessionsAsync(int count) => Task.FromResult(new List<SessionSummary>());
-        public Task LoadSessionAsync(string id) => Task.CompletedTask;
-        public Task DeleteSessionAsync(string id) => Task.CompletedTask;
-        public Task SaveSessionAsync() => Task.CompletedTask;
-        public Task NewSessionAsync() => Task.CompletedTask;
-        public Task<AiModelList> GetModelsAsync(CancellationToken cancellationToken)
-            => throw new NotImplementedException();
-
-        private static async IAsyncEnumerable<ChatDelta> EmptyDeltas()
-        {
-            await Task.CompletedTask;
-            yield break;
-        }
-
-        public void Dispose() { }
+        var branch = Assert.Single(toolCall.SubAgents!);
+        Assert.Equal(SubAgentStatus.Failed, branch.Status);
+        Assert.False(result.Success);
     }
 }

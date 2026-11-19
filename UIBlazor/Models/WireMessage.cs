@@ -2,7 +2,7 @@ namespace UIBlazor.Models;
 
 /// <summary>
 /// Wire-format message of an LLM request (Chat Completions DTO shape), produced by
-/// <see cref="ConversationSession.GetFormattedMessages"/> and consumed by
+/// <see cref="ConversationSession.BuildWire"/> and consumed by
 /// AfMessageMapper → Microsoft.Extensions.AI ChatMessage. Typed DTO instead of the
 /// legacy anonymous objects removes the serialize/deserialize roundtrip of the whole
 /// conversation history on every request.

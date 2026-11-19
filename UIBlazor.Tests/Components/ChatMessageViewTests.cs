@@ -924,4 +924,55 @@ public class ChatMessageViewTests : BunitContext
     }
 
     #endregion
+
+    #region Technical notes
+
+    /// <summary>
+    /// A technical note renders as a compact diagnostic line, NOT through the markdown content
+    /// pipeline: its text is raw ("HttpCode: 429 | ..."), and pushing that through markdown would
+    /// let an error body's markup decide the layout of the transcript.
+    /// </summary>
+    [Fact]
+    public void TechnicalNote_RendersCompactLine_NotMarkdownContent()
+    {
+        // Arrange
+        var message = VisualChatMessage.CreateTechnical("Retry 2/10 in 5s — HttpCode: 429 | slow down");
+
+        // Act
+        var cut = Render<ChatMessageView>(p => p.Add(x => x.Message, message));
+
+        // Assert: the note line is rendered raw, the normal content pipeline is bypassed.
+        var note = cut.Find(".tech-note");
+        Assert.Contains("Retry 2/10 in 5s", note.TextContent);
+        Assert.Empty(cut.FindAll(".message-content-stub"));
+    }
+
+    /// <summary>
+    /// Edit and regenerate are conversation operations; a diagnostic line has no meaning for them
+    /// (and regenerating from a retry note would resend the request that just failed). Delete
+    /// stays: the user may want to prune noise.
+    /// </summary>
+    [Fact]
+    public void TechnicalNote_HidesEditAndRegenerate_KeepsDelete()
+    {
+        // Arrange
+        var message = VisualChatMessage.CreateTechnical("Request timed out after 100s");
+
+        // Act
+        var cut = Render<ChatMessageView>(p => p
+            .Add(x => x.Message, message)
+            .Add(x => x.IsLast, false));
+
+        // Assert: exactly one action button survives - "delete" (rendered as its Radzen icon text).
+        var buttons = Buttons(cut);
+        Assert.Single(buttons);
+        Assert.Contains("delete", buttons[0]);
+    }
+
+    private static List<string> Buttons(IRenderedComponent<ChatMessageView> cut)
+        => cut.FindAll(".rz-chat-message-actions button")
+            .Select(b => b.InnerHtml)
+            .ToList();
+
+    #endregion
 }

@@ -75,6 +75,15 @@ public class ConversationSession : BaseOptions
 
     private void MarkChanged() => Changed?.Invoke(this);
 
+    /// <summary>Monotonic version of the history content. Bumped by every structural or content
+    /// mutation so a long-running agent run can detect that the history changed under it without
+    /// comparing snapshots by index.</summary>
+    [JsonIgnore]
+    public long Revision { get; private set; }
+
+    /// <summary>Bumps Revision. Never serialized: a reloaded session starts a fresh run.</summary>
+    public void BumpRevision() => Revision++;
+
     /// <summary>
     /// Adds a message object to the conversation and manages memory limits.
     /// Thread-safe.
@@ -87,6 +96,7 @@ public class ConversationSession : BaseOptions
             LastUpdated = DateTime.Now;
         }
 
+        BumpRevision();
         MarkChanged();
     }
 
@@ -110,7 +120,10 @@ public class ConversationSession : BaseOptions
         }
 
         if (removed)
+        {
+            BumpRevision();
             MarkChanged();
+        }
     }
 
     /// <summary>
@@ -131,7 +144,10 @@ public class ConversationSession : BaseOptions
         }
 
         if (removed)
+        {
+            BumpRevision();
             MarkChanged();
+        }
     }
 
     /// <summary>
@@ -178,6 +194,9 @@ public class ConversationSession : BaseOptions
         // re-enter SetMessages (the recursion guard is on the subscriber side).
         MessagesReplaced?.Invoke(messages);
 
+        // One bump per operation: SetMessages replaces the whole list at once (a per-message
+        // bump inside the lock would report an intermediate history nobody can observe).
+        BumpRevision();
         MarkChanged();
     }
 
@@ -228,8 +247,50 @@ public class ConversationSession : BaseOptions
         // Outside the lock: subscribers (SubAgentMessage mirrors) update their own copies and
         // must not re-enter the session.
         MessagesReplaced?.Invoke(GetMessagesSnapshot());
+
+        // One bump per operation: the whole collapse (N removals + 1 insert) is a single
+        // observable history mutation.
+        BumpRevision();
         MarkChanged();
         return true;
+    }
+
+    /// <summary>
+    /// Removes the LEGACY empty turn bubbles of a session loaded from storage.
+    /// <para>
+    /// The retired <c>onNewTurn</c> mechanism created an assistant message eagerly at every turn
+    /// boundary and, when no payload arrived, flagged it with <see cref="VisualChatMessage.IsEmptyTurn"/>.
+    /// New turns are created lazily (the bubble only enters the history on the first payload), so
+    /// the flag is no longer produced — but old sessions still carry it, and a reloaded session
+    /// must not render or send those bubbles.
+    /// </para>
+    /// <para>
+    /// The heuristic also catches bubbles written by older versions that never set the flag:
+    /// an assistant turn with no text, no reasoning and no tool calls carries nothing the model
+    /// could use. Message identity is preserved for every message that survives.
+    /// </para>
+    /// </summary>
+    /// <returns>Number of removed messages (0 for an already clean session).</returns>
+    public int PurgeLegacyEmptyTurns()
+    {
+        List<VisualChatMessage> removed;
+        lock (_messagesLock)
+        {
+            removed = Messages
+                .Where(m => m.IsEmptyTurn || IsEmptyAssistant(m))
+                .ToList();
+
+            if (removed.Count == 0)
+                return 0;
+
+            foreach (var message in removed)
+                Messages.Remove(message);
+        }
+
+        // One bump for the whole operation: callers see a single history mutation.
+        BumpRevision();
+        MarkChanged();
+        return removed.Count;
     }
 
     /// <summary>
@@ -261,42 +322,135 @@ public class ConversationSession : BaseOptions
         }
 
         if (updated)
+        {
+            BumpRevision();
             MarkChanged();
+        }
     }
 
-    /// <summary>
-    /// Gets the conversation messages formatted for the AI API.
-    /// Thread-safe: takes a snapshot of <see cref="Messages"/> under lock.
+    /// <summary>Result content attached to a tool call that never produced one.</summary>
+    private const string OrphanToolCallStubContent =
+        "The tool call was not executed (run interrupted before the result was produced).";
+
+    /// <summary>Single validated entry point for building the LLM request history.
+    /// Guarantees the shape the API accepts:
+    ///  - no orphaned tool_calls (every ToolCall without Result gets a stub result, otherwise
+    ///    the provider rejects assistant(tool_calls) without matching tool messages);
+    ///  - no empty assistant messages (Content blank, no ReasoningContent, no ToolCalls);
+    ///  - streaming messages never leak into the request, wherever they sit in the list;
+    ///  - duplicate message ids are dropped (first wins).
     /// </summary>
     /// <param name="systemPrompt">The system prompt to include.</param>
-    /// <returns>Wire-format messages for the AI API.</returns>
-    public IReadOnlyList<WireMessage> GetFormattedMessages(string systemPrompt, IContentFilter? contentFilter = null)
+    /// <param name="contentFilter">Optional filter applied to tool result content.</param>
+    /// <param name="live">Message the caller is still writing into; excluded by reference.</param>
+    /// <returns>
+    /// The wire history (system prompt first) and the last user message that survived
+    /// normalization (<c>null</c> when the history has no user turn).
+    /// </returns>
+    public (List<WireMessage> Messages, VisualChatMessage? LastUserMessage) BuildWire(
+        string systemPrompt,
+        IContentFilter? contentFilter = null,
+        VisualChatMessage? live = null)
     {
-        List<VisualChatMessage> snapshot;
-        lock (_messagesLock)
-            snapshot = [.. Messages];
+        // Normalisation runs on the SNAPSHOT, before formatting: PrepareMessages emits a tool
+        // message only for a call that already carries a Result, so stubbing after the wire was
+        // built would be too late (the assistant(tool_calls) would already be unanswered).
+        var visible = CollectVisibleForWire(live);
 
-        // Empty turn-boundary messages (turn started but no payload arrived) carry no
-        // content - skip them so the LLM history stays clean.
-        snapshot.RemoveAll(m => m.IsEmptyTurn);
-
-        var messages = new List<WireMessage>
+        var messages = new List<WireMessage>(visible.Count + 1)
         {
             // Add system message
             new() { Role = ChatMessageRole.System, Content = systemPrompt }
         };
 
-        // не отправлять последнее сообщение, если оно стримится. Дроп по identity ИЗ SNAPSHOT
-        // (до разворачивания в wire): стримящее assistant с tool results разворачивается в
-        // НЕСКОЛЬКО wire-сообщений [assistant(tool_calls), tool(r1), ...] — дроп последнего
-        // wire-сообщения по count оставлял бы assistant(tool_calls) без ответа → orphaned
-        // tool → API 400.
-        var historyMessages = snapshot is [.., { IsStreaming: true }] ? snapshot[..^1] : snapshot;
+        messages.AddRange(PrepareMessages(visible, contentFilter));
 
-        messages.AddRange(PrepareMessages(historyMessages, contentFilter));
-
-        return messages;
+        return (messages, visible.LastOrDefault(m => m.Role == ChatMessageRole.User));
     }
+
+    /// <summary>
+    /// Builds the validated snapshot <see cref="BuildWire"/> formats: live/streaming/empty/
+    /// duplicate messages removed, orphan tool calls stubbed. Thread-safe (snapshot under lock).
+    /// </summary>
+    private List<VisualChatMessage> CollectVisibleForWire(VisualChatMessage? live)
+    {
+        List<VisualChatMessage> snapshot;
+        lock (_messagesLock)
+            snapshot = [.. Messages];
+
+        // Дедуп по identity, а НЕ по Id: VisualChatMessage.Id помечен [JsonIgnore] и генерируется
+        // в конструкторе, поэтому у загруженных из JSON сообщений Id всегда новый — по нему дубликат
+        // не поймать. Реальный дубликат в этом коде — ОДИН И ТОТ ЖЕ объект, попавший в список дважды
+        // (повторный attach зеркала SubAgentMessage, пересекающиеся snapshot'ы SetMessages).
+        // Первое вхождение выигрывает.
+        var seen = new HashSet<VisualChatMessage>(ReferenceEqualityComparer.Instance);
+        var visible = new List<VisualChatMessage>(snapshot.Count);
+
+        foreach (var message in snapshot)
+        {
+            if (message is null)
+                continue;
+
+            // Streaming messages never leak into the request, wherever they sit in the list.
+            if (message.IsStreaming)
+                continue;
+
+            // The caller's own live message is not part of its request.
+            if (live is not null && ReferenceEquals(message, live))
+                continue;
+
+            // Technical notes are UI diagnostics, never context: the model must not pay for our
+            // transport noise, and a "Retry 2/10" line in the request would invite it to comment.
+            if (message.IsTechnical)
+                continue;
+
+            if (IsEmptyAssistant(message))
+                continue;
+
+            if (!seen.Add(message))
+                continue;
+
+            visible.Add(message);
+        }
+
+        // Orphan tool calls get a stub result. Мутируем ИСХОДНЫЕ объекты сессии (на них смотрит UI),
+        // но только для сообщений, реально попавших в wire: стаб на исключённом сообщении показал бы
+        // пользователю фейковое «не выполнено».
+        foreach (var message in visible)
+        {
+            if (message.Role != ChatMessageRole.Assistant || message.ToolCalls is not { Count: > 0 } toolCalls)
+                continue;
+
+            foreach (var toolCall in toolCalls)
+            {
+                // Без Id tool-сообщение не сопоставить вызову — PrepareMessages такой вызов
+                // не разворачивает; чинится только на уровне источника (API всегда даёт Id).
+                if (toolCall.Result is not null || string.IsNullOrEmpty(toolCall.Id))
+                    continue;
+
+                toolCall.Result = new ToolResult
+                {
+                    Content = OrphanToolCallStubContent,
+                    Name = toolCall.Function.Name,
+                    Success = false
+                };
+            }
+        }
+
+        return visible;
+    }
+
+    /// <summary>
+    /// Assistant message that carries nothing the model could use: no text, no reasoning and no
+    /// tool calls. Providers reject such turns, so they never reach the request. This also covers
+    /// the legacy <see cref="VisualChatMessage.IsEmptyTurn"/> bubbles (purged on load), so no
+    /// separate flag filter is needed.
+    /// </summary>
+    internal static bool IsEmptyAssistant(VisualChatMessage message)
+        => message.Role == ChatMessageRole.Assistant
+           && string.IsNullOrWhiteSpace(message.Content)
+           && string.IsNullOrWhiteSpace(message.ReasoningContent)
+           && message.ToolCalls is not { Count: > 0 };
 
     private static IEnumerable<WireMessage> PrepareMessages(IEnumerable<VisualChatMessage> Input, IContentFilter? contentFilter = null)
     {
@@ -354,12 +508,7 @@ public class ConversationSession : BaseOptions
     {
         List<VisualChatMessage> snapshot;
         lock (_messagesLock)
-        {
             snapshot = [.. Messages];
-            // Empty turn-boundary bubbles (eager pending messages) must not reach the
-            // summarizer — same filter as GetFormattedMessages.
-            snapshot.RemoveAll(m => m.IsEmptyTurn);
-        }
 
         var messages = new List<WireMessage>
         {
