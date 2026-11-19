@@ -87,24 +87,21 @@ internal sealed class AfDeltaMapper(ConversationSession targetSession, Completio
                 _turnAcc = [];
                 _isStart = true;
                 _inThink = false;
-                // ФИКС (todo.md, дефект 1): НЕ затираем capture.AccumulatedToolCalls на границе
-                // MessageId. _turnAcc сбрасывается (новый тур копит свои вызовы с чистого листа,
-                // иначе исполненные вызовы ушли бы на повторное исполнение), но capture остаётся
-                // ссылкой на завершённый список вызовов предыдущего хода с финальными аргументами.
-                // Некоторые провайдеры меняют MessageId ВНУТРИ одного HTTP-ответа (финальный
-                // usage-чанк, Responses API item-id) — прежний сброс терял накопленные вызовы:
-                // цикл видел null и молча завершался, не исполнив вызовы, уже отрисованные в UI
-                // («вызывается, но ничего не происходит»). Per-call reset по-прежнему делает
-                // PumpAsync (граница HTTP-туров), а цикл сбрасывает аккумулятор перед исполнением.
-                // In-call message boundary (several MessageIds inside ONE HTTP call — e.g. the
-                // non-streaming adapter replaying messages): the previous message is already
-                // closed by the caller at the end of the turn. The multi-CALL boundary is
-                // handled by ResetPerTurnCounters in PumpAsync. The heuristic re-bases from the
-                // CURRENT session total (visible tokens of the previous message included —
-                // correct context position); the final usage chunk overwrites capture.Usage.
+                // A MessageId change inside ONE HTTP call is NOT a turn boundary: only the
+                // per-message accumulators reset here. capture.AccumulatedToolCalls is deliberately
+                // left untouched — it keeps pointing at the finished call list of the previous
+                // message, with its final arguments. Providers do change MessageId inside one
+                // response (final usage chunk, Responses item ids), and clearing the capture there
+                // lost calls the UI had already rendered: the turn loop saw null, finished silently
+                // and never executed them ("the tool is called but nothing happens"). The per-call
+                // reset belongs to PumpAsync, and the loop clears the accumulator itself right
+                // before executing.
                 capture.CompletionTokens = 0;
                 capture.ReasoningTokens = 0;
                 capture.Usage = null;
+                // The token estimate re-bases from the CURRENT session total (the previous
+                // message's visible tokens included — that is its correct context position);
+                // the final usage chunk, when it comes, overwrites capture.Usage anyway.
                 estimateBase = targetSession.TotalTokens;
             }
 

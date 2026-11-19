@@ -155,6 +155,82 @@ public partial class ChatServiceTests
         Assert.Equal(currentId, chatService.Session.Id);
     }
 
+    // ───────────────────────────────────────────────────────────────────────
+    //  Legacy cleanup at the load boundary must NOT write synchronously
+    //  A full re-serialisation + localStorage.setItem of a multi-megabyte session on the single
+    //  WASM thread stalled the UI right after the history was painted (one of the causes of the
+    //  unresponsive renderer). The purge itself stays; only its persistence is deferred.
+    // ───────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// A session written by an older build's eager turn boundary: a real user message plus an
+    /// assistant placeholder that carries no payload at all.
+    /// </summary>
+    private static ConversationSession CreateLegacySessionWithEmptyTurn(string id)
+    {
+        var session = new ConversationSession { Id = id };
+        session.SetMessages([
+            VisualChatMessage.CreateUser("hello"),
+            new VisualChatMessage
+            {
+                Role = ChatMessageRole.Assistant,
+                Content = string.Empty
+            }
+        ]);
+        return session;
+    }
+
+    [Fact]
+    public async Task LoadSessionAsync_LegacyEmptyTurns_ArePurgedWithoutSynchronousWrite()
+    {
+        // Arrange - a long debounce proves the write does not happen on the load path itself.
+        const string id = "session_2025-01-01T00:00:00";
+        _localStorageMock.Setup(ls => ls.TryGetItemAsync<ConversationSession>(id))
+            .ReturnsAsync(CreateLegacySessionWithEmptyTurn(id));
+
+        using var service = CreateChatService();
+        service.AutosaveDelay = TimeSpan.FromSeconds(30);
+
+        // Act
+        await service.LoadSessionAsync(id);
+
+        // Assert (a): the returned session no longer contains the legacy bubble.
+        var message = Assert.Single(service.Session.GetMessagesSnapshot());
+        Assert.Equal("hello", message.Content);
+
+        // Assert (b): nothing was serialised/written while the load was running.
+        _localStorageMock.Verify(
+            ls => ls.SetItemAsync(It.IsAny<string>(), It.IsAny<ConversationSession>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task LoadSessionAsync_PurgedSession_IsPersistedByTheAutosavePump()
+    {
+        // (c) The deferred write really happens: the autosave pump (attached by the Session
+        // setter) persists the cleaned session after the debounce, so the cleanup is not lost.
+        const string id = "session_2025-01-02T00:00:00";
+        _localStorageMock.Setup(ls => ls.TryGetItemAsync<ConversationSession>(id))
+            .ReturnsAsync(CreateLegacySessionWithEmptyTurn(id));
+
+        var saved = CaptureSessionSaves();
+        using var service = CreateChatService();
+        service.AutosaveDelay = TimeSpan.Zero;
+
+        // Act
+        await service.LoadSessionAsync(id);
+
+        // Assert - the persisted payload carries only the surviving message (JSON round-trip:
+        // the file, not the live object, is what the user gets back on the next start).
+        await WaitUntilAsync(
+            () => Snapshot(saved).Exists(s => s.Id == id && s.MessageCount == 1),
+            "the purged session to be autosaved by the debounce pump");
+
+        var persisted = JsonSerializer.Deserialize<ConversationSession>(Snapshot(saved).First(s => s.Id == id).Json);
+        Assert.NotNull(persisted);
+        Assert.Equal("hello", Assert.Single(persisted.GetMessagesSnapshot()).Content);
+    }
+
     [Fact]
     public async Task LoadLastSessionOrGenerateNewAsync_MultipleSessions_PicksNewestByEncodedDate()
     {

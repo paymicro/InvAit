@@ -123,21 +123,45 @@ public class VsBridge : IVsBridge, IDisposable
 
             var timeOut = TimeSpan.FromMilliseconds(_commonOptions.Current.ToolTimeoutMs);
 #if DEBUG
-            // Дебаг не быстрый)
-            timeOut = TimeSpan.FromDays(1);
+            // Дебаг не быстрый, но не бесконечный: сутки тишины выглядели в UI ровно как
+            // «приложение повисло» — отличить «тулза думает» от «мост мёртв» невозможно.
+            // 30 минут всё ещё хватает на отладку VS с точкой останова.
+            timeOut = TimeSpan.FromMinutes(30);
 #endif
-            cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
+            // Both registrations are disposed with the wait. An undisposed registration keeps the
+            // TCS (and the request payload plus its continuation) alive until the token is
+            // collected, and it fires on a token that may be cancelled long after this request was
+            // already answered.
+            using var cancellationRegistration =
+                cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
 
             using var timeoutCts = new CancellationTokenSource(timeOut);
-            timeoutCts.Token.Register(() =>
+            using var timeoutRegistration = timeoutCts.Token.Register(() =>
                 tcs.TrySetException(new TimeoutException("Request timed out")));
 
             // Ждем ответа
             return await tcs.Task;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The user cancelled the run. This is NOT a transport failure.
+            //
+            // Swallowing it into `Success = false` handed the model the tool result
+            // "Transport failure: The operation was canceled." — a lie: the tool did not fail, it
+            // was never finished. It also wrote an ERROR log entry with a stack trace for a
+            // completely expected event, and it kept the run unwinding its tool batch one call at
+            // a time instead of stopping at the next check.
+            //
+            // Both run loops already own cancellation as a terminal state
+            // (AiChat.ExecuteToolBatchAsync and AfSubAgentOrchestrator.ExecuteBranchToolBatchAsync
+            // catch OCE on the run token, then stamp a result on every remaining call), so the
+            // exception is propagated, not translated.
+            throw;
+        }
         catch (Exception ex)
         {
-            // Здесь остаются только настоящие аварии транспорта (таймаут, отмена, сбой JS).
+            // Здесь остаются только настоящие аварии транспорта (таймаут, сбой JS). Отмена
+            // сюда больше не доходит — она обрабатывается отдельной веткой выше.
             // Пишем в обычный консольный канал, а не в Console.Error: иначе Blazor WASM
             // показывает плашку #blazor-error-ui принудительно. Хост-лог получает запись
             // уровнем ERROR — там она и должна быть видна.

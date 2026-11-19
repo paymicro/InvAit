@@ -244,6 +244,20 @@
     private long _lastSeenRevision = -1;
 
     /// <summary>
+    /// True when a VIEW-ONLY state changed since the last render (the interject input was shown or
+    /// hidden).
+    /// <para>
+    /// <see cref="HasChanges"/> derives everything from the MODEL, and that derivation is
+    /// deliberately O(1) for an idle branch: no revision change, no message count change, no
+    /// streaming message → "nothing to render". A local toggle is invisible to that reasoning, so
+    /// the render that follows the click was vetoed and the input materialised only when the branch
+    /// produced its next token ("the field appears one iteration later"). View state must therefore
+    /// be an explicit participant of the change check, not a side effect of the model.
+    /// </para>
+    /// </summary>
+    private bool _viewStateChanged;
+
+    /// <summary>
     /// Detects whether the component has changes that require a render.
     /// Structural changes (status, message count, expansion, streaming→idle)
     /// set _structuralChanged to force an immediate render bypassing the throttle.
@@ -252,6 +266,11 @@
     /// </summary>
     protected override bool HasChanges()
     {
+        // View-only state outranks the model: an input the user opened must appear on THIS render,
+        // regardless of what the branch is doing.
+        if (_viewStateChanged)
+            return true;
+
         // Fast path (O(1), no locks, no scans): neither the sub-agent state
         // (Revision is bumped by every NotifyStateChanged) nor the retry
         // countdown changed since the last render. This matters because
@@ -317,6 +336,7 @@
     /// </summary>
     protected override void OnRendered()
     {
+        _viewStateChanged = false;
         _lastSeenRevision = SubAgent.Revision;
         _oldMessageCount = SubAgent.GetMessageCount();
         _oldStatus = SubAgent.Status;
@@ -384,14 +404,29 @@
             _isInputVisible = true;
             _needsFocus = true;
         }
-        SubAgent.NotifyStateChanged();
+
+        // Only VIEW state changed: the branch itself is untouched, so the model must not be told
+        // otherwise (NotifyStateChanged also bumped Revision, which is a lie about the branch).
+        // The render is requested through the explicit view-state flag instead.
+        RequestViewRender();
     }
 
     private void HideInterjectInput()
     {
         _isInputVisible = false;
         _interjectText = null;
-        SubAgent.NotifyStateChanged();
+        RequestViewRender();
+    }
+
+    /// <summary>
+    /// Repaints this component for a change that lives in the view, not in the model. Without it the
+    /// render is vetoed by <see cref="HasChanges"/> (idle branch: no revision, no new message, no
+    /// streaming) and the UI waits for an unrelated token to arrive.
+    /// </summary>
+    private void RequestViewRender()
+    {
+        _viewStateChanged = true;
+        StateHasChanged();
     }
 
     #endregion

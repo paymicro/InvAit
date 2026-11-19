@@ -129,6 +129,19 @@ public class AiChatTests : BunitContext
             builder.AddAttribute(1, "class", "chat-message-view-stub");
             builder.AddAttribute(2, "data-message-id", message?.Id);
             builder.AddContent(3, message?.Content ?? "No content");
+
+            // The real view offers regenerate on the last assistant bubble while idle. Mirroring it
+            // here is what lets a test drive the REAL click path (renderer event dispatch, which
+            // batches every StateHasChanged of the handler into ONE render).
+            if (parameters.Get(p => p.IsLast) && message?.Role == ChatMessageRole.Assistant)
+            {
+                var onRegenerate = parameters.Get(p => p.OnRegenerate);
+                builder.OpenElement(4, "button");
+                builder.AddAttribute(5, "class", "chat-message-view-stub-regenerate");
+                builder.AddAttribute(6, "onclick", EventCallback.Factory.Create(this, () => onRegenerate.InvokeAsync()));
+                builder.CloseElement();
+            }
+
             builder.CloseElement();
         });
 
@@ -365,7 +378,7 @@ public class AiChatTests : BunitContext
     [Fact]
     public async Task SendMessageAsync_DuringCompression_MessageRejected()
     {
-        // Arrange: the compact command sets IsLoading = true and runs compression —
+        // Arrange: the compress command sets IsLoading = true and runs compression —
         // the interject window is closed (_acceptInterjects is only open for the agent loop).
         // ProcessStreamAsync blocks until released, so IsLoading stays true.
         var release = new TaskCompletionSource();
@@ -383,7 +396,7 @@ public class AiChatTests : BunitContext
             .Returns(release.Task);
 
         var cut = Render<AiChat>();
-        var compactRun = cut.InvokeAsync(async () => await cut.Instance.HandleCommandAsync("compact"));
+        var compactRun = cut.InvokeAsync(async () => await cut.Instance.HandleCommandAsync(BuiltInCommand.Compress));
 
         // Wait until the compression assistant message is added (IsLoading = true).
         await WaitUntilAsync(() => _session.GetMessageCount() >= 1);
@@ -399,6 +412,36 @@ public class AiChatTests : BunitContext
 
         release.TrySetResult();
         await compactRun;
+    }
+
+    /// <summary>
+    /// The suggestion menu hands the dispatcher a bare name ("compress"), while a command typed
+    /// by hand arrives as "/compress". Both spellings must reach the same case — the slash used to
+    /// be part of the literal the dispatcher compared against, so renaming the command or fixing a
+    /// typo (the old name was "compact") silently turned one of the two paths into a no-op.
+    /// </summary>
+    [Theory]
+    [InlineData(BuiltInCommand.Compress)]
+    [InlineData("/compress")]
+    [InlineData("  /compress  ")]
+    public async Task HandleCommandAsync_NormalisesBuiltInCommand(string command)
+    {
+        // Arrange - the compression stream never yields: only the CALL matters here.
+        _mockChatService
+            .Setup(x => x.CompressSessionAsync(It.IsAny<ConversationSession>(), It.IsAny<CompletionsResult>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(AsyncEnumerable.Empty<ChatDelta>);
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+        SetupProcessStreamConsume();
+
+        var cut = Render<AiChat>();
+
+        // Act
+        await cut.InvokeAsync(async () => await cut.Instance.HandleCommandAsync(command));
+
+        // Assert
+        _mockChatService.Verify(x => x.CompressSessionAsync(It.IsAny<ConversationSession>(),
+            It.IsAny<CompletionsResult>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     /// <summary>
@@ -1030,7 +1073,7 @@ public class AiChatTests : BunitContext
         // The retried attempt did not vanish silently: a technical note records it in place of
         // the removed turn. It is a trace, never context — BuildWire must not send it.
         var note = Assert.Single(messages, m => m.IsTechnical);
-        Assert.Contains("Retry 1/2", note.Content);
+        Assert.Contains(string.Format(SharedResource.RetryNoteFormat, 1, 2, 2), note.Content);
         Assert.Contains("boom", note.Content);
         var wireContents = _session.BuildWire("sys").Messages.Select(m => m.Content ?? string.Empty).ToList();
         Assert.DoesNotContain(note.Content, wireContents);
@@ -1203,7 +1246,7 @@ public class AiChatTests : BunitContext
 
         // The retried turn left a note where it was dropped — after the completed turn 1.
         var note = Assert.Single(messages, m => m.IsTechnical);
-        Assert.Contains("Retry 1/2", note.Content);
+        Assert.Contains(string.Format(SharedResource.RetryNoteFormat, 1, 2, 2), note.Content);
         Assert.Equal(2, messages.IndexOf(note));
 
         Assert.Contains("Error:", messages[3].Content);
@@ -1647,6 +1690,54 @@ public class AiChatTests : BunitContext
 
         SetupTurnScripts((_, ct) => CreateFailingStreamAsync(
             [new ChatDelta { Content = "Partial answer before failure" }], failureMessage, ct));
+    }
+
+    /// <summary>
+    /// Regression: regenerate removes the last assistant message and adds the new streaming one in
+    /// the SAME handler, so one batched render sees "N messages" before and after. While the
+    /// transcript cache was keyed by MESSAGE COUNT, that render was answered with the PRE-change
+    /// list: the deleted answer stayed on screen and the streaming bubble never entered the DOM
+    /// until the count happened to move (the "+1 message" the user reported).
+    /// <para>
+    /// The click is dispatched through the real event path on purpose: <c>cut.InvokeAsync</c> renders
+    /// every <c>StateHasChanged</c> immediately and therefore hid the defect.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Regenerate_ReplacesBubbleImmediately()
+    {
+        // Arrange: a finished exchange (user + assistant).
+        _session.AddMessage(VisualChatMessage.CreateUser("question"));
+        var oldAnswer = VisualChatMessage.CreateStreaming();
+        oldAnswer.Content = "old answer";
+        oldAnswer.IsStreaming = false;
+        _session.AddMessage(oldAnswer);
+
+        var release = new TaskCompletionSource();
+        SetupTurnScripts((capture, ct) => StreamUntilReleasedLocal(release, capture, ct));
+        _mockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+        SetupProcessStreamConsume();
+
+        var cut = Render<AiChat>();
+        Assert.Equal(2, cut.FindAll(".chat-message-view-stub").Count);
+
+        // Act: click regenerate exactly like a user does (real event dispatch: Blazor batches every
+        // StateHasChanged of the handler into ONE render, so the removal and the insertion of the
+        // new turn message are observed together).
+        _ = cut.Find(".chat-message-view-stub-regenerate").ClickAsync();
+        await WaitUntilAsync(() => _session.GetMessagesSnapshot().Any(m => m.Content == "streaming..."));
+
+        // Assert: the DOM shows the NEW streaming bubble, the old answer is gone.
+        // Identity, not text: the stub is not a real ChatMessageView, so it does not re-render
+        // on tokens (only the real one subscribes to Message.Changed).
+        var ids = cut.FindAll(".chat-message-view-stub")
+            .Select(s => s.GetAttribute("data-message-id"))
+            .ToList();
+        Assert.DoesNotContain(oldAnswer.Id, ids);
+        Assert.Contains(_session.GetMessagesSnapshot()[^1].Id, ids);
+
+        release.TrySetResult();
+        await WaitUntilAsync(() => !_session.GetMessagesSnapshot().Any(m => m.IsStreaming));
     }
 
     /// <summary>

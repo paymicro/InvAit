@@ -928,32 +928,37 @@ public class ChatMessageViewTests : BunitContext
     #region Technical notes
 
     /// <summary>
-    /// A technical note renders as a compact diagnostic line, NOT through the markdown content
-    /// pipeline: its text is raw ("HttpCode: 429 | ..."), and pushing that through markdown would
-    /// let an error body's markup decide the layout of the transcript.
+    /// A technical note renders as a divider row (the same visual language as the archive plaque),
+    /// NOT through the markdown content pipeline: its text is raw ("HttpCode: 429 | ..."), and
+    /// pushing that through markdown would let an error body's markup decide the layout of the
+    /// transcript.
     /// </summary>
     [Fact]
-    public void TechnicalNote_RendersCompactLine_NotMarkdownContent()
+    public void TechnicalNote_RendersDividerRow_NotMarkdownContent()
     {
         // Arrange
-        var message = VisualChatMessage.CreateTechnical("Retry 2/10 in 5s — HttpCode: 429 | slow down");
+        var message = VisualChatMessage.CreateTechnical("2/10 in 5s — HttpCode: 429 | slow down");
 
         // Act
         var cut = Render<ChatMessageView>(p => p.Add(x => x.Message, message));
 
-        // Assert: the note line is rendered raw, the normal content pipeline is bypassed.
+        // Assert: the note is a divider row with a title and a raw detail line, and the normal
+        // content pipeline is bypassed.
         var note = cut.Find(".tech-note");
-        Assert.Contains("Retry 2/10 in 5s", note.TextContent);
+        Assert.Contains("divider-row", note.ClassList);
+        Assert.Contains(SharedResource.RetryNoteTitle, note.TextContent);
+        Assert.Contains("2/10 in 5s", note.TextContent);
         Assert.Empty(cut.FindAll(".message-content-stub"));
     }
 
     /// <summary>
-    /// Edit and regenerate are conversation operations; a diagnostic line has no meaning for them
-    /// (and regenerating from a retry note would resend the request that just failed). Delete
-    /// stays: the user may want to prune noise.
+    /// A note has no message action bar at all: edit and regenerate are conversation operations
+    /// (regenerating from a retry note would resend the request that just failed), and the delete
+    /// action lives INSIDE the divider row - in the same action slot the archive plaque uses for
+    /// "show earlier". A lone floating cross under a divider read as a stray button.
     /// </summary>
     [Fact]
-    public void TechnicalNote_HidesEditAndRegenerate_KeepsDelete()
+    public void TechnicalNote_HasNoActionBar_DeleteLivesInsideTheRow()
     {
         // Arrange
         var message = VisualChatMessage.CreateTechnical("Request timed out after 100s");
@@ -963,16 +968,33 @@ public class ChatMessageViewTests : BunitContext
             .Add(x => x.Message, message)
             .Add(x => x.IsLast, false));
 
-        // Assert: exactly one action button survives - "delete" (rendered as its Radzen icon text).
-        var buttons = Buttons(cut);
-        Assert.Single(buttons);
-        Assert.Contains("delete", buttons[0]);
+        // Assert: no floating action bar, exactly one dismiss button inside the row.
+        Assert.Empty(cut.FindAll(".rz-chat-message-actions"));
+        var rowButtons = cut.FindAll(".tech-note .divider-row-actions button");
+        Assert.Single(rowButtons);
     }
 
-    private static List<string> Buttons(IRenderedComponent<ChatMessageView> cut)
-        => cut.FindAll(".rz-chat-message-actions button")
-            .Select(b => b.InnerHtml)
-            .ToList();
+    /// <summary>
+    /// The dismiss button of a note raises the same delete callback a normal message does, so the
+    /// note is removed through the existing path (session removal + autosave).
+    /// </summary>
+    [Fact]
+    public void TechnicalNote_DismissClick_InvokesDeleteCallback()
+    {
+        // Arrange
+        var message = VisualChatMessage.CreateTechnical("Request timed out after 100s");
+        VisualChatMessage? deleted = null;
+
+        var cut = Render<ChatMessageView>(p => p
+            .Add(x => x.Message, message)
+            .Add(x => x.OnDelete, (VisualChatMessage m) => deleted = m));
+
+        // Act
+        cut.Find(".tech-note .divider-row-actions button").Click();
+
+        // Assert
+        Assert.Same(message, deleted);
+    }
 
     #endregion
 }

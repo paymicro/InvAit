@@ -1,0 +1,264 @@
+@implements IDisposable
+@inject IJSRuntime Js
+@inject IToolManager ToolManager
+
+@*
+    Transcript of the MAIN session.
+
+    Only what the window materialises is rendered: [head][plaque][tail]. A 500-message history used
+    to be built in one synchronous BuildRenderTree pass with one markdown interop per block, which
+    the WebView2 watchdog reported as RenderProcessUnresponsive. Sub-agent branches are NOT windowed:
+    they render inside SubAgentView, which owns its own lifetime and size.
+
+    Positional decisions (IsLast, this-or-that index) always use REAL indices from the snapshot, so
+    hiding the middle never changes the meaning of a message.
+*@
+
+@if (_plan is not null)
+{
+    foreach (var row in _plan.Rows)
+    {
+        if (row.Kind == WindowRowKind.Group)
+        {
+            <HiddenMessagesPlaque @key="HiddenGroupKey"
+                                  Stats="@_plan.HiddenStats"
+                                  CanCompress="@CanCompress"
+                                  OnShowMore="ShowMoreAsync"
+                                  OnCompress="OnCompress" />
+            continue;
+        }
+
+        var index = row.Index;
+        var message = Messages[index];
+
+        <ChatMessageView @key="message.Id"
+                         Message="message"
+                         IsLast="@(index == Messages.Count - 1)"
+                         IsLoading="IsLoading"
+                         OnToolApproval="OnToolApproval"
+                         OnExecutePlan="OnExecutePlan"
+                         OnEdit="OnEdit"
+                         OnCancelEdit="OnCancelEdit"
+                         OnSaveEdit="OnSaveEdit"
+                         OnDelete="OnDelete"
+                         OnRegenerate="OnRegenerate" />
+    }
+
+    <div class="anchor"></div>
+}
+
+@code {
+    /// <summary>Stable key for the plaque: it must not be re-created when rows around it change.</summary>
+    private const string HiddenGroupKey = "hidden-messages-group";
+
+    private MessageWindowPlan? _plan;
+
+    /// <summary>Extra pages of earlier messages the user already revealed.</summary>
+    private int _expandedPages;
+
+    /// <summary>
+    /// Boundary frozen while a run streams. Without it the boundary moves forward with every new
+    /// message and swallows the bubble the user is reading - with a scroll jump on top.
+    /// </summary>
+    private int? _pinnedTailStart;
+
+    private bool _runActive;
+
+    private string _sessionId = string.Empty;
+
+    /// <summary>Messages already prepared (segments/plan/display names). Never re-prepared:
+    /// <see cref="MessagePresentation.Prepare"/> would reset the user's "Show more" choice.</summary>
+    private readonly HashSet<string> _prepared = [];
+
+    [Parameter] public IReadOnlyList<VisualChatMessage> Messages { get; set; } = [];
+
+    /// <summary>Session identity: a different session resets the window.</summary>
+    [Parameter] public string SessionId { get; set; } = string.Empty;
+
+    [Parameter] public bool IsLoading { get; set; }
+
+    [Parameter] public bool IsCompressing { get; set; }
+
+    [Parameter] public EventCallback<(string MessageId, string SegmentId, bool Approved)> OnToolApproval { get; set; }
+    [Parameter] public EventCallback<VisualChatMessage> OnExecutePlan { get; set; }
+    [Parameter] public EventCallback<VisualChatMessage> OnEdit { get; set; }
+    [Parameter] public EventCallback<VisualChatMessage> OnCancelEdit { get; set; }
+    [Parameter] public EventCallback<VisualChatMessage> OnSaveEdit { get; set; }
+    [Parameter] public EventCallback<VisualChatMessage> OnDelete { get; set; }
+    [Parameter] public EventCallback OnRegenerate { get; set; }
+
+    /// <summary>Manual compression (the /compress path), offered from the archive plaque.</summary>
+    [Parameter] public EventCallback OnCompress { get; set; }
+
+    /// <summary>Compression is not offered while the run or a compression is already in flight.</summary>
+    private bool CanCompress => !IsLoading && !IsCompressing;
+
+    protected override void OnParametersSet()
+    {
+        if (!string.Equals(_sessionId, SessionId, StringComparison.Ordinal))
+        {
+            _sessionId = SessionId;
+            _expandedPages = 0;
+            _pinnedTailStart = null;
+            _runActive = false;
+            _prepared.Clear();
+        }
+
+        UpdateRunPin();
+        RebuildPlan();
+        PrepareMaterialised();
+    }
+
+    /// <summary>
+    /// Pins / lifts the tail boundary around a run. A run that grows by more than one page lifts the
+    /// pin anyway: an unbounded tail would defeat the window, and a jump once per page is far less
+    /// disruptive than a freeze that never ends.
+    /// </summary>
+    private void UpdateRunPin()
+    {
+        if (IsLoading && !_runActive)
+        {
+            _runActive = true;
+            _pinnedTailStart = MessageWindowPolicy.DesiredTailStart(Messages.Count, _expandedPages);
+            return;
+        }
+
+        if (!IsLoading)
+        {
+            _runActive = false;
+            _pinnedTailStart = null;
+            return;
+        }
+
+        if (_pinnedTailStart is { } pinned
+            && Messages.Count - pinned > MessageWindowPolicy.TailWindowCount + MessageWindowPolicy.GroupPageSize)
+        {
+            _pinnedTailStart = MessageWindowPolicy.DesiredTailStart(Messages.Count, _expandedPages);
+        }
+    }
+
+    private void RebuildPlan()
+        => _plan = MessageWindowPolicy.Build(
+            Messages,
+            _expandedPages,
+            _runActive ? _pinnedTailStart : null);
+
+    /// <summary>
+    /// Prepares (segments, plan, tool display names) ONLY the messages the window renders. This is
+    /// the reason a 500-message session no longer costs anything at load: the untouched middle is
+    /// never processed until it is revealed.
+    /// </summary>
+    private void PrepareMaterialised()
+    {
+        if (_plan is null)
+            return;
+
+        foreach (var index in MessageWindowPolicy.MaterialisedIndices(_plan))
+        {
+            if (index < 0 || index >= Messages.Count)
+                continue;
+
+            var message = Messages[index];
+            if (!_prepared.Add(message.Id))
+                continue;
+
+            MessagePresentation.Prepare(message, ToolManager);
+        }
+    }
+
+    /// <summary>
+    /// Reveals one more page of earlier messages, keeping the viewport anchored: the content is
+    /// inserted ABOVE the current position, and <c>overflow-anchor: none</c> on the messages means
+    /// the browser will not compensate for us.
+    /// </summary>
+    public async Task ShowMoreAsync()
+    {
+        var previousHeight = await CaptureScrollHeightAsync();
+
+        _expandedPages++;
+        RebuildPlan();
+        PrepareMaterialised();
+        await InvokeAsync(StateHasChanged);
+
+        await RestoreScrollHeightAsync(previousHeight);
+    }
+
+    /// <summary>
+    /// Expands the window until <paramref name="messageId"/> is materialised. Needed by
+    /// <c>scrollToMessage</c>: the compression summary lands in the MIDDLE of the history, and a
+    /// message that is not in the DOM cannot be scrolled to (nor highlighted).
+    /// </summary>
+    /// <returns>True when the message is now part of the DOM.</returns>
+    public async Task<bool> EnsureVisibleAsync(string messageId)
+    {
+        var index = IndexOf(messageId);
+        if (index < 0)
+            return false;
+
+        // Bounded by construction: each iteration removes at least one page from the hidden range.
+        var guard = 0;
+        while (IsHidden(index) && guard++ < 10_000)
+        {
+            _expandedPages++;
+            RebuildPlan();
+        }
+
+        if (index >= _plan!.HeadCount && index < _plan.TailStart)
+        {
+            // Already materialised (head or tail row, or a protected message that pinned the
+            // boundary): nothing to expand. The window policy guarantees a protected message is
+            // never INSIDE the hidden range, so this is the only way the loop above can stop early.
+            return true;
+        }
+
+        PrepareMaterialised();
+        await InvokeAsync(StateHasChanged);
+
+        // A macro-task, not Task.Yield: the WASM single thread must actually get back to the event
+        // loop, otherwise the render above has not produced DOM yet when the JS call arrives.
+        await Task.Delay(1);
+        return true;
+    }
+
+    private bool IsHidden(int index) => _plan is not null && index >= _plan.HeadCount && index < _plan.TailStart;
+
+    private int IndexOf(string messageId)
+    {
+        for (var i = 0; i < Messages.Count; i++)
+        {
+            if (Messages[i].Id == messageId)
+                return i;
+        }
+
+        return -1;
+    }
+
+    private async Task<double> CaptureScrollHeightAsync()
+    {
+        try
+        {
+            return await Js.InvokeAsync<double>("captureChatScrollHeight");
+        }
+        catch (Exception ex) when (ex is JSException or ObjectDisposedException)
+        {
+            return 0;
+        }
+    }
+
+    private async Task RestoreScrollHeightAsync(double previousHeight)
+    {
+        if (previousHeight <= 0)
+            return;
+
+        try
+        {
+            await Js.InvokeVoidAsync("restoreChatScrollHeight", previousHeight);
+        }
+        catch (Exception ex) when (ex is JSException or ObjectDisposedException)
+        {
+            // Scroll anchoring is cosmetic: a failed hop must not break the transcript.
+        }
+    }
+
+    public void Dispose() => _prepared.Clear();
+}

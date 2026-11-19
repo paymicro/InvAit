@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Community.VisualStudio.Toolkit;
@@ -20,6 +21,20 @@ public partial class ChatControl
 {
     private bool _webView2Installed;
     private WV.IWebView2 _webView;
+
+    /// <summary>
+    /// Minimum distance between two automatic renderer reloads. Static on purpose: the tool
+    /// window (and therefore this control) can be recreated while a crashed renderer is still
+    /// in its failure loop, so the throttle must outlive a single control instance.
+    /// </summary>
+    private static readonly TimeSpan AutoReloadMinInterval = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// <see cref="Stopwatch.GetTimestamp"/> of the last automatic reload, or 0 when none has
+    /// happened yet. Written through <see cref="Interlocked"/> because it is shared by every
+    /// control instance; the event itself is raised on the thread that owns the WebView.
+    /// </summary>
+    private static long _lastAutoReloadTimestamp;
     private readonly ToolExecutor _toolExecutor;
     private bool _skipSslValidation;
     private string _vsVersion;
@@ -127,13 +142,7 @@ public partial class ChatControl
                 Logger.Log($"SSL validation error. You can skip SSL validation in settings.", "ERROR");
             }
         };
-        _webView.CoreWebView2.ProcessFailed += (s, e) =>
-        {
-            Logger.Log($"WebView process failed: {e.ProcessFailedKind}", "ERROR");
-            // При падении процесса WebView, нужно его перезагрузить.
-            // Иначе он будет показывать только чистый экран.
-            _webView.CoreWebView2.Reload();
-        };
+        _webView.CoreWebView2.ProcessFailed += (s, e) => HandleProcessFailed(e);
         _webView.CoreWebView2.NewWindowRequested += (s, e) =>
         {
             // Блокируем открытие новых окон. Все должно работать в одном окне.
@@ -160,6 +169,70 @@ public partial class ChatControl
                 });
             }
         };
+    }
+
+    /// <summary>
+    /// Recovers from a WebView2 process failure by reloading the renderer - but at most ONE
+    /// automatic reload per <see cref="AutoReloadMinInterval"/>.
+    /// <para>
+    /// WHY the reload is rate-limited: a renderer that became unresponsive (a heavy session with
+    /// hundreds of messages blocks the single WASM thread) fails, an unconditional reload runs
+    /// the very same page load again, the renderer dies again. That is an endless flicker loop
+    /// which never surfaces a diagnostic and keeps burning CPU. After a second failure inside the
+    /// window we therefore only log an actionable ERROR line and leave the decision (reload the
+    /// tool window / restart Visual Studio) to the user; nothing is lost because sessions are
+    /// persisted before the renderer is involved.
+    /// </para>
+    /// <para>
+    /// The throttle is stamped only after a reload was actually issued, so a renderer that stays
+    /// healthy afterwards is never penalised by an old failure, and a throwing Reload() leaves the
+    /// window open for a retry. This handler never throws: an exception escaping a crash callback
+    /// would take the host down with it.
+    /// </para>
+    /// </summary>
+    private void HandleProcessFailed(CoreWebView2ProcessFailedEventArgs e)
+    {
+        // ProcessFailedKind is the only diagnostic WebView2 exposes here; the exit code/reason of
+        // RenderProcessExited is not surfaced through this event. The SDK assembly version is
+        // enough to correlate a report with the installed WebView2 build.
+        var diagnostics = $"kind: {e.ProcessFailedKind}, WebView2 SDK: {typeof(CoreWebView2).Assembly.GetName().Version}";
+
+        var now = Stopwatch.GetTimestamp();
+        var lastReload = Interlocked.Read(ref _lastAutoReloadTimestamp);
+        if (lastReload != 0)
+        {
+            var sinceLastReload = TimeSpan.FromSeconds((now - lastReload) / (double)Stopwatch.Frequency);
+            if (sinceLastReload < AutoReloadMinInterval)
+            {
+                Logger.Log(
+                    $"WebView process failed again ({diagnostics}) {sinceLastReload.TotalSeconds:F1}s after the previous automatic reload. " +
+                    $"The renderer is most likely stuck on the same heavy page, so the UI is NOT reloaded automatically " +
+                    $"(at most one reload per {AutoReloadMinInterval.TotalSeconds:F0}s) to avoid an endless reload loop. " +
+                    "Reload the tool window or restart Visual Studio to recover; the session on disk is intact.",
+                    "ERROR");
+                return;
+            }
+        }
+
+        Logger.Log(
+            $"WebView process failed ({diagnostics}). Reloading the renderer " +
+            $"(automatic reloads are throttled to one per {AutoReloadMinInterval.TotalSeconds:F0}s).",
+            "ERROR");
+
+        try
+        {
+            _webView?.CoreWebView2?.Reload();
+
+            // Stamped AFTER the reload was issued: the window starts at the reload, so a session
+            // that stays healthy is not penalised by a failure it already recovered from.
+            Interlocked.Exchange(ref _lastAutoReloadTimestamp, now);
+        }
+        catch (Exception ex)
+        {
+            // A throwing Reload() must not escape a crash callback; the timestamp stays untouched,
+            // so the next failure is still allowed to try again.
+            Logger.Log($"WebView reload after a process failure failed: {ex.Message}", "ERROR");
+        }
     }
 
     /// <summary>

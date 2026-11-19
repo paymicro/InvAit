@@ -103,6 +103,28 @@ public partial class ChatServiceTests
     }
 
     [Fact]
+    public async Task ProcessStreamAsync_TokensPerSecond_IsNotFlooredToOneSecond()
+    {
+        // Arrange - an instantly streamed answer: the only measured window is the generation itself.
+        // A floor of one second made every sub-second answer report a number that was too LOW —
+        // the divisor was "1 s", not the real elapsed time of the generation.
+        var message = new VisualChatMessage();
+        var capture = new CompletionsResult { CompletionTokens = 120 };
+        var deltas = CreateAsyncEnumerable(
+            new ChatDelta { Content = "answer" });
+
+        // Act
+        await CreateChatService().ProcessStreamAsync(
+            message, deltas, null, null, null, capture, TestContext.Current.CancellationToken);
+
+        // Assert - the reported speed is better than "all 120 tokens took a whole second".
+        // (Equal would mean the 1 s floor was applied: 120 / 1 = 120 = Tokens.)
+        Assert.True(message.Timings.TokensInSec > message.Timings.Tokens,
+            $"TokensInSec {message.Timings.TokensInSec} must be measured, not floored to the token count " +
+            $"(window {message.Timings.Total.TotalMilliseconds} ms, first token {message.Timings.FirstToken.TotalMilliseconds} ms)");
+    }
+
+    [Fact]
     public async Task ProcessStreamAsync_UpdatesTimingsInRealTime()
     {
         // Arrange - slow stream (delay before EVERY delta): the mid-stream snapshot

@@ -17,7 +17,6 @@ public class ConversationSessionTests
         session.AddMessage(new VisualChatMessage
         {
             Role = ChatMessageRole.Assistant,
-            IsEmptyTurn = true,
             Content = string.Empty
         });
 

@@ -149,6 +149,39 @@ if (window.chrome && window.chrome.webview) {
 //определение темы
 const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
+// The archive plaque of the history window inserts earlier messages ABOVE the viewport.
+// `.rz-chat-message` sets `overflow-anchor: none` (scroll anchoring off), so the browser will not
+// compensate for us: capture the scroll height before the reveal and add the difference after it.
+function findChatScroller() {
+    const anchor = document.querySelector('.anchor');
+    let el = anchor ? anchor.parentElement : document.querySelector('.rz-chat-messages');
+
+    while (el && el !== document.body) {
+        const overflowY = getComputedStyle(el).overflowY;
+        if ((overflowY === 'auto' || overflowY === 'scroll') && el.scrollHeight > el.clientHeight) {
+            return el;
+        }
+        el = el.parentElement;
+    }
+
+    return document.querySelector('.rz-chat-messages');
+}
+
+window.captureChatScrollHeight = function () {
+    const el = findChatScroller();
+    return el ? el.scrollHeight : 0;
+};
+
+window.restoreChatScrollHeight = function (previousHeight) {
+    const el = findChatScroller();
+    if (!el || !previousHeight) return;
+
+    const delta = el.scrollHeight - previousHeight;
+    if (delta > 0) {
+        el.scrollTop += delta;
+    }
+};
+
 // скролл к самому низу сообщений
 window.scrollToAnchor = function() {
     const anchor = document.querySelector(".anchor");

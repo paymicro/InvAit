@@ -339,6 +339,82 @@ code.hljs {
     box-shadow: 0 -10px 15px rgba(0, 0, 0, 0.2);
 }
 
+/* ── Divider rows: the archive plaque and the technical note ─────────────────
+   Both are NOT conversation bubbles: they are thin dividers between bubbles, so the
+   reader never mistakes them for content the model produced. One style, two contents:
+   the plaque folds a hidden stretch of history, the note reports a transport event
+   (a retry). Keeping them identical is the point - the transcript must not grow a
+   second visual language for "this is not a turn". */
+.divider-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin: 0.5rem 0;
+    padding: 0.35rem 0.75rem;
+    border-top: 1px dashed var(--rz-base-600);
+    border-bottom: 1px dashed var(--rz-base-600);
+    background: linear-gradient(90deg, transparent, var(--rz-base-800) 15%, var(--rz-base-800) 85%, transparent);
+    color: var(--rz-text-tertiary-color);
+    font-size: 0.8rem;
+    /* Divider rows never take part in scroll anchoring: they appear and disappear as the
+       window slides, and an anchored border would drag the viewport with it. */
+    overflow-anchor: none;
+}
+
+.divider-row-line {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.divider-row-title {
+    color: var(--rz-text-secondary-color);
+    white-space: nowrap;
+}
+
+.divider-row-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* The technical note's text is a raw diagnostic line, not a statistic: it may be long and
+   must wrap instead of being clipped (the reason is what the user needs to read). */
+.divider-row-text--wrap {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.divider-row-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    /* Keeps the action row from being squeezed out on a narrow tool window. */
+    flex-shrink: 0;
+}
+
+/* The note's icon carries the severity (warning for a retry, info for a plain diagnostic). */
+.divider-row--warning {
+    border-color: var(--rz-warning);
+}
+
+    .divider-row--warning .divider-row-title,
+    .divider-row--warning > .divider-row-line > i {
+        color: var(--rz-warning);
+    }
+
+/* ── Archive plaque of the history window ─────────────────────────────────────
+   The hidden MIDDLE of a long transcript is folded behind a divider row. The statistic is
+   the whole point of the control: "500 messages are missing" without numbers reads as data
+   loss, while "N messages / K tool calls / ~X tokens" reads as a fold. */
+.hidden-messages-plaque {
+    /* Layout comes from .divider-row; this class exists for the component's own hooks. */
+    border-color: var(--rz-info);
+}
+
 .plan-box {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     transition: transform 0.2s;
@@ -955,23 +1031,12 @@ code.hljs {
 /* ── Technical notes ─────────────────────────────────────────────────────────
    A transport diagnostic inside the transcript (retry about to happen, rejected
    request, timeout). Never sent to the model — see docs/llm-transport.md.
-   Deliberately quiet: it must be readable on a second look, not compete with the
-   conversation. */
+   The visual style is the shared divider row (.divider-row): a retry line is not a
+   conversation turn and must look exactly like the archive plaque - the transcript gets
+   ONE visual language for "this is not a bubble", not two. */
 .tech-note {
-    display: flex;
-    align-items: baseline;
-    gap: 0.4rem;
-    font-size: 0.8rem;
-    color: var(--rz-text-tertiary-color);
-    font-style: italic;
-    padding: 0.1rem 0.4rem;
-    border-left: 2px solid var(--rz-warning);
-    overflow-wrap: anywhere;
+    /* Layout comes from .divider-row; the class exists for the component's own hooks. */
 }
-
-    .tech-note i {
-        flex-shrink: 0;
-    }
 
 /* ── Tooltips must never swallow clicks ──────────────────────────────────────
    Radzen renders the tooltip overlay as a positioned div with pointer-events left

@@ -16,6 +16,8 @@ carry the *why*: the invariants, the failure modes they prevent, and the traps t
 | [llm-transport.md](llm-transport.md) | Timeout ownership, retry policy, error classification, the UI trace of a failed turn |
 | [session-and-context.md](session-and-context.md) | `BuildWire`, compression planning, the system-prompt cache, token accounting |
 | [chat-service.md](chat-service.md) | `IChatService` surface: what each member guarantees and who may call it |
+| [message-window.md](message-window.md) | Why the transcript folds its middle, the protected set, the run pin, the shared divider-row style, and the accepted limitations |
+| [render-performance.md](render-performance.md) | What one streamed token costs: the per-message notification, the collapsed-`Details` body, the markdown and mermaid gates, the sub-agent throttles, and the measurements behind them |
 
 ## Conventions
 
@@ -38,3 +40,5 @@ A change needs a documentation edit when it touches:
 | Timeout ownership, retry budget, error classification, `LlmApiException` | [llm-transport.md](llm-transport.md) |
 | `BuildWire` validation rules, compression planning, prompt cache key | [session-and-context.md](session-and-context.md) |
 | An `IChatService` member (add/remove/change a guarantee) | [chat-service.md](chat-service.md) |
+| Who is materialised in the transcript, the protected set, a window constant, the plaque/retry-note divider style | [message-window.md](message-window.md) |
+| A change-detection path: `ShouldRender`/`HasChanges`, a render gate, a throttle interval, anything that runs per streamed token | [render-performance.md](render-performance.md) |

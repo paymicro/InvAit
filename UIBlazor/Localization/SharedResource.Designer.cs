@@ -387,9 +387,9 @@ namespace UIBlazor.Localization {
         /// <summary>
         ///   Looks up a localized string similar to Summarize session to reduce context size.
         /// </summary>
-        public static string CommandCompact {
+        public static string CommandCompress {
             get {
-                return ResourceManager.GetString("CommandCompact", resourceCulture);
+                return ResourceManager.GetString("CommandCompress", resourceCulture);
             }
         }
         
@@ -399,6 +399,33 @@ namespace UIBlazor.Localization {
         public static string CommandSkillNotFound {
             get {
                 return ResourceManager.GetString("CommandSkillNotFound", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Compress.
+        /// </summary>
+        public static string CompressHintAction {
+            get {
+                return ResourceManager.GetString("CompressHintAction", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The history has grown to {0} messages. Compressing the context keeps runs fast and cheap..
+        /// </summary>
+        public static string CompressHintTooltip {
+            get {
+                return ResourceManager.GetString("CompressHintTooltip", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Compress history.
+        /// </summary>
+        public static string CompressHistory {
+            get {
+                return ResourceManager.GetString("CompressHistory", resourceCulture);
             }
         }
         
@@ -741,6 +768,33 @@ namespace UIBlazor.Localization {
         public static string Header {
             get {
                 return ResourceManager.GetString("Header", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The model still receives these messages - this is a display-only fold..
+        /// </summary>
+        public static string HiddenContextNote {
+            get {
+                return ResourceManager.GetString("HiddenContextNote", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Hidden in the UI.
+        /// </summary>
+        public static string HiddenInUi {
+            get {
+                return ResourceManager.GetString("HiddenInUi", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to {0} messages, {1} tool calls, ~{2} tokens.
+        /// </summary>
+        public static string HiddenSummaryFormat {
+            get {
+                return ResourceManager.GetString("HiddenSummaryFormat", resourceCulture);
             }
         }
         
@@ -1114,6 +1168,33 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Dismiss retry note.
+        /// </summary>
+        public static string RetryNoteDismiss {
+            get {
+                return ResourceManager.GetString("RetryNoteDismiss", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to {0}/{1} in {2}s.
+        /// </summary>
+        public static string RetryNoteFormat {
+            get {
+                return ResourceManager.GetString("RetryNoteFormat", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Retry.
+        /// </summary>
+        public static string RetryNoteTitle {
+            get {
+                return ResourceManager.GetString("RetryNoteTitle", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Selected.
         /// </summary>
         public static string Selected {
@@ -1209,6 +1290,24 @@ namespace UIBlazor.Localization {
         public static string SettingsTools {
             get {
                 return ResourceManager.GetString("SettingsTools", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Show earlier messages.
+        /// </summary>
+        public static string ShowEarlier {
+            get {
+                return ResourceManager.GetString("ShowEarlier", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Show {0} earlier messages.
+        /// </summary>
+        public static string ShowEarlierFormat {
+            get {
+                return ResourceManager.GetString("ShowEarlierFormat", resourceCulture);
             }
         }
         

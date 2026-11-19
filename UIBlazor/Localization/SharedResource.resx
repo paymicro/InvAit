@@ -441,7 +441,7 @@
   <data name="ToolFindReferences" xml:space="preserve">
     <value>Find references</value>
   </data>
-  <data name="CommandCompact" xml:space="preserve">
+  <data name="CommandCompress" xml:space="preserve">
     <value>Summarize session to reduce context size</value>
   </data>
   <data name="CommandSkillNotFound" xml:space="preserve">
@@ -659,5 +659,38 @@
   </data>
   <data name="OpenFileInIde" xml:space="preserve">
     <value>Open in IDE</value>
+  </data>
+  <data name="HiddenInUi" xml:space="preserve">
+    <value>Hidden in the UI</value>
+  </data>
+  <data name="HiddenContextNote" xml:space="preserve">
+    <value>The model still receives these messages — this is a display-only fold.</value>
+  </data>
+  <data name="HiddenSummaryFormat" xml:space="preserve">
+    <value>{0} messages · {1} tool calls · ~{2} tokens</value>
+  </data>
+  <data name="ShowEarlier" xml:space="preserve">
+    <value>Show earlier messages</value>
+  </data>
+  <data name="ShowEarlierFormat" xml:space="preserve">
+    <value>Show {0} earlier messages</value>
+  </data>
+  <data name="CompressHistory" xml:space="preserve">
+    <value>Compress history</value>
+  </data>
+  <data name="CompressHintTooltip" xml:space="preserve">
+    <value>The history has grown to {0} messages. Compressing the context keeps runs fast and cheap.</value>
+  </data>
+  <data name="CompressHintAction" xml:space="preserve">
+    <value>Compress</value>
+  </data>
+  <data name="RetryNoteTitle" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="RetryNoteFormat" xml:space="preserve">
+    <value>{0}/{1} in {2}s</value>
+  </data>
+  <data name="RetryNoteDismiss" xml:space="preserve">
+    <value>Dismiss retry note</value>
   </data>
 </root>

@@ -318,22 +318,7 @@ public class ChatService(
     }
 
     private static void CalcTimings(VisualChatMessage message, Stopwatch sw, double firstTokenMs, CompletionsResult completionsResult)
-    {
-        var elapsedMs = sw.ElapsedMilliseconds;
-
-        // Бейдж всегда показывает ПОЛНЫЙ вывод (включая reasoning): это счетчик генерации,
-        // а позиция в контексте отслеживается отдельно через Session.TotalTokens
-        // (VisibleCompletionTokens - reasoning не досылается).
-        // Смена значения в конце стрима выглядела бы как баг: "токенов стало меньше".
-        message.Timings.Tokens = completionsResult.CompletionTokens;
-        message.Timings.ReasoningTokens = completionsResult.ReasoningTokens;
-
-        // Скорость генерации честнее считать по полному выводу, включая размышления.
-        var secForTokens = Math.Max(1, (elapsedMs - firstTokenMs) / 1000.0);
-        message.Timings.TokensInSec = (float)(completionsResult.CompletionTokens / secForTokens);
-        message.Timings.Total = TimeSpan.FromMilliseconds(elapsedMs);
-        message.Timings.FirstToken = TimeSpan.FromMilliseconds(firstTokenMs);
-    }
+        => MessageTimingsCalculator.Apply(message.Timings, completionsResult, sw.ElapsedMilliseconds, firstTokenMs);
 
 
     /// <summary>
@@ -392,7 +377,7 @@ public class ChatService(
 
         // Assistant messages are rendered from Segments ONLY: a summary without them showed up
         // as an empty bubble ("invisible goal message") whenever compression ran outside the
-        // manual /compact command (mid-run gate, sub-agent branch).
+        // manual /compress command (mid-run gate, sub-agent branch).
         MessageParser.BuildHistorySegments(summaryContent, compressedMessage);
 
         // Stub the oversized tool results of the KEPT messages: the collapsed part is gone, but
@@ -770,6 +755,16 @@ public class ChatService(
         return session;
     }
 
+    /// <summary>
+    /// Makes the session with the given id the current one.
+    /// <para>
+    /// The load path stays free of heavy writes: the only thing this method may persist is the
+    /// session being left. The legacy empty-turn cleanup is applied in memory only - the purged
+    /// session is handed to the autosave pump AFTER <see cref="Session"/> was assigned (which is
+    /// what attaches the pump), so the full re-serialisation of a multi-megabyte session never
+    /// blocks the single WASM thread inside the load itself.
+    /// </para>
+    /// </summary>
     public async Task LoadSessionAsync(string id)
     {
         var loaded = await TryLoadSessionAsync(id);
@@ -785,13 +780,26 @@ public class ChatService(
         // recreates them.
         var purged = loaded.PurgeLegacyEmptyTurns();
         if (purged > 0)
-        {
             logger.LogInformation("Removed {Count} legacy empty-turn message(s) from session {Id}.", purged, id);
-            await SaveSessionCoreAsync(loaded);
-        }
 
         Session = loaded;
+
+        // Persist the cleanup OFF the load path. A synchronous SaveSessionCoreAsync here means a
+        // full re-serialisation plus localStorage.setItem of the whole session on the single WASM
+        // thread while the UI is still painting the freshly loaded history - that stall is part of
+        // what made the renderer unresponsive and get killed. The autosave pump coalesces the
+        // write with any follow-up mutation and performs it after the debounce instead.
+        if (purged > 0)
+            ScheduleAutosave(loaded);
     }
+
+    /// <summary>
+    /// Marks <paramref name="session"/> dirty and schedules its write through the existing
+    /// autosave debounce pump. Used where a persistence is required but must not be synchronous
+    /// (the load path); it delegates to <see cref="OnSessionChanged"/> so there is exactly one
+    /// scheduling mechanism.
+    /// </summary>
+    private void ScheduleAutosave(ConversationSession session) => OnSessionChanged(session);
 
     /// <summary>
     /// True when the session has content worth flushing: messages or a change that autosave has

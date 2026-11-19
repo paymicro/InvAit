@@ -1,0 +1,65 @@
+@*
+    Archive plaque of the hidden MIDDLE of the history.
+
+    It is deliberately NOT a message bubble: it is a thin divider, so the reader sees "history is
+    continuous, a block in the middle is folded" and never mistakes it for content the model said.
+    The statistic is the whole point of the control - "500 messages are missing" without numbers
+    reads as data loss, while "N messages / K tool calls / ~X tokens" reads as a fold.
+*@
+<div class="divider-row hidden-messages-plaque" data-hidden-count="@Stats.Messages">
+    <div class="divider-row-line">
+        <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+        <span class="divider-row-title">@SharedResource.HiddenInUi</span>
+        <span class="divider-row-text">
+            @string.Format(SharedResource.HiddenSummaryFormat, Stats.Messages, Stats.ToolCalls, ApproxTokensText)
+        </span>
+    </div>
+    <div class="divider-row-actions">
+        <RadzenButton Text="@ShowEarlierText"
+                      Icon="unfold_more"
+                      ButtonStyle="ButtonStyle.Light"
+                      Size="ButtonSize.ExtraSmall"
+                      Click="@OnShowMore" />
+        @if (CanCompress)
+        {
+            <Tooltip Text="@SharedResource.HiddenContextNote">
+                <RadzenButton Text="@SharedResource.CompressHistory"
+                              Icon="compress"
+                              ButtonStyle="ButtonStyle.Base"
+                              Variant="Variant.Text"
+                              Size="ButtonSize.ExtraSmall"
+                              Click="@OnCompress" />
+            </Tooltip>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public MessageWindowStats Stats { get; set; } = new(0, 0, 0);
+
+    /// <summary>How many messages one click reveals (the policy's page size).</summary>
+    [Parameter] public int PageSize { get; set; } = MessageWindowPolicy.GroupPageSize;
+
+    /// <summary>
+    /// Compression is offered here because the plaque is exactly where the cost is visible: the
+    /// user reads "~180k tokens" and the action that reduces it sits on the same line. Hidden while
+    /// a run streams or a compression is already in flight.
+    /// </summary>
+    [Parameter] public bool CanCompress { get; set; }
+
+    /// <summary>Reveal one more page of earlier messages.</summary>
+    [Parameter] public EventCallback OnShowMore { get; set; }
+
+    /// <summary>Run the existing manual compression path (the /compress command).</summary>
+    [Parameter] public EventCallback OnCompress { get; set; }
+
+    private string ShowEarlierText =>
+        Stats.Messages > PageSize
+            ? string.Format(SharedResource.ShowEarlierFormat, Math.Min(PageSize, Stats.Messages))
+            : SharedResource.ShowEarlier;
+
+    /// <summary>Thousands-grouped token figure: 180k reads better than 180432 on a thin line.</summary>
+    private string ApproxTokensText => Stats.ApproxTokens >= 1000
+        ? (Stats.ApproxTokens / 1000.0).ToString("0.#") + "k"
+        : Stats.ApproxTokens.ToString();
+}

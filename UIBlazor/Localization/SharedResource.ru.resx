@@ -441,7 +441,7 @@
   <data name="ToolFindReferences" xml:space="preserve">
     <value>Поиск использований</value>
   </data>
-  <data name="CommandCompact" xml:space="preserve">
+  <data name="CommandCompress" xml:space="preserve">
     <value>Суммировать сессию для уменьшения объема контекста</value>
   </data>
   <data name="CommandSkillNotFound" xml:space="preserve">
@@ -659,5 +659,38 @@
   </data>
   <data name="OpenFileInIde" xml:space="preserve">
     <value>Открыть в IDE</value>
+  </data>
+  <data name="HiddenInUi" xml:space="preserve">
+    <value>Скрыто в интерфейсе</value>
+  </data>
+  <data name="HiddenContextNote" xml:space="preserve">
+    <value>Модель эти сообщения по-прежнему получает — свёрнуто только отображение.</value>
+  </data>
+  <data name="HiddenSummaryFormat" xml:space="preserve">
+    <value>{0} сообщений · {1} вызовов тулзов · ~{2} токенов</value>
+  </data>
+  <data name="ShowEarlier" xml:space="preserve">
+    <value>Показать более ранние сообщения</value>
+  </data>
+  <data name="ShowEarlierFormat" xml:space="preserve">
+    <value>Показать ещё {0} сообщений</value>
+  </data>
+  <data name="CompressHistory" xml:space="preserve">
+    <value>Сжать историю</value>
+  </data>
+  <data name="CompressHintTooltip" xml:space="preserve">
+    <value>История выросла до {0} сообщений. Сжатие контекста сохранит скорость и стоимость прогонов.</value>
+  </data>
+  <data name="CompressHintAction" xml:space="preserve">
+    <value>Сжать</value>
+  </data>
+  <data name="RetryNoteTitle" xml:space="preserve">
+    <value>Повтор</value>
+  </data>
+  <data name="RetryNoteFormat" xml:space="preserve">
+    <value>{0}/{1} через {2} с</value>
+  </data>
+  <data name="RetryNoteDismiss" xml:space="preserve">
+    <value>Убрать сообщение о повторе</value>
   </data>
 </root>

@@ -53,32 +53,29 @@
         </RadzenStack>
     </RadzenStack>
 
-    <!-- Chat Messages -->
+    @* Chat Messages: the transcript is windowed - head + archive plaque + tail. See MessageListView *@
     <div class="rz-chat-messages" >
         @{
-            var messages = ChatService.Session.GetMessagesSnapshot();
+            var messages = GetMessagesSnapshot();
             if (messages.Count == 0)
             {
                 <RecentSessionsPicker ShowTitle=true />
             }
             else
             {
-                for (int i = 0; i < messages.Count; i++)
-                {
-                    <ChatMessageView
-                        @key="messages[i].Id"
-                        Message="messages[i]"
-                        IsLast="(i == messages.Count - 1)"
-                        IsLoading="IsLoading"
-                        OnToolApproval="HandleToolApprovalAsync"
-                        OnExecutePlan="ExecutePlanAsync"
-                        OnEdit="((m) => OnEditMessage(m))"
-                        OnCancelEdit="((m) => OnCancelEdit(m))"
-                        OnSaveEdit="OnSaveEditAsync"
-                        OnDelete="OnDeleteMessageAsync"
-                        OnRegenerate="OnRegenerateLastAsync" />
-                }
-                <div class="anchor" />
+                <MessageListView @ref="_messageList"
+                                 Messages="messages"
+                                 SessionId="ChatService.Session.Id"
+                                 IsLoading="IsLoading"
+                                 IsCompressing="_isCompressing"
+                                 OnToolApproval="HandleToolApprovalAsync"
+                                 OnExecutePlan="ExecutePlanAsync"
+                                 OnEdit="OnEditMessage"
+                                 OnCancelEdit="OnCancelEdit"
+                                 OnSaveEdit="OnSaveEditAsync"
+                                 OnDelete="OnDeleteMessageAsync"
+                                 OnRegenerate="OnRegenerateLastAsync"
+                                 OnCompress="CompressFromPlaqueAsync" />
             }
         }
     </div>
@@ -88,6 +85,7 @@
         IsLoading="IsLoading"
         SendMessage="SendMessageAsync"
         Cancel="CancelResponseAsync"
-        CommandTriggered="HandleCommandAsync">
+        CommandTriggered="HandleCommandAsync"
+        OnCompressRequested="CompressFromPlaqueAsync">
     </AiChatInput>
 </div>

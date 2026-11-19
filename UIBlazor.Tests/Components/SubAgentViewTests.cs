@@ -426,6 +426,44 @@ public class SubAgentViewTests : BunitContext
             TimeSpan.FromSeconds(2));
     }
 
+    /// <summary>
+    /// The add-message button must reveal its input on the click itself.
+    /// <para>
+    /// Regression: <see cref="SubAgentView.HasChanges"/> derived its verdict from the MODEL only
+    /// (revision / message count / status / streaming). An idle branch changes nothing, so the
+    /// render queued by the click was vetoed and the input appeared only when the branch produced
+    /// its next token — reported as "the field appears one iteration later".
+    /// </para>
+    /// <para>
+    /// The extra <c>Render</c> pass is load-bearing: the FIRST <c>ShouldRender</c> call short-circuits
+    /// on the initial tracking state (<c>_lastSeenRevision == -1</c>), so an unwarmed component
+    /// renders on any change and would hide the defect.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Interject_InputAppearsOnClick_WithoutAnyBranchActivity()
+    {
+        // Arrange — running branch, warmed-up component, no messages and no token in flight
+        var subAgent = CreateSubAgent(SubAgentStatus.Running, isExpanded: true);
+        var cut = Render<SubAgentView>(parameters => parameters
+            .Add(p => p.SubAgent, subAgent));
+        cut.Render(parameters => parameters
+            .Add(p => p.SubAgent, subAgent));
+
+        var revisionBefore = subAgent.Revision;
+        var addBtn = cut.FindAll(".subagent-actions button").Last();
+
+        // Act
+        await cut.InvokeAsync(() => addBtn.Click());
+
+        // Assert — the input is there without waiting for a token (the 100 ms trailing render is
+        // the only deferral allowed) and the branch model was NOT told about a pure view toggle.
+        await cut.WaitForAssertionAsync(
+            () => Assert.NotEmpty(cut.FindAll(".subagent-interject-input")),
+            TimeSpan.FromSeconds(1));
+        Assert.Equal(revisionBefore, subAgent.Revision);
+    }
+
     [Fact]
     public void Interject_InputHiddenByDefault_ShownByAddMessageButton()
     {

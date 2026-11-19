@@ -2,18 +2,17 @@ using System.ComponentModel;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Radzen;
+using UIBlazor.Components.Chat;
 using ConversationSession = UIBlazor.Models.ConversationSession;
 
 namespace UIBlazor.Components;
 
 public partial class AiChat : RadzenComponent
 {
-    private static readonly Regex PlanRegex = new(
-        @"<plan>(?<plan>.*?)</plan>",
-        RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.NonBacktracking,
-        TimeSpan.FromMilliseconds(200));
-
     private bool IsLoading { get; set; }
+
+    /// <summary>Windowed transcript of the main session (head / archive plaque / tail).</summary>
+    private MessageListView? _messageList;
 
     private DotNetObjectReference<AiChat>? _dotNetRef;
 
@@ -93,6 +92,11 @@ public partial class AiChat : RadzenComponent
     {
         if (IsLoading) return;
 
+        // The suggestion menu hands over the bare name ("compress"), while a hand-typed
+        // "/compress" keeps its slash. Normalising here means the command is recognised either
+        // way, and the dispatcher below compares against BuiltInCommand constants only.
+        command = command.Trim().TrimStart('/');
+
         // Вызов скилла: "skill:{name}"
         if (command.StartsWith(AiChatInput.SkillCommandPrefix, StringComparison.Ordinal))
         {
@@ -102,7 +106,7 @@ public partial class AiChat : RadzenComponent
 
         switch (command)
         {
-            case "compact":
+            case BuiltInCommand.Compress:
                 await CancelResponseAsync();
                 _cts = new CancellationTokenSource();
                 IsLoading = true;
@@ -183,6 +187,12 @@ public partial class AiChat : RadzenComponent
     private async Task ScrollToMessageAsync(string messageId)
     {
         await Task.Yield();
+
+        // The target may be inside the archive plaque: a message that is not in the DOM cannot be
+        // scrolled to, so the window is expanded first (the compression summary lands in the middle
+        // of the history - exactly the case this method exists for).
+        if (_messageList is not null)
+            await _messageList.EnsureVisibleAsync(messageId);
 
         // Let Blazor render the rewritten history first, otherwise the target node is missing.
         await InvokeAsync(StateHasChanged);
@@ -609,12 +619,10 @@ public partial class AiChat : RadzenComponent
                  completions,
                  cancellationToken);
 
-            // обновление потерянных сегментов
-            var messages = session.GetMessagesSnapshot().Where(m => m.Segments.Count == 0).ToList();
-            foreach (var message in messages)
-            {
-                MessageParser.UpdateSegments(message.Content, message);
-            }
+            // Сегменты больше не достраиваются пачкой по всей истории: транскрипт окнирован, каждое
+            // сообщение готовится лениво при первой материализации (MessageListView ->
+            // MessagePresentation.Prepare). Полный проход здесь был ещё одним блокирующим циклом
+            // на WASM-потоке, а fallback-рендер по Content всё равно снимает риск пустого пузыря.
 
             // Компрессия вставляет саммари на место сжатой середины истории; служебный
             // пузырь «♻», в который стримилось саммари, больше не нужен — иначе в конце чата
@@ -771,8 +779,12 @@ public partial class AiChat : RadzenComponent
         // visible, as the error text of the terminal turn. The note is added AFTER the removal so
         // it lands where the failed turn was, and it is added AFTER the countdown so a run the
         // user cancels mid-wait leaves no "retrying" line behind.
+        //
+        // The line carries only the attempt numbers and the reason: the word "Retry" is the
+        // rendered TITLE of the note (SharedResource.RetryNoteTitle), so the title exists once in
+        // the UI and the persisted content stays comparable across attempts.
         session.AddMessage(VisualChatMessage.CreateTechnical(
-            $"Retry {retryCount}/{maxRetries} in {delay}s — {DescribeError(ex)}"));
+            $"{string.Format(SharedResource.RetryNoteFormat, retryCount, maxRetries, delay)} — {DescribeError(ex)}"));
 
         return true;
     }
@@ -799,21 +811,7 @@ public partial class AiChat : RadzenComponent
 
 
     private static void ParsePlan(VisualChatMessage message)
-    {
-        if (string.IsNullOrEmpty(message.Content)) return;
-
-        var match = PlanRegex.Match(message.Content);
-        if (match.Success)
-        {
-            message.PlanContent = match.Groups["plan"].Value.Trim();
-            message.DisplayContent = PlanRegex.Replace(message.DisplayContent ?? message.Content, string.Empty).Trim();
-
-            if (string.IsNullOrEmpty(message.DisplayContent))
-            {
-                message.DisplayContent = "Proposed Plan:";
-            }
-        }
-    }
+        => MessagePresentation.ApplyPlan(message);
 
     private async Task ExecutePlanAsync(VisualChatMessage message)
     {
@@ -828,35 +826,54 @@ public partial class AiChat : RadzenComponent
         return ToolCallHandler.HandleApprovalAsync(args.SegmentId, args.Approved);
     }
 
-    private void LoadMessagesFromSession()
+    /// <summary>Short messages open expanded, long ones start collapsed behind "Show more".</summary>
+    private static bool IsShortMessage(string content) => MessagePresentation.IsShortMessage(content);
+
+    /// <summary>
+    /// Session transcript, cached by IDENTITY + VERSION: the list is rebuilt only when the session
+    /// object or <see cref="ConversationSession.Revision"/> changes. A fresh list on every render
+    /// (the old behaviour) meant a copy of the whole history per frame - measurable at 500 messages,
+    /// and it also made the windowed view look like a different list on every pass.
+    /// <para>
+    /// The key is the revision, NOT the message COUNT: a count cannot tell a replacement from a
+    /// no-op. Regenerate is exactly that shape - the last assistant message is removed and the new
+    /// turn message is added in the SAME event-handler batch - so one render sees "N messages"
+    /// before and after, the cache answers with the pre-change list, and the transcript keeps
+    /// showing the deleted answer while the new one streams into a bubble that is not in the DOM.
+    /// The list only caught up on the next structural change (the "+1 message" the user saw).
+    /// </para>
+    /// </summary>
+    private IReadOnlyList<VisualChatMessage> GetMessagesSnapshot()
     {
-        var messages = ChatService.Session.GetMessagesSnapshot().ToList();
-        foreach (var chatMessage in messages)
+        var session = ChatService.Session;
+        var revision = session.Revision;
+
+        if (_messagesSnapshot is null
+            || !ReferenceEquals(_messagesSnapshotSession, session)
+            || _messagesSnapshotRevision != revision)
         {
-            if (chatMessage.Role == ChatMessageRole.Assistant)
-            {
-                ParsePlan(chatMessage);
-            }
-
-            chatMessage.IsExpanded = IsShortMessage(chatMessage.DisplayContent ?? chatMessage.Content);
-            MessageParser.UpdateSegments(chatMessage.Content, chatMessage, isHistory: true);
-
-            if (chatMessage.ToolCalls is not null)
-            {
-                foreach (var toolCall in chatMessage.ToolCalls.Where(tc => tc.Result is not null))
-                {
-                    var result = toolCall.Result;
-                    result.DisplayName = ToolResult.GetDisplayName(
-                        result.Success, ToolManager.GetTool(result.Name)?.DisplayName ?? result.Name);
-                }
-            }
+            _messagesSnapshotSession = session;
+            _messagesSnapshotRevision = revision;
+            _messagesSnapshot = session.GetMessagesSnapshot();
         }
 
-        InvokeAsync(StateHasChanged);
+        return _messagesSnapshot;
     }
 
-    private static bool IsShortMessage(string content)
-        => string.IsNullOrEmpty(content) || (content.Length < 1000 && content.Count(c => c == '\n') < 15);
+    private IReadOnlyList<VisualChatMessage>? _messagesSnapshot;
+    private ConversationSession? _messagesSnapshotSession;
+
+    /// <summary><see cref="ConversationSession.Revision"/> the cached snapshot was taken at.</summary>
+    private long _messagesSnapshotRevision = -1;
+
+    /// <summary>
+    /// Manual compression from the archive plaque. Reuses the existing /compress path: the plaque is
+    /// where the context cost is visible, so the action that reduces it belongs next to the number.
+    /// </summary>
+    private async Task CompressFromPlaqueAsync()
+    {
+        await HandleCommandAsync(BuiltInCommand.Compress);
+    }
 
     private async Task CancelResponseAsync() => await _cts.CancelAsync();
 
@@ -881,12 +898,16 @@ public partial class AiChat : RadzenComponent
         if (e.PropertyName != nameof(ConversationSession))
             return;
 
-        LoadMessagesFromSession();
+        // No history walk here anymore: the transcript is windowed and every message is prepared
+        // lazily on its first materialisation (MessageListView -> MessagePresentation). A full pass
+        // over 500 messages (plan regex + segment building) on this path was one of the blocks that
+        // made the WebView2 watchdog kill the renderer.
+        _messagesSnapshot = null;
         InvokeAsync(StateHasChanged);
     }
 
     /// <summary>
-    /// Any compression (manual /compact, mid-run gate) makes the chat look frozen: the summary
+    /// Any compression (manual /compress, mid-run gate) makes the chat look frozen: the summary
     /// stream is consumed by the service, so nothing arrives in the UI. Show the busy badge.
     /// Sub-agent branches are filtered out — their own view has an indicator.
     /// </summary>

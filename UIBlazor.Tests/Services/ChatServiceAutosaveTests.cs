@@ -221,7 +221,7 @@ public partial class ChatServiceTests
     }
 
     /// <summary>
-    /// Context compression rewrites the whole history via SetMessages (the /compact path).
+    /// Context compression rewrites the whole history via SetMessages (the /compress path).
     /// That rewrite must be persisted on its own: before the autosave invariant it was lost on
     /// reload, and the user silently got the uncompressed history back.
     /// </summary>

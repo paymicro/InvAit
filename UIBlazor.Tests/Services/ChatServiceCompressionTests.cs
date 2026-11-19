@@ -93,7 +93,7 @@ public class ChatServiceCompressionTests
     }
 
     private static List<VisualChatMessage> Visible(ConversationSession session)
-        => session.GetMessagesSnapshot().Where(m => !m.IsEmptyTurn).ToList();
+        => session.GetMessagesSnapshot().Where(m => !ConversationSession.IsEmptyAssistant(m)).ToList();
 
     [Fact]
     public async Task Compress_SummaryIsRenderable_AndPlacedBetweenHeadAndTail()
@@ -158,8 +158,8 @@ public class ChatServiceCompressionTests
         using var service = CreateService(gateway);
         var original = Fill(service.Session, 8);
 
-        var placeholderA = new VisualChatMessage { Role = ChatMessageRole.Assistant, IsEmptyTurn = true };
-        var placeholderB = new VisualChatMessage { Role = ChatMessageRole.Assistant, IsEmptyTurn = true };
+        var placeholderA = new VisualChatMessage { Role = ChatMessageRole.Assistant };
+        var placeholderB = new VisualChatMessage { Role = ChatMessageRole.Assistant };
         service.Session.AddMessage(placeholderA);
         service.Session.AddMessage(placeholderB);
 

@@ -78,6 +78,8 @@
                     </Tooltip>
 
                     <RadzenStack Orientation="Orientation.Horizontal" Gap="8px" JustifyContent="JustifyContent.End" AlignItems="AlignItems.Center">
+                        @* Сжатие контекста предлагается там, где начинается прогон: в самом поле ввода *@
+                        <CompressHint OnCompress="OnCompressRequested" IsLoading="IsLoading" />
                         <Tooltip Text="@SharedResource.SendMessage">
                             <RadzenButton Icon="send"
                                 ButtonStyle="ButtonStyle.Base"
@@ -150,6 +152,12 @@
     [Parameter] public EventCallback<string> CommandTriggered { get; set; }
     [Parameter] public bool IsLoading { get; set; }
 
+    /// <summary>
+    /// Прокидывается из <see cref="CompressHint"/>: хинт не знает про транспорт, вызывающая
+    /// сторона маршрутизирует его в существующую команду ручного сжатия (/compress).
+    /// </summary>
+    [Parameter] public EventCallback OnCompressRequested { get; set; } = default;
+
     [Inject] private IChatService ChatService { get; set; } = null!;
     [Inject] private IContextService VsCodeContextService { get; set; } = null!;
     [Inject] private IJSRuntime JsRuntime { get; set; } = null!;
@@ -168,7 +176,7 @@
 
     private static readonly Dictionary<string, string> _availableCommands = new()
     {
-        ["compact"] = SharedResource.CommandCompact
+        [BuiltInCommand.Compress] = SharedResource.CommandCompress
     };
 
     private ElementReference _textareaRef;

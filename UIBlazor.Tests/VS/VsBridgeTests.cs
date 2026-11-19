@@ -157,6 +157,32 @@ public class VsBridgeTests
     }
 
     [Fact]
+    public async Task ExecuteToolAsync_CancelledRun_PropagatesCancellation_NotAToolFailure()
+    {
+        // Arrange — the host never answers: the request is parked on the TCS, so the only way out
+        // is the caller's token.
+        var js = new FakeVsHostJs();
+        var bridge = CreateBridge(js);
+        js.Responder = null;
+
+        using var cts = new CancellationTokenSource();
+
+        // Act — cancel while the request is in flight.
+        var pending = bridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, "{}", cts.Token);
+        await WaitUntilAsync(() => js.Posted.Count == 1);
+        await cts.CancelAsync();
+
+        // Assert — cancellation surfaces as cancellation. Translating it into a failed tool result
+        // handed the model "Transport failure: The operation was canceled." (a lie: the tool did not
+        // fail, it was never finished), logged an ERROR with a stack trace for an expected event, and
+        // forced the run loop to keep unwinding its batch one call at a time.
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+        await WaitUntilAsync(() => js.Logs.Count > 0 || js.Posted.Count == 1);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(js.Logs, l => l.Level == LogEntry.ErrorLevel);
+    }
+
+    [Fact]
     public async Task HandleVsResponseAsync_ErrorResponseForUnknownRequest_DoesNotThrow()
     {
         // Arrange

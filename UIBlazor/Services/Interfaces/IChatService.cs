@@ -60,7 +60,7 @@ public interface IChatService : IDisposable
 
     /// <summary>
     /// Сжатие завершилось и история переписана (сводка вставлена). Поднимается для ЛЮБОГО пути
-    /// сжатия — ручного (/compact), mid-run гейта и веток сабагентов:
+    /// сжатия — ручного (/compress), mid-run гейта и веток сабагентов:
     /// в главном чате нет своего индикатора для невидимых путей.
     /// </summary>
     event Action<CompressionReport>? CompressionCompleted;

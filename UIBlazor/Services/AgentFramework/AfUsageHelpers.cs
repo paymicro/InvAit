@@ -119,36 +119,72 @@ internal static class AfUsageHelpers
         => first is null ? second : second is null ? first : first + second;
 
     /// <summary>
-    /// Kimi/DeepSeek style: a think block inside Content is returned as (Reasoning, Content-or-null).
+    /// Kimi/DeepSeek style: a think block inside Content is returned as (Reasoning, Content).
+    /// <para>
+    /// Every slice happens at the FIRST occurrence of a tag and never with <c>Replace</c>: a
+    /// <c>Replace</c> removes EVERY occurrence from the chunk, so a chunk that mentions the tag twice
+    /// (the model explaining the protocol, or quoting its own markup) lost the second one and every
+    /// character of the answer that followed it.
+    /// </para>
+    /// <para>
+    /// A chunk of the open block can carry BOTH halves (Kimi2 sends the reasoning and the answer in
+    /// one delta): everything before the first closer is reasoning, everything after it is the
+    /// answer. The old code put the whole chunk into Content, so the model's thoughts leaked into
+    /// the visible answer.
+    /// </para>
+    /// <para>
+    /// Known limitation: a tag SPLIT across two chunks ("&lt;thi" + "nk&gt;") is not detected — the
+    /// helper has no buffer and the mapper has no place to hold the pending prefix. Detecting it
+    /// needs a buffered seam in <c>AfDeltaMapper</c>, not a smarter pure function.
+    /// </para>
     /// </summary>
-    public static ThinkResult ProcessThinkBlocks(string content, ref bool isStart, ref bool isReasoningContent)
+    /// <param name="content">Text of one delta.</param>
+    /// <param name="isStart">
+    /// True while the opening tag may still legitimately open a think block, i.e. before the first
+    /// chunk of the turn has been classified. Cleared here — a later chunk that happens to start
+    /// with the literal tag is answer text, not a reasoning block.
+    /// </param>
+    /// <param name="inThink">True while the stream is inside a think block (carried across chunks).</param>
+    public static ThinkResult ProcessThinkBlocks(string content, ref bool isStart, ref bool inThink)
     {
         if (string.IsNullOrEmpty(content))
         {
             return new(null, null);
         }
 
-        if (!isReasoningContent)
+        if (!inThink)
         {
-            if (isStart && content.StartsWith(ThinkStart))
+            var startsWithTag = content.StartsWith(ThinkStart, StringComparison.Ordinal);
+
+            // Thinking can only start in the first chunk of the turn: the flag is spent below
+            // instead of staying true for the whole turn (a mid-answer "<think>" is content).
+            var couldOpen = isStart && startsWithTag;
+            isStart = false;
+
+            if (couldOpen)
             {
-                // thinking can only start in the first chunk of the turn
-                isReasoningContent = true;
-                return new(content.Replace(ThinkStart, string.Empty), null);
+                inThink = true;
+                var reasoning = content[ThinkStart.Length..];
+                return new(reasoning.Length == 0 ? null : reasoning, null);
             }
 
             return new(null, content);
         }
 
-        // inside the think block
-        if (content.Contains(ThinkEnd))
+        // Inside the think block: the FIRST closer ends it. Anything before it is reasoning,
+        // anything after it is the answer of this very chunk.
+        var end = content.IndexOf(ThinkEnd, StringComparison.Ordinal);
+        if (end < 0)
         {
-            // finished thinking: the rest of the chunk goes to Content (relevant for Kimi2)
-            isReasoningContent = false;
-            return new(null, content.Replace(ThinkEnd, string.Empty));
+            return new(content, null);
         }
 
-        return new(content, null);
+        inThink = false;
+        var reasoningText = content[..end];
+        var answerText = content[(end + ThinkEnd.Length)..];
+
+        return new(reasoningText.Length == 0 ? null : reasoningText,
+                   answerText.Length == 0 ? null : answerText);
     }
 
     public readonly record struct ThinkResult(string? Reasoning, string? Content);

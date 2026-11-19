@@ -1,5 +1,6 @@
 namespace UIBlazor.Tests.Components;
 
+using UIBlazor.Components.Chat;
 using UIBlazor.Components.Settings;
 using UIBlazor.Localization;
 
@@ -16,6 +17,7 @@ public class AiChatInputTests : BunitContext
     private readonly Mock<IJSRuntime> _mockJsRuntime;
     private readonly Mock<ISkillService> _mockSkillService;
     private readonly Mock<IContentFilter> _mockContentFilter;
+    private readonly Mock<ILocalStorageService> _mockLocalStorage;
     private readonly ConversationSession _session;
     private readonly ConnectionProfile _profile;
     private readonly VsContext _vsCodeContext;
@@ -30,6 +32,13 @@ public class AiChatInputTests : BunitContext
         _mockJsRuntime = new Mock<IJSRuntime>();
         _mockSkillService = new Mock<ISkillService>();
         _mockContentFilter = new Mock<IContentFilter>();
+
+        // CompressHint (rendered in the toolbar) reads its dismissal from localStorage; a cleared
+        // storage simply means "not dismissed", which is what every test here expects.
+        _mockLocalStorage = new Mock<ILocalStorageService>();
+        _mockLocalStorage.Setup(x => x.TryGetItemAsync<int>(It.IsAny<string>())).ReturnsAsync(0);
+        _mockLocalStorage.Setup(x => x.SetItemAsync(It.IsAny<string>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
 
         // Setup session
         _session = new ConversationSession
@@ -80,6 +89,8 @@ public class AiChatInputTests : BunitContext
         Services.AddSingleton(_mockJsRuntime.Object);
         Services.AddSingleton(_mockSkillService.Object);
         Services.AddSingleton(new Mock<ILogger<AiChatInput>>().Object);
+        Services.AddSingleton(_mockLocalStorage.Object);
+        Services.AddSingleton(new LoggerMock<CompressHint>());
 
         // Add Radzen components
         Services.AddRadzenComponents();
@@ -826,6 +837,30 @@ public class AiChatInputTests : BunitContext
 
     #endregion
 
+    #region Compress Hint Tests
+
+    [Fact]
+    public async Task CompressHint_ShouldRaiseOnCompressRequested_WhenClicked()
+    {
+        // Arrange - the hint only shows its face once the history is long enough
+        for (var i = 0; i < CompressHint.MinMessages; i++)
+        {
+            _session.AddMessage(new VisualChatMessage { Content = $"message-{i}" });
+        }
+
+        var compressRequested = 0;
+        var cut = Render<AiChatInput>(parameters => parameters
+            .Add(p => p.OnCompressRequested, EventCallback.Factory.Create(this, () => compressRequested++)));
+
+        // Act
+        await cut.InvokeAsync(() => cut.Find(".compress-hint").Click());
+
+        // Assert - the input only re-emits the callback, it never talks to the compression path
+        Assert.Equal(1, compressRequested);
+    }
+
+    #endregion
+
     #region Open Rules/Skills Tests
 
     [Fact]
@@ -925,7 +960,7 @@ public class AiChatInputTests : BunitContext
     #region Slash Command / Skill Tests
 
     [Fact]
-    public async Task Slash_ShowsCompactCommand()
+    public async Task Slash_ShowsCompressCommand()
     {
         // Arrange
         var cut = Render<AiChatInput>();
@@ -937,7 +972,7 @@ public class AiChatInputTests : BunitContext
         // Assert
         var hintItems = cut.FindAll(".hint-item");
         Assert.Single(hintItems);
-        Assert.Contains("compact", hintItems[0].TextContent);
+        Assert.Contains(BuiltInCommand.Compress, hintItems[0].TextContent);
     }
 
     [Fact]
@@ -956,7 +991,7 @@ public class AiChatInputTests : BunitContext
         // Act
         await cut.InvokeAsync(() => textarea.Input("/"));
 
-        // Assert - compact + 2 skills
+        // Assert - compress + 2 skills
         var hintItems = cut.FindAll(".hint-item");
         Assert.Equal(3, hintItems.Count);
         Assert.Contains("code-review", hintItems[1].TextContent);
@@ -1047,17 +1082,17 @@ public class AiChatInputTests : BunitContext
     {
         // Arrange
         _mockSkillService.Setup(x => x.GetSkillsMetadataAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new SkillMetadata { Name = "compact", Description = "Duplicate" }]);
+            .ReturnsAsync([new SkillMetadata { Name = BuiltInCommand.Compress, Description = "Duplicate" }]);
         var cut = Render<AiChatInput>();
         var textarea = cut.Find("textarea.text-input");
 
         // Act
         await cut.InvokeAsync(() => textarea.Input("/"));
 
-        // Assert - only one compact entry with builtin description
+        // Assert - only one compress entry with builtin description
         var hintItems = cut.FindAll(".hint-item");
         Assert.Single(hintItems);
-        Assert.Contains(SharedResource.CommandCompact, hintItems[0].TextContent);
+        Assert.Contains(SharedResource.CommandCompress, hintItems[0].TextContent);
     }
 
     [Fact]

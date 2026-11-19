@@ -19,9 +19,27 @@
             <div class="rz-chat-message-text" style="display: grid; width: 100%; position: relative;">
                 @if (Message.IsTechnical)
                 {
-                    <div class="tech-note">
-                        <i class="fa-solid fa-circle-info" style="font-size: 0.9rem;" aria-hidden="true"></i>
-                        <span>@Message.Content</span>
+                    @* A retry note is a divider row, exactly like the archive plaque: it is not a
+                       conversation turn, so it must not look like a bubble. The delete action lives
+                       INSIDE the row (the plaque's action slot), not in the message action bar -
+                       a note has no edit/regenerate, and a lone floating cross under a divider
+                       read as a stray button. *@
+                    <div class="divider-row divider-row--warning tech-note">
+                        <div class="divider-row-line">
+                            <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
+                            <span class="divider-row-title">@SharedResource.RetryNoteTitle</span>
+                            <span class="divider-row-text divider-row-text--wrap">@Message.Content</span>
+                        </div>
+                        <div class="divider-row-actions">
+                            <Tooltip Text="@SharedResource.RetryNoteDismiss">
+                                <RadzenButton Icon="close"
+                                              ButtonStyle="ButtonStyle.Base"
+                                              Variant="Variant.Text"
+                                              Size="ButtonSize.ExtraSmall"
+                                              aria-label="@SharedResource.RetryNoteDismiss"
+                                              Click="@(() => OnDelete.InvokeAsync(Message))" />
+                            </Tooltip>
+                        </div>
                     </div>
                 }
                 else
@@ -81,8 +99,9 @@
                 }
             </div>
         
-        <!-- Message Actions -->
-        @if (!Message.IsEditing)
+        <!-- Message Actions. A technical note has none: it carries its own dismiss action inside
+             the divider row, and it has nothing to edit, regenerate or measure. -->
+        @if (!Message.IsEditing && !Message.IsTechnical)
         {
             <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.25rem" class="rz-chat-message-actions">
                 @if (!Message.IsStreaming)
@@ -91,17 +110,14 @@
                     var showEditAndDel = !IsLast || lastAssistantDone || Message.Role is not ChatMessageRole.Assistant;
                     if (showEditAndDel)
                     {
-                        @if (!Message.IsTechnical)
-                        {
-                            <Tooltip Text="@SharedResource.MessageEdit">
-                                <RadzenButton
-                                    Icon="edit"
-                                    Variant="Variant.Text"
-                                    ButtonStyle="ButtonStyle.Base"
-                                    Size="ButtonSize.ExtraSmall"
-                                    Click="@(() => OnEdit.InvokeAsync(Message))" />
-                            </Tooltip>
-                        }
+                        <Tooltip Text="@SharedResource.MessageEdit">
+                            <RadzenButton
+                                Icon="edit"
+                                Variant="Variant.Text"
+                                ButtonStyle="ButtonStyle.Base"
+                                Size="ButtonSize.ExtraSmall"
+                                Click="@(() => OnEdit.InvokeAsync(Message))" />
+                        </Tooltip>
                         <Tooltip Text="@SharedResource.MessageDelete">
                             <RadzenButton
                                 Icon="delete"
@@ -111,7 +127,7 @@
                                 Click="@(() => OnDelete.InvokeAsync(Message))" />
                         </Tooltip>
                     }
-                    @if (lastAssistantDone && !Message.IsTechnical)
+                    @if (lastAssistantDone)
                     {
                         <Tooltip Text="@SharedResource.MessageRegenerate">
                             <RadzenButton

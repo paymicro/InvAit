@@ -256,18 +256,17 @@ public class ConversationSession : BaseOptions
     }
 
     /// <summary>
-    /// Removes the LEGACY empty turn bubbles of a session loaded from storage.
+    /// Removes the EMPTY assistant bubbles of a session loaded from storage.
     /// <para>
-    /// The retired <c>onNewTurn</c> mechanism created an assistant message eagerly at every turn
-    /// boundary and, when no payload arrived, flagged it with <see cref="VisualChatMessage.IsEmptyTurn"/>.
-    /// New turns are created lazily (the bubble only enters the history on the first payload), so
-    /// the flag is no longer produced — but old sessions still carry it, and a reloaded session
-    /// must not render or send those bubbles.
+    /// Older builds created an assistant message eagerly at every turn boundary and, when no
+    /// payload arrived, left it in the history; turns are created lazily today (the bubble enters
+    /// the history on the first payload), so nothing recreates them — but old sessions still carry
+    /// them, and a reloaded session must neither render nor send such a bubble.
     /// </para>
     /// <para>
-    /// The heuristic also catches bubbles written by older versions that never set the flag:
-    /// an assistant turn with no text, no reasoning and no tool calls carries nothing the model
-    /// could use. Message identity is preserved for every message that survives.
+    /// The heuristic is content-based on purpose: an assistant turn with no text, no reasoning and
+    /// no tool calls carries nothing the model could use. Message identity is preserved for every
+    /// message that survives.
     /// </para>
     /// </summary>
     /// <returns>Number of removed messages (0 for an already clean session).</returns>
@@ -277,7 +276,7 @@ public class ConversationSession : BaseOptions
         lock (_messagesLock)
         {
             removed = Messages
-                .Where(m => m.IsEmptyTurn || IsEmptyAssistant(m))
+                .Where(IsEmptyAssistant)
                 .ToList();
 
             if (removed.Count == 0)
@@ -442,9 +441,8 @@ public class ConversationSession : BaseOptions
 
     /// <summary>
     /// Assistant message that carries nothing the model could use: no text, no reasoning and no
-    /// tool calls. Providers reject such turns, so they never reach the request. This also covers
-    /// the legacy <see cref="VisualChatMessage.IsEmptyTurn"/> bubbles (purged on load), so no
-    /// separate flag filter is needed.
+    /// tool calls. Providers reject such turns, so they never reach the request, and a session
+    /// loaded from storage drops them (<see cref="PurgeLegacyEmptyTurns"/>).
     /// </summary>
     internal static bool IsEmptyAssistant(VisualChatMessage message)
         => message.Role == ChatMessageRole.Assistant

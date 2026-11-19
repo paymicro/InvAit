@@ -1,0 +1,69 @@
+/*
+ * Compress hint: intentionally quieter than every other control in the input toolbar.
+ *
+ * WHY so subtle: the hint is an offer, not an alarm. It sits next to the send button, so anything
+ * that moves or glows harder than the primary action pulls the eye away from typing. One slow
+ * breath (a 4% scale) every seven seconds is enough to notice it while scanning the input, and it
+ * never re-lays out the toolbar.
+ */
+.compress-hint-wrapper {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.1rem;
+    flex-shrink: 0;
+    opacity: 0.6;
+    transition: opacity 0.25s ease;
+    animation: compress-hint-breathe 7s ease-in-out infinite;
+}
+
+    .compress-hint-wrapper:hover,
+    .compress-hint-wrapper:focus-within {
+        opacity: 1;
+        animation: none;
+    }
+
+/*
+ * The cross is the escape hatch, so it must be findable but even quieter than the action:
+ * half opacity at rest, full opacity on hover.
+ */
+.compress-hint-wrapper ::deep .compress-hint-dismiss {
+    opacity: 0.5;
+    transition: opacity 0.2s ease;
+}
+
+    .compress-hint-wrapper ::deep .compress-hint-dismiss:hover {
+        opacity: 1;
+    }
+
+@keyframes compress-hint-breathe {
+    0%,
+    84%,
+    100% {
+        transform: scale(1);
+    }
+
+    90% {
+        transform: scale(1.04);
+    }
+
+    96% {
+        transform: scale(1);
+    }
+}
+
+/*
+ * Reduced motion is a hard preference: the hint keeps working (Clicks, opacity on hover) but stops
+ * moving entirely - no breathing, no fade.
+ */
+@media (prefers-reduced-motion: reduce) {
+    .compress-hint-wrapper,
+    .compress-hint-wrapper:hover,
+    .compress-hint-wrapper:focus-within {
+        animation: none;
+        transition: none;
+    }
+
+    .compress-hint-wrapper ::deep .compress-hint-dismiss {
+        transition: none;
+    }
+}

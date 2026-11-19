@@ -173,6 +173,11 @@ Properties:
   timeouts, which is exactly the context needed to explain a slow run.
 - **Not editable, not regenerable, not countable as a turn.** It is a log line that happens to live
   in the transcript.
+- **Styled as the archive plaque, not as a bubble.** Both the retry note and the hidden-middle
+  plaque are dividers, so both render on the same `.divider-row*` classes (`wwwroot/css/app.css`):
+  a title (`RetryNoteTitle`), the text, and a right-hand action slot. The dismiss button lives in
+  that slot - the same one the plaque's "show earlier" button uses - rather than in the shared
+  message action bar, which is suppressed for technical notes.
 
 The terminal failure is different: the last attempt keeps its assistant message with the error
 text, because at that point the error *is* the answer to the user's request.

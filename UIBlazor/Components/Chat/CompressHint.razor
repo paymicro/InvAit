@@ -1,0 +1,161 @@
+@using System.ComponentModel
+@implements IDisposable
+
+@*
+    Unobtrusive "compress history" hint that lives in the chat input toolbar.
+
+    WHY in the input and not in the transcript: at 100+ messages the next run is expensive, and the
+    input is exactly where the user decides to start it. A plaque inside the history would be read
+    after the money is already spent.
+
+    WHY dismissible AND self-limiting: a permanent banner becomes wallpaper and gets ignored. The
+    dismissal remembers the message COUNT at which it happened (not a bare boolean), so a dismissed
+    hint only returns after the history grew by <see cref="RemindAfterMoreMessages"/> - the user's
+    "not now" stays respected until it stops being true.
+*@
+@inject IChatService ChatService
+@inject ILocalStorageService LocalStorage
+@inject ILogger<CompressHint> Logger
+
+@if (IsVisible)
+{
+    <div class="compress-hint-wrapper">
+        <Tooltip Text="@TooltipText">
+            <RadzenButton Icon="compress"
+                          Text="@SharedResource.CompressHintAction"
+                          ButtonStyle="ButtonStyle.Base"
+                          Variant="Variant.Text"
+                          Size="ButtonSize.Small"
+                          Click="@OnCompressClick"
+                          class="compress-hint" />
+        </Tooltip>
+        <RadzenButton Icon="close"
+                      ButtonStyle="ButtonStyle.Base"
+                      Variant="Variant.Text"
+                      Size="ButtonSize.ExtraSmall"
+                      title="@DismissLabel"
+                      aria-label="@DismissLabel"
+                      Click="@DismissAsync"
+                      class="compress-hint-dismiss" />
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// History size (session messages) from which the hint is worth showing. Below it a run is
+    /// cheap enough that the advice would only train the user to ignore it.
+    /// </summary>
+    public const int MinMessages = 100;
+
+    /// <summary>
+    /// How many further messages must pile up before a dismissed hint comes back. Long enough to
+    /// not nag, short enough that the advice returns before the history doubles.
+    /// </summary>
+    public const int RemindAfterMoreMessages = 50;
+
+    /// <summary>localStorage key holding the message count at the moment of dismissal.</summary>
+    public const string DismissedAtCountKey = "compressHintDismissedAtCount";
+
+    /// <summary>Plain label for the cross: no matching localized resource exists yet.</summary>
+    private const string DismissLabel = "Dismiss";
+
+    /// <summary>
+    /// Raised with no arguments; the parent routes it to the existing manual compression command
+    /// (<c>/compress</c>), so this component stays free of transport knowledge.
+    /// </summary>
+    [Parameter] public EventCallback OnCompress { get; set; } = default;
+
+    /// <summary>A run is streaming: the input is busy and the count is still moving.</summary>
+    [Parameter] public bool IsLoading { get; set; }
+
+    /// <summary>Compression is already in flight - offering it a second time is just noise.</summary>
+    [Parameter] public bool IsCompressing { get; set; }
+
+    private int _messageCount;
+    private int _dismissedAtCount;
+
+    /// <summary>
+    /// The count is cached instead of read in the getter: <see cref="ConversationSession"/> reads
+    /// under a lock, and the toolbar is re-rendered far more often than the count can change.
+    /// </summary>
+    private int MessageCount => _messageCount;
+
+    private bool IsVisible =>
+        _messageCount >= MinMessages
+        && !IsLoading
+        && !IsCompressing
+        && !IsDismissedForCurrentGrowthBand;
+
+    /// <summary>
+    /// Dismissal is bound to a growth BAND, not to the session: dismissed at 120, the hint returns
+    /// at 170. <c>_dismissedAtCount == 0</c> means "never dismissed".
+    /// </summary>
+    private bool IsDismissedForCurrentGrowthBand =>
+        _dismissedAtCount > 0 && _messageCount < _dismissedAtCount + RemindAfterMoreMessages;
+
+    private string TooltipText => string.Format(SharedResource.CompressHintTooltip, MessageCount);
+
+    protected override async Task OnInitializedAsync()
+    {
+        RefreshMessageCount();
+        ChatService.SessionChanged += HandleSessionChanged;
+        await LoadDismissalAsync();
+    }
+
+    protected override void OnParametersSet()
+    {
+        // The parent re-renders when a run starts or ends, and that transition carries no session
+        // event of its own: recompute so IsVisible reflects the flags we just received.
+        RefreshMessageCount();
+    }
+
+    private void HandleSessionChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // Session events may be raised from a background continuation (streaming, autosave):
+        // marshal to the renderer, otherwise StateHasChanged throws off-dispatcher.
+        _ = InvokeAsync(() =>
+        {
+            RefreshMessageCount();
+            StateHasChanged();
+        });
+    }
+
+    private void RefreshMessageCount()
+        => _messageCount = ChatService?.Session?.GetMessageCount() ?? 0;
+
+    private Task OnCompressClick() => OnCompress.InvokeAsync();
+
+    private async Task DismissAsync()
+    {
+        // Persist the count, not a flag: the hint has to come back once the history grew enough
+        // for the advice to be relevant again.
+        _dismissedAtCount = _messageCount;
+
+        try
+        {
+            await LocalStorage.SetItemAsync(DismissedAtCountKey, _dismissedAtCount);
+        }
+        catch (Exception ex)
+        {
+            // Storage is a nicety here. The hint stays dismissed for this component's lifetime
+            // even if persistence failed - the chat input must never break over a hint.
+            Logger.LogWarning(ex, "Could not persist the compress hint dismissal; the hint stays hidden for this session only.");
+        }
+    }
+
+    private async Task LoadDismissalAsync()
+    {
+        try
+        {
+            _dismissedAtCount = await LocalStorage.TryGetItemAsync<int>(DismissedAtCountKey);
+        }
+        catch (Exception ex)
+        {
+            // Same reasoning as DismissAsync: a failed read degrades to "not dismissed".
+            Logger.LogWarning(ex, "Could not read the compress hint dismissal; treating the hint as not dismissed.");
+            _dismissedAtCount = 0;
+        }
+    }
+
+    public void Dispose() => ChatService.SessionChanged -= HandleSessionChanged;
+}

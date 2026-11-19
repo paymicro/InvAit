@@ -316,7 +316,7 @@ public class DetailsTests : BunitContext
         Assert.Contains("is-expanded", cut.Find(".custom-details").ClassList);
 
         // Still there well after the animation window would have expired.
-        await Task.Delay(500);
+        await Task.Delay(500, TestContext.Current.CancellationToken);
         Assert.Contains("body", cut.Markup);
     }
 

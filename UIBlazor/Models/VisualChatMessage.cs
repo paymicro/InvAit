@@ -67,14 +67,6 @@ public class VisualChatMessage
     public bool IsStreaming { get; set; }
 
     /// <summary>
-    /// LEGACY: set by the retired eager <c>onNewTurn</c> turn boundary when no payload arrived.
-    /// Never written anymore — turns are created lazily on the first payload — and kept only so
-    /// old sessions still deserialize. <see cref="ConversationSession.PurgeLegacyEmptyTurns"/>
-    /// removes such messages when a session is loaded, so no code filters on this flag.
-    /// </summary>
-    public bool IsEmptyTurn { get; set; }
-
-    /// <summary>
     /// User interject message added to a running sub-agent branch ("write to the branch
     /// while it works"). SubAgentView renders interjects as compact user bubbles while the
     /// initial task message (also Role=User) stays hidden — it duplicates the header task.
@@ -158,7 +150,12 @@ public class VisualChatMessage
     /// <summary>
     /// Creates a technical note (see <see cref="IsTechnical"/>).
     /// </summary>
-    /// <param name="content">Already-formatted single-line text; rendered as plain text, not markdown.</param>
+    /// <param name="content">
+    /// Already-formatted single-line detail (attempt numbers, reason). Rendered as plain text, never
+    /// as markdown - see <see cref="IsTechnical"/>. The kind of note (a retry) is the note's TITLE
+    /// in the UI, not part of this string: the content must stay stable so two notes from two
+    /// attempts are comparable at a glance.
+    /// </param>
     public static VisualChatMessage CreateTechnical(string content) => new()
     {
         Role = ChatMessageRole.Assistant,

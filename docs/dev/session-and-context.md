@@ -110,12 +110,14 @@ rebuild.
 `ISystemPromptBuilder.InvalidatePromptCache()` exists as an explicit seam for inputs that change
 without an event (a skills or rules file edited on disk).
 
-## Legacy fields
+## Legacy empty assistant turns
 
-`VisualChatMessage.IsEmptyTurn` is **read-only legacy**. It was written by the retired eager
-`onNewTurn` boundary, which created an assistant message at every turn start and needed a flag to
-hide the empty ones. Turns are now created lazily on the first payload, so nothing writes it.
+Older builds created an assistant message eagerly at every turn start. Turns are now created
+lazily on the first payload, so nothing produces a placeholder any more — but sessions written by
+those builds still contain empty assistant bubbles.
 
-`ConversationSession.PurgeLegacyEmptyTurns()` removes such messages when a session is loaded (and
-persists the cleaned session), so old sessions do not render frozen bubbles and do not send them to
-the model. No code filters on the flag.
+`ConversationSession.PurgeLegacyEmptyTurns()` drops them when a session is loaded, so old sessions
+do not render frozen bubbles and do not send them to the model. The predicate is content-based
+(`ConversationSession.IsEmptyAssistant`): assistant, no text, no reasoning, no tool calls. There is
+no separate flag — the retired `VisualChatMessage.IsEmptyTurn` was deleted because no release ever
+shipped with it, so there is nothing to stay backward compatible with.

@@ -33,6 +33,24 @@ Callbacks: `onContentUpdate` (new text for segment parsing), `onToolCallsUpdate`
 to render), `onStateChange` (something changed, re-render). `onStateChange` also fires for updates
 with no payload, which is how a reasoning-only delta reaches the UI.
 
+### Timings of a turn
+
+All timing maths lives in `MessageTimingsCalculator.Apply(timings, capture, elapsedMs, firstTokenMs)`
+and nowhere else. The badge is the user's only evidence of model speed, so the contract is explicit
+and unit-tested (`MessageTimingsCalculatorTests`):
+
+- `Total` — wall clock of the whole turn, including the wait for the first token.
+- `FirstToken` — that wait alone. It is latency, not generation: a provider that queues for 3 s did
+  not generate anything for 3 s.
+- `Tokens` — the FULL generation (answer **and** reasoning). How much of it lands in the context is
+  `ConversationSession.TotalTokens`, which excludes reasoning.
+- `TokensInSec` — `Tokens` over the **generation window** (first token → last token). The rule that
+  keeps the number meaningful: **the tokens counted must be the tokens timed**. The window starts at
+  the first token of any kind, so reasoning tokens are covered by the time they actually took.
+- The window has a floor of 50 ms only to keep the division finite when the whole answer arrives in
+  one delta. A floor of one second used to under-report every sub-second answer by exactly the token
+  count, and short answers are the common case.
+
 ### `NeedsCompression(session)` / `CompressSessionAsync(...)`
 
 `NeedsCompression` is a pure check: `TokensToCompress > 0 && session.TotalTokens > TokensToCompress`.
@@ -45,7 +63,7 @@ capture-taking variant. All collapse the history in place and re-arm `TotalToken
 ### `CompressionStarted` / `CompressionCompleted`
 
 `CompressionStarted` fires before the summary request; `CompressionCompleted` fires after the
-history was rewritten, for **every** path (manual `/compact`, the mid-run gate, a sub-agent branch).
+history was rewritten, for **every** path (manual `/compress`, the mid-run gate, a sub-agent branch).
 The main chat has no other indicator for the invisible paths, so a missing event looks like a frozen
 UI.
 
@@ -61,7 +79,10 @@ mutations mark the session dirty and a coalescing pump writes it. `SaveSessionAs
 immediate flush.
 
 `LoadSessionAsync` also runs `PurgeLegacyEmptyTurns`, so a session written before the lazy turn
-messages existed is cleaned on the way in.
+messages existed is cleaned on the way in. The purge happens in memory only: the cleaned session is
+persisted by the autosave pump, never by a synchronous full re-serialisation inside the load path.
+A multi-megabyte `setItem` on the single WASM thread was one of the blocking points behind
+`RenderProcessUnresponsive` (see [message-window.md](message-window.md)).
 
 ### `GetRecentSessionsAsync(count)`
 
