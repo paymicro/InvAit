@@ -56,6 +56,10 @@
                 {
                     <DelegateTaskView Args="@ToolCall.Function.Arguments" />
                 }
+                else if (ToolCall.Function.Name == BuiltInToolEnum.Bash)
+                {
+                    <ToolBashCommand Args="@ToolCall.Function.Arguments" />
+                }
                 else
                 {
                     <JsonArgsView Args="@ToolCall.Function.Arguments" />

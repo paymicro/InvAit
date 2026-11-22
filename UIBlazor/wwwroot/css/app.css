@@ -347,7 +347,7 @@ code.hljs {
    second visual language for "this is not a turn". */
 .divider-row {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;

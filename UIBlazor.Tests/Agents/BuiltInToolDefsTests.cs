@@ -155,6 +155,26 @@ public partial class BuiltInToolDefsTests
     }
 
     [Fact]
+    public void MapMethodToTool_Bash_HasDescriptionParameterRequired()
+    {
+        // Arrange
+        var method = typeof(BuiltInToolDefs).GetMethod(nameof(BuiltInToolDefs.Bash));
+
+        // Act
+        var result = BuiltInToolDefs.MapMethodToTool(method);
+
+        // Assert - strict-схема делает обязательность сама, если параметр объявлен без DefaultValue:
+        // модель обязана назвать намерение команды, иначе плоское поле осталось бы опциональным
+        Assert.Equal(
+            ["command", "description"],
+            result.Function.Parameters.Required.OrderBy(x => x == "command" ? 0 : 1));
+        var description = result.Function.Parameters.Properties["description"];
+        Assert.False(description.IsUnionType);
+        Assert.Equal("string", description.Type);
+        Assert.Contains("what the command does", description.Description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void MapMethodToTool_AllParametersInRequired_InStrictMode()
     {
         // Arrange

@@ -772,7 +772,7 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to The model still receives these messages - this is a display-only fold..
+        ///   Looks up a localized string similar to The model still receives these messages — this is a display-only fold..
         /// </summary>
         public static string HiddenContextNote {
             get {
@@ -790,7 +790,7 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to {0} messages, {1} tool calls, ~{2} tokens.
+        ///   Looks up a localized string similar to {0} messages · {1} tool calls · ~{2} tokens.
         /// </summary>
         public static string HiddenSummaryFormat {
             get {

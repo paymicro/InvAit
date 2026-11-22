@@ -1,0 +1,81 @@
+@inject IJSRuntime Js
+
+@if (!string.IsNullOrEmpty(Command) || !string.IsNullOrEmpty(Description))
+{
+    <div class="bash-command-view">
+        @if (!string.IsNullOrEmpty(Description))
+        {
+            <div class="bash-command-description" data-bash-description>
+                <span class="bash-command-description-text">@Description</span>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(Command))
+        {
+            <pre><code id="@_blockId" class="hljs language-bash"></code></pre>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public string Args { get; set; } = string.Empty;
+
+    /// <summary>Команда (сырой sh-скрипт), как её увидит шелл.</summary>
+    internal string Command { get; private set; } = string.Empty;
+
+    /// <summary>Объяснение модели: что команда делает и зачем.</summary>
+    internal string Description { get; private set; } = string.Empty;
+
+    private readonly string _blockId = $"bash-{Guid.NewGuid():N}";
+    private ElementReference _copyButton;
+    private string? _lastHighlightedCommand;
+
+    /// <summary>
+    /// Частичная десериализация: аргументы приходят чанками, и до закрытия JSON уже видно
+    /// и описание, и начало команды. Троттлинг рендера держит <c>ToolCallBlock</c>
+    /// (100 ms, длина args в <c>HasChanges</c>), своего троттлера здесь нет и не нужно.
+    /// </summary>
+    protected override void OnParametersSet()
+    {
+        var parsed = JsonUtils.DeserializePartialAnonymousType(Args, new { command = default(string), description = default(string) });
+        Command = parsed.command ?? string.Empty;
+        Description = parsed.description?.Trim() ?? string.Empty;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Кэш по самой команде: идентичный ре-рендер не должен пере-highlight'ить блок.
+        if (Command == _lastHighlightedCommand)
+        {
+            return;
+        }
+
+        _lastHighlightedCommand = Command;
+
+        try
+        {
+            await Js.InvokeVoidAsync("highlightCodeElement", _blockId, "bash", Command);
+        }
+        catch (JSException)
+        {
+            // Элемент уже удалён (Dispose) — подсветка не нужна
+        }
+    }
+
+    /// <summary>
+    /// Копирование через общий window.copyCode (тот же, что у блоков кода в markdown):
+    /// он печатает confirmation в иконке кнопки. Ошибки clipboard не ломают approval —
+    /// команда всё равно видна и редактируется через модель, поэтому JSException глотается.
+    /// </summary>
+    private async Task CopyCommandAsync()
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("copyCode", _copyButton, _blockId);
+        }
+        catch (JSException)
+        {
+            // Clipboard недоступен (нет фокуса/permissions) — не повод падать
+        }
+    }
+}

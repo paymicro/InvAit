@@ -17,6 +17,7 @@ public class ToolCallBlockTests : BunitContext
     private int? _capturedEditCount;
     private (string FilePath, string Content)? _capturedCreateFile;
     private (string Args, string? Answer)? _capturedAskOptions;
+    private string? _capturedBashArgs;
 
     public ToolCallBlockTests()
     {
@@ -100,6 +101,14 @@ public class ToolCallBlockTests : BunitContext
             builder.OpenElement(0, "div");
             builder.AddAttribute(1, "class", "delegatetask-stub");
             builder.AddAttribute(2, "data-args", args);
+            builder.CloseElement();
+        });
+
+        ComponentFactories.AddStub<ToolBashCommand>(parameters => builder =>
+        {
+            _capturedBashArgs = parameters.Get(p => p.Args);
+            builder.OpenElement(0, "div");
+            builder.AddAttribute(1, "class", "bashcommand-stub");
             builder.CloseElement();
         });
 
@@ -286,6 +295,23 @@ public class ToolCallBlockTests : BunitContext
         // Assert
         Assert.NotNull(cut.Find(".jsonargs-stub"));
         Assert.Equal(args, _capturedJsonArgs);
+    }
+
+    [Fact]
+    public void BashTool_RendersToolBashCommand_InsteadOfGenericJsonArgs()
+    {
+        // Arrange - bash несёт description, который печатается отдельной строкой выше команды,
+        // поэтому у него свой рендерер (как DiffView у edit_file и ToolCreateNewFile у create_file)
+        const string args = """{"command":"git status","description":"Показать состояние"}""";
+
+        // Act
+        var cut = Render<ToolCallBlock>(parameters => parameters
+            .Add(p => p.ToolCall, CreateReadyCall(BuiltInToolEnum.Bash, args)));
+
+        // Assert
+        Assert.NotNull(cut.Find(".bashcommand-stub"));
+        Assert.Equal(args, _capturedBashArgs);
+        Assert.Throws<ElementNotFoundException>(() => cut.Find(".jsonargs-stub"));
     }
 
     [Fact]

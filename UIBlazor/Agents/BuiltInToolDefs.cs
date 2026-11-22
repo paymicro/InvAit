@@ -102,7 +102,10 @@ public static class BuiltInToolDefs
         Working directory is current project solution. Avoid 'cd /user/project'
         """)]
     public static void Bash(
-        [Description("Shell command to execute. Multi line sh script.")] string command)
+        [Description("Shell command to execute. Multi line sh script.")] string command,
+        [Description("Short one-sentence explanation of WHAT the command does and WHY it is needed, " +
+                     "in the user's language. Shown to the user above the command, so it must be readable prose, " +
+                     "not a copy of the command.")] string description)
     { }
 
     [DisplayName(BuiltInToolEnum.GitStatus)]

@@ -1,0 +1,46 @@
+/*
+    ToolBashCommand — scoped-стили (UIBlazor.styles.css).
+
+    Рамка/фон/кнопка копирования у блока кода — из глобальных .code-block-wrapper /
+    .code-header / .code-copy-btn (markdown.css): команда должна читаться так же, как
+    код в ответе модели. Здесь только то, чего у блоков кода нет: строка намерения
+    и внешние отступы внутри .tool-call-args.
+*/
+
+.bash-command-view {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+/* Блок кода — прямой сосед описания, а не отдельная секция: внешний отступ ему не нужен,
+   иначе внутри .tool-call-args появляется двойной воздух. */
+.bash-command-view .code-block-wrapper {
+    margin: 0;
+}
+
+/* Перебиваем .tool-call-args pre из app.css: там white-space: pre-wrap и word-break: break-all,
+   то есть ломается ПОСРЕДИ слова — для sh-скрипта это искажает текст, который пользователь
+   утверждает. Свой скролл у pre нужен потому, что .tool-call-args обрезает всё выше 600 px
+    (max-height + overflow-y: hidden) — команду нельзя прятать на гейте approval. */
+.bash-command-view pre {
+    display: grid;
+    margin: 0;
+    white-space: pre;
+    word-break: normal;
+    max-height: 480px;
+    overflow: auto;
+}
+
+.bash-command-description {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    line-height: 1.45;
+}
+
+.bash-command-description-text {
+    color: var(--rz-on-base);
+    white-space: pre-wrap;
+    word-break: break-word;
+}

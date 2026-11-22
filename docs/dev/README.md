@@ -7,9 +7,6 @@ model and the chat service contract.
 `AGENTS.md` carries the architecture map and the rules that must not be broken. These documents
 carry the *why*: the invariants, the failure modes they prevent, and the traps that produced them.
 
-> `docs/` itself holds the screenshots used by the root `README.md` (`/docs/*.png`). This page and
-> its siblings keep developer notes apart from user-facing assets.
-
 | Document | Answers |
 |----------|---------|
 | [agent-turn-loop.md](agent-turn-loop.md) | Who owns the LLM turn cycle, what happens between turns, why the loop left the gateway |
