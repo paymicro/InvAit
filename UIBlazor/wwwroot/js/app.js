@@ -7,6 +7,15 @@ window.setVsBridgeHandler = function (dotNetRef) {
 
 const isVSCode = window.parent !== window;
 
+// Sonar S2819 wants a verified origin on the VS Code bridge below. It cannot have one: the
+// parent runs on `vscode-webview://<uuid>`, an OPAQUE origin that serialises to "null".
+// `new URL('null')` throws, so there is no targetOrigin to pass but '*'; and every opaque
+// sender reports "null", so an event.origin check would accept any sandboxed frame while
+// rejecting the real parent. The channel is authenticated by payload shape instead
+// (`source === 'vscode-parent'` + known `type`), and its trust boundary is the extension host
+// that created this frame. WebView2 (`window.chrome.webview`) needs none of this — it is a
+// host-object bridge, not a cross-origin channel.
+
 // Глобальный флаг для C# (Blazor JS interop может не сохранять `this` при вызове методов объекта,
 // поэтому используем простую глобальную функцию вместо метода на объекте)
 window.isVsCodeEnv = function () {
@@ -24,7 +33,8 @@ if (isVSCode) {
     // In-memory cache backed by globalState via postMessage
     var storageCache = initialStorage;
 
-    // Persist a key to VSCode globalState asynchronously
+    // Persist a key to VSCode globalState asynchronously.
+    // '*' is forced by the opaque parent origin — see the block above `isVSCode`.
     function persistSet(key, value) {
         window.parent.postMessage({
             target: 'vscode-webview',
@@ -94,7 +104,8 @@ window.postVsMessage = msg => {
             console.log("=> ", msg);
         return "OK";
     } else if (isVSCode) {
-        // Код для VS Code (отправляем родителю iframe)
+        // Код для VS Code (отправляем родителю iframe). '*' is forced by the opaque parent
+        // origin — see the block above `isVSCode`.
         window.parent.postMessage({ target: 'vscode-webview', packet: msg }, '*');
         console.log("VSCode => ", msg);
         return "OK";
@@ -133,6 +144,9 @@ if (window.chrome && window.chrome.webview) {
     window.chrome.webview.addEventListener('message', ({ data }) => handleIncomingMessage(data));
 } else if (isVSCode) {
     // Для VS Code (слушаем сообщения, пришедшие в iframe)
+    // No event.origin check on purpose: the parent's origin is opaque ("null"), so the check
+    // would either accept every sandboxed frame or reject the real parent — see the block above
+    // `isVSCode`. The `source` marker below is the actual discriminator.
     window.addEventListener('message', (event) => {
         // Проверяем, что сообщение пришло от бэкенда VS Code
         if (event.data && event.data.source === 'vscode-parent') {
@@ -207,9 +221,9 @@ window.watchChatOverflow = function (enabled) {
 
     const state = {
         enabled: enabled === true,
-        hasScroll: null,
+        hasScroll: /** @type {boolean | null} */ (null),
         frame: 0,
-        observed: null,
+        observed: /** @type {Element | null} */ (null),
         resizeObserver: null,
         mutationObserver: null
     };
@@ -261,13 +275,13 @@ window.watchChatOverflow = function (enabled) {
 
 window.stopChatOverflowWatch = function () {
     const state = chatOverflowWatch;
-    if (!state) return "OK";
-
-    chatOverflowWatch = null;
-    if (state.frame) cancelAnimationFrame(state.frame);
-    state.mutationObserver.disconnect();
-    if (state.resizeObserver) state.resizeObserver.disconnect();
-    return "OK";
+    if (state)
+    {
+        chatOverflowWatch = null;
+        if (state.frame) cancelAnimationFrame(state.frame);
+        state.mutationObserver.disconnect();
+        if (state.resizeObserver) state.resizeObserver.disconnect();
+    }
 };
 
 // скролл к самому низу сообщений
@@ -405,6 +419,7 @@ window.vscodeInterop = {
         console.log('[InvAit] sendNetworkRequest:', method, url);
         _pendingNetworkRequests.set(requestId, dotNetRef);
 
+        // '*' is forced by the opaque parent origin — see the block above `isVSCode`.
         window.parent.postMessage({
             target: 'vscode-webview',
             packet: {
@@ -420,6 +435,7 @@ window.vscodeInterop = {
         console.log('[InvAit] cancelNetworkRequest:', requestId);
         _pendingNetworkRequests.delete(requestId);
 
+        // '*' is forced by the opaque parent origin — see the block above `isVSCode`.
         window.parent.postMessage({
             target: 'vscode-webview',
             packet: {
@@ -448,7 +464,8 @@ window.vscodeInterop = {
     }
 };
 
-// Слушаем сообщения из TS расширения VS Code
+// Слушаем сообщения из TS расширения VS Code.
+// No event.origin check — opaque parent origin, see the block above `isVSCode`.
 window.addEventListener('message', (event) => {
     if (event.data && event.data.source === 'vscode-parent' && event.data.message?.type === 'VsStreamingPacket') {
         window.vscodeInterop.handleVsMessage(event.data.message.payload);

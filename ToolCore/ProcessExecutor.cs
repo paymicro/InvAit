@@ -243,7 +243,16 @@ public class ProcessExecutor(ILogger logger)
 
             // sh <файл> — скрипт передаётся через stdin файла, а не через аргументы.
             var arguments = $"\"{tempScript}\"";
-            return await ExecuteAsync(shPath, arguments, workingDirectory, timeoutMs, outputLimit, cancellationToken);
+            var result = await ExecuteAsync(shPath, arguments, workingDirectory, timeoutMs, outputLimit, cancellationToken);
+
+            // sh подставляет имя файла в каждое диагностическое сообщение, а файл удаляется ниже
+            // в finally — то есть путь бесполезен для читателя и только съедает контекст.
+            // Санитайзер живёт здесь, потому что только здесь известен ТОЧНЫЙ путь: слой отображения
+            // (UIBlazor) угадывал бы по форме и вырезал бы имя скрипта пользователя.
+            result.Output = BashOutputSanitizer.Sanitize(result.Output, tempScript);
+            result.Error = BashOutputSanitizer.Sanitize(result.Error, tempScript);
+
+            return result;
         }
         finally
         {

@@ -16,6 +16,7 @@ carry the *why*: the invariants, the failure modes they prevent, and the traps t
 | [message-window.md](message-window.md) | Why the transcript folds its middle, the protected set, the run pin, the auto-scroll on first overflow, the shared divider-row style, and the accepted limitations |
 | [render-performance.md](render-performance.md) | What one streamed token costs: the per-message notification, the collapsed-`Details` body, the markdown and mermaid gates, the sub-agent throttles, and the measurements behind them |
 | [tool-timeout.md](tool-timeout.md) | Who limits how long a tool may run: the three clocks, the `timeoutMs` channel rule, the client grace, the per-tool defaults |
+| [bash-output.md](bash-output.md) | What the model sees of a bash command's output: why the temp-script path is stripped, the strip-by-identity rule, and why the sanitizer lives in the host and not in the UI |
 
 ## Conventions
 
@@ -41,3 +42,4 @@ A change needs a documentation edit when it touches:
 | Who is materialised in the transcript, the protected set, a window constant, the auto-scroll watcher, the plaque/retry-note divider style | [message-window.md](message-window.md) |
 | A change-detection path: `ShouldRender`/`HasChanges`, a render gate, a throttle interval, anything that runs per streamed token | [render-performance.md](render-performance.md) |
 | A tool timeout: who enforces it, the `timeoutMs` payload field, a new per-tool default, the client grace | [tool-timeout.md](tool-timeout.md) |
+| Bash output shaping: the temp-script path, `BashOutputSanitizer`/`bashOutput.ts`, the temp-file naming | [bash-output.md](bash-output.md) |

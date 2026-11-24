@@ -304,6 +304,38 @@ public class ProcessExecutorTests
     }
 
     [Fact]
+    public async Task ExecuteBashAsync_ErrorOutput_DoesNotLeakTempScriptPath()
+    {
+        // sh prefixes every diagnostic with the script file name, and that file is deleted right
+        // after the run — the path is useless to the reader and only eats context. The useful part
+        // of the message must survive byte for byte.
+        var executor = new ProcessExecutor(_mockLogger.Object);
+
+        var result = await executor.ExecuteBashAsync(
+            "definitely_missing_command_xyz", timeoutMs: 5000, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.Success);
+        Assert.DoesNotContain("invait_", result.Error, StringComparison.Ordinal);
+        Assert.DoesNotContain(".sh", result.Error, StringComparison.Ordinal);
+        Assert.Contains("line 1", result.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExecuteBashAsync_ErrorOutput_KeepsTheUsersOwnScriptName()
+    {
+        // Stripping by identity, not by shape: a script the user actually owns keeps its name,
+        // because that name is the only thing that makes the message actionable.
+        var executor = new ProcessExecutor(_mockLogger.Object);
+        var script = "echo 'build.sh: line 3: dotnet: command not found' >&2; exit 1";
+
+        var result = await executor.ExecuteBashAsync(script, timeoutMs: 5000, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.Success);
+        Assert.Contains("build.sh: line 3: dotnet: command not found", result.Error, StringComparison.Ordinal);
+        Assert.DoesNotContain("invait_", result.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ExecuteBashAsync_TimeoutMessage_ReportsEffectiveLimit()
     {
         // The message is the ONLY reason the model sees for a killed command, so it must print

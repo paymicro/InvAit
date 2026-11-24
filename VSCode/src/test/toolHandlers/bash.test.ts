@@ -110,6 +110,28 @@ describe('bash', () => {
             expect(result.error).to.not.include('invait_');
             expect(result.error).to.not.include('.sh');
             expect(result.error).to.include('line 1');
+            // The useful part survives byte for byte
+            expect(result.error).to.equal('line 1: cd: /no/such/dir: No such file or directory');
+        });
+
+        it('should keep the name of the user own script in the error output', () => {
+            // Stripping by identity, never by shape: a real script's name is the useful part of
+            // the message, so removing "any .sh" would destroy exactly what makes it actionable.
+            (fsStub.existsSync as sinon.SinonStub).returns(true);
+            (fsStub.writeFileSync as sinon.SinonStub).returns(undefined);
+            (fsStub.unlinkSync as sinon.SinonStub).returns(undefined);
+            (childProcessStub.spawnSync as sinon.SinonStub).returns({
+                stdout: '',
+                stderr: 'build.sh: line 3: dotnet: command not found',
+                status: 127,
+                error: undefined,
+                signal: null,
+            });
+
+            const result = toolHandlers.dispatchTool('bash', JSON.stringify({ command: 'sh build.sh' }), WORKSPACE);
+
+            expect(result.success).to.be.false;
+            expect(result.error).to.equal('build.sh: line 3: dotnet: command not found');
         });
 
         it('should write command to temp file and pass it to spawnSync', () => {

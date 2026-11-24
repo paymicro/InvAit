@@ -19,6 +19,7 @@ import { execSync, spawnSync } from 'child_process';
 import { ToolResult } from './types';
 import { truncateOutput } from './fileUtils';
 import { resolveTimeoutMs } from './timeout';
+import { sanitizeBashOutput } from './bashOutput';
 
 /**
  * Finds the Git Bash sh.exe on Windows.
@@ -150,11 +151,12 @@ export function bash(params: any, workspaceRoot: string): ToolResult {
                 windowsHide: true,
             });
 
-            // Strip temp file path from output — sh includes it in error messages
-            // (e.g. "C:\\...\\invait_xxx.sh: line 1: cd: ..." → "line 1: cd: ...")
-            const stripTemp = (s: string) => s.split(tempScript).join('');
-            const stdout = stripTemp(result.stdout || '');
-            const stderr = stripTemp(result.stderr || '');
+            // Strip the temp file path from the output — `sh` prefixes every diagnostic with it
+            // ("C:\\...\\invait_xxx.sh: line 1: cd: ..." → "line 1: cd: ..."). The rule lives in
+            // ./bashOutput (mirror of ToolCore/BashOutputSanitizer.cs) so a fix cannot land in one
+            // channel only; it strips our own file by identity, never "any .sh".
+            const stdout = sanitizeBashOutput(result.stdout || '', tempScript);
+            const stderr = sanitizeBashOutput(result.stderr || '', tempScript);
             const exitCode = result.status;
 
             if (result.error) {
