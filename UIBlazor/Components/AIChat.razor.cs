@@ -184,6 +184,56 @@ public partial class AiChat : RadzenComponent
     /// summary, which is inserted into the MIDDLE of the history while the user stares at the
     /// bottom of the chat.
     /// </summary>
+    /// <summary>
+    /// Arms the one-shot "pin to the bottom when the transcript becomes scrollable" watcher
+    /// (<c>watchChatOverflow</c> in <c>app.js</c>). The setting is read at call time, so a change in
+    /// Settings re-arms the same watcher with the new value instead of restarting the chat.
+    /// </summary>
+    private async Task ApplyAutoScrollSettingAsync()
+    {
+        try
+        {
+            await JsRuntime.InvokeVoidAsync("watchChatOverflow", CancellationToken.None,
+                CommonSettingsProvider.Current.AutoScrollOnOverflow);
+        }
+        catch (Exception ex) when (ex is JSException or ObjectDisposedException or InvalidOperationException)
+        {
+            // Scroll is cosmetic: a broken JS bridge must not break the transcript.
+            Logger.LogWarning(ex, "watchChatOverflow failed");
+        }
+    }
+
+    /// <summary>
+    /// Re-arms the watcher when the setting is toggled. Filtered by property name on purpose: every
+    /// other Misc setting would otherwise re-run the JS hop for nothing.
+    /// </summary>
+    private void OnCommonSettingsChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(CommonOptions.AutoScrollOnOverflow))
+            return;
+
+        _ = InvokeAsync(ApplyAutoScrollSettingAsync);
+    }
+
+    /// <summary>
+    /// Detaches the JS observers. Fire-and-forget by necessity (Dispose is synchronous) and the
+    /// continuation observes the failure: a runtime that is already torn down by a WebView reload
+    /// throws, and that must not become an unobserved task exception.
+    /// </summary>
+    private void StopAutoScrollWatch()
+    {
+        try
+        {
+            JsRuntime.InvokeVoidAsync("stopChatOverflowWatch", CancellationToken.None)
+                .AsTask()
+                .ContinueWith(static t => _ = t.Exception, TaskScheduler.Default);
+        }
+        catch (Exception ex) when (ex is JSException or ObjectDisposedException or InvalidOperationException)
+        {
+            // Cosmetic: the observers die with the page anyway.
+        }
+    }
+
     private async Task ScrollToMessageAsync(string messageId)
     {
         await Task.Yield();
@@ -887,6 +937,7 @@ public partial class AiChat : RadzenComponent
         ChatService.CompressionCompleted += OnCompressionCompleted;
         SubAgentExecutor.SubAgentStateChanged += OnSubAgentStateChanged;
         ToolCallHandler.ApprovalRequired += OnApprovalRequired;
+        CommonSettingsProvider.Current.PropertyChanged += OnCommonSettingsChanged;
 
         ToolManager.RegisterAllTools();
         await VsBridge.InitializeAsync();
@@ -1026,6 +1077,10 @@ public partial class AiChat : RadzenComponent
         if (firstRender)
         {
             await JsRuntime.InvokeVoidAsync("setChatHandler", _dotNetRef);
+
+            // One-shot pin to the bottom when the transcript becomes scrollable. Armed here (not in
+            // OnInitialized) because the watcher needs the transcript element to exist.
+            await ApplyAutoScrollSettingAsync();
         }
     }
 
@@ -1118,6 +1173,9 @@ public partial class AiChat : RadzenComponent
         ChatService.CompressionCompleted -= OnCompressionCompleted;
         SubAgentExecutor.SubAgentStateChanged -= OnSubAgentStateChanged;
         ToolCallHandler.ApprovalRequired -= OnApprovalRequired;
+        CommonSettingsProvider.Current.PropertyChanged -= OnCommonSettingsChanged;
+
+        StopAutoScrollWatch();
 
         _cts?.Cancel();
         _cts?.Dispose();

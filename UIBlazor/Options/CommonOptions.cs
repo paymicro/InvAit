@@ -29,6 +29,22 @@ public class CommonOptions : BaseOptions
 
     public bool ShowMessageTimings { get; set => SetIfChanged(ref field, value); } = true;
 
+    /// <summary>
+    /// Pins the transcript to the bottom ONCE, at the moment it becomes scrollable.
+    /// <para>
+    /// The bubbles opt out of native scroll anchoring (<c>.rz-chat-message { overflow-anchor: none }</c>),
+    /// so a growing history never pulls the viewport down by itself - the <c>.anchor</c> row only
+    /// keeps the view pinned once it is already inside the viewport. Without this the first long
+    /// answer silently pushes its own tail below the fold.
+    /// </para>
+    /// <para>
+    /// Deliberately ONE-SHOT: scrolling on every growth would fight a user who is reading the
+    /// middle of the history. After the single hop the native anchor takes over, and an explicit
+    /// scroll after sending a message is unaffected by this setting.
+    /// </para>
+    /// </summary>
+    public bool AutoScrollOnOverflow { get; set => SetIfChanged(ref field, value); } = true;
+
     public string Culture { get; set => SetIfChanged(ref field, value); } = CultureInfo.CurrentCulture.Name;
 
     /// <summary>

@@ -138,6 +138,59 @@ Scroll anchoring is handled explicitly (`captureChatScrollHeight` / `restoreChat
 `.rz-chat-message` and the plaque opt out of `overflow-anchor`, so revealing rows *above* the
 viewport would otherwise leave the reader's scroll position pointing at different content.
 
+## Auto-scroll on first overflow
+
+The transcript pins itself to the bottom **once**, at the moment it becomes scrollable, and then
+leaves the viewport alone.
+
+```mermaid
+flowchart TD
+    W[watchChatOverflow armed] --> M[transcript mutated or resized]
+    M --> R[requestAnimationFrame coalesce]
+    R --> Q{scrollHeight exceeds clientHeight}
+    Q -->|same as before| X[nothing]
+    Q -->|became scrollable| S[scrollTop equals scrollHeight]
+    Q -->|became shorter| X
+    S --> A[native anchor keeps the view pinned]
+```
+
+### Why one hop and not continuous following
+
+`.rz-chat-message` sets `overflow-anchor: none`, so the browser never compensates for a growing
+history by itself: the `.anchor` row keeps the view pinned only once it is **already inside the
+viewport**. A run that starts on a short transcript therefore pushes its own tail below the fold and
+the user loses the live output — the first long answer is exactly when following matters most.
+
+Scrolling on every growth is the wrong fix, and it is the failure this design avoids: a user reading
+the middle of the history would be yanked to the bottom on every token. One hop at the transition
+puts the anchor row into the viewport, and from there the native mechanism does the following for
+free. An explicit scroll after sending a message (`scrollToAnchor`) is a separate, unconditional
+path and is unaffected.
+
+### Why the observation is scoped and coalesced
+
+The callback fires per streamed token, so two costs had to be removed:
+
+- **Scope.** The observer watches the transcript element, not `document.body`. A body-wide
+  `characterData` observer would walk the whole page on every delta.
+- **Coalescing.** Checks go through `requestAnimationFrame`, because reading `scrollHeight` forces a
+  layout. Without it a 50 tokens/s stream would force 50 layouts/s for a value that only changes the
+  verdict once.
+
+The state is compared with a 1 px tolerance: sub-pixel rounding otherwise makes "scrollable" flicker
+at the boundary and turns one hop into a stream of them.
+
+### The setting
+
+`CommonOptions.AutoScrollOnOverflow` (Settings → Misc, **on** by default) is read at call time, so
+toggling it re-arms the same watcher instead of restarting the chat. While it is off the watcher
+still TRACKS the state and only skips the scroll — otherwise enabling it later would look like a
+fresh transition and produce a jump the user did not ask for.
+
+`AiChat` owns the lifetime: armed in `OnAfterRenderAsync(firstRender)` (the transcript element must
+exist), re-armed on `PropertyChanged` of that one property, and detached in `Dispose` via
+`stopChatOverflowWatch` — the observers are a JS-side leak on every WebView reload if left attached.
+
 ## Main session only
 
 Sub-agent branches are **not** windowed. They render inside `SubAgentView`, which owns their

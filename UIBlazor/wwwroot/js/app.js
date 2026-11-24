@@ -182,6 +182,94 @@ window.restoreChatScrollHeight = function (previousHeight) {
     }
 };
 
+// ── Auto-scroll on first overflow ───────────────────────────────────────────
+// `.rz-chat-message` opts out of native scroll anchoring (overflow-anchor: none), so a growing
+// transcript never pulls the viewport down by itself: the `.anchor` row only keeps the view pinned
+// once it is ALREADY inside the viewport. The first long answer therefore pushes its own tail below
+// the fold and the user loses the live output.
+//
+// This watcher makes ONE hop, at the moment the transcript becomes scrollable, and then leaves the
+// viewport alone - scrolling on every growth would fight a user who is reading the middle of the
+// history. After the hop the native anchor takes over.
+//
+// The observation is scoped to the transcript element, not to document.body: the callback fires per
+// streamed token, and a body-wide characterData observer would walk the whole page on every delta.
+// Checks are coalesced through requestAnimationFrame because reading scrollHeight forces a layout.
+let chatOverflowWatch = null;
+
+function chatHasOverflow(el) {
+    // 1px tolerance: sub-pixel rounding otherwise makes the state flicker at the boundary.
+    return el.scrollHeight > el.clientHeight + 1;
+}
+
+window.watchChatOverflow = function (enabled) {
+    window.stopChatOverflowWatch();
+
+    const state = {
+        enabled: enabled === true,
+        hasScroll: null,
+        frame: 0,
+        observed: null,
+        resizeObserver: null,
+        mutationObserver: null
+    };
+
+    const update = () => {
+        state.frame = 0;
+
+        const el = findChatScroller();
+        if (!el) return;
+
+        // The transcript element survives session switches, but a re-created one must be
+        // re-observed: a detached node reports no mutations at all.
+        if (state.observed !== el) {
+            state.observed = el;
+            state.mutationObserver.disconnect();
+            state.mutationObserver.observe(el, { childList: true, subtree: true, characterData: true });
+            if (state.resizeObserver) {
+                state.resizeObserver.disconnect();
+                state.resizeObserver.observe(el);
+            }
+        }
+
+        const hasScroll = chatHasOverflow(el);
+
+        // Only the TRANSITION matters. The first measurement (hasScroll === null) counts as one:
+        // a session loaded with a long history is already scrollable when the watcher starts.
+        if (hasScroll === state.hasScroll) return;
+        state.hasScroll = hasScroll;
+
+        if (!hasScroll || !state.enabled) return;
+
+        el.scrollTop = el.scrollHeight;
+    };
+
+    const schedule = () => {
+        if (state.frame) return;
+        state.frame = requestAnimationFrame(update);
+    };
+
+    state.mutationObserver = new MutationObserver(schedule);
+    if (typeof ResizeObserver !== 'undefined') {
+        state.resizeObserver = new ResizeObserver(schedule);
+    }
+
+    chatOverflowWatch = state;
+    update(); // first measurement, and the initial observe
+    return "OK";
+};
+
+window.stopChatOverflowWatch = function () {
+    const state = chatOverflowWatch;
+    if (!state) return "OK";
+
+    chatOverflowWatch = null;
+    if (state.frame) cancelAnimationFrame(state.frame);
+    state.mutationObserver.disconnect();
+    if (state.resizeObserver) state.resizeObserver.disconnect();
+    return "OK";
+};
+
 // скролл к самому низу сообщений
 window.scrollToAnchor = function() {
     const anchor = document.querySelector(".anchor");

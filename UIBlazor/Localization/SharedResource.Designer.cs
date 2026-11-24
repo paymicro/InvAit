@@ -106,6 +106,15 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Auto-scroll to bottom on overflow.
+        /// </summary>
+        public static string AutoScrollOnOverflow {
+            get {
+                return ResourceManager.GetString("AutoScrollOnOverflow", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Destructive command patterns.
         /// </summary>
         public static string BashDenyPatterns {

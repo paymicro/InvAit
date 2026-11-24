@@ -165,5 +165,6 @@ public class SettingsDialogTests : BunitContext
         // misc section markers
         Assert.Contains(SharedResource.MaxRetries, cut.Find(".rz-tabview-panels").TextContent);
         Assert.Contains(SharedResource.ShowMessageTimings, cut.Find(".rz-tabview-panels").TextContent);
+        Assert.Contains(SharedResource.AutoScrollOnOverflow, cut.Find(".rz-tabview-panels").TextContent);
     }
 }
