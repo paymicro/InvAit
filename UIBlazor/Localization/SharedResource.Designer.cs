@@ -1177,6 +1177,24 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Empty response from the model.
+        /// </summary>
+        public static string EmptyResponseAfterRetries {
+            get {
+                return ResourceManager.GetString("EmptyResponseAfterRetries", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to empty response.
+        /// </summary>
+        public static string RetryNoteEmptyResponse {
+            get {
+                return ResourceManager.GetString("RetryNoteEmptyResponse", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Dismiss retry note.
         /// </summary>
         public static string RetryNoteDismiss {

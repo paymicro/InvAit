@@ -50,12 +50,18 @@ public class CommonOptions : BaseOptions
     /// <summary>
     /// Retry budget of ONE turn (main agent) or one branch run (sub-agent), counted in ATTEMPTS.
     /// <para>
-    /// Only failures that can succeed on a repeat spend it: <see cref="Models.LlmApiException"/>
-    /// with <c>IsRetryable</c> true (no status, <c>2xx</c>, <c>5xx</c>, <c>408</c>/<c>409</c>/
-    /// <c>425</c>/<c>429</c>). A rejected request (<c>400</c>, <c>401</c>, <c>403</c>, <c>404</c>
-    /// ...) and an exception that is not an <see cref="Models.LlmApiException"/> (a bug in our own
-    /// code) fail on the first attempt — otherwise the budget turns into minutes of waiting for an
-    /// answer that cannot change.
+    /// Two kinds of failure spend it. First, failures that can succeed on a repeat:
+    /// <see cref="Models.LlmApiException"/> with <c>IsRetryable</c> true (no status, <c>2xx</c>,
+    /// <c>5xx</c>, <c>408</c>/<c>409</c>/<c>425</c>/<c>429</c>). A rejected request (<c>400</c>,
+    /// <c>401</c>, <c>403</c>, <c>404</c> ...) and an exception that is not an
+    /// <see cref="Models.LlmApiException"/> (a bug in our own code) fail on the first attempt —
+    /// otherwise the budget turns into minutes of waiting for an answer that cannot change.
+    /// </para>
+    /// <para>
+    /// Second, a SUCCESSFUL call that delivered nothing at all (no content, no reasoning, no tool
+    /// calls): a silent model is not an answer, so it is retried on this same budget instead of
+    /// ending the run. There is no retryability signal to read here — silence is indistinguishable
+    /// from a provider hiccup, so the whole budget applies.
     /// </para>
     /// </summary>
     public int MaxRetries { get; set => SetIfChanged(ref field, value); } = 10;

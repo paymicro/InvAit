@@ -32,6 +32,9 @@ Two independent implementations, same numbers:
 | `AIChat.HandleErrorAsync` (main agent, one turn) | `CommonOptions.MaxRetries`, default **10** | `RetryHandler.GetRetryDelay`: 2, 5, 10, then 20 s |
 | `AfSubAgentOrchestrator.RunBranchTurnAsync` (one branch, whole run) | same setting | same |
 
+A turn that arrives EMPTY (no content, no reasoning, no tool call) spends the same budget — see
+[An empty turn is retried too](#an-empty-turn-is-retried-too).
+
 The branch budget belongs to the **run**, not the turn: a branch cannot get N retries per turn,
 which would multiply both LLM calls and the tokens charged against `MaxTokensPerSubAgent`.
 
@@ -56,6 +59,71 @@ minutes before showing the same stack trace.
 A permanent failure is reported on the first attempt, and its message omits the attempt counter
 (`Error: ...` instead of `Error: ... [1/10]`): the counter would claim nine attempts that will never
 happen. The error toast follows the same rule.
+
+### An empty turn is retried too
+
+The policy above classifies EXCEPTIONS. A turn can also fail without throwing: the stream delivers
+nothing at all — no content, no reasoning, no tool call — and closes normally.
+
+That is not hypothetical. A provider answering with an empty `delta` (every field `null`, often with
+`completion_tokens: 0`) is dropped by `AfDeltaMapper.Map`, because it carries no payload; the
+caller's stream then simply ends. `ProcessStreamAsync` closes the message, no exception is raised,
+and before this rule the run was over:
+
+| Loop | Before | Now |
+|------|--------|-----|
+| `AIChat.RunSingleTurnAsync` | the empty bubble was dropped and the method returned `null` — the run ended silently, the user's prompt stayed unanswered with no explanation | one attempt of the same budget; each retried attempt leaves a technical note (`1/3 in 2s — empty response`), and the deciding attempt leaves a terminal one |
+| `AfSubAgentOrchestrator.RunBranchTurnAsync` | the turn never materialized, the loop saw "no tool calls" and broke out, the parent received `(Sub-agent returned an empty response.)` | the same `TrySpendRetryAttemptAsync` a thrown failure uses; when the budget is gone the branch ends `Completed` with the empty marker plus a `(No output after N attempt(s).)` note |
+
+Four properties are load-bearing:
+
+- **The budget is shared, not added.** An empty turn and a thrown failure draw from the SAME
+  counter, so a branch cannot get N retries per turn. The billing argument is about CALLS, not
+  tokens: `session.TotalTokens` is the context size rebased from the last request's usage, and a
+  discarded attempt is removed from the session anyway.
+- **Reasoning counts as payload.** A turn that produced only `reasoning_content` is NOT empty: a
+  reasoning model legitimately answers that way, and retrying it would burn the whole budget on a
+  success.
+- **The empty attempt leaves no turn behind.** It never entered the branch history (the message is
+  materialized on the first payload) or was removed before the retry (main agent), and the technical
+  note is `IsTechnical` — invisible to `BuildWire`, to the compression plan and to the token
+  estimate.
+- **Whitespace is emptiness.** `HasPayload` uses `IsNullOrWhiteSpace`, the same rule
+  `ConversationSession.IsEmptyAssistant` applies when it filters the wire. A turn that streamed only
+  a newline must be retried, not accepted and then dropped from the next request.
+
+#### There is no retryability signal for silence
+
+An exception carries `StatusCode`, so a `401` fails at once. Silence carries nothing: the HTTP call
+succeeded, the body was valid, the model simply produced no output. Silence is therefore
+indistinguishable from a provider hiccup and spends the WHOLE budget — with the default of 10 that
+is 137 s of backoff (`2+5+10+20×6`) for a deterministically silent model.
+
+That is a deliberate choice, not an oversight: a shorter budget for this one class would need a
+second constant next to `MaxRetries`, and the cost of guessing wrong is asymmetric — cutting a
+genuine hiccup short loses the answer, while a long wait is visible and cancellable (the countdown
+runs on the bubble, the Cancel button is available the whole time). Narrowing it belongs with the
+per-class budgets in [Remaining work](#remaining-work), where the numbers are decided together.
+
+#### The deciding attempt is not silent — and is not assistant speech
+
+A retried attempt leaves a technical note. The FINAL one cannot be left out: it decides the
+outcome, and a run that ends with a note trail and no conclusion still does not tell the user what
+happened.
+
+It is written as a NOTE too, and that is the whole point. The obvious shape — keep the last bubble
+and write the diagnostic into it — is wrong, because that bubble is an ordinary assistant message:
+`BuildWire` would keep it (it is not `IsTechnical`, not `IsStreaming`, not empty), so on the NEXT
+turn the model would read our diagnostic as its own last utterance. Two amplifiers make it worse: an
+interject typed during the countdown starts a new turn whose wire BEGINS with it, and
+`PlanCompression` counts it as visible, so a summary can bake it into the context permanently.
+
+| Loop | Terminal outcome | Where it lives |
+|------|------------------|----------------|
+| Main agent | `Empty response from the model — retry budget exhausted (max N).` | technical note — visible, never context |
+| Branch | `(Sub-agent returned an empty response.)` + `(No output after N attempt(s).)` | `ResultText` / `run.NoteText`, i.e. text for the parent agent, not for the branch wire |
+
+The branch ends `Completed`, not `Failed`: nothing errored, the model answered with nothing.
 
 ### The status must survive the wrappers
 
@@ -166,6 +234,9 @@ Retry 2/10 in 5s — HttpCode: 429 | rate limit
 
 Properties:
 
+- **Also for a retried EMPTY turn** (`1/3 in 2s — empty response`), not only for a thrown failure: an
+  empty answer is retried on the same budget ([above](#an-empty-turn-is-retried-too)). A cancelled
+  countdown leaves no note — the note is written AFTER the wait.
 - **Never reaches the model.** `VisualChatMessage.IsTechnical` is filtered out by `BuildWire`, by
   `PlanCompression` and by the token estimate. The model must not pay for our transport noise, and a
   "timeout" line in the context would invite the model to comment on it.

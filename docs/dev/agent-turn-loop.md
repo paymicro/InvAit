@@ -79,15 +79,34 @@ Consequences worth knowing when editing:
 
 **Retry wraps one turn, never the run.** `HandleErrorAsync` (main) and the `catch` in
 `RunBranchTurnAsync` (branch) re-enter the same request with a fresh message. Recursing into the
-run loop would start a second run whose token cancels the first.
+run loop would start a second run whose token cancels the first. The branch routes BOTH failure
+kinds through `TrySpendRetryAttemptAsync` (exception, empty turn), so the run-level counter stays
+the only source of truth for how many attempts are left.
 
 **A message is closed in `finally`, always.** `ProcessStreamAsync` sets `IsStreaming = false` and
 stamps final timings on cancellation and on failure, not only on success. A message left streaming
 is filtered out of `BuildWire` and stays on screen as a frozen bubble.
 
-**The per-turn message is created lazily.** It enters the session on the first payload
-(`Materialize`). A turn that produces nothing leaves no bubble, so "no output" needs no placeholder
-and no flag to hide it ([session-and-context.md](#legacy-empty-assistant-turns)).
+**The per-turn message is created lazily — in the BRANCH only.** A branch turn enters the branch
+history on the first payload (`Materialize`), so a turn that produces nothing leaves no bubble and
+"no output" needs no placeholder and no flag to hide it
+([session-and-context.md](session-and-context.md#empty-assistant-turns)). The main agent is the
+opposite on purpose: its bubble is added EAGERLY, before the first token, because it is the only
+feedback that the run started and the only place the Cancel button and the retry countdown can live.
+What the two share is the removal: a turn that ends without payload is deleted again (branch: never
+entered; main agent: `RemoveMessage`), so neither loop can persist an empty assistant turn.
+
+**A turn that produces nothing is an ATTEMPT, not an answer.** No content, no reasoning and no tool
+call means the model answered with nothing — providers do that (an empty `delta` with
+`completion_tokens: 0` is dropped by the mapper, so the stream just ends). Both loops retry such a
+turn on the SAME budget a thrown failure spends, otherwise the run either ended silently (main
+agent) or reported `(Sub-agent returned an empty response.)` to the parent
+([llm-transport.md](llm-transport.md#an-empty-turn-is-retried-too)). Reasoning counts as payload: a
+reasoning-only turn is a legitimate answer, not an empty one. When the budget is gone the two loops
+part way, and neither fabricates an answer: the branch reports the empty marker plus an attempt
+count to its parent, the main agent leaves a terminal technical note. A visible assistant bubble was
+tried and rejected — it is ordinary assistant speech, so the model would read our diagnostic as its
+own last utterance on the next turn.
 
 **Tool calls are read per turn.** `resultCapture.AccumulatedToolCalls` is reset at the start of
 every turn, so a turn cannot execute the calls of a previous turn. The main agent additionally

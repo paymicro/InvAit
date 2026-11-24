@@ -696,4 +696,10 @@
   <data name="RetryNoteDismiss" xml:space="preserve">
     <value>Убрать сообщение о повторе</value>
   </data>
+  <data name="RetryNoteEmptyResponse" xml:space="preserve">
+    <value>пустой ответ</value>
+  </data>
+  <data name="EmptyResponseAfterRetries" xml:space="preserve">
+    <value>Пустой ответ модели — бюджет повторов исчерпан (максимум {0}).</value>
+  </data>
 </root>

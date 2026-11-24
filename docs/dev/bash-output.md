@@ -41,9 +41,24 @@ delete exactly the information the message exists to carry.
 |-------|--------|
 | `<temp>: line 1: strings: command not found` | `line 1: strings: command not found` |
 | `<temp>: line 2: cd: /nope: No such file or directory` | `line 2: cd: /nope: No such file or directory` |
+| `<temp>: 1: strings: not found` (dash) | `1: strings: not found` |
 | `build.sh: line 3: dotnet: command not found` | unchanged |
 | `/home/pc/project/scripts/deploy.sh: line 7: kubectl: ...` | unchanged |
 | `myinvait_abc.sh: line 1: boom` | unchanged — the prefix is not at a name boundary |
+
+### The diagnostic text in front of the strip is the SHELL's, and shells disagree
+
+The prefix behind the path is not ours and is not portable — only the PATH is:
+
+| Shell | Diagnostic for a missing command |
+|-------|----------------------------------|
+| bash (`sh.exe` on Windows, `/bin/sh` on RHEL/Fedora-style images, macOS) | `<temp>: line 1: cmd: command not found` |
+| dash (Ubuntu's `/bin/sh` — the CI image that caught this) | `<temp>: 1: cmd: not found` — no `line`, no `command` |
+
+That is why an end-to-end test must assert only what the sanitizer controls (the path is gone, the
+command name and `not found` survive) and the per-dialect shapes belong in the unit tests, where the
+diagnostic string is supplied instead of shell-produced. A test asserting `line 1` end-to-end passed
+on Windows and failed on Ubuntu CI.
 
 ## Where it lives, and why not in the UI
 
@@ -89,11 +104,17 @@ channel only is worse than a duplicated constant.
 ## Test seams
 
 - `ToolCore.Tests/BashOutputSanitizerTests`: both halves of the rule (our file disappears, the user's
-  file survives), the forward-slash and spaced-directory variants, every occurrence, the emptied-line
-  and pre-existing-blank-line cases, the no-glue case, and the other host's file-name shape.
+  file survives), the forward-slash, spaced-directory and dash-dialect variants, every occurrence,
+  the emptied-line and pre-existing-blank-line cases, the no-glue case, and the other host's
+  file-name shape.
 - `ToolCore.Tests/ProcessExecutorTests`: an end-to-end run whose stderr must not contain `invait_` or
-  `.sh` while keeping `line 1`, and a run that must keep the user's own script name.
-- `VsCode/src/test/toolHandlers/bashOutput.test.ts`: the same matrix on the Node side, plus the
-  stateful-`/g` reuse case.
+  `.sh` while keeping the command name and `not found` (shell-independent — see
+  [the dialects](#the-diagnostic-text-in-front-of-the-strip-is-the-shells-and-shells-disagree)), and
+  a run that must keep the user's own script name.
+- `VsCode/src/test/toolHandlers/bashOutput.test.ts`: both halves of the rule on the Node side (its
+  regexes are a deliberate duplicate of this file's, not shared code), plus the stateful-`/g` reuse
+  case. It does NOT cover the dash dialect: the Node host runs the shell the user's machine provides
+  and the CI job is Windows-oriented, so the dialect matrix is pinned on the C# side only.
 - `VsCode/src/test/toolHandlers/bash.test.ts`: the handler strips the path it actually passed to
-  `spawnSync`, and keeps a user script's name.
+  `spawnSync`, and keeps a user script's name. It stubs the process call, so it does not depend on
+  the shell's diagnostic wording either.

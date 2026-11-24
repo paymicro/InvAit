@@ -367,7 +367,7 @@ public partial class AiChat : RadzenComponent
 
                 var message = await RunSingleTurnAsync(runSession, capture, runToken);
                 if (message is null)
-                    return; // cancelled, or the retry budget of this turn is exhausted
+                    return; // cancelled, or an answer that stayed empty until the budget ran out
 
                 // The user cancelled between the turn and the batch: nothing may execute now
                 // (PrepareToolsForApprovals would re-register waiters of an aborted run).
@@ -395,22 +395,19 @@ public partial class AiChat : RadzenComponent
     }
 
     /// <summary>
-    /// Streams exactly ONE LLM turn into its own message and returns that message, or
-    /// <c>null</c> when the run must stop (cancelled, or the retry budget is exhausted).
+    /// Streams exactly ONE LLM turn into its own message and returns it, or <c>null</c> when the run
+    /// must stop: cancelled (before the first token or during the countdown), or an answer that stayed
+    /// empty until the budget ran out. A terminal TRANSPORT error returns its bubble - there the error
+    /// text IS the answer.
     /// <para>
-    /// The turn message is created LAZILY: the object exists from the start (it is the stream
-    /// target and the message excluded from its own request by reference), and it enters the
-    /// session IMMEDIATELY, before the first token. The bubble is the user's feedback that the
-    /// turn started: without it the input froze with no indicator and no Cancel button for as long
-    /// as the provider took to send the first byte. It still cannot pollute the history: a turn that
-    /// ends without payload is removed from the session again, and while it streams it is excluded
-    /// from the wire by <c>IsStreaming</c> and by being the <c>live</c> message of its own request.
+    /// The bubble is added EAGERLY: it is the only feedback that the run started, and it hosts the
+    /// Cancel button and the retry countdown. It cannot pollute the history - while streaming it is
+    /// excluded as the <c>live</c> message of its own request, and a turn without payload is removed
+    /// before the retry.
     /// </para>
     /// <para>
-    /// Retries are scoped to THIS turn: <see cref="HandleErrorAsync"/> owns the countdown UI and
-    /// the budget, and after it allowed a retry the loop below re-enters the very same request.
-    /// It never recurses into the run loop, so a retried turn neither starts a second run nor
-    /// cancels its own token.
+    /// Retries wrap THIS turn only (<see cref="HandleErrorAsync"/>, <see cref="HandleEmptyTurnAsync"/>,
+    /// one shared budget): re-entering the request cannot start a second run or cancel our own token.
     /// </para>
     /// </summary>
     private async Task<VisualChatMessage?> RunSingleTurnAsync(
@@ -464,11 +461,32 @@ public partial class AiChat : RadzenComponent
 
                 if (!HasPayload(turnMessage))
                 {
-                    // Nothing arrived: an empty assistant bubble is noise, and an empty assistant
-                    // turn is rejected by some providers. Drop it - the run itself continues.
-                    runSession.RemoveMessage(turnMessage.Id);
-                    await InvokeAsync(StateHasChanged);
-                    return null;
+                    // Silent model: the attempt is a FAILED attempt, not an answer, so it spends the
+                    // same budget a thrown failure spends.
+                    if (!await HandleEmptyTurnAsync(turnMessage, ++retryCount, runSession, runToken))
+                    {
+                        if (runToken.IsCancellationRequested)
+                        {
+                            runSession.RemoveMessage(turnMessage.Id);
+                            await InvokeAsync(StateHasChanged);
+                            return null;
+                        }
+
+                        // Budget spent. The outcome must be visible, but NOT as an assistant turn: a
+                        // bubble would travel into the next request and the model would read our
+                        // diagnostic as its own last words. So it is a technical note - same channel
+                        // the retried attempts used.
+                        runSession.RemoveMessage(turnMessage.Id);
+                        runSession.AddMessage(VisualChatMessage.CreateTechnical(
+                            string.Format(SharedResource.EmptyResponseAfterRetries,
+                                CommonSettingsProvider.Current.MaxRetries)));
+                        await ChatService.SaveSessionAsync();
+                        await InvokeAsync(StateHasChanged);
+                        return null;
+                    }
+
+                    // HandleEmptyTurnAsync removed the failed attempt: retry with a FRESH message.
+                    continue;
                 }
 
                 ParsePlan(turnMessage);
@@ -574,12 +592,15 @@ public partial class AiChat : RadzenComponent
     }
 
     /// <summary>
-    /// True when the session carries payload a turn could stream into the UI. Used to decide
-    /// whether a turn message enters the session at all.
+    /// True when the turn carries payload (text, reasoning or tool calls) - i.e. it is an ANSWER.
+    /// <para>
+    /// Whitespace-only is nothing: `ConversationSession.IsEmptyAssistant` drops such a turn from the
+    /// wire anyway, so accepting it here would leave an invisible bubble the model never sees.
+    /// </para>
     /// </summary>
     private static bool HasPayload(VisualChatMessage message)
-        => !string.IsNullOrEmpty(message.Content)
-           || !string.IsNullOrEmpty(message.ReasoningContent)
+        => !string.IsNullOrWhiteSpace(message.Content)
+           || !string.IsNullOrWhiteSpace(message.ReasoningContent)
            || message.ToolCalls is { Count: > 0 };
 
     /// <summary>Ids of the user messages of the session (interject baseline).</summary>
@@ -835,6 +856,63 @@ public partial class AiChat : RadzenComponent
         // the UI and the persisted content stays comparable across attempts.
         session.AddMessage(VisualChatMessage.CreateTechnical(
             $"{string.Format(SharedResource.RetryNoteFormat, retryCount, maxRetries, delay)} — {DescribeError(ex)}"));
+
+        return true;
+    }
+
+    /// <summary>
+    /// Spends one retry attempt on a turn that delivered NOTHING (no content, no reasoning, no tool
+    /// calls) - a shape providers produce with an all-null delta, which the mapper drops so the stream
+    /// just ends. Such a turn is an ATTEMPT, not an answer.
+    /// <para>
+    /// The countdown runs on the empty bubble (it IS the retry indicator); only then is the failed
+    /// attempt swapped for a technical note, so a cancelled wait leaves nothing behind.
+    /// </para>
+    /// </summary>
+    /// <param name="retryCount">Attempt number, shared with <see cref="HandleErrorAsync"/>.</param>
+    /// <returns>
+    /// True to retry. False when the budget is gone OR the wait was cancelled - the caller tells those
+    /// apart by <c>runToken</c>.
+    /// </returns>
+    private async Task<bool> HandleEmptyTurnAsync(VisualChatMessage message, int retryCount,
+        ConversationSession session, CancellationToken cancellationToken)
+    {
+        var maxRetries = CommonSettingsProvider.Current.MaxRetries;
+
+        Logger.LogWarning("Empty LLM response (attempt {Attempt}/{MaxRetries}).", retryCount, maxRetries);
+
+        if (retryCount >= maxRetries)
+            return false;
+
+        var delay = RetryHandler.GetRetryDelay(retryCount);
+
+        message.MaxRetryAttempts = maxRetries;
+        message.RetryAttempt = retryCount;
+
+        try
+        {
+            await RetryHandler.WaitForRetryAsync(delay, i =>
+            {
+                message.RetryCountdown = i;
+                InvokeAsync(StateHasChanged);
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        finally
+        {
+            message.RetryCountdown = 0;
+        }
+
+        session.RemoveMessage(message.Id);
+
+        // Trace of the failed attempt: without it a run that stalled through its backoff would
+        // explain nothing (the note is never context - see IsTechnical).
+        session.AddMessage(VisualChatMessage.CreateTechnical(
+            $"{string.Format(SharedResource.RetryNoteFormat, retryCount, maxRetries, delay)} — " +
+            SharedResource.RetryNoteEmptyResponse));
 
         return true;
     }

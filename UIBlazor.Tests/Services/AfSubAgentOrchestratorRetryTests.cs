@@ -154,9 +154,114 @@ public class AfSubAgentOrchestratorRetryTests
     }
 
     /// <summary>
-    /// A failure that is NOT an <see cref="LlmApiException"/> is a bug in our own code (the
-    /// transport wraps everything it produces). Retrying it hides the bug behind minutes of
-    /// waiting and makes the stack trace harder to reach.
+    /// A branch turn that arrives EMPTY (no content, no reasoning, no tool calls) is retried on the
+    /// same run-level budget as a transport failure. Before this the branch ended immediately and
+    /// the parent received "(Sub-agent returned an empty response.)" - a silent model was
+    /// indistinguishable from a working one that had nothing to say.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_EmptyTurns_RetriedAndBranchSucceeds()
+    {
+        using var chatService = ScriptedChatService.Create(Turns.EmptyFirst(empties: 2));
+        var orchestrator = CreateOrchestrator(chatService.Service);
+        var toolCall = CreateToolCall();
+
+        var result = await orchestrator.ExecuteAsync(Args, toolCall, TestContext.Current.CancellationToken);
+
+        // Two empty turns plus the answering turn: an empty turn is an ATTEMPT, not an outcome.
+        Assert.Equal(3, chatService.Calls);
+
+        // The same backoff protocol as a failed attempt: badge armed, handler consulted.
+        _retryHandler.Verify(r => r.GetRetryDelay(1), Times.Once);
+        _retryHandler.Verify(r => r.GetRetryDelay(2), Times.Once);
+        _retryHandler.Verify(
+            r => r.WaitForRetryAsync(It.IsAny<int>(), It.IsAny<Action<int>>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+
+        var branch = Assert.Single(toolCall.SubAgents!);
+        Assert.True(result.Success);
+        Assert.Contains("sub-agent answer", result.Result);
+
+        // The armed attempt numbers are the discriminating assertion: before the change no attempt
+        // was ever armed, so both were 0.
+        Assert.Equal(3, branch.MaxRetryAttempts);
+        Assert.Equal(2, branch.RetryAttempt);
+
+        // An empty turn never materializes, so no empty assistant turn has to be carried by the next
+        // request.
+        Assert.DoesNotContain(branch.GetMessages(),
+            m => m.Role == ChatMessageRole.Assistant
+                 && string.IsNullOrWhiteSpace(m.Content)
+                 && string.IsNullOrWhiteSpace(m.ReasoningContent)
+                 && m.ToolCalls is not { Count: > 0 });
+
+        // The badge is disarmed after the wait.
+        Assert.False(branch.IsRetrying);
+        Assert.Equal(0, branch.RetryCountdown);
+    }
+
+    /// <summary>
+    /// An endlessly silent model must not retry forever: the empty turn shares the RUN budget. The
+    /// status and the marker text are not proof - a branch that never answered was already Completed
+    /// with the same marker after ONE call. What this test pins is the budget.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_EmptyTurnsExhaustBudget_BranchReportsEmptyAnswer()
+    {
+        using var chatService = ScriptedChatService.Create(Turns.EmptyFirst(empties: 10));
+        var orchestrator = CreateOrchestrator(chatService.Service);
+        var toolCall = CreateToolCall();
+
+        var result = await orchestrator.ExecuteAsync(Args, toolCall, TestContext.Current.CancellationToken);
+
+        // MaxRetries = 3 means three CALLS: the last allowed attempt reports the outcome, a fourth
+        // call would be one over budget.
+        Assert.Equal(3, chatService.Calls);
+        _retryHandler.Verify(r => r.GetRetryDelay(1), Times.Once);
+        _retryHandler.Verify(r => r.GetRetryDelay(2), Times.Once);
+        _retryHandler.Verify(r => r.GetRetryDelay(3), Times.Never);
+        _retryHandler.Verify(
+            r => r.WaitForRetryAsync(It.IsAny<int>(), It.IsAny<Action<int>>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+
+        var branch = Assert.Single(toolCall.SubAgents!);
+        Assert.Equal(3, branch.MaxRetryAttempts);
+        Assert.Equal(2, branch.RetryAttempt);
+
+        // Nothing errored, so the run is Completed and the parent gets the documented marker - plus
+        // a note with the attempt count, which the marker alone cannot convey.
+        Assert.Equal(SubAgentStatus.Completed, branch.Status);
+        Assert.Contains("(Sub-agent returned an empty response.)", result.Result);
+        Assert.Contains("(No output after 3 attempt(s).)", result.Result);
+        Assert.False(branch.IsRetrying);
+    }
+
+    /// <summary>
+    /// A reasoning-only turn IS an answer: <c>HasPayload</c> counts <c>ReasoningContent</c>, so a
+    /// reasoning model must not burn the whole budget on every successful turn.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_ReasoningOnlyTurn_NotRetried()
+    {
+        using var chatService = ScriptedChatService.Create(Turns.ReasoningOnly());
+        var orchestrator = CreateOrchestrator(chatService.Service);
+        var toolCall = CreateToolCall();
+
+        await orchestrator.ExecuteAsync(Args, toolCall, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, chatService.Calls);
+        _retryHandler.Verify(
+            r => r.WaitForRetryAsync(It.IsAny<int>(), It.IsAny<Action<int>>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        var branch = Assert.Single(toolCall.SubAgents!);
+        Assert.Equal(0, branch.RetryAttempt);
+        Assert.Contains(branch.GetMessages(), m => !string.IsNullOrEmpty(m.ReasoningContent));
+    }
+
+    /// <summary>
+    /// A failure that is NOT an <see cref="LlmApiException"/> is a bug in our own code (the transport
+    /// wraps everything it produces). Retrying it hides the bug behind minutes of waiting.
     /// </summary>
     [Fact]
     public async Task ExecuteAsync_NonLlmException_NotRetried()

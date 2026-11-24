@@ -258,6 +258,30 @@ internal static class Turns
         string content = "sub-agent answer")
         => (index, _) => index < failures ? Root("transient failure") : Script(content: content);
 
+    /// <summary>
+    /// The first <paramref name="empties"/> turns deliver NOTHING and then answer. The shape is the
+    /// real one: a provider that answers with an empty delta sends no payload at all, which the
+    /// mapper drops (Map returns null), so the caller's stream simply ends without a single update.
+    /// <para>
+    /// The index is the ATTEMPT index, not the answer index: an empty turn still consumes one (it is
+    /// a real LLM call). A <see cref="Sequence"/> placed after an empty turn therefore starts at the
+    /// second entry, not the first.
+    /// </para>
+    /// </summary>
+    public static Func<int, CompletionsResult, IAsyncEnumerable<ChatDelta>> EmptyFirst(
+        int empties,
+        string content = "sub-agent answer")
+        => (index, _) => index < empties ? Script(content: null) : Script(content: content);
+
+    /// <summary>
+    /// Every turn carries reasoning and no text — the shape of a model that thinks and then stops.
+    /// It is a legitimate answer for the retry rule (reasoning is payload), so the branch must not
+    /// spend its budget on it.
+    /// </summary>
+    public static Func<int, CompletionsResult, IAsyncEnumerable<ChatDelta>> ReasoningOnly(
+        string reasoning = "thinking it through")
+        => (_, _) => Script(content: null, reasoning: reasoning);
+
     private static async IAsyncEnumerable<ChatDelta> Script(
         string? content,
         string? reasoning = null,

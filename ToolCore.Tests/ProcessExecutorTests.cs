@@ -308,16 +308,35 @@ public class ProcessExecutorTests
     {
         // sh prefixes every diagnostic with the script file name, and that file is deleted right
         // after the run — the path is useless to the reader and only eats context. The useful part
-        // of the message must survive byte for byte.
+        // of the message must survive.
+        //
+        // Only SHELL-INDEPENDENT facts are asserted here. The line marker is written by the shell
+        // itself and its wording is not portable: Git sh says "<file>: line 1: cmd: command not
+        // found", while Ubuntu's /bin/sh is dash, which says "<file>: 1: cmd: not found" — no
+        // "line", no "command". Asserting the Git-sh wording made this test pass on Windows and
+        // fail on Linux CI. The exact strip (both dialects) is pinned deterministically by
+        // BashOutputSanitizerTests, which supplies the diagnostic text instead of asking a shell
+        // for it.
         var executor = new ProcessExecutor(_mockLogger.Object);
 
         var result = await executor.ExecuteBashAsync(
             "definitely_missing_command_xyz", timeoutMs: 5000, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(result.Success);
+
+        // No trace of the temp file, whichever dialect the shell speaks.
         Assert.DoesNotContain("invait_", result.Error, StringComparison.Ordinal);
         Assert.DoesNotContain(".sh", result.Error, StringComparison.Ordinal);
-        Assert.Contains("line 1", result.Error, StringComparison.Ordinal);
+
+        // The part that makes the message actionable survived: which command was missing and that
+        // it was not found (bash: "command not found", dash: "not found").
+        Assert.Contains("definitely_missing_command_xyz", result.Error, StringComparison.Ordinal);
+        Assert.Contains("not found", result.Error, StringComparison.Ordinal);
+
+        // The separator belongs to the path, not to the message: a strip that leaves it produces
+        // ": definitely_missing_command_xyz: not found" - a leading colon that reads like a syntax
+        // error, and every other assertion above would still pass.
+        Assert.False(result.Error.TrimStart().StartsWith(':'), result.Error);
     }
 
     [Fact]

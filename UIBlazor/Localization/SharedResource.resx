@@ -696,4 +696,10 @@
   <data name="RetryNoteDismiss" xml:space="preserve">
     <value>Dismiss retry note</value>
   </data>
+  <data name="RetryNoteEmptyResponse" xml:space="preserve">
+    <value>empty response</value>
+  </data>
+  <data name="EmptyResponseAfterRetries" xml:space="preserve">
+    <value>Empty response from the model — retry budget exhausted (max {0}).</value>
+  </data>
 </root>

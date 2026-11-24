@@ -110,14 +110,24 @@ rebuild.
 `ISystemPromptBuilder.InvalidatePromptCache()` exists as an explicit seam for inputs that change
 without an event (a skills or rules file edited on disk).
 
-## Legacy empty assistant turns
+## Empty assistant turns
 
-Older builds created an assistant message eagerly at every turn start. Turns are now created
-lazily on the first payload, so nothing produces a placeholder any more — but sessions written by
-those builds still contain empty assistant bubbles.
+Turns are created differently in the two loops, and the difference is deliberate:
 
-`ConversationSession.PurgeLegacyEmptyTurns()` drops them when a session is loaded, so old sessions
-do not render frozen bubbles and do not send them to the model. The predicate is content-based
-(`ConversationSession.IsEmptyAssistant`): assistant, no text, no reasoning, no tool calls. There is
-no separate flag — the retired `VisualChatMessage.IsEmptyTurn` was deleted because no release ever
-shipped with it, so there is nothing to stay backward compatible with.
+| Loop | When the bubble is added | Why |
+|------|--------------------------|-----|
+| Main agent (`AIChat.RunSingleTurnAsync`) | **eagerly**, before the first token | the bubble IS the feedback that the run started, and the only place the Cancel button and the retry countdown can live |
+| Sub-agent branch (`AfSubAgentOrchestrator.RunBranchAsync`) | **lazily**, on the first payload (`Materialize`) | no Cancel button and no countdown live there, so a placeholder has nothing to show |
+
+The two agree on the invariant that matters: an empty assistant turn never reaches the wire AND
+never stays on screen. The main agent removes its bubble before a retry, the branch never adds it,
+and `CollectVisibleForWire` drops any empty assistant message regardless of who created it. An
+empty turn is otherwise an ATTEMPT, not an outcome — it spends the retry budget
+([llm-transport.md](llm-transport.md#an-empty-turn-is-retried-too)).
+
+Older builds created a placeholder at every turn start and kept it. `PurgeLegacyEmptyTurns()` drops
+those on load, so sessions written by them neither render frozen bubbles nor send them to the model.
+The predicate is content-based (`ConversationSession.IsEmptyAssistant`): assistant, no text, no
+reasoning, no tool calls — the same rule `HasPayload` uses to decide whether a turn is empty. There
+is no separate flag: the retired `VisualChatMessage.IsEmptyTurn` was deleted because no release ever
+shipped with it.

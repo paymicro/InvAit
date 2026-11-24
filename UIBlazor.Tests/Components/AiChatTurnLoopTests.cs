@@ -258,9 +258,10 @@ public class AiChatTurnLoopTests : AiChatTestsBase
     }
 
     [Fact]
-    public async Task TurnLoop_TurnWithoutPayload_LeavesNoMessage()
+    public async Task TurnLoop_TurnWithoutPayload_RetriedAndTheLastAttemptExplainsItself()
     {
-        // Arrange - the turn produces nothing at all (no content, no reasoning, no tool calls)
+        // Arrange - a provider answering with an empty delta looks like this: the stream ends with
+        // no update at all.
         MockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
         SetupTurnStreams([]);
         SetupProcessStreamConsume();
@@ -270,20 +271,99 @@ public class AiChatTurnLoopTests : AiChatTestsBase
         // Act
         await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
 
-        // Assert - no payload, so the eagerly added bubble was removed again:
-        // an empty turn leaves NO message behind.
+        // Assert - an empty answer is not an answer: it spends the retry budget, so the provider was
+        // asked MaxRetries times instead of the run ending on the first silence.
+        MockChatService.Verify(x => x.GetTurnCompletionsAsync(It.IsAny<ConversationSession>(),
+            It.IsAny<VisualChatMessage?>(), It.IsAny<IReadOnlyList<Tool>?>(), It.IsAny<CompletionsResult>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(3));
+
         var messages = Session.GetMessagesSnapshot();
-        Assert.Single(messages);
         Assert.Equal(ChatMessageRole.User, messages[0].Role);
+
+        // Every attempt leaves a trace, and the numbers are asserted literally: comparing against
+        // the resource that built the note would pass with a wrong attempt number or delay.
+        var notes = messages.Where(m => m.IsTechnical).ToList();
+        Assert.Equal(3, notes.Count);
+        Assert.Contains(string.Format(SharedResource.RetryNoteFormat, 1, 3, 2), notes[0].Content);
+        Assert.Contains(string.Format(SharedResource.RetryNoteFormat, 2, 3, 5), notes[1].Content);
+        Assert.Contains(SharedResource.RetryNoteEmptyResponse, notes[0].Content);
+        Assert.Contains(SharedResource.RetryNoteEmptyResponse, notes[1].Content);
+
+        // The deciding attempt reports as a NOTE: a bubble would reach BuildWire and the model would
+        // read our diagnostic as its own last utterance.
+        Assert.Contains(string.Format(SharedResource.EmptyResponseAfterRetries, 3), notes[^1].Content);
+        Assert.DoesNotContain(messages, m => m.Role == ChatMessageRole.Assistant && !m.IsTechnical);
+
+        var wireContents = Session.BuildWire("sys").Messages.Select(m => m.Content ?? string.Empty).ToList();
+        Assert.All(notes, note => Assert.DoesNotContain(note.Content, wireContents));
+
+        // The terminal note is the only thing left after a reload, so it must be persisted.
+        MockChatService.Verify(x => x.SaveSessionAsync(), Times.AtLeastOnce);
+        Assert.All(messages, m => Assert.False(m.IsStreaming));
+    }
+
+    /// <summary>
+    /// Whitespace-only is emptiness - the same rule as <c>ConversationSession.IsEmptyAssistant</c>,
+    /// which would drop such a turn from the request anyway.
+    /// </summary>
+    [Fact]
+    public async Task TurnLoop_WhitespaceOnlyTurn_RetriedAsEmpty()
+    {
+        // Arrange
+        MockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+        SetupTurnStreams([new ChatDelta { Content = "   \n " }]);
+        SetupProcessStreamConsume();
+
+        var cut = Render<AiChat>();
+
+        // Act
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        // Assert
+        MockChatService.Verify(x => x.GetTurnCompletionsAsync(It.IsAny<ConversationSession>(),
+            It.IsAny<VisualChatMessage?>(), It.IsAny<IReadOnlyList<Tool>?>(), It.IsAny<CompletionsResult>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(3));
+
+        Assert.DoesNotContain(Session.GetMessagesSnapshot(),
+            m => m.Role == ChatMessageRole.Assistant && !m.IsTechnical);
+    }
+
+    /// <summary>
+    /// An empty turn and a thrown failure draw from ONE counter, otherwise a turn gets N retries per
+    /// failure class.
+    /// </summary>
+    [Fact]
+    public async Task TurnLoop_EmptyThenFailingTurns_ShareTheRetryBudget()
+    {
+        // Arrange - one empty turn, then every turn throws. MaxRetries = 3 means three attempts in
+        // total; a separate counter would allow four.
+        CommonOptions.MaxRetries = 3;
+        MockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
+        SetupTurnScripts(
+            (_, ct) => StreamDeltasAsync([], ct),
+            (_, ct) => ThrowLlmAsync(new LlmApiException("boom"), ct));
+        SetupProcessStreamConsume();
+
+        var cut = Render<AiChat>();
+
+        // Act
+        await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
+
+        // Assert
+        MockChatService.Verify(x => x.GetTurnCompletionsAsync(It.IsAny<ConversationSession>(),
+            It.IsAny<VisualChatMessage?>(), It.IsAny<IReadOnlyList<Tool>?>(), It.IsAny<CompletionsResult>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(3));
+
+        // A terminal transport failure keeps its own trace: the error IS the answer there.
+        Assert.Contains(Session.GetMessagesSnapshot(),
+            m => m.Role == ChatMessageRole.Assistant && !m.IsTechnical && m.Content.Contains("Error:"));
     }
 
     [Fact(Timeout = 20000)]
     public async Task TurnLoop_BeforeFirstToken_ShowsPlaceholderAndCancelButton()
     {
-        // The dead window: the request was accepted but the provider has not sent a single byte.
-        // The UI looked frozen there - no bubble, no streaming indicator and no way to cancel -
-        // because the turn message was only added on the first payload AND IsLoading was set
-        // without a re-render.
+        // Arrange - the dead window: the request was accepted but the provider has not sent a single
+        // byte.
         MockChatService.Setup(x => x.SaveSessionAsync()).Returns(Task.CompletedTask);
 
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -292,31 +372,33 @@ public class AiChatTurnLoopTests : AiChatTestsBase
 
         var cut = Render<AiChat>();
 
+        // Act
         var run = cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync("hi"));
 
-        // Wait for the run to reach the transport: nothing has been delivered at this point.
         await WaitUntilAsync(() => Session.GetMessagesSnapshot()
             .Any(m => m.Role == ChatMessageRole.Assistant));
 
-        // The bubble exists, is empty and open for streaming.
+        // Assert - the bubble exists, is empty and is on screen before any token arrives.
         var placeholder = Assert.Single(Session.GetMessagesSnapshot(),
             m => m.Role == ChatMessageRole.Assistant);
         Assert.True(placeholder.IsStreaming);
         Assert.Equal(string.Empty, placeholder.Content);
 
-        // It is on screen (the view itself is stubbed in bUnit: the session entry is rendered)...
         Assert.NotEmpty(cut.FindAll($"[data-message-id='{placeholder.Id}']"));
 
-        // ...and the parent already painted the busy state, so the Cancel button (which lives in
-        // the input child) is available while nothing has arrived.
+        // The parent already painted the busy state, so Cancel is reachable while nothing arrived.
         Assert.Equal("true", cut.Find(".ai-chat-input-stub").GetAttribute("data-loading"));
 
         gate.TrySetResult();
         await run;
 
-        // A run that ends without payload still leaves no bubble behind.
-        Assert.DoesNotContain(Session.GetMessagesSnapshot(),
-            m => m.Role == ChatMessageRole.Assistant);
+        // No payload means no bubble: only the terminal note is left, and nothing keeps streaming.
+        var messages = Session.GetMessagesSnapshot();
+        Assert.DoesNotContain(messages, m => m.Role == ChatMessageRole.Assistant && !m.IsTechnical);
+        Assert.Contains(messages, m => m.IsTechnical
+                                       && m.Content.Contains(
+                                           string.Format(SharedResource.EmptyResponseAfterRetries, 3)));
+        Assert.All(messages, m => Assert.False(m.IsStreaming));
     }
 
     [Fact]

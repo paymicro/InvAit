@@ -107,7 +107,7 @@ public abstract class AiChatTestsBase : BunitContext
         Services.AddSingleton(new UiErrorLogger(new Mock<IJSRuntime>().Object));
         Services.AddSingleton(new Mock<ILogger<AiChat>>().Object);
 
-        Services.AddSingleton<IRetryHandler>(new RetryHandler());
+        Services.AddSingleton<IRetryHandler>(new ImmediateRetryHandler());
         Services.AddSingleton(MockToolCallHandler.Object);
         Services.AddSingleton(new Mock<ISubAgentExecutor>().Object);
         Services.AddSingleton(new Mock<ISkillService>().Object);
@@ -179,6 +179,32 @@ public abstract class AiChatTestsBase : BunitContext
             builder.AddContent(2, "Recent Sessions Title");
             builder.CloseElement();
         });
+    }
+
+    /// <summary>
+    /// Real DELAYS (the retry note prints them and tests assert the numbers), no waiting - a retried
+    /// turn must not cost 2+5+10 s of wall clock per test.
+    /// <para>
+    /// Consequence: the token is checked once at entry and the wait returns synchronously, so the
+    /// <c>catch (OperationCanceledException)</c> of <c>HandleEmptyTurnAsync</c> /
+    /// <c>HandleErrorAsync</c> is unreachable from this suite, and the countdown is reported as
+    /// <c>delay, 0</c>. A cancel-during-retry test written here would prove nothing.
+    /// </para>
+    /// </summary>
+    private sealed class ImmediateRetryHandler : IRetryHandler
+    {
+        private readonly RetryHandler _delays = new();
+
+        public int GetRetryDelay(int attempt) => _delays.GetRetryDelay(attempt);
+
+        public Task WaitForRetryAsync(int delaySeconds, Action<int> onCountdownUpdate,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            onCountdownUpdate(delaySeconds);
+            onCountdownUpdate(0);
+            return Task.CompletedTask;
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════

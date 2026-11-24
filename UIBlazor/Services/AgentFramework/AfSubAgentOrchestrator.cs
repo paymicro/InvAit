@@ -404,7 +404,9 @@ public sealed class AfSubAgentOrchestrator(
     /// Retries happen HERE, around one turn, and share the RUN-level counter: a branch may
     /// burn its whole retry budget across turns, but never N retries per turn. Before a retry
     /// the failed turn is dropped from the history BY ID, otherwise the partially streamed
-    /// answer would ride into the next request.
+    /// answer would ride into the next request. A turn that arrives EMPTY (no text, no
+    /// reasoning, no tool calls) is a failed turn for the same purpose: it spends the same
+    /// budget, because a silent model is not the answer the parent delegated for.
     /// </para>
     /// </summary>
     private async Task<VisualChatMessage> RunBranchTurnAsync(BranchRun run, CompletionsResult capture)
@@ -455,6 +457,23 @@ public sealed class AfSubAgentOrchestrator(
 
                 // ProcessStreamAsync closes the message and stamps the per-turn timings.
                 turn.Model ??= capture.Model;
+
+                if (!HasPayload(turn))
+                {
+                    // Silent model: an ATTEMPT, not an answer. The turn never materialized, so the
+                    // history holds no trace of it - only budget is spent.
+                    if (await TrySpendRetryAttemptAsync(run, failure: null).ConfigureAwait(false))
+                        continue;
+
+                    // The empty marker alone cannot say whether the model was silent once or ten
+                    // times, so the attempt count goes to the parent as a note.
+                    run.AddNote($"(No output after {run.RetriesUsed} attempt(s).)");
+                    logger.LogWarning(
+                        "Sub-agent branch {Index} returned an empty response and the retry budget is spent.",
+                        run.Index);
+                    return turn;
+                }
+
                 Materialize();
                 turn.IsShouldRender = true;
                 run.SubAgent.NotifyStateChanged();
@@ -469,15 +488,13 @@ public sealed class AfSubAgentOrchestrator(
                     run.SubAgent.AddMessage(turn);
                 }
 
-                var attempt = ++run.RetriesUsed;
-
                 // Only a failure that can succeed on a repeat may spend the budget: a wrong API
                 // key or a rejected request answers identically ten times, and a non-LlmApiException
                 // is our own bug. Failing at once keeps the branch's tokens and time for the
                 // parent agent's fallback instead of burning them on a certain failure.
                 var retryable = ex is LlmApiException { IsRetryable: true };
 
-                if (!retryable || attempt >= run.MaxRetries)
+                if (!retryable || !await TrySpendRetryAttemptAsync(run, ex).ConfigureAwait(false))
                 {
                     // Retry budget of the WHOLE run exhausted (or spent needlessly): the outer
                     // catch records the branch failure. Tool calls of the abandoned turn still
@@ -487,35 +504,6 @@ public sealed class AfSubAgentOrchestrator(
                     throw;
                 }
 
-                logger.LogWarning(ex,
-                    "Sub-agent branch {Index} attempt {Attempt}/{MaxAttempts} failed, retrying.",
-                    run.Index, attempt, run.MaxRetries);
-
-                run.SubAgent.IsRetrying = true;
-                run.SubAgent.RetryAttempt = attempt;
-                run.SubAgent.MaxRetryAttempts = run.MaxRetries;
-                run.SubAgent.NotifyStateChanged();
-
-                try
-                {
-                    var delay = retryHandler.GetRetryDelay(attempt);
-                    await retryHandler.WaitForRetryAsync(delay, i =>
-                    {
-                        run.SubAgent.RetryCountdown = i;
-                        run.SubAgent.NotifyStateChanged();
-                    }, run.Token).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    throw; // cancellation while waiting is NOT retried
-                }
-                finally
-                {
-                    run.SubAgent.IsRetrying = false;
-                    run.SubAgent.RetryCountdown = 0;
-                    run.SubAgent.NotifyStateChanged();
-                }
-
                 // Drop the failed turn: the session BY ID first (the mirror removal below then
                 // becomes a no-op for the session), then the UI copy. Reusing the object would
                 // duplicate its content; keeping it would poison the next request.
@@ -523,6 +511,61 @@ public sealed class AfSubAgentOrchestrator(
                 run.SubAgent.RemoveMessage(turn);
             }
         }
+    }
+
+    /// <summary>
+    /// Spends ONE attempt of the RUN-level budget and waits out the backoff with the badge armed.
+    /// <para>
+    /// A thrown failure and an empty answer draw from the SAME counter on purpose: the budget belongs
+    /// to the run, so a branch can never get N retries per turn.
+    /// </para>
+    /// </summary>
+    /// <param name="failure">The exception that ended the attempt, or null for an empty answer.</param>
+    /// <returns>True to retry; false when the budget is gone (the caller decides how the branch ends).</returns>
+    private async Task<bool> TrySpendRetryAttemptAsync(BranchRun run, Exception? failure)
+    {
+        var attempt = ++run.RetriesUsed;
+
+        // The last allowed attempt reports the outcome; retrying past it would exceed the budget by
+        // one call.
+        if (attempt >= run.MaxRetries)
+            return false;
+
+        if (failure is null)
+            logger.LogWarning(
+                "Sub-agent branch {Index} attempt {Attempt}/{MaxAttempts} produced no output, retrying.",
+                run.Index, attempt, run.MaxRetries);
+        else
+            logger.LogWarning(failure,
+                "Sub-agent branch {Index} attempt {Attempt}/{MaxAttempts} failed, retrying.",
+                run.Index, attempt, run.MaxRetries);
+
+        run.SubAgent.IsRetrying = true;
+        run.SubAgent.RetryAttempt = attempt;
+        run.SubAgent.MaxRetryAttempts = run.MaxRetries;
+        run.SubAgent.NotifyStateChanged();
+
+        try
+        {
+            var delay = retryHandler.GetRetryDelay(attempt);
+            await retryHandler.WaitForRetryAsync(delay, i =>
+            {
+                run.SubAgent.RetryCountdown = i;
+                run.SubAgent.NotifyStateChanged();
+            }, run.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw; // cancellation while waiting is NOT retried
+        }
+        finally
+        {
+            run.SubAgent.IsRetrying = false;
+            run.SubAgent.RetryCountdown = 0;
+            run.SubAgent.NotifyStateChanged();
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -632,12 +675,16 @@ public sealed class AfSubAgentOrchestrator(
     }
 
     /// <summary>
-    /// True when the message carries payload a turn could stream into the UI. Decides whether
-    /// a turn message enters the branch history at all.
+    /// True when the turn carries payload (text, reasoning or tool calls) - i.e. it is an ANSWER.
+    /// Decides both whether the turn enters the branch history and whether it is retried.
+    /// <para>
+    /// Whitespace-only is nothing: `ConversationSession.IsEmptyAssistant` uses the same rule when it
+    /// filters the wire, so accepting such a turn would only mean dropping it from the next request.
+    /// </para>
     /// </summary>
     private static bool HasPayload(VisualChatMessage message)
-        => !string.IsNullOrEmpty(message.Content)
-           || !string.IsNullOrEmpty(message.ReasoningContent)
+        => !string.IsNullOrWhiteSpace(message.Content)
+           || !string.IsNullOrWhiteSpace(message.ReasoningContent)
            || message.ToolCalls is { Count: > 0 };
 
     /// <summary>Ids of the user messages of the branch session (interject baseline).</summary>

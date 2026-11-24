@@ -9,7 +9,10 @@ public class AiChatSendMessageTests : AiChatTestsBase
     [Fact]
     public async Task ShouldSendMessage_WhenContentProvided()
     {
-        // Arrange - the turn produces no payload at all
+        // Arrange - the turn produces no payload at all. ONE attempt only: this test is about the
+        // user message reaching the session, not about the empty-turn retry (which spends several
+        // attempts and leaves a note per attempt - covered by AiChatTurnLoopTests).
+        CommonOptions.MaxRetries = 1;
         var content = "Test message";
         MockChatService
             .Setup(x => x.GetTurnCompletionsAsync(It.IsAny<ConversationSession>(), It.IsAny<VisualChatMessage?>(),
@@ -22,12 +25,16 @@ public class AiChatSendMessageTests : AiChatTestsBase
         // Act - call SendMessageAsync directly
         await cut.InvokeAsync(async () => await cut.Instance.SendMessageAsync(content));
 
-        // Assert - the user message is appended, and a turn WITHOUT payload leaves no
-        // empty assistant bubble behind (lazy turn message).
-        Assert.Equal(1, Session.GetMessageCount());
+        // Assert - the user message is appended, and the empty turn leaves ONE terminal technical
+        // note. With MaxRetries = 1 there is no retry note (nothing was retried); the note is the
+        // only assistant-side entry, because a visible bubble would be sent to the model as its own
+        // last utterance on the next turn.
         var sessionMessages = Session.GetMessagesSnapshot();
+        Assert.Equal(2, sessionMessages.Count);
         Assert.Equal(content, sessionMessages[0].Content);
         Assert.Equal(ChatMessageRole.User, sessionMessages[0].Role);
+        Assert.True(sessionMessages[1].IsTechnical);
+        Assert.Contains(string.Format(SharedResource.EmptyResponseAfterRetries, 1), sessionMessages[1].Content);
     }
 
     [Fact]

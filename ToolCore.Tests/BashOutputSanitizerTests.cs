@@ -31,6 +31,25 @@ public class BashOutputSanitizerTests
     }
 
     [Fact]
+    public void Sanitize_RemovesTempPath_DashDialect()
+    {
+        // Ubuntu's /bin/sh is dash, and its diagnostics look different: no "line", no "command",
+        // and the marker is a bare relative number after the file name. Both dialects must end up
+        // as the useful part only — this is what makes the ProcessExecutor integration test
+        // platform-independent instead of asserting Git-sh wording.
+        var tempPath = "/tmp/invait_8f45813bcf3141d0841baff67db24fae.sh";
+        var output = $"{tempPath}: 1: strings: not found";
+
+        var result = BashOutputSanitizer.Sanitize(output, tempPath);
+
+        Assert.Equal("1: strings: not found", result);
+
+        // The path is not always known (a caller that forgets it), and on Linux that is the branch
+        // that runs in CI: the NAME pattern alone must handle this shape too.
+        Assert.Equal("1: strings: not found", BashOutputSanitizer.Sanitize(output, tempScriptPath: null));
+    }
+
+    [Fact]
     public void Sanitize_RemovesForwardSlashVariant()
     {
         // Git Bash reports the path with forward slashes; the exact-path pass must match it too.
