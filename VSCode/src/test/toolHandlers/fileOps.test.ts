@@ -6,6 +6,7 @@ import * as chai from 'chai';
 import chaiAsPromised = require('chai-as-promised');
 import * as sinon from 'sinon';
 import { fsStub, toolHandlers, dirent, WORKSPACE, resetStubs } from './setup';
+import { splitEditText } from '../../toolHandlers/diffMatch';
 
 chai.use(chaiAsPromised);
 const expect = chai.expect;
@@ -467,6 +468,94 @@ describe('fileOps', () => {
             const written = (fsStub.writeFileSync as sinon.SinonStub).getCall(0).args[1];
             expect(written).to.include('found');
             expect(written).to.not.include('find me');
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // splitEditText (line normalisation shared with the C# host)
+    // -----------------------------------------------------------------------
+
+    describe('splitEditText', () => {
+        it('should split on LF', () => {
+            expect(splitEditText('a\nb\nc')).to.deep.equal(['a', 'b', 'c']);
+        });
+
+        it('should split on CRLF', () => {
+            expect(splitEditText('a\r\nb\r\nc')).to.deep.equal(['a', 'b', 'c']);
+        });
+
+        it('should split a mixed-ending block into lines without leftover CR', () => {
+            expect(splitEditText('a\r\nb\nc\rd')).to.deep.equal(['a', 'b', 'c', 'd']);
+        });
+
+        it('should treat one trailing line break as a terminator, not an empty line', () => {
+            // Regression: 'line2\n' used to become ['line2', ''] and then searched for a
+            // real empty line after the target line, so the edit failed.
+            expect(splitEditText('line2\n')).to.deep.equal(['line2']);
+            expect(splitEditText('line2\r\n')).to.deep.equal(['line2']);
+        });
+
+        it('should keep one empty line for a second trailing break', () => {
+            expect(splitEditText('a\n\n')).to.deep.equal(['a', '']);
+        });
+
+        it('should return a single empty line for empty or missing text', () => {
+            expect(splitEditText('')).to.deep.equal(['']);
+            expect(splitEditText(undefined)).to.deep.equal(['']);
+            expect(splitEditText(null)).to.deep.equal(['']);
+        });
+
+        it('should not throw on non-string input from unvalidated JSON', () => {
+            // Throwing here would escape editFiles and abort the WHOLE batch.
+            expect(splitEditText(0 as any)).to.deep.equal(['']);
+            expect(splitEditText(false as any)).to.deep.equal(['']);
+        });
+
+        it('should normalise a lone CR before stripping the trailing break', () => {
+            expect(splitEditText('line2\r')).to.deep.equal(['line2']);
+            expect(splitEditText('\r')).to.deep.equal(['']);
+        });
+
+        it('should treat a whole text of line breaks as one empty line', () => {
+            expect(splitEditText('\n')).to.deep.equal(['']);
+            expect(splitEditText('\r\n')).to.deep.equal(['']);
+            expect(splitEditText('a\r\n\r\n')).to.deep.equal(['a', '']);
+        });
+    });
+
+    describe('editFiles with trailing newline in oldStr', () => {
+        it('should find a single line whose oldStr ends with a newline', () => {
+            (fsStub.existsSync as sinon.SinonStub).returns(true);
+            (fsStub.readFileSync as sinon.SinonStub).returns('line1\nline2\nline3');
+            (fsStub.writeFileSync as sinon.SinonStub).returns(undefined);
+
+            const payload = JSON.stringify({
+                filePath: 'test.ts',
+                edits: [{ oldStr: 'line2\n', newStr: 'replaced\n' }]
+            });
+            const result = toolHandlers.dispatchTool('edit_file', payload, WORKSPACE);
+
+            expect(result.success).to.be.true;
+            const written = (fsStub.writeFileSync as sinon.SinonStub).getCall(0).args[1];
+            expect(written).to.equal('line1\nreplaced\nline3');
+        });
+
+        it('should apply a mixed-ending oldStr to a mixed-ending file', () => {
+            // Mirrors the C# end-to-end test: the file and the edit carry different
+            // mixes of CRLF / LF / lone CR and must meet on the same line list.
+            (fsStub.existsSync as sinon.SinonStub).returns(true);
+            (fsStub.readFileSync as sinon.SinonStub).returns('alpha\r\nbeta\ngamma\rdelta');
+            (fsStub.writeFileSync as sinon.SinonStub).returns(undefined);
+
+            const payload = JSON.stringify({
+                filePath: 'test.ts',
+                edits: [{ oldStr: 'beta\ngamma\r\n', newStr: 'BETA\r\nGAMMA' }]
+            });
+            const result = toolHandlers.dispatchTool('edit_file', payload, WORKSPACE);
+
+            expect(result.success).to.be.true;
+            const written = (fsStub.writeFileSync as sinon.SinonStub).getCall(0).args[1];
+            expect(written).to.equal('alpha\r\nBETA\r\nGAMMA\r\ndelta');
         });
     });
 });

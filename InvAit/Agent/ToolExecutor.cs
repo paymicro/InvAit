@@ -597,8 +597,21 @@ public class ToolExecutor
 
         foreach (var (rep, index) in orderedEdits)
         {
-            var search = Regex.Replace(rep.OldStr, "\r", "").Split('\n').ToList();
-            var replace = Regex.Replace(rep.NewStr, "\r", "").Split('\n').ToList();
+            // OldStr в контракте non-nullable, но JSON с "oldStr": null всё равно даёт null.
+            // Явный отказ: SplitEditText(null) вернул бы [""] и правка молча вставила бы
+            // newStr в ПЕРВУЮ пустую строку файла. Пустая строка остаётся легальной
+            // (легаси-семантика «oldStr матчит пустую строку файла»).
+            if (rep.OldStr is null)
+            {
+                failures.Add($"edit #{index} (line {rep.ApproximateLine ?? -1}): oldStr is missing");
+                continue;
+            }
+
+            // SplitEditText — the single normalisation point: mixed line endings (CRLF/LF/CR)
+            // and one trailing line break treated as a terminator, so an oldStr ending with \n
+            // does not turn into a phantom empty search line.
+            var search = EditApplier.SplitEditText(rep.OldStr);
+            var replace = EditApplier.SplitEditText(rep.NewStr);
             var hint = rep.ApproximateLine ?? -1;
             // ApplyEdit replaces only the matched FRAGMENT of partially matched lines
             // (e.g. search "List<string" inside "var fileContent = new List<string>"),

@@ -1,3 +1,6 @@
+using System.IO.Abstractions.TestingHelpers;
+using System.Text;
+
 namespace ToolCore.Tests;
 
 public class EditApplierTests
@@ -885,6 +888,184 @@ public class EditApplierTests
 
         Assert.Equal(1, result);
         Assert.Equal(["var a = new List<string?>", "var b = new List<string?>"], target);
+    }
+
+    #endregion
+
+    #region SplitEditText — edit text to line list
+
+    [Fact]
+    public void SplitEditText_Lf_SplitsIntoLines()
+    {
+        Assert.Equal(["a", "b", "c"], EditApplier.SplitEditText("a\nb\nc"));
+    }
+
+    [Fact]
+    public void SplitEditText_Crlf_SplitsIntoLines()
+    {
+        Assert.Equal(["a", "b", "c"], EditApplier.SplitEditText("a\r\nb\r\nc"));
+    }
+
+    [Fact]
+    public void SplitEditText_MixedLineEndings_SplitsEveryLine()
+    {
+        // The model's oldStr may not agree with the file: CRLF, LF and a lone CR
+        // in one block must still yield one line per element (no \r left behind).
+        var lines = EditApplier.SplitEditText("a\r\nb\nc\rd");
+
+        Assert.Equal(["a", "b", "c", "d"], lines);
+        Assert.DoesNotContain(lines, l => l.Contains('\r'));
+    }
+
+    [Theory]
+    [InlineData("line2\n")]
+    [InlineData("line2\r\n")]
+    [InlineData("line2\r")]
+    public void SplitEditText_SingleTrailingBreak_IsTerminatorNotEmptyLine(string text)
+    {
+        // Regression: "line2\n" used to split into ["line2", ""] and then searched for a
+        // real empty line after line2 — the edit failed on any file where the next line
+        // had content.
+        Assert.Equal(["line2"], EditApplier.SplitEditText(text));
+    }
+
+    [Fact]
+    public void SplitEditText_TwoTrailingBreaks_KeepsOneEmptyLine()
+    {
+        // A second trailing break is a real empty line (the model asked to reach it).
+        Assert.Equal(["a", ""], EditApplier.SplitEditText("a\n\n"));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void SplitEditText_EmptyText_ReturnsSingleEmptyLine(string? text)
+    {
+        // An empty oldStr addresses an empty file line (legacy ApplyEdit semantics).
+        Assert.Equal([""], EditApplier.SplitEditText(text));
+    }
+
+    #endregion
+
+    #region Line endings — mixed file and mixed search
+
+    [Fact]
+    public void ApplyEdit_SearchEndingWithNewLine_MatchesSingleLine()
+    {
+        // Regression for the reported "sometimes does not find a line ending with \n".
+        var target = new List<string> { "line1", "line2", "line3" };
+
+        var result = EditApplier.ApplyEdit(
+            target,
+            EditApplier.SplitEditText("line2\n"),
+            EditApplier.SplitEditText("replaced\n"),
+            -1, 0);
+
+        Assert.Equal(1, result);
+        Assert.Equal(["line1", "replaced", "line3"], target);
+    }
+
+    [Fact]
+    public void ApplyEdit_PhantomEmptySearchLine_DoesNotMatch()
+    {
+        // The shape of the OLD broken input: a one-line oldStr ending with \n used to
+        // become ["line2", ""] — a two-line block whose second line demanded a real
+        // empty line. This stays -1 BY DESIGN: SplitEditText no longer produces such a
+        // block, so whoever reintroduces the naive Split('\n') will see it here.
+        var target = new List<string> { "line1", "line2", "line3" };
+
+        var result = EditApplier.ApplyEdit(target, ["line2", ""], ["replaced", ""], -1, 0);
+
+        Assert.Equal(-1, result);
+        Assert.Equal(["line1", "line2", "line3"], target);
+    }
+
+    [Fact]
+    public void ApplyEdit_SearchEndingWithNewLine_FragmentPrefix_ReplacesWholeLine()
+    {
+        // BEHAVIOUR PIN, not a bug: a single-line search that starts the target line while
+        // the line continues after it replaces the WHOLE line (the model cut the line's tail).
+        // Before SplitEditText such an oldStr failed loudly (["DoA();", ""] did not match);
+        // now it applies and the tail is dropped. Pinned so that the tail loss stays a
+        // DECISION rather than a surprise of the next change.
+        var target = new List<string> { "DoA(); // keep me?" };
+
+        var result = EditApplier.ApplyEdit(
+            target,
+            EditApplier.SplitEditText("DoA();\n"),
+            EditApplier.SplitEditText("DoB();\n"),
+            -1, 0);
+
+        Assert.Equal(0, result);
+        Assert.Equal(["DoB();"], target);
+    }
+
+    [Fact]
+    public void ApplyEdit_SearchEndingWithCrlf_MatchesBlock()
+    {
+        var target = new List<string> { "start", "a", "b", "end" };
+
+        var result = EditApplier.ApplyEdit(
+            target,
+            EditApplier.SplitEditText("a\r\nb\r\n"),
+            EditApplier.SplitEditText("A\nB\n"),
+            -1, 0);
+
+        Assert.Equal(1, result);
+        Assert.Equal(["start", "A", "B", "end"], target);
+    }
+
+    [Fact]
+    public async Task ApplyEdit_MixedEndingFileAndMixedEndingSearch_Applies()
+    {
+        // End-to-end shape of a real edit: the file on disk has mixed endings (CRLF + LF +
+        // lone CR), the search text carries its own, different mix. FileUtils splits the
+        // file, SplitEditText splits the edit — both must meet on the same line list.
+        const string path = @"C:\data\mixed.txt";
+        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            [path] = new MockFileData("alpha\r\nbeta\ngamma\rdelta")
+        });
+        var utils = new FileUtils(fileSystem);
+
+        var (lines, encoding, separator, hasFinalNewLine) = await utils.ReadFileWithMetadataAsync(path, TestContext.Current.CancellationToken);
+        Assert.Equal(["alpha", "beta", "gamma", "delta"], lines);
+
+        var result = EditApplier.ApplyEdit(
+            lines,
+            EditApplier.SplitEditText("beta\ngamma\r\n"),
+            EditApplier.SplitEditText("BETA\r\nGAMMA"),
+            -1, 0);
+
+        Assert.Equal(1, result);
+        await utils.SaveFileAsync(path, lines, encoding, separator, hasFinalNewLine);
+
+        // A mixed file is normalised to the separator detected on read (CRLF here).
+        Assert.Equal("alpha\r\nBETA\r\nGAMMA\r\ndelta", fileSystem.File.ReadAllText(path));
+    }
+
+    [Fact]
+    public async Task ApplyEdit_FileWithFinalNewLine_KeepsIt()
+    {
+        // Reader and SplitEditText must agree on the OTHER side too: a file that ends with a
+        // line break has hasFinalNewLine = true, its last line is in the list WITHOUT the
+        // terminator, and SaveFileAsync puts the terminator back.
+        const string path = @"C:\data\final.txt";
+        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            [path] = new MockFileData("alpha\r\nbeta\r\n")
+        });
+        var utils = new FileUtils(fileSystem);
+
+        var (lines, encoding, separator, hasFinalNewLine) = await utils.ReadFileWithMetadataAsync(path, TestContext.Current.CancellationToken);
+        Assert.Equal(["alpha", "beta"], lines);
+        Assert.True(hasFinalNewLine);
+
+        var result = EditApplier.ApplyEdit(lines, EditApplier.SplitEditText("beta\n"), EditApplier.SplitEditText("BETA\n"), -1, 0);
+        Assert.Equal(1, result);
+
+        await utils.SaveFileAsync(path, lines, encoding, separator, hasFinalNewLine);
+        Assert.Equal("alpha\r\nBETA\r\n", fileSystem.File.ReadAllText(path));
     }
 
     #endregion

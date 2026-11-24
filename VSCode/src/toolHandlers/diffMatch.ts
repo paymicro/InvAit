@@ -24,6 +24,35 @@ export function isMatch(startIdx: number, target: string[], search: string[]): b
 }
 
 /**
+ * Splits an edit text (oldStr / newStr) into the line list consumed by findInFile.
+ *
+ * This is the ONE place where an edit text becomes a line list — mirrors
+ * `EditApplier.SplitEditText` in ToolCore:
+ * - CRLF, LF and a lone CR are all line breaks, so a mixed-ending file and a
+ *   mixed-ending search block meet on the same list;
+ * - ONE trailing line break is a terminator, not an extra empty line: "line2\n" is the
+ *   one-line block "line2". Without this an oldStr copied from a numbered file listing
+ *   searched for "line2" followed by an EMPTY line and failed on any file where the next
+ *   line is not empty;
+* - a SECOND trailing break is kept — the model really did address a trailing empty line.
+ *
+ * Non-string input (unvalidated JSON, e.g. `oldStr: 0`) is treated as empty text: throwing
+ * here would escape `editFiles` and abort the WHOLE batch instead of one edit.
+ */
+export function splitEditText(text: string | null | undefined): string[] {
+    if (typeof text !== 'string' || text.length === 0) {
+        return [''];
+    }
+
+    const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = normalized.split('\n');
+    if (lines.length > 1 && lines[lines.length - 1] === '') {
+        lines.pop();
+    }
+    return lines;
+}
+
+/**
  * Finds the starting index of `search` within `target`.
  * Uses `hint` (1-based line number) as a starting point with `tol` tolerance.
  * Falls back to full file search if hint-based search fails.

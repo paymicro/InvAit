@@ -17,6 +17,7 @@ carry the *why*: the invariants, the failure modes they prevent, and the traps t
 | [render-performance.md](render-performance.md) | What one streamed token costs: the per-message notification, the collapsed-`Details` body, the markdown and mermaid gates, the sub-agent throttles, and the measurements behind them |
 | [tool-timeout.md](tool-timeout.md) | Who limits how long a tool may run: the three clocks, the `timeoutMs` channel rule, the client grace, the per-tool defaults |
 | [bash-output.md](bash-output.md) | What the model sees of a bash command's output: why the temp-script path is stripped, the strip-by-identity rule, and why the sanitizer lives in the host and not in the UI |
+| [edit-matching.md](edit-matching.md) | How an `oldStr`/`newStr` becomes a file change: the single normalisation point, the trailing-newline rule, the matching/replacement semantics, and the known divergence of the VS Code port |
 
 ## Conventions
 
@@ -43,3 +44,4 @@ A change needs a documentation edit when it touches:
 | A change-detection path: `ShouldRender`/`HasChanges`, a render gate, a throttle interval, anything that runs per streamed token | [render-performance.md](render-performance.md) |
 | A tool timeout: who enforces it, the `timeoutMs` payload field, a new per-tool default, the client grace | [tool-timeout.md](tool-timeout.md) |
 | Bash output shaping: the temp-script path, `BashOutputSanitizer`/`bashOutput.ts`, the temp-file naming | [bash-output.md](bash-output.md) |
+| Edit matching: how `oldStr`/`newStr` becomes lines, a matching/replacement rule, a line-ending rule | [edit-matching.md](edit-matching.md) |

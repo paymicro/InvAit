@@ -3,6 +3,16 @@ namespace ToolCore;
 /// <summary>
 /// Line-based fuzzy search and replace for applying diff edits.
 ///
+/// INPUT (SplitEditText — the ONE place where an edit text becomes a line list):
+/// - CRLF, LF and a lone CR are all line breaks, so a mixed-ending file and a
+///   mixed-ending search block meet on the same list;
+/// - ONE trailing line break is a terminator, not an extra empty line: "line2\n" is
+///   the one-line block "line2". Without this an oldStr copied from a numbered file
+///   listing searched for "line2" followed by an EMPTY line and failed on any file
+///   where the next line is not empty;
+/// - a SECOND trailing break is kept — the model really did address a trailing empty line.
+/// The applier itself never sees a line ending: it works on an already-split list.
+///
 /// MATCHING (case-insensitive; search lines are trimmed, so their own indentation is
 /// ignored; search lines must occupy consecutive target lines):
 /// - the FIRST line of a multi-line block may be truncated at the START (the target line
@@ -37,14 +47,38 @@ namespace ToolCore;
 public static class EditApplier
 {
     /// <summary>
+    /// Splits an edit text (oldStr / newStr) into the line list consumed by
+    /// <see cref="ApplyEdit"/>. Mixed line endings are normalised here and nowhere else,
+    /// and one trailing line break is treated as a terminator (see the type remarks).
+    /// </summary>
+    /// <param name="text">Raw edit text as sent by the model</param>
+    /// <returns>At least one element; an empty/absent text yields a single empty line.</returns>
+    public static List<string> SplitEditText(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return [string.Empty];
+
+        var normalized = text!.Replace("\r\n", "\n").Replace('\r', '\n');
+        if (normalized.EndsWith("\n", StringComparison.Ordinal))
+            normalized = normalized.Substring(0, normalized.Length - 1);
+
+        return [.. normalized.Split('\n')];
+    }
+
+    /// <summary>
     /// Searches for occurrences of string list in target file.
+    ///
+    /// INTERNAL, not public API: the production entry point is <see cref="ApplyEdit"/>, which
+    /// uses the same matcher. It stays as its own member so <c>ToolCore.Tests</c> can pin the
+    /// matching rules (hint, tolerance, partial boundary lines) without the replacement side
+    /// mutating the expectations.
     /// </summary>
     /// <param name="target">File lines to search in</param>
     /// <param name="search">Lines to search for</param>
     /// <param name="hint">1-based position hint (or -1 for full search)</param>
     /// <param name="tol">Offset tolerance from hint</param>
     /// <returns>0-based index of first match or -1 if not found</returns>
-    public static int FindInFile(List<string>? target, List<string>? search, int hint, int tol)
+    internal static int FindInFile(List<string>? target, List<string>? search, int hint, int tol)
     {
         if (target == null || search == null || search.Count == 0 || search.Count > target.Count)
             return -1;

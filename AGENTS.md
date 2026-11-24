@@ -110,7 +110,7 @@ Skills: `*SKILL.md` with YAML frontmatter. Local `{solutionDir}/**/skills/**` (p
 **MCP integration tests (ToolCore.Tests):** `McpClientRegistry*`, `McpHostSupervisor*`, `HttpClientTransport*` spawn real child processes (McpHost pipe, stdio/HTTP echo servers) and are the only process-dependent tests. Set `INVAIT_SKIP_INTEGRATION=1` to run the fast unit-only suite; CI runs them in a separate time-bounded step (see `IntegrationGate`). Tool timeouts in those tests are capped at 30 s on purpose — the production default (10 min) would turn a stuck MCP server into a CI hang.
 
 **Conventions:**
-- **Diff (`edits`):** Fuzzy matching (trim + case-insensitive). `approximateLine` hint ±5, then full-file search. Applied bottom-to-top.
+- **Diff (`edits`):** Fuzzy matching (trim + case-insensitive). `approximateLine` hint ±5, then full-file search. Applied bottom-to-top. `EditApplier.SplitEditText` is the ONLY place an edit text becomes a line list (mixed CRLF/LF/CR normalised, one trailing line break = terminator); `FindInFile` is `internal` — production goes through `ApplyEdit`. See [docs/dev/edit-matching.md](docs/dev/edit-matching.md).
 - **Tool Calling:** OpenAI-compatible, `strict: true`. Optional params use union types (`["string","null"]`).
 - **Limits:** Files truncated 2000 lines. Tool results 300 KB. Bash output 30 KB. Command limit comes from `CommonOptions.ToolTimeoutMs` (payload field `timeoutMs`, host kills at it, client waits `+30 s`) — see [docs/dev/tool-timeout.md](docs/dev/tool-timeout.md).
 

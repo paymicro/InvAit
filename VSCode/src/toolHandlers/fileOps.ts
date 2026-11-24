@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ToolResult } from './types';
 import { getAbsolutePath, makeRelative, listDir } from './fileUtils';
-import { findInFile } from './diffMatch';
+import { findInFile, splitEditText } from './diffMatch';
 
 // 1. read_files
 export function readFiles(params: any, workspaceRoot: string): ToolResult {
@@ -111,8 +111,11 @@ export function editFiles(params: any, workspaceRoot: string): ToolResult {
         const failures: string[] = [];
 
         for (const { edit, index } of sortedEdits) {
-            const search = (edit.oldStr || '').replace(/\r/g, '').split('\n');
-            const replace = (edit.newStr || '').replace(/\r/g, '').split('\n');
+            // splitEditText — the single normalisation point (mirrors EditApplier.SplitEditText):
+            // mixed CRLF/LF/CR endings and one trailing line break treated as a terminator,
+            // so an oldStr ending with \n does not turn into a phantom empty search line.
+            const search = splitEditText(edit.oldStr);
+            const replace = splitEditText(edit.newStr);
             const hint = edit.approximateLine ?? -1;
 
             const actualStart = findInFile(lines, search, hint, 5);
