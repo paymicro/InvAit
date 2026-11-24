@@ -38,17 +38,10 @@ public class UiErrorLogger
 
     private async Task PublishAsync(LogEntry entry)
     {
-        // 1) Браузерная консоль — всегда.
-        try
-        {
-            await Console.Out.WriteLineAsync(Format(entry));
-        }
-        catch
-        {
-            // Консоль недоступна — логирование не имеет права крешить UI.
-        }
+        // Браузерная консоль — всегда.
+        await ConsoleUtils.WriteLineAsync(Format(entry), CancellationToken.None);
 
-        // 2) Хост-лог.
+        // Хост-лог.
         try
         {
             await _jsRuntime.InvokeVoidAsync("postVsMessage", new VsRequest
@@ -60,14 +53,7 @@ public class UiErrorLogger
         catch (Exception ex)
         {
             // Мост может быть ещё не инициализирован или JS недоступен — не крешим UI.
-            try
-            {
-                await Console.Out.WriteLineAsync($"[UiErrorLogger] Failed to post log entry to host: {ex.Message}");
-            }
-            catch
-            {
-                // Даже консоль недоступна — окончательно глотаем.
-            }
+            await ConsoleUtils.WriteLineAsync($"[UiErrorLogger] Failed to post log entry to host: {ex.Message}", CancellationToken.None);
         }
     }
 

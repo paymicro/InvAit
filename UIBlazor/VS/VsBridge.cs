@@ -183,6 +183,7 @@ public class VsBridge : IVsBridge, IDisposable
             // (AiChat.ExecuteToolBatchAsync and AfSubAgentOrchestrator.ExecuteBranchToolBatchAsync
             // catch OCE on the run token, then stamp a result on every remaining call), so the
             // exception is propagated, not translated.
+            await ConsoleUtils.WriteLineAsync("[VsBridge] canceled", CancellationToken.None);
             throw;
         }
         catch (Exception ex)
@@ -193,14 +194,7 @@ public class VsBridge : IVsBridge, IDisposable
             // показывает плашку #blazor-error-ui принудительно. Хост-лог получает запись
             // уровнем ERROR — там она и должна быть видна.
             // Запись в консоль не может вылететь из catch и заменить задуманный error-ответ.
-            try
-            {
-                await Console.Out.WriteLineAsync($"[VsBridge] Request '{request.Action}' failed: {ex.Message}");
-            }
-            catch
-            {
-                // Даже консоль недоступна — окончательно глотаем.
-            }
+            await ConsoleUtils.WriteLineAsync($"[VsBridge] Request '{request.Action}' failed: {ex.Message}", cancellationToken);
             _ = PostLogAsync(new LogEntry
             {
                 Level = LogEntry.ErrorLevel,
@@ -306,7 +300,7 @@ public class VsBridge : IVsBridge, IDisposable
         catch (Exception ex)
         {
             // Не Console.Error: сбой доставки лога не должен поднимать плашку blazor-error-ui.
-            await Console.Out.WriteLineAsync($"[VsBridge] Failed to post log entry: {ex.Message}");
+            await ConsoleUtils.WriteLineAsync($"[VsBridge] Failed to post log entry: {ex.Message}", CancellationToken.None);
         }
     }
 
