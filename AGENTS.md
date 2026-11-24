@@ -33,7 +33,7 @@ VS Extension (VSIX) embedding Blazor WebAssembly UI in WebView2.
 - **`ToolCore`** (netstandard2.0) — Reusable tool logic: `FileUtils`, `UniversalDiffParser` (fuzzy diff), `RoslynSearchService`, `McpHostSupervisor` (McpHost lifecycle), `ProcessExecutor`. `McpProcessManager` is obsolete (Standalone CLI only).
 - **`Shared`** — Contracts: `VsRequest`/`VsResponse`/`VsMessage`, `BuiltInToolEnum`, `BasicEnum`, `AppMode`, `ToolMetadata`, `DiffEdit`, `ReadFileParams`, MCP models (`Contracts/Mcp`), McpHost wire protocol (`Contracts/McpHost`) + `Ipc.FrameCodec`.
 - **`McpHost`** (net10 exe, `InvAit.McpHost.exe`) — Out-of-process MCP client host on official `ModelContextProtocol` SDK. Named-pipe IPC (length-prefixed JSON): `ping/status/list_tools/call_tool/stop_server/stop_all/shutdown`. Registry lazily starts stdio or HTTP/SSE servers by fingerprint; idle-reap 10 min. One host per VS instance.
-- **`invaitcode`** — VS Code extension (TypeScript). Hosts the same Blazor WASM UI in a webview panel via a local static HTTP server. `extension.ts` handles tool dispatch, context publishing, and network proxy (streaming SSE through `postMessage`). `toolHandlers.ts` implements file/git/bash tools in Node.js. `DynamicEnvironmentHttpMessageHandler` (in UIBlazor) routes HTTP requests through the extension host when running inside VS Code. localStorage is proxied to `globalState` for persistence.
+- **`invaitcode`** — VS Code extension (TypeScript). Hosts the same Blazor WASM UI in a webview panel via a local static HTTP server. `extension.ts` handles tool dispatch, context publishing, and network proxy (streaming SSE through `postMessage`). `toolHandlers/` implements file/git/bash/MCP tools in Node.js, routed by `toolDispatcher.ts`. `DynamicEnvironmentHttpMessageHandler` (in UIBlazor) routes HTTP requests through the extension host when running inside VS Code. localStorage is proxied to `globalState` for persistence.
 
 ### Agent turn loop
 
@@ -67,14 +67,8 @@ approve + execute → append results → repeat. Consequences to keep in mind wh
   budget).
 
 **Deep documentation lives in [`docs/dev/`](docs/dev/README.md)** — read the relevant file before
-changing a subtle area, and update it in the SAME change:
-
-| Document | Covers |
-|----------|--------|
-| [docs/dev/agent-turn-loop.md](docs/dev/agent-turn-loop.md) | who owns the turn cycle, between-turn semantics, traps |
-| [docs/dev/llm-transport.md](docs/dev/llm-transport.md) | timeout ownership, retry policy, error classification, UI trace of a failed turn |
-| [docs/dev/session-and-context.md](docs/dev/session-and-context.md) | `BuildWire` validation rules, compression planning, prompt cache, token accounting |
-| [docs/dev/chat-service.md](docs/dev/chat-service.md) | `IChatService` members, guarantees, invariants, test seams |
+changing a subtle area, and update it in the SAME change. `docs/dev/README.md` owns the index: it
+lists every document, what each one answers, and which changes require which edit.
 
 ## Communication
 
@@ -118,7 +112,7 @@ Skills: `*SKILL.md` with YAML frontmatter. Local `{solutionDir}/**/skills/**` (p
 **Conventions:**
 - **Diff (`edits`):** Fuzzy matching (trim + case-insensitive). `approximateLine` hint ±5, then full-file search. Applied bottom-to-top.
 - **Tool Calling:** OpenAI-compatible, `strict: true`. Optional params use union types (`["string","null"]`).
-- **Limits:** Files truncated 2000 lines. Tool results 300 KB. Bash output 30 KB.
+- **Limits:** Files truncated 2000 lines. Tool results 300 KB. Bash output 30 KB. Command limit comes from `CommonOptions.ToolTimeoutMs` (payload field `timeoutMs`, host kills at it, client waits `+30 s`) — see [docs/dev/tool-timeout.md](docs/dev/tool-timeout.md).
 
 **Adding tools:**
 1. Add name to `BuiltInToolEnum.cs` (or `BasicEnum.cs` for UI-only).

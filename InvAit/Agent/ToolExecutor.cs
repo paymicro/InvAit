@@ -52,7 +52,7 @@ public class ToolExecutor
                 BuiltInToolEnum.GetErrors => await GetErrorListAsync(),
                 BuiltInToolEnum.GetProjectInfo => await GetProjectInfoAsync(),
                 BuiltInToolEnum.GetSolutionStructure => await GetSolutionStructureAsync(),
-                BuiltInToolEnum.GitStatus => await GitStatusAsync(),
+                BuiltInToolEnum.GitStatus => await GitStatusAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GitLog => await GitLogAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.GitDiff => await GitDiffAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BasicEnum.OpenFile => await OpenFileInEditorAsync(vsRequest.Payload),
@@ -308,9 +308,13 @@ public class ToolExecutor
         var param = args.GetString("command");
         var solutionPath = await GetSolutionPathAsync();
 
+        // Лимит приходит из настроек UI общим полем timeoutMs (правило канала — ToolTimeout.Resolve):
+        // отсутствующее или неположительное значение означает дефолт инструмента, а не «без лимита».
+        var timeoutMs = ToolTimeout.Resolve(args.GetInt("timeoutMs"), ToolTimeout.DefaultCommandMs);
+
         // Не переключаемся на главный поток — запуск процесса не требует UI-потока,
         // а блокировка UI-потока на время выполнения недопустима
-        var result = await _processExecutor.ExecuteBashAsync(param, solutionPath, 120_000);
+        var result = await _processExecutor.ExecuteBashAsync(param, solutionPath, timeoutMs);
 
         // Одно поле Payload на оба случая: stdout и stderr склеиваем. Раньше при ненулевом коде
         // возврата UI показывал только stderr, а stdout терялся — теперь виден весь вывод.
@@ -928,11 +932,15 @@ public class ToolExecutor
         };
     }
 
-    private async Task<VsResponse> GitStatusAsync()
+    // Git-инструменты идут через тот же ExecAsync, поэтому лимит у них тот же — из поля timeoutMs
+    // (его кладёт BuiltInAgent.WithToolTimeout). Без явного переноса поля каждая git-команда
+    // молча получала бы дефолт: настройка снова игнорировалась бы, только тише.
+    private async Task<VsResponse> GitStatusAsync(IReadOnlyDictionary<string, object> args)
     {
         return await ExecAsync(new Dictionary<string, object>()
         {
-            ["command"] = "git status"
+            ["command"] = "git status",
+            ["timeoutMs"] = args.GetInt("timeoutMs")
         });
     }
 
@@ -941,7 +949,8 @@ public class ToolExecutor
         var limit = args.GetString("number") ?? "20";
         return await ExecAsync(new Dictionary<string, object>()
         {
-            ["command"] = $"git log -n {limit} --pretty=format:\"%h - %s | %ad\" --stat --date=short"
+            ["command"] = $"git log -n {limit} --pretty=format:\"%h - %s | %ad\" --stat --date=short",
+            ["timeoutMs"] = args.GetInt("timeoutMs")
         });
     }
 
@@ -950,7 +959,8 @@ public class ToolExecutor
         var revisions = args.GetString("revisions");
         return await ExecAsync(new Dictionary<string, object>()
         {
-            ["command"] = $"git diff {revisions}"
+            ["command"] = $"git diff {revisions}",
+            ["timeoutMs"] = args.GetInt("timeoutMs")
         });
     }
 
@@ -1596,7 +1606,9 @@ public class ToolExecutor
         var serverId = args.GetString("serverId");
         var toolName = args.GetString("toolName");
         var toolArgsRaw = args.GetValue("arguments");
-        var timeoutMs = args.GetInt("timeoutMs", 600_000);
+        // То же правило канала, что и у bash, но другой дефолт инструмента: MCP-вызовы бывают
+        // дальними и тяжёлыми, две минуты там режут нормальную работу.
+        var timeoutMs = ToolTimeout.Resolve(args.GetInt("timeoutMs"), ToolTimeout.DefaultMcpCallMs);
         object? toolArgs = null;
 
         if (toolArgsRaw is string jsonStr && !string.IsNullOrEmpty(jsonStr))
@@ -1632,7 +1644,7 @@ public class ToolExecutor
             ToolName = toolName,
             Arguments = toolArgs as JsonElement?,
             TimeoutMs = timeoutMs,
-        }, TimeSpan.FromMilliseconds(timeoutMs) + TimeSpan.FromSeconds(30));
+        }, TimeSpan.FromMilliseconds(timeoutMs) + TimeSpan.FromMilliseconds(ToolTimeout.McpHostGraceMs));
     }
 
     private class SearchFileInfo

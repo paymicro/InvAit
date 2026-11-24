@@ -46,6 +46,67 @@ public class VsBridgeTests
             Payload = payload,
         });
 
+    // -----------------------------------------------------------------------
+    // Timeout ownership: the client must wait LONGER than the host kills
+    // -----------------------------------------------------------------------
+
+    [Theory]
+    [InlineData(20_000)]
+    [InlineData(120_000)]
+    [InlineData(1_800_000)]
+    public void ComputeWait_IsStrictlyGreaterThanHostLimit(int settingMs)
+    {
+        // The host kills the command at `settingMs` and answers "Command timed out after N ms".
+        // A client that waits exactly the same amount wins that race often enough to replace the
+        // honest answer with its own transport failure — and the output of the killed command is
+        // then read by nobody.
+        var wait = VsBridge.ComputeWait(BuiltInToolEnum.Bash, settingMs);
+
+        Assert.True(wait > TimeSpan.FromMilliseconds(settingMs));
+        Assert.Equal(TimeSpan.FromMilliseconds(settingMs + ToolTimeout.ClientGraceMs), wait);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-5)]
+    public void ComputeWait_NonPositiveSetting_FallsBackToToolDefault(int settingMs)
+    {
+        // Same channel rule as the host: a non-positive value means "the tool default",
+        // never "no limit" and never "give up immediately".
+        Assert.Equal(
+            TimeSpan.FromMilliseconds(ToolTimeout.DefaultCommandMs + ToolTimeout.ClientGraceMs),
+            VsBridge.ComputeWait(BuiltInToolEnum.Bash, settingMs));
+    }
+
+    [Fact]
+    public void ComputeWait_McpCall_AlsoOutlastsTheHostChain()
+    {
+        // The MCP chain is longer than the call itself: ToolExecutor waits `timeoutMs + McpHostGraceMs`
+        // for the McpHost process. A client that only waited the bash amount would simply move the
+        // lost race into the MCP channel.
+        var settingMs = 60_000;
+
+        var wait = VsBridge.ComputeWait(BasicEnum.McpCallTool, settingMs);
+
+        Assert.True(wait > TimeSpan.FromMilliseconds(settingMs + ToolTimeout.McpHostGraceMs));
+        Assert.Equal(
+            TimeSpan.FromMilliseconds(settingMs + ToolTimeout.McpHostGraceMs + ToolTimeout.ClientGraceMs),
+            wait);
+    }
+
+    [Fact]
+    public void ComputeWait_MaxIntSetting_SaturatesInsteadOfGoingNegative()
+    {
+        // The setting is loaded from localStorage, not from the slider: a corrupted value near
+        // int.MaxValue overflowed `int` addition and produced a NEGATIVE TimeSpan, which
+        // `CancellationTokenSource` rejects with ArgumentOutOfRangeException — every tool call
+        // would throw instead of "waits as long as possible".
+        var wait = VsBridge.ComputeWait(BuiltInToolEnum.Bash, int.MaxValue);
+
+        Assert.True(wait > TimeSpan.Zero);
+        Assert.Equal(TimeSpan.FromMilliseconds(int.MaxValue), wait);
+    }
+
     [Fact]
     public async Task ExecuteToolAsync_HostReturnsError_ReturnsFailureWithOriginalText()
     {

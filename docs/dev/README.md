@@ -15,6 +15,7 @@ carry the *why*: the invariants, the failure modes they prevent, and the traps t
 | [chat-service.md](chat-service.md) | `IChatService` surface: what each member guarantees and who may call it |
 | [message-window.md](message-window.md) | Why the transcript folds its middle, the protected set, the run pin, the shared divider-row style, and the accepted limitations |
 | [render-performance.md](render-performance.md) | What one streamed token costs: the per-message notification, the collapsed-`Details` body, the markdown and mermaid gates, the sub-agent throttles, and the measurements behind them |
+| [tool-timeout.md](tool-timeout.md) | Who limits how long a tool may run: the three clocks, the `timeoutMs` channel rule, the client grace, the per-tool defaults |
 
 ## Conventions
 
@@ -39,3 +40,4 @@ A change needs a documentation edit when it touches:
 | An `IChatService` member (add/remove/change a guarantee) | [chat-service.md](chat-service.md) |
 | Who is materialised in the transcript, the protected set, a window constant, the plaque/retry-note divider style | [message-window.md](message-window.md) |
 | A change-detection path: `ShouldRender`/`HasChanges`, a render gate, a throttle interval, anything that runs per streamed token | [render-performance.md](render-performance.md) |
+| A tool timeout: who enforces it, the `timeoutMs` payload field, a new per-tool default, the client grace | [tool-timeout.md](tool-timeout.md) |

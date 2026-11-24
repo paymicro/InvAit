@@ -55,6 +55,26 @@ Consequences when editing:
   interject input appear only when the branch emitted its next token — and the old workaround lied
   to the model by bumping `Revision` for a pure view change.
 
+### Testing a view-state render: bUnit JSInterop is Strict
+
+`SubAgentView` finishes the reveal in `OnAfterRenderAsync` (`scrollSubAgentToBottom` on new
+messages, `focusSubAgentInput` on the interject reveal). bUnit's `BunitJSInterop` defaults to
+`JSRuntimeMode.Strict`, so **every** identifier a component calls must have a `SetupVoid`, not only
+the ones an assertion checks. A missing setup throws `JSRuntimeUnhandledInvocationException` out of
+the render pipeline; `WaitForAssertionAsync` races that exception against its predicate, so the test
+passes or fails depending on which wins — it passed locally and failed on CI
+(`Interject_InputAppearsOnClick_WithoutAnyBranchActivity`).
+
+Two rules follow:
+
+- **Register the whole cosmetic surface of the component under test in the fixture constructor.**
+  `JSInterop.Mode = JSRuntimeMode.Loose` is the alternative the repo uses where the calls are pure
+  cosmetics and nothing asserts them (`MessageListViewTests`, `ToolBashCommandTests`); a fixture that
+  *does* assert invocations stays Strict and lists them.
+- **Assert the interop you registered.** A setup nobody asserts turns a dropped call into a silent
+  pass: the reveal test now also asserts `focusSubAgentInput` was invoked once with the branch id,
+  so removing the focus call fails the test instead of leaving an unused handler behind.
+
 ## A collapsed `Details` is not in the DOM
 
 `MessageContent` and `SubAgentView` pass `RenderContentWhenCollapsed="false"`, so a collapsed

@@ -63,7 +63,9 @@
 
     /// <summary>
     /// Total timeout in ms (CommonOptions.ToolTimeoutMs or the per-sub-agent limit);
-    /// &lt;= 0 means "no limit" — nothing to count down from, so the running badge is hidden.
+    /// &lt;= 0 means there is nothing meaningful to count down from (a non-positive SETTING is
+    /// resolved by the host to the tool default, so the run is still bounded — only the countdown
+    /// and the expired state do not apply), so the running badge is hidden.
     /// The finished badge (measured duration) is shown regardless.
     /// </summary>
     [Parameter] public int TimeoutMs { get; set; }

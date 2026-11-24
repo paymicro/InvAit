@@ -4,6 +4,12 @@
  * Port of ProcessExecutor.ExecuteBashAsync from ToolCore.
  * On Windows, finds Git Bash (sh.exe) and runs the command via a temp .sh file,
  * mirroring the VS extension approach. On Linux/macOS, uses /bin/sh directly.
+ *
+ * DIVERGENCE from the C# host, kept on purpose: the C# side calls `KillProcessTree`
+ * on timeout, while `spawnSync` kills only the direct child. A wrapped build (`sh -c` →
+ * `dotnet build`) can therefore outlive the timeout here and keep the CPU busy. The limit
+ * and the message are the same, only the reach is smaller — fixing it needs explicit
+ * process-group handling, not another timeout knob.
  */
 
 import * as fs from 'fs';
@@ -12,6 +18,7 @@ import * as os from 'os';
 import { execSync, spawnSync } from 'child_process';
 import { ToolResult } from './types';
 import { truncateOutput } from './fileUtils';
+import { resolveTimeoutMs } from './timeout';
 
 /**
  * Finds the Git Bash sh.exe on Windows.
@@ -84,6 +91,27 @@ const NON_INTERACTIVE_ENV: Record<string, string> = {
     LC_ALL: 'en_US.UTF-8',
 };
 
+/**
+ * Default command timeout, ms. Mirror of `ToolTimeout.DefaultCommandMs`
+ * (Shared/Contracts/ToolTimeout.cs): the Node host shares no code with the C# one,
+ * so the number has to be kept in sync by hand.
+ */
+const DEFAULT_TIMEOUT_MS = 120_000;
+
+/**
+ * Output cap passed to `spawnSync`. Named because the overflow error message reports the
+ * size, and an unnamed literal in two places drifts.
+ */
+const MAX_BUFFER_BYTES = 1024 * 1024 * 10;
+
+/**
+ * Resolves the command limit from the payload. The rule itself lives in `./timeout`
+ * (shared with the MCP arm of `toolDispatcher`) so a fix cannot land in one channel only.
+ */
+function commandTimeoutMs(raw: unknown): number {
+    return resolveTimeoutMs(raw, DEFAULT_TIMEOUT_MS);
+}
+
 // 12. bash
 export function bash(params: any, workspaceRoot: string): ToolResult {
     try {
@@ -91,6 +119,10 @@ export function bash(params: any, workspaceRoot: string): ToolResult {
         if (!command) {
             return { success: false, error: 'Command is required.' };
         }
+
+        // Command limit comes from the UI settings (CommonOptions.ToolTimeoutMs) riding in the
+        // payload as `timeoutMs` — no longer a hard-coded 120s that disagrees with the setting.
+        const timeoutMs = commandTimeoutMs(params.timeoutMs);
 
         const shPath = findGitSh();
         if (!shPath) {
@@ -111,9 +143,9 @@ export function bash(params: any, workspaceRoot: string): ToolResult {
 
             const result = spawnSync(shPath, [tempScript], {
                 cwd: workspaceRoot,
-                timeout: 120000,
+                timeout: timeoutMs,
                 encoding: 'utf-8',
-                maxBuffer: 1024 * 1024 * 10,
+                maxBuffer: MAX_BUFFER_BYTES,
                 env,
                 windowsHide: true,
             });
@@ -126,10 +158,30 @@ export function bash(params: any, workspaceRoot: string): ToolResult {
             const exitCode = result.status;
 
             if (result.error) {
-                // Process failed to spawn or timed out
+                // Two DIFFERENT failures end up here and they must not share a message:
+                // a real deadline (ETIMEDOUT) and an output overflow, which Node also reports with
+                // `signal: 'SIGTERM'` but `code: 'ENOBUFS'`. Classifying on the signal alone called
+                // the overflow "Command timed out", i.e. lied about the reason one layer deeper.
                 const errMsg = result.error.message || String(result.error);
-                if (result.signal === 'SIGTERM' || (result.error as any).code === 'ETIMEDOUT') {
-                    return { success: false, error: truncateOutput(`Command timed out after 120000ms.\n${stderr}`) };
+                const errorCode = (result.error as NodeJS.ErrnoException).code;
+                if (errorCode === 'ETIMEDOUT') {
+                    // Keep whatever the command managed to print: the C# host returns stdout+stderr
+                    // for a killed command too, and losing the partial log of a long build is the
+                    // most expensive part of a timeout. The reported number MUST be the effective
+                    // limit — otherwise the message lies about the reason (it used to say 120000
+                    // no matter which limit fired).
+                    const timeoutNote = `Command timed out after ${timeoutMs}ms.`;
+                    const combinedTimeout = [stdout, stderr, timeoutNote]
+                        .filter(s => s.trim().length > 0)
+                        .join('\n');
+                    return { success: false, error: truncateOutput(combinedTimeout) };
+                }
+                if (errorCode === 'ENOBUFS') {
+                    const overflowNote = `Command output exceeded the ${MAX_BUFFER_BYTES / (1024 * 1024)} MB buffer and was killed. Nothing above the limit was captured.`;
+                    const combinedOverflow = [stdout, stderr, overflowNote]
+                        .filter(s => s.trim().length > 0)
+                        .join('\n');
+                    return { success: false, error: truncateOutput(combinedOverflow) };
                 }
                 return { success: false, error: truncateOutput(errMsg) };
             }
@@ -151,9 +203,10 @@ export function bash(params: any, workspaceRoot: string): ToolResult {
 
 // 14. git_log
 export function gitLog(params: any, workspaceRoot: string): ToolResult {
-    const num = Math.max(1, Math.min(100, parseInt(String(params.number ?? 10), 10) || 10));
+    const num = Math.max(1, Math.min(100, Number.parseInt(String(params.number ?? 10), 10) || 10));
     return bash({
-        command: `git log -n ${num} --pretty=format:"%h - %s | %ad" --stat --date=short`
+        command: `git log -n ${num} --pretty=format:"%h - %s | %ad" --stat --date=short`,
+        timeoutMs: params.timeoutMs
     }, workspaceRoot);
 }
 
@@ -164,6 +217,7 @@ export function gitDiff(params: any, workspaceRoot: string): ToolResult {
         return { success: false, error: 'Invalid revision specification.' };
     }
     return bash({
-        command: `git diff ${revisions}`
+        command: `git diff ${revisions}`,
+        timeoutMs: params.timeoutMs
     }, workspaceRoot);
 }

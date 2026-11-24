@@ -44,7 +44,7 @@ export function dispatchTool(action: string, payloadStr: string | undefined, wor
             case 'bash':
                 return bash(params, workspaceRoot);
             case 'git_status':
-                return bash({ command: 'git status' }, workspaceRoot);
+                return bash({ command: 'git status', timeoutMs: params.timeoutMs }, workspaceRoot);
             case 'git_log':
                 return gitLog(params, workspaceRoot);
             case 'git_diff':

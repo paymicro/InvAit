@@ -125,6 +125,45 @@ public partial class ToolManagerTests
     }
 
     [Fact]
+    public async Task BuildMcpTools_ExecuteAsync_SendsToolTimeoutFromSettings()
+    {
+        // The MCP call is the second channel that carries `timeoutMs`. It was hard-coded/hoped to
+        // be present, so the host fell back to its own default and the user's limit applied to bash
+        // only. One setting must drive both channels.
+        var options = new CommonOptions { ToolTimeoutMs = 45_000 };
+        _commonSettingsMock.Setup(m => m.Current).Returns(options);
+        _mcpOptions.Servers.Add(new McpServerConfig
+        {
+            Name = "srv",
+            Enabled = true,
+            Tools =
+            [
+                new McpToolConfig
+                {
+                    Name = "t",
+                    InputSchema = JsonSerializer.SerializeToElement(new { type = "object", properties = new { } })
+                }
+            ]
+        });
+        string? sentArgs = null;
+        _vsBridgeMock
+            .Setup(b => b.ExecuteToolAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string?, CancellationToken>((_, args, _) => sentArgs = args)
+            .ReturnsAsync(new VsToolResult());
+        var mcpTool = Assert.Single(_toolManager.GetMcpTools());
+
+        // Act
+        await mcpTool.ExecuteAsync("{}", CancellationToken.None);
+
+        // Assert - the setting, not a constant, and the tool arguments survive next to it.
+        Assert.NotNull(sentArgs);
+        var doc = JsonDocument.Parse(sentArgs!);
+        Assert.Equal(45_000, doc.RootElement.GetProperty("timeoutMs").GetInt32());
+        Assert.Equal("srv", doc.RootElement.GetProperty("serverId").GetString());
+        Assert.Equal("t", doc.RootElement.GetProperty("toolName").GetString());
+    }
+
+    [Fact]
     public void GetApprovalModeByToolName_McpDunderName_UsesServerApprovalMode()
     {
         _mcpOptions.ServerApprovalModes["my"] = ToolApprovalMode.Ask;

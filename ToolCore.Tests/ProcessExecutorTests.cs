@@ -286,6 +286,37 @@ public class ProcessExecutorTests
         Assert.Contains("line1", result.Output);
         Assert.Contains("line2", result.Output);
     }
+
+    [Fact]
+    public async Task ExecuteBashAsync_NonPositiveTimeout_FallsBackToDefaultInsteadOfKillingInstantly()
+    {
+        // timeoutMs: 0 used to build Task.Delay(0), so the process was killed before it could
+        // print anything — while the VS Code host read the same 0 as "no limit at all". The
+        // channel rule is one (ToolTimeout.Resolve): non-positive means the tool default.
+        var executor = new ProcessExecutor(_mockLogger.Object);
+
+        var result = await executor.ExecuteBashAsync(
+            "echo fallback", timeoutMs: 0, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.Success, result.Error);
+        Assert.Contains("fallback", result.Output);
+        Assert.False(result.TimedOut);
+    }
+
+    [Fact]
+    public async Task ExecuteBashAsync_TimeoutMessage_ReportsEffectiveLimit()
+    {
+        // The message is the ONLY reason the model sees for a killed command, so it must print
+        // the limit that actually fired — a hard-coded number would lie about the cause.
+        var executor = new ProcessExecutor(_mockLogger.Object);
+
+        var result = await executor.ExecuteBashAsync(
+            "sleep 5", timeoutMs: 100, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.Success);
+        Assert.True(result.TimedOut);
+        Assert.Contains("after 100ms", result.Error, StringComparison.Ordinal);
+    }
 }
 
 /// <summary>

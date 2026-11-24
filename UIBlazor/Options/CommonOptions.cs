@@ -4,7 +4,13 @@ namespace UIBlazor.Options;
 
 public class CommonOptions : BaseOptions
 {
-    public int ToolTimeoutMs { get; set => SetIfChanged(ref field, value); } = 120_000;
+    /// <summary>
+    /// Лимит одного вызова инструмента, мс. Едет в payload запроса (bash — как <c>timeoutMs</c>,
+    /// MCP — так же), поэтому это не «сколько ждать в UI», а настоящий лимит команды на хосте.
+    /// Клиент при этом ждёт <see cref="ToolTimeout.ClientWait"/> — строго дольше, иначе результат
+    /// убитой команды теряется.
+    /// </summary>
+    public int ToolTimeoutMs { get; set => SetIfChanged(ref field, value); } = ToolTimeout.DefaultCommandMs;
 
     /// <summary>
     /// Idle window of an LLM request, in seconds. The window is re-armed after every delivered

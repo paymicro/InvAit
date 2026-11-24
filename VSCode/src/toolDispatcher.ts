@@ -4,11 +4,29 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { exec, spawn } from 'child_process';
 import { dispatchTool, ToolResult } from './toolHandlers';
+import { resolveTimeoutMs, MIN_MCP_TIMER_MS } from './toolHandlers/timeout';
 import { McpClientRegistry } from './mcpClientRegistry';
 import { invalidateContextCache } from './contextPublisher';
 import { log, logError } from './logger';
 
 const mcpRegistry = new McpClientRegistry((msg: string) => log('[mcp] ' + msg));
+
+/**
+ * Fallback for an MCP call when the payload carries no timeout. Mirror of
+ * `ToolTimeout.DefaultMcpCallMs` (Shared/Contracts/ToolTimeout.cs) — the Node host
+ * shares no code with the C# one.
+ */
+const DEFAULT_MCP_CALL_TIMEOUT_MS = 600_000;
+
+/**
+ * Resolves the MCP call limit. The rule itself lives in `./toolHandlers/timeout` (shared with
+ * the bash handler) so a fix cannot land in one channel only. `MIN_MCP_TIMER_MS` matches the
+ * floor `McpClientRegistry` applies before building its timer: resolving to the same floor
+ * keeps the limit that kills the call equal to the limit we applied on the client side.
+ */
+function resolveMcpTimeoutMs(raw: unknown): number {
+    return resolveTimeoutMs(raw, DEFAULT_MCP_CALL_TIMEOUT_MS, MIN_MCP_TIMER_MS);
+}
 
 export interface VsRequestLike {
     action: string;
@@ -242,7 +260,7 @@ export async function handleVsRequest(
                 workingDirectory: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
                 toolName: args.toolName || '',
                 arguments: args.arguments,
-                timeoutMs: args.timeoutMs || 600000,
+                timeoutMs: resolveMcpTimeoutMs(args.timeoutMs),
             };
             if (!params.serverId || !params.toolName) {
                 sendResponse(panel, message.correlationId, false, 'serverId and toolName are required');

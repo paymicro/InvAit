@@ -1,6 +1,6 @@
 namespace UIBlazor.Agents;
 
-public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInternalExecutor internalExecutor, IContextService contextService)
+public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInternalExecutor internalExecutor, IContextService contextService, ICommonSettingsProvider commonSettings)
 {
     private readonly IContextService _contextService = contextService;
 
@@ -131,17 +131,25 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             DisplayName = SharedResource.ToolBash,
             Category = ToolCategory.Execution,
             NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.Bash)),
-            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.Bash, args, c)
+            // Лимит команды — из настроек, а не константа хоста: аргументы дополняются здесь,
+            // потому что делегат — единственное место, где строка аргументов живёт ТОЛЬКО до
+            // отправки. Правка ToolCall.Function.Arguments попала бы в транскрипт (BuildWire
+            // отправляет аргументы обратно модели) и в отображение вызова.
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(
+                BuiltInToolEnum.Bash, WithToolTimeout(args, commonSettings.Current.ToolTimeoutMs), c)
         },
         
-        // Git operations
+        // Git operations — это те же bash-команды, поэтому лимит у них тот же: из настроек.
+        // Без инъекции значение приходило бы только из аргументов модели, то есть модель решала бы
+        // за пользователя, сколько может идти его git.
         new()
         {
             Name = BuiltInToolEnum.GitStatus,
             DisplayName = SharedResource.ToolGitStatus,
             Category = ToolCategory.ReadFiles,
             NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.GitStatus)),
-            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitStatus, args, c)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(
+                BuiltInToolEnum.GitStatus, WithToolTimeout(args, commonSettings.Current.ToolTimeoutMs), c)
         },
         new()
         {
@@ -149,7 +157,8 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             DisplayName = SharedResource.ToolGitLog,
             Category = ToolCategory.ReadFiles,
             NativeTool = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.GitLog)),
-            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(BuiltInToolEnum.GitLog, args, c)
+            ExecuteAsync = (args, c) => vsBridge.ExecuteToolAsync(
+                BuiltInToolEnum.GitLog, WithToolTimeout(args, commonSettings.Current.ToolTimeoutMs), c)
         },
         new()
         {
@@ -199,6 +208,26 @@ public class BuiltInAgent(IVsBridge vsBridge, ISkillService skillService, IInter
             ExecuteWithContextAsync = (args, toolCall, c) => internalExecutor.ExecuteToolAsync(BuiltInToolEnum.DelegateTask, args, toolCall, c)
         }
     ];
+
+    /// <summary>
+    /// Добавляет в аргументы инструмента поле <c>timeoutMs</c> из настроек — хост возьмёт лимит
+    /// оттуда вместо своей константы.
+    /// <para>
+    /// Значение ставится ПОСЛЕ копирования аргументов модели, поэтому одноимённое поле, если оно
+    /// просочилось из ответа LLM, перекрывается настройкой: таймаут — решение пользователя, а не
+    /// модели. Кривой/отсутствующий JSON не ошибка: аргументов нет — добавится только таймаут,
+    /// и хост сам вернёт «Command is required».
+    /// </para>
+    /// </summary>
+    internal static string? WithToolTimeout(string? argsJson, int timeoutMs)
+    {
+        var args = new Dictionary<string, object>(JsonUtils.DeserializeParameters(argsJson))
+        {
+            ["timeoutMs"] = timeoutMs
+        };
+
+        return JsonUtils.SerializeCompact(args);
+    }
 
     /// <summary>
     /// Returns the solution structure as a formatted ASCII tree.

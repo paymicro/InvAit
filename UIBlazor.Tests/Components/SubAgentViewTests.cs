@@ -7,11 +7,18 @@ public class SubAgentViewTests : BunitContext
 {
     public SubAgentViewTests()
     {
-        // bunit JSInterop (loose mode) — компонент получает его через DI,
-        // вызовы scrollSubAgentToBottom регистрируются и проверяются через VerifyInvoke
+        // bunit JSInterop в Strict-режиме (дефолт bUnit): ЛЮБОЙ вызов, для которого нет
+        // SetupVoid, бросает JSRuntimeUnhandledInvocationException из OnAfterRenderAsync.
+        // Поэтому здесь объявлена вся косметическая поверхность компонента, а не только та,
+        // что проверяется ассертами: scrollSubAgentToBottom (новые сообщения) и
+        // focusSubAgentInput (показ инпута интерсепта). Пропущенный setup — не «мягкий» фейл:
+        // исключение всплывает из рендер-пайплайна и подхватывается wait-хелпером
+        // асинхронно, поэтому тест падал только на CI (гонка «предикат успел» против
+        // «unhandled exception успел»), а локально проходил.
         Services.AddRadzenComponents();
         JSInterop.SetupVoid("Radzen.preventArrows", _ => true);
         JSInterop.SetupVoid("scrollSubAgentToBottom", _ => true);
+        JSInterop.SetupVoid("focusSubAgentInput", _ => true);
 
         // Stub MarkdownBlock to avoid JS interop for markdown rendering
         ComponentFactories.AddStub<MarkdownBlock>(parameters => builder =>
@@ -462,6 +469,11 @@ public class SubAgentViewTests : BunitContext
             () => Assert.NotEmpty(cut.FindAll(".subagent-interject-input")),
             TimeSpan.FromSeconds(1));
         Assert.Equal(revisionBefore, subAgent.Revision);
+
+        // The other half of the feature: the revealed input takes focus. Asserted explicitly so a
+        // dropped focus call cannot hide behind a registered-but-unused JSInterop setup.
+        Assert.Single(JSInterop.Invocations["focusSubAgentInput"]);
+        Assert.Equal(subAgent.Id, JSInterop.Invocations["focusSubAgentInput"][0].Arguments[0]);
     }
 
     [Fact]

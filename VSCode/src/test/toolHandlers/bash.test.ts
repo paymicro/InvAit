@@ -23,6 +23,7 @@ describe('bash', () => {
         stderr?: string;
         status?: number;
         error?: Error;
+        signal?: string;
     }) {
         // findGitSh: existsSync returns true so sh.exe is "found" in PATH
         (fsStub.existsSync as sinon.SinonStub).returns(true);
@@ -33,6 +34,7 @@ describe('bash', () => {
             stderr: opts.stderr ?? '',
             status: opts.status ?? 0,
             error: opts.error,
+            signal: opts.signal ?? null,
         });
     }
 
@@ -124,6 +126,139 @@ describe('bash', () => {
             expect(spawnCall.args[1]).to.be.an('array').with.length(1);
             expect(spawnCall.args[1][0]).to.include('.sh');
         });
+
+        it('should pass the timeout from the payload to spawnSync', () => {
+            // The limit used to be hard-coded to 120000ms while the setting only controlled the
+            // client wait and the badge, so the two clocks disagreed in both directions.
+            setupBashStubs({ stdout: 'ok' });
+
+            const payload = JSON.stringify({ command: 'dotnet build', timeoutMs: 45000 });
+            toolHandlers.dispatchTool('bash', payload, WORKSPACE);
+
+            const spawnCall = (childProcessStub.spawnSync as sinon.SinonStub).getCall(0);
+            expect(spawnCall.args[2].timeout).to.equal(45000);
+        });
+
+        it('should fall back to the default timeout when the payload has none', () => {
+            setupBashStubs({ stdout: 'ok' });
+
+            toolHandlers.dispatchTool('bash', JSON.stringify({ command: 'echo hi' }), WORKSPACE);
+
+            const spawnCall = (childProcessStub.spawnSync as sinon.SinonStub).getCall(0);
+            expect(spawnCall.args[2].timeout).to.equal(120000);
+        });
+
+        it('should fall back to the default timeout for a zero value', () => {
+            // Channel rule: 0 is NOT "no limit" (spawnSync would drop the limit entirely) and
+            // NOT "kill instantly". It means "the tool default", same as on the C# host.
+            setupBashStubs({ stdout: 'ok' });
+
+            toolHandlers.dispatchTool('bash', JSON.stringify({ command: 'echo hi', timeoutMs: 0 }), WORKSPACE);
+
+            const call = (childProcessStub.spawnSync as sinon.SinonStub).lastCall;
+            expect(call.args[2].timeout).to.equal(120000);
+        });
+
+        it('should fall back to the default timeout for a negative value', () => {
+            setupBashStubs({ stdout: 'ok' });
+
+            toolHandlers.dispatchTool('bash', JSON.stringify({ command: 'echo hi', timeoutMs: -1 }), WORKSPACE);
+
+            const call = (childProcessStub.spawnSync as sinon.SinonStub).lastCall;
+            expect(call.args[2].timeout).to.equal(120000);
+        });
+
+        it('should ignore prose that merely starts with a number', () => {
+            // `parseInt` read "2 minutes" as 2 and "30s" as 30, i.e. invented a 2 ms limit out of
+            // prose. Only a whole number is a limit; anything else is "no value", so the default.
+            for (const timeoutMs of ['2 minutes', '30s', '4.5', '', ' ', null]) {
+                setupBashStubs({ stdout: 'ok' });
+
+                toolHandlers.dispatchTool('bash', JSON.stringify({ command: 'echo hi', timeoutMs }), WORKSPACE);
+
+                const call = (childProcessStub.spawnSync as sinon.SinonStub).lastCall;
+                expect(call.args[2].timeout, `timeoutMs=${JSON.stringify(timeoutMs)}`).to.equal(120000);
+            }
+        });
+
+        it('should accept a leading plus and surrounding spaces like int.TryParse', () => {
+            // `int.TryParse("+45000")` succeeds on the C# host, so rejecting it here would make the
+            // same payload mean two different limits on the two hosts.
+            setupBashStubs({ stdout: 'ok' });
+
+            toolHandlers.dispatchTool('bash', JSON.stringify({ command: 'echo hi', timeoutMs: ' +45000 ' }), WORKSPACE);
+
+            const call = (childProcessStub.spawnSync as sinon.SinonStub).lastCall;
+            expect(call.args[2].timeout).to.equal(45000);
+        });
+
+        it('should fall back to the default for a value outside the int range', () => {
+            // `int.TryParse("3000000000")` FAILS on the C# host, so it resolves to the tool default.
+            // Clamping instead would make the same payload mean two different limits on the two
+            // hosts — and the clamped value is not even holdable by a JS timer.
+            for (const timeoutMs of [3_000_000_000, 2_147_483_648, 1e21]) {
+                setupBashStubs({ stdout: 'ok' });
+
+                toolHandlers.dispatchTool('bash', JSON.stringify({ command: 'echo hi', timeoutMs }), WORKSPACE);
+
+                const call = (childProcessStub.spawnSync as sinon.SinonStub).lastCall;
+                expect(call.args[2].timeout, `timeoutMs=${timeoutMs}`).to.equal(120000);
+            }
+        });
+
+        it('should keep the largest representable timeout', () => {
+            setupBashStubs({ stdout: 'ok' });
+
+            toolHandlers.dispatchTool('bash', JSON.stringify({ command: 'echo hi', timeoutMs: 2_147_483_647 }), WORKSPACE);
+
+            const call = (childProcessStub.spawnSync as sinon.SinonStub).lastCall;
+            expect(call.args[2].timeout).to.equal(2_147_483_647);
+        });
+
+        it('should report the effective timeout in the timeout message', () => {
+            // The message is the only reason the model sees for a killed command: it used to say
+            // "after 120000ms" no matter which limit actually fired.
+            const timeoutError = new Error('spawnSync ETIMEDOUT');
+            (timeoutError as any).code = 'ETIMEDOUT';
+            setupBashStubs({ stderr: 'partial', error: timeoutError });
+
+            const payload = JSON.stringify({ command: 'sleep 60', timeoutMs: 5000 });
+            const result = toolHandlers.dispatchTool('bash', payload, WORKSPACE);
+
+            expect(result.success).to.be.false;
+            expect(result.error).to.include('Command timed out after 5000ms');
+        });
+
+        it('should keep the partial output of a command that timed out', () => {
+            // Losing the log of a long build is the most expensive part of a timeout; Node does
+            // report the bytes written before the kill, so dropping them is our own regression.
+            const timeoutError = new Error('spawnSync ETIMEDOUT');
+            (timeoutError as any).code = 'ETIMEDOUT';
+            setupBashStubs({ stdout: 'partial-out', stderr: 'partial-err', error: timeoutError });
+
+            const result = toolHandlers.dispatchTool(
+                'bash', JSON.stringify({ command: 'sleep 60', timeoutMs: 5000 }), WORKSPACE);
+
+            expect(result.error).to.include('partial-out');
+            expect(result.error).to.include('partial-err');
+            expect(result.error).to.include('Command timed out after 5000ms');
+        });
+
+        it('should not report an output overflow as a timeout', () => {
+            // An overflow ALSO arrives with signal SIGTERM, only the code differs (ENOBUFS).
+            // Classifying on the signal alone told the model the command timed out when it had
+            // actually produced too much output and was killed for that.
+            const overflowError = new Error('spawnSync ENOBUFS');
+            (overflowError as any).code = 'ENOBUFS';
+            setupBashStubs({ stderr: 'lots', error: overflowError, signal: 'SIGTERM' });
+
+            const result = toolHandlers.dispatchTool('bash', JSON.stringify({ command: 'yes' }), WORKSPACE);
+
+            expect(result.success).to.be.false;
+            expect(result.error).to.not.include('Command timed out');
+            expect(result.error).to.include('exceeded');
+            expect(result.error).to.include('lots');
+        });
     });
 
     // -----------------------------------------------------------------------
@@ -141,6 +276,15 @@ describe('bash', () => {
             // The command written to temp file should be "git status"
             const writeCall = (fsStub.writeFileSync as sinon.SinonStub).getCall(0);
             expect(writeCall.args[1]).to.equal('git status');
+        });
+
+        it('should forward the timeout to the underlying bash call', () => {
+            setupBashStubs({ stdout: 'On branch main' });
+
+            toolHandlers.dispatchTool('git_status', JSON.stringify({ timeoutMs: 30000 }), WORKSPACE);
+
+            const spawnCall = (childProcessStub.spawnSync as sinon.SinonStub).getCall(0);
+            expect(spawnCall.args[2].timeout).to.equal(30000);
         });
     });
 
@@ -180,6 +324,15 @@ describe('bash', () => {
             const writeCall = (fsStub.writeFileSync as sinon.SinonStub).getCall(0);
             expect(writeCall.args[1]).to.include('-n 100');
         });
+
+        it('should forward the timeout to the underlying bash call', () => {
+            setupBashStubs({ stdout: 'log' });
+
+            toolHandlers.dispatchTool('git_log', JSON.stringify({ number: 2, timeoutMs: 30000 }), WORKSPACE);
+
+            const spawnCall = (childProcessStub.spawnSync as sinon.SinonStub).getCall(0);
+            expect(spawnCall.args[2].timeout).to.equal(30000);
+        });
     });
 
     // -----------------------------------------------------------------------
@@ -205,6 +358,15 @@ describe('bash', () => {
 
             expect(result.success).to.be.false;
             expect(result.error).to.include('Invalid revision');
+        });
+
+        it('should forward the timeout to the underlying bash call', () => {
+            setupBashStubs({ stdout: 'diff output' });
+
+            toolHandlers.dispatchTool('git_diff', JSON.stringify({ revisions: 'HEAD', timeoutMs: 30000 }), WORKSPACE);
+
+            const spawnCall = (childProcessStub.spawnSync as sinon.SinonStub).getCall(0);
+            expect(spawnCall.args[2].timeout).to.equal(30000);
         });
     });
 

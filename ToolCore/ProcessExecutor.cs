@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using Shared.Contracts;
 
 namespace ToolCore;
 
@@ -140,10 +141,15 @@ public class ProcessExecutor(ILogger logger)
         string command,
         string arguments,
         string? workingDirectory = null,
-        int timeoutMs = 30000,
+        int timeoutMs = ToolTimeout.DefaultExecuteMs,
         int outputLimit = DefaultOutputLimit,
         CancellationToken cancellationToken = default)
     {
+        // Правило канала (ToolTimeout.Resolve): неположительное значение — это дефолт
+        // исполнителя, а НЕ «без ограничения». Иначе Task.Delay(0) ниже убивал бы процесс
+        // мгновенно, то есть одно и то же поле 0 значило бы на двух хостах противоположное.
+        timeoutMs = ToolTimeout.Resolve(timeoutMs, ToolTimeout.DefaultExecuteMs);
+
         // Отмена, запрошенная ДО старта, должна уважаться: процесс не запускаем вообще.
         // Иначе исход зависит от гонки «успел ли процесс завершиться раньше, чем мы проверим
         // токен» — на Linux `echo` выходит за пару миллисекунд и результат становится Success.
@@ -205,10 +211,12 @@ public class ProcessExecutor(ILogger logger)
     public async Task<ProcessResult> ExecuteBashAsync(
         string bashScript,
         string? workingDirectory = null,
-        int timeoutMs = 120_000,
+        int timeoutMs = ToolTimeout.DefaultCommandMs,
         int outputLimit = DefaultOutputLimit,
         CancellationToken cancellationToken = default)
     {
+        timeoutMs = ToolTimeout.Resolve(timeoutMs, ToolTimeout.DefaultCommandMs);
+
         // Как и ExecuteAsync: не создаём временный файл и не спавним sh, если отмена уже запрошена.
         // Без этой проверки Task.Delay ниже бросил бы OperationCanceledException вместо
         // возврата результата с флагом Cancelled.

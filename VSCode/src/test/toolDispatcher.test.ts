@@ -222,8 +222,11 @@ describe('toolDispatcher', () => {
         dispatchToolStub.resetHistory();
         invalidateContextCacheStub.resetHistory();
 
-        mockMcpInstance.listTools.resetHistory();
-        mockMcpInstance.callTool.resetHistory();
+        // `.reset()` (behaviour + history), not `.resetHistory()`: `sinon.restore()` does not
+        // clear behaviour on these bare object-owned stubs, so a `resolves`/`rejects` set in one
+        // test leaked into the next one.
+        mockMcpInstance.listTools.reset();
+        mockMcpInstance.callTool.reset();
         mockMcpInstance.stopAll.resetHistory();
         mockMcpInstance.stopAll.resolves(0);
         mockMcpInstance.dispose.resetHistory();
@@ -714,6 +717,84 @@ describe('toolDispatcher', () => {
             expect(callArgs.serverId).to.equal('my-server');
             expect(callArgs.toolName).to.equal('doThing');
             expect(callArgs.arguments).to.deep.equal({ key: 'value' });
+        });
+
+        it('should forward the timeout from the payload to the registry', async () => {
+            mockMcpInstance.callTool.resolves({ content: [], isError: false });
+
+            const panel = createFakePanel();
+            await handleVsRequest(panel, createMessage('mcp_call_tool', 'corr-4', JSON.stringify({
+                serverId: 'my-server',
+                toolName: 'doThing',
+                timeoutMs: 45000,
+            })));
+
+            const callArgs = mockMcpInstance.callTool.firstCall.args[0];
+            expect(callArgs.timeoutMs).to.equal(45000);
+        });
+
+        it('should fall back to the MCP default for a zero timeout', async () => {
+            // Channel rule (mirror of `ToolTimeout.Resolve`): 0 means "the tool default".
+            mockMcpInstance.callTool.resolves({ content: [], isError: false });
+
+            const panel = createFakePanel();
+            await handleVsRequest(panel, createMessage('mcp_call_tool', 'corr-zero', JSON.stringify({
+                serverId: 'my-server',
+                toolName: 'doThing',
+                timeoutMs: 0,
+            })));
+
+            const callArgs = mockMcpInstance.callTool.firstCall.args[0];
+            expect(callArgs.timeoutMs).to.equal(600000);
+        });
+
+        it('should fall back to the MCP default for a negative timeout', async () => {
+            // The old `args.timeoutMs || 600000` kept -1 (truthy) and the registry clamps it to
+            // 1 s, so a stale session value could shrink the limit by two orders of magnitude.
+            mockMcpInstance.callTool.resolves({ content: [], isError: false });
+
+            const panel = createFakePanel();
+            await handleVsRequest(panel, createMessage('mcp_call_tool', 'corr-neg', JSON.stringify({
+                serverId: 'my-server',
+                toolName: 'doThing',
+                timeoutMs: -1,
+            })));
+
+            const callArgs = mockMcpInstance.callTool.firstCall.args[0];
+            expect(callArgs.timeoutMs).to.equal(600000);
+        });
+
+        it('should fall back to the MCP default for a value outside the int range', async () => {
+            // Same rule as the bash channel and the same reason: a value `int.TryParse` rejects is
+            // "no value", not "clamp me". A JS timer cannot hold it either — the delay wraps to a
+            // few milliseconds and the call dies instantly while the message claims a huge limit.
+            mockMcpInstance.callTool.resolves({ content: [], isError: false });
+
+            const panel = createFakePanel();
+            await handleVsRequest(panel, createMessage('mcp_call_tool', 'corr-big', JSON.stringify({
+                serverId: 'my-server',
+                toolName: 'doThing',
+                timeoutMs: 2_147_483_648,
+            })));
+
+            const callArgs = mockMcpInstance.callTool.firstCall.args[0];
+            expect(callArgs.timeoutMs).to.equal(600000);
+        });
+
+        it('should raise a sub-floor timeout to the floor the registry enforces', async () => {
+            // The registry clamps with Math.max(1000, ...). Resolving to the same floor keeps the
+            // limit that kills the call equal to the limit we resolved on the client side.
+            mockMcpInstance.callTool.resolves({ content: [], isError: false });
+
+            const panel = createFakePanel();
+            await handleVsRequest(panel, createMessage('mcp_call_tool', 'corr-small', JSON.stringify({
+                serverId: 'my-server',
+                toolName: 'doThing',
+                timeoutMs: 500,
+            })));
+
+            const callArgs = mockMcpInstance.callTool.firstCall.args[0];
+            expect(callArgs.timeoutMs).to.equal(1000);
         });
     });
 

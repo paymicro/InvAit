@@ -100,6 +100,29 @@ public class VsBridge : IVsBridge, IDisposable
         };
     }
 
+    /// <summary>
+    /// Сколько ждать ответа хоста на <paramref name="action"/> при настройке <paramref name="settingMs"/>.
+    /// Вынесено в метод, чтобы инвариант «клиент ждёт СТРОГО дольше всей хостовой цепочки» был
+    /// проверим тестом без ожиданий.
+    /// <para>
+    /// Хост убивает команду на лимите из настройки и отвечает честным
+    /// «Command timed out after N ms». Если клиент ждёт ТО ЖЕ время, он регулярно выигрывает гонку
+    /// и подменяет этот ответ своей аварией (<c>Transport failure: Request timed out</c>), а
+    /// убитая команда уже никто не прочитает.
+    /// </para>
+    /// <para>
+    /// У MCP цепочка длиннее на <see cref="ToolTimeout.McpHostGraceMs"/>: вызов идёт через отдельный
+    /// процесс McpHost, и хост ждёт его дольше самого вызова. Поэтому клиенту нужен запас не только
+    /// на обратный путь, но и на это звено — иначе гонка просто переезжает в MCP-канал. Дефолт тоже
+    /// берётся по каналу: хост без поля применит DefaultMcpCallMs, и клиент с bash-дефолтом снова
+    /// ждал бы меньше хоста.
+    /// </para>
+    /// </summary>
+    internal static TimeSpan ComputeWait(string action, int settingMs)
+        => action == BasicEnum.McpCallTool
+            ? ToolTimeout.ClientWait(settingMs, ToolTimeout.McpHostGraceMs, ToolTimeout.DefaultMcpCallMs)
+            : ToolTimeout.ClientWait(settingMs);
+
     private async Task<VsResponse> SendRequestAsync(VsRequest request, CancellationToken cancellationToken)
     {
         await EnsureInitializedAsync();
@@ -109,6 +132,17 @@ public class VsBridge : IVsBridge, IDisposable
 
         try
         {
+            // Снимок настройки ДО отправки: лимит на хосте зафиксирован в payload уже на моменте
+            // вызова тула, поэтому чтение настройки ПОСЛЕ postVsMessage могло взять более новое
+            // (меньшее) значение и снова сделать клиента короче хоста.
+            var timeOut = ComputeWait(request.Action, _commonOptions.Current.ToolTimeoutMs);
+#if DEBUG
+            // Дебаг не быстрый, но не бесконечный: сутки тишины выглядели в UI ровно как
+            // «приложение повисло» — отличить «тулза думает» от «мост мёртв» невозможно.
+            // 30 минут всё ещё хватает на отладку VS с точкой останова.
+            timeOut = TimeSpan.FromMinutes(30);
+#endif
+
             // Отправляем запрос
             var result = await _jsRuntime.InvokeAsync<string>("postVsMessage", cancellationToken: cancellationToken, request);
 
@@ -121,13 +155,6 @@ public class VsBridge : IVsBridge, IDisposable
                 };
             }
 
-            var timeOut = TimeSpan.FromMilliseconds(_commonOptions.Current.ToolTimeoutMs);
-#if DEBUG
-            // Дебаг не быстрый, но не бесконечный: сутки тишины выглядели в UI ровно как
-            // «приложение повисло» — отличить «тулза думает» от «мост мёртв» невозможно.
-            // 30 минут всё ещё хватает на отладку VS с точкой останова.
-            timeOut = TimeSpan.FromMinutes(30);
-#endif
             // Both registrations are disposed with the wait. An undisposed registration keeps the
             // TCS (and the request payload plus its continuation) alive until the token is
             // collected, and it fires on a token that may be cancelled long after this request was

@@ -19,7 +19,15 @@ public class BuiltInAgentSolutionStructureTests
             _vsBridgeMock.Object,
             Mock.Of<ISkillService>(MockBehavior.Loose),
             Mock.Of<IInternalExecutor>(MockBehavior.Loose),
-            _contextServiceMock.Object);
+            _contextServiceMock.Object,
+            CreateCommonSettings());
+    }
+
+    private static ICommonSettingsProvider CreateCommonSettings()
+    {
+        var settings = new Mock<ICommonSettingsProvider>();
+        settings.SetupGet(x => x.Current).Returns(new CommonOptions());
+        return settings.Object;
     }
 
     /// <summary>
