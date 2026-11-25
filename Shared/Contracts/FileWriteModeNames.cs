@@ -56,7 +56,7 @@ public static class FileWriteModeNames
                 normalized = Prepend;
                 return true;
             default:
-                normalized = mode?.Trim() ?? string.Empty;
+                normalized = mode.Trim();
                 return false;
         }
     }

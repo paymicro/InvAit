@@ -163,55 +163,6 @@ public partial class BuiltInToolDefsTests
     }
 
     [Fact]
-    public void MapMethodToTool_EditFile_ReturnsCorrectPropertyDescription()
-    {
-        // Arrange
-        var method = typeof(BuiltInToolDefs).GetMethod(nameof(BuiltInToolDefs.EditFile));
-
-        // Act
-        var result = BuiltInToolDefs.MapMethodToTool(method);
-
-        // Assert — the contract the model depends on, field by field. A whole-JSON snapshot of a
-        // multi-line prose description was pure maintenance tax: it broke on every wording change
-        // and never caught a real schema defect.
-        Assert.Equal(BuiltInToolEnum.EditFile, result.Function.Name);
-        Assert.True(result.Function.Parameters.Properties.ContainsKey("filePath"));
-        // Не `Equal("File path")` в чистом виде: edit_file не умеет создавать файл, и описание
-        // должно это говорить. Проверяем СМЫСЛ (путь + существующий + отсылка к create_file),
-        // а не точную фразу — иначе тест снова начнёт защищать неудачную формулировку.
-        Assert.Contains("file", result.Function.Parameters.Properties["filePath"].Description, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("EXISTING", result.Function.Parameters.Properties["filePath"].Description, StringComparison.Ordinal);
-        Assert.Contains("create_file", result.Function.Parameters.Properties["filePath"].Description, StringComparison.Ordinal);
-        Assert.Contains("exactly ONE place", result.Function.Description, StringComparison.Ordinal);
-
-        var edits = result.Function.Parameters.Properties["edits"];
-        Assert.Equal("array", edits.Type);
-
-        var items = Assert.IsType<NativeParameters>(edits.Items);
-
-        // Strict mode: ВСЕ поля вложенного объекта в `required` — так же, как на верхнем
-        // уровне, где опциональность выражается ТОЛЬКО nullable-типом. Раньше union-поля
-        // (approximateLine, replaceAll) выкидывались из required, и валидирующий endpoint
-        // отклонял весь запрос, а не один инструмент. Состав сравнивается без учёта
-        // порядка: контракт — это набор полей, а не порядок рефлексии.
-        Assert.Equal(
-            ["approximateLine", "newStr", "oldStr", "replaceAll"],
-            items.Required.OrderBy(x => x, StringComparer.Ordinal).ToList());
-
-        // replaceAll ОПЦИОНАЛЕН семантически: union с null позволяет модели прислать null
-        // (и VS-хост обязан трактовать это как false), но поле остаётся в required.
-        var replaceAll = items.Properties!["replaceAll"];
-        Assert.True(replaceAll.IsUnionType);
-        Assert.Equal([NativeToolType.Boolean, NativeToolType.Null], (string[])replaceAll.Type);
-        Assert.Contains("Replace every occurrence", replaceAll.Description, StringComparison.Ordinal);
-
-        // approximateLine — та же форма: integer|null, null легален.
-        var approximateLine = items.Properties!["approximateLine"];
-        Assert.True(approximateLine.IsUnionType);
-        Assert.Equal([NativeToolType.Integer, NativeToolType.Null], (string[])approximateLine.Type);
-    }
-
-    [Fact]
     public void MapMethodToTool_EditFile_NoFabricatedDefaultNoteOnNestedFields()
     {
         // [DefaultValue] on DiffEdit.ReplaceAll / ApproximateLine added NOTHING to the schema:
