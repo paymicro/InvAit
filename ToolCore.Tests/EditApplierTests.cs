@@ -1,5 +1,4 @@
 using System.IO.Abstractions.TestingHelpers;
-using System.Text;
 
 namespace ToolCore.Tests;
 
@@ -13,7 +12,7 @@ public class EditApplierTests
     [InlineData(new[] { "line1", "line2", "line3" }, new[] { "line3" }, 3, 2)]
     public void FindInFile_ExactMatch_ReturnsCorrectIndex(string[] target, string[] search, int hint, int expected)
     {
-        var result = EditApplier.FindInFile([.. target], [.. search], hint, 0);
+        var result = EditApplier.ApplyEdit([.. target], [.. search], [], hint, 0).StartLine;
         Assert.Equal(expected, result);
     }
 
@@ -22,7 +21,7 @@ public class EditApplierTests
     [InlineData(new[] { "line1", "line2", "line3" }, new[] { "line3" }, 1, 3, 2)]
     public void FindInFile_MatchWithTolerance_ReturnsCorrectIndex(string[] target, string[] search, int hint, int tolerance, int expected)
     {
-        var result = EditApplier.FindInFile([.. target], [.. search], hint, tolerance);
+        var result = EditApplier.ApplyEdit([.. target], [.. search], [], hint, tolerance).StartLine;
         Assert.Equal(expected, result);
     }
 
@@ -32,22 +31,34 @@ public class EditApplierTests
     [InlineData(new[] { "line1", "line2", "line3", "line4" }, new[] { "line3", "line4" }, 3, 2)]
     public void FindInFile_MultilineMatch_ReturnsCorrectIndex(string[] target, string[] search, int hint, int expected)
     {
-        var result = EditApplier.FindInFile([.. target], [.. search], hint, 0);
+        var result = EditApplier.ApplyEdit([.. target], [.. search], [], hint, 0).StartLine;
         Assert.Equal(expected, result);
     }
 
     [Fact]
     public void FindInFile_NoMatch_ReturnsMinusOne()
     {
-        var result = EditApplier.FindInFile(["line1", "line2", "line3"], ["notfound"], -1, 0);
+        var result = EditApplier.ApplyEdit(["line1", "line2", "line3"], ["notfound"], [], -1, 0).StartLine;
         Assert.Equal(-1, result);
     }
 
     [Fact]
-    public void FindInFile_FullSearch_ReturnsFirstMatch()
+    public void FindInFile_FullSearch_DuplicatesAreNotGuessed()
     {
-        var result = EditApplier.FindInFile(["same", "same", "different"], ["same"], -1, 0);
-        Assert.Equal(0, result);
+        // Was: "returns first match". Silent first-of-many is exactly the defect replaceAll was
+        // added for — an edit that lands in the wrong block with no warning. A duplicate search is
+        // refused, and the model must add context or set replaceAll. Asserted through EditOutcome,
+        // not through a line number: an ambiguity is NOT an absence and must not be able to pass
+        // as one.
+        var target = new List<string> { "same", "same", "different" };
+
+        var result = EditApplier.ApplyEdit(target, ["same"], ["SAME"], -1, 0);
+
+        Assert.Equal(EditOutcome.Ambiguous, result.Outcome);
+        Assert.Equal([0, 1], result.MatchLines);
+        Assert.Equal(0, result.AppliedCount);
+        // Nothing was touched: an ambiguous edit must not half-apply.
+        Assert.Equal(["same", "same", "different"], target);
     }
 
     #endregion
@@ -60,7 +71,7 @@ public class EditApplierTests
     [InlineData(new[] { "HeLLo WoRLd" }, new[] { "hElLo wOrLd" }, -1, 0)]
     public void FindInFile_CaseInsensitive_ReturnsCorrectIndex(string[] target, string[] search, int hint, int expected)
     {
-        var result = EditApplier.FindInFile([.. target], [.. search], hint, 5);
+        var result = EditApplier.ApplyEdit([.. target], [.. search], [], hint, 5).StartLine;
         Assert.Equal(expected, result);
     }
 
@@ -77,7 +88,7 @@ public class EditApplierTests
     [InlineData(new[] { "  bla bla  " }, new[] { "   bla bla   " }, -1, 0)]
     public void FindInFile_TrimsWhitespace_ReturnsCorrectIndex(string[] target, string[] search, int hint, int expected)
     {
-        var result = EditApplier.FindInFile([.. target], [.. search], hint, 5);
+        var result = EditApplier.ApplyEdit([.. target], [.. search], [], hint, 5).StartLine;
         Assert.Equal(expected, result);
     }
 
@@ -87,7 +98,7 @@ public class EditApplierTests
         var target = new List<string> { "  line1  ", "  line2  ", "  line3  " };
         var search = new List<string> { "  line2  " };
 
-        var result = EditApplier.FindInFile(target, search, -1, 0);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 0).StartLine;
 
         Assert.Equal(1, result);
     }
@@ -103,7 +114,7 @@ public class EditApplierTests
     [InlineData(new[] { "line1", "line2", "line3", "line4", "line5" }, new[] { "line1", "line2" }, 3, 0)]
     public void FindInFile_WithHint_ReturnsCorrectIndex(string[] target, string[] search, int hint, int expected)
     {
-        var result = EditApplier.FindInFile([.. target], [.. search], hint, 5);
+        var result = EditApplier.ApplyEdit([.. target], [.. search], [], hint, 5).StartLine;
         Assert.Equal(expected, result);
     }
 
@@ -113,7 +124,7 @@ public class EditApplierTests
         var target = new List<string> { "line1", "line2", "line3", "line4", "line5" };
         var search = new List<string> { "line4", "line5" };
 
-        var result = EditApplier.FindInFile(target, search, 1, 1);
+        var result = EditApplier.ApplyEdit(target, search, [], 1, 1).StartLine;
 
         Assert.Equal(3, result);
     }
@@ -123,7 +134,7 @@ public class EditApplierTests
     [InlineData(new[] { "line1", "line2" }, new[] { "line2" }, 2, -10, 1)]
     public void FindInFile_NegativeTolerance_DefaultsToZero(string[] target, string[] search, int hint, int tolerance, int expected)
     {
-        var result = EditApplier.FindInFile([.. target], [.. search], hint, tolerance);
+        var result = EditApplier.ApplyEdit([.. target], [.. search], [], hint, tolerance).StartLine;
         Assert.Equal(expected, result);
     }
 
@@ -138,7 +149,7 @@ public class EditApplierTests
     [InlineData(new[] { "line1", "line2", "", "" }, new[] { "line2" }, 2, 1)]
     public void FindInFile_WithEmptyLines_ReturnsCorrectIndex(string[] target, string[] search, int hint, int expected)
     {
-        var result = EditApplier.FindInFile([.. target], [.. search], hint, 5);
+        var result = EditApplier.ApplyEdit([.. target], [.. search], [], hint, 5).StartLine;
         Assert.Equal(expected, result);
     }
 
@@ -148,7 +159,7 @@ public class EditApplierTests
     [InlineData(new[] { "line1", "", "", "line2" }, new[] { "", "" }, -1, 1)]
     public void FindInFile_EmptyLinesInSearch_MatchesCorrectly(string[] target, string[] search, int hint, int expected)
     {
-        var result = EditApplier.FindInFile([.. target], [.. search], hint, 5);
+        var result = EditApplier.ApplyEdit([.. target], [.. search], [], hint, 5).StartLine;
         Assert.Equal(expected, result);
     }
 
@@ -157,28 +168,28 @@ public class EditApplierTests
     [InlineData(new[] { "start", "middle", "content", "end" }, new[] { "middle", "", "end" }, -1, -1)]
     public void FindInFile_EmptySearch_DoesNotMatchContent(string[] target, string[] search, int hint, int expected)
     {
-        var result = EditApplier.FindInFile([.. target], [.. search], hint, 0);
+        var result = EditApplier.ApplyEdit([.. target], [.. search], [], hint, 0).StartLine;
         Assert.Equal(expected, result);
     }
 
     [Fact]
     public void FindInFile_EmptySearchLine_MatchesEmptyTargetLine()
     {
-        var result = EditApplier.FindInFile(["line1", "", "line3"], [""], -1, 0);
+        var result = EditApplier.ApplyEdit(["line1", "", "line3"], [""], [], -1, 0).StartLine;
         Assert.Equal(1, result);
     }
 
     [Fact]
     public void FindInFile_WhitespaceOnlySearchLine_MatchesWhitespaceTarget()
     {
-        var result = EditApplier.FindInFile(["line1", "   ", "line3"], ["   "], -1, 0);
+        var result = EditApplier.ApplyEdit(["line1", "   ", "line3"], ["   "], [], -1, 0).StartLine;
         Assert.Equal(1, result);
     }
 
     [Fact]
     public void FindInFile_WhitespaceOnlySearchLine_DoesNotMatchContent()
     {
-        var result = EditApplier.FindInFile(["line1", "some content", "line3"], ["   "], -1, 0);
+        var result = EditApplier.ApplyEdit(["line1", "some content", "line3"], ["   "], [], -1, 0).StartLine;
         Assert.Equal(-1, result);
     }
 
@@ -188,7 +199,7 @@ public class EditApplierTests
         var target = new List<string> { "line1", "   ", "line2" };
         var search = new List<string> { "line1", "", "line2" };
 
-        var result = EditApplier.FindInFile(target, search, -1, 5);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 5).StartLine;
 
         Assert.Equal(0, result);
     }
@@ -207,7 +218,7 @@ public class EditApplierTests
         };
         var search = new List<string> { "public void Method()", "{", "    var x = 1;", "}" };
 
-        var result = EditApplier.FindInFile(target, search, -1, 5);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 5).StartLine;
 
         Assert.Equal(0, result);
     }
@@ -222,7 +233,7 @@ public class EditApplierTests
         };
         var search = new List<string> { "public void Method()", "{", "    var x = 2;", "}" };
 
-        var result = EditApplier.FindInFile(target, search, -1, 5);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 5).StartLine;
 
         Assert.Equal(4, result);
     }
@@ -237,20 +248,24 @@ public class EditApplierTests
             "Console.WriteLine(\"Hello?\");"
         };
 
-        var result = EditApplier.FindInFile(target, ["Console.WriteLine(\"Hello!\");"], -1, 5);
+        var result = EditApplier.ApplyEdit(target, ["Console.WriteLine(\"Hello!\");"], [], -1, 5).StartLine;
 
         Assert.Equal(1, result);
     }
 
     [Fact]
-    public void FindInFile_MultipleIdenticalBlocks_FindsFirst()
+    public void FindInFile_MultipleIdenticalBlocks_ReportsAmbiguity()
     {
         var target = new List<string> { "line1", "line2", "line1", "line2" };
         var search = new List<string> { "line1", "line2" };
 
-        var result = EditApplier.FindInFile(target, search, -1, 5);
+        var result = EditApplier.ApplyEdit(target, search, ["replaced"], -1, 5);
 
-        Assert.Equal(0, result);
+        Assert.Equal(EditOutcome.Ambiguous, result.Outcome);
+        Assert.Equal([0, 2], result.MatchLines);
+        Assert.Equal(0, result.AppliedCount);
+        // Nothing was touched: an ambiguous edit must not half-apply.
+        Assert.Equal(["line1", "line2", "line1", "line2"], target);
     }
 
     [Fact]
@@ -259,7 +274,7 @@ public class EditApplierTests
         var target = new List<string> { "A", "A", "B" };
         var search = new List<string> { "A", "B" };
 
-        var result = EditApplier.FindInFile(target, search, -1, 5);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 5).StartLine;
 
         Assert.Equal(1, result);
     }
@@ -274,7 +289,7 @@ public class EditApplierTests
         };
         var search = new List<string> { "public void Method()", "{", "    var x = 2;", "}" };
 
-        var result = EditApplier.FindInFile(target, search, -1, 5);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 5).StartLine;
 
         Assert.Equal(5, result);
     }
@@ -294,7 +309,7 @@ public class EditApplierTests
 
         var search = new List<string> { "        {", "            // Old code", "        }" };
 
-        var result = EditApplier.FindInFile(fileContent, search, 7, 2);
+        var result = EditApplier.ApplyEdit(fileContent, search, [], 7, 2).StartLine;
 
         Assert.Equal(5, result);
     }
@@ -305,7 +320,7 @@ public class EditApplierTests
         var target = new List<string> { "start", "middle", "content", "end" };
         var search = new List<string> { "middle", "", "end" };
 
-        var result = EditApplier.FindInFile(target, search, -1, 0);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 0).StartLine;
 
         Assert.Equal(-1, result);
     }
@@ -322,7 +337,7 @@ public class EditApplierTests
         var target = new List<string> { "var fileContent = new List<string>" };
         var search = new List<string> { "List<string" };
 
-        var result = EditApplier.FindInFile(target, search, -1, 0);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 0).StartLine;
 
         Assert.Equal(0, result);
     }
@@ -336,7 +351,7 @@ public class EditApplierTests
         };
         var search = new List<string> { "fileContent = new List<string" };
 
-        var result = EditApplier.FindInFile(target, search, -1, 0);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 0).StartLine;
 
         Assert.Equal(2, result);
     }
@@ -347,7 +362,7 @@ public class EditApplierTests
         var target = new List<string> { "var fileContent = new List<string>" };
         var search = new List<string> { "list<string" };
 
-        var result = EditApplier.FindInFile(target, search, -1, 0);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 0).StartLine;
 
         Assert.Equal(0, result);
     }
@@ -358,7 +373,7 @@ public class EditApplierTests
         var target = new List<string> { "line1", "var fileContent = new List<string>", "line3" };
         var search = new List<string> { "List<string" };
 
-        var result = EditApplier.FindInFile(target, search, 2, 1);
+        var result = EditApplier.ApplyEdit(target, search, [], 2, 1).StartLine;
 
         Assert.Equal(1, result);
     }
@@ -370,7 +385,7 @@ public class EditApplierTests
         var target = new List<string> { "var fileContent = new List<string>" };
         var search = new List<string> { "st" };
 
-        var result = EditApplier.FindInFile(target, search, -1, 0);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 0).StartLine;
 
         Assert.Equal(0, result);
     }
@@ -381,7 +396,7 @@ public class EditApplierTests
         var target = new List<string> { "var fileContent = new List<string>" };
         var search = new List<string> { "List<int" };
 
-        var result = EditApplier.FindInFile(target, search, -1, 0);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 0).StartLine;
 
         Assert.Equal(-1, result);
     }
@@ -393,7 +408,7 @@ public class EditApplierTests
         var target = new List<string> { "x List<string y", "List<string" };
         var search = new List<string> { "List<string" };
 
-        var result = EditApplier.FindInFile(target, search, -1, 0);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 0).StartLine;
 
         Assert.Equal(1, result);
     }
@@ -412,7 +427,7 @@ public class EditApplierTests
     {
         // The first search line is truncated at the start and the last at the end —
         // the block must still be found via partial boundary matching.
-        var result = EditApplier.FindInFile([.. target], [.. search], -1, 0);
+        var result = EditApplier.ApplyEdit([.. target], [.. search], [], -1, 0).StartLine;
         Assert.Equal(expected, result);
     }
 
@@ -424,7 +439,7 @@ public class EditApplierTests
         var target = new List<string> { "line1", "line2", "line3" };
         var search = new List<string> { "line1 extra", "line2", "line3" };
 
-        var result = EditApplier.FindInFile(target, search, -1, 0);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 0).StartLine;
 
         Assert.Equal(-1, result);
     }
@@ -436,7 +451,7 @@ public class EditApplierTests
         var target = new List<string> { "line1", "line2", "line3" };
         var search = new List<string> { "line1", "line2", "xline3" };
 
-        var result = EditApplier.FindInFile(target, search, -1, 0);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 0).StartLine;
 
         Assert.Equal(-1, result);
     }
@@ -455,7 +470,7 @@ public class EditApplierTests
             "    var x = 1;", "    DoSomething(val"
         };
 
-        var result = EditApplier.FindInFile(target, search, -1, 0);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 0).StartLine;
 
         Assert.Equal(2, result);
     }
@@ -474,7 +489,7 @@ public class EditApplierTests
             "ar someLongVariable = ComputeValue();", "}"
         };
 
-        var result = EditApplier.FindInFile(target, search, -1, 0);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 0).StartLine;
 
         Assert.Equal(2, result);
     }
@@ -487,7 +502,7 @@ public class EditApplierTests
         var target = new List<string> { "a", "b", "}" };
         var search = new List<string> { "b", "} extra" };
 
-        var result = EditApplier.FindInFile(target, search, -1, 0);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 0).StartLine;
 
         Assert.Equal(-1, result);
     }
@@ -499,7 +514,7 @@ public class EditApplierTests
         var target = new List<string> { "alpha", "beta", "gamma", "delta" };
         var search = new List<string> { "alpha", "gam", "delta" };
 
-        var result = EditApplier.FindInFile(target, search, -1, 0);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 0).StartLine;
 
         Assert.Equal(-1, result);
     }
@@ -512,7 +527,7 @@ public class EditApplierTests
         var target = new List<string> { "alpha", "beta", "gamma", "delta" };
         var search = new List<string> { "lpha", "beta", "gamma", "delt" };
 
-        var result = EditApplier.FindInFile(target, search, -1, 0);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 0).StartLine;
 
         Assert.Equal(0, result);
     }
@@ -523,7 +538,7 @@ public class EditApplierTests
         var target = new List<string> { "public void Method()", "{", "    var x = 1;", "}" };
         var search = new List<string> { "    VAR X = 1;", "}" };
 
-        var result = EditApplier.FindInFile(target, search, -1, 0);
+        var result = EditApplier.ApplyEdit(target, search, [], -1, 0).StartLine;
 
         Assert.Equal(2, result);
     }
@@ -539,7 +554,7 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, ["line2"], ["replaced"], -1, 0);
 
-        Assert.Equal(1, result);
+        Assert.Equal(1, result.StartLine);
         Assert.Equal(["line1", "replaced", "line3"], target);
     }
 
@@ -550,7 +565,7 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, ["b", "c"], ["B", "C", "C2"], -1, 0);
 
-        Assert.Equal(1, result);
+        Assert.Equal(1, result.StartLine);
         Assert.Equal(["a", "B", "C", "C2", "d"], target);
     }
 
@@ -564,7 +579,7 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, ["List<string"], ["List<string?"], -1, 0);
 
-        Assert.Equal(0, result);
+        Assert.Equal(0, result.StartLine);
         Assert.Equal(["var fileContent = new List<string?>"], target);
     }
 
@@ -578,7 +593,7 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, ["fileContent = new List<string"], ["fileContent = new List<string?"], -1, 0);
 
-        Assert.Equal(2, result);
+        Assert.Equal(2, result.StartLine);
         Assert.Equal(["public void Method()", "{", "    var fileContent = new List<string?>();", "}"], target);
     }
 
@@ -589,7 +604,7 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, ["list<string"], ["list<string?"], -1, 0);
 
-        Assert.Equal(0, result);
+        Assert.Equal(0, result.StartLine);
         // The matched fragment (original case) is replaced; the untouched prefix keeps its case.
         Assert.Equal(["var x = new list<string?>"], target);
     }
@@ -607,7 +622,7 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, search, replace, -1, 0);
 
-        Assert.Equal(2, result);
+        Assert.Equal(2, result.StartLine);
         // Only the matched suffix was replaced — the leading "    v" of the original line is preserved.
         Assert.Equal(["public void Method()", "{", "    var someLongVariable = ComputeValue(1);", "}"], target);
     }
@@ -626,7 +641,7 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, search, replace, -1, 0);
 
-        Assert.Equal(2, result);
+        Assert.Equal(2, result.StartLine);
         // Only the matched prefix was replaced (identical replacement) — the trailing ")" of
         // the original line is preserved, so the line stays intact.
         Assert.Equal(["public void Method()", "{", "    var x = 1;", "    DoSomething(value);", "}"], target);
@@ -643,7 +658,7 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, search, replace, -1, 0);
 
-        Assert.Equal(2, result);
+        Assert.Equal(2, result.StartLine);
         Assert.Equal(["class A", "{", "        if (x)", "        {", "            DoWork();", "        }", "}"], target);
     }
 
@@ -658,7 +673,7 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, search, replace, -1, 0);
 
-        Assert.Equal(0, result);
+        Assert.Equal(0, result.StartLine);
         Assert.Equal(["var f = new List<int>", "// note>"], target);
     }
 
@@ -673,7 +688,7 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, ["b", "c", "d"], ["B"], -1, 0);
 
-        Assert.Equal(1, result);
+        Assert.Equal(1, result.StartLine);
         // b→B, c и d удалены целиком — никаких пустых строк вместо них.
         Assert.Equal(["a", "B"], target);
     }
@@ -690,7 +705,7 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, search, replace, -1, 0);
 
-        Assert.Equal(2, result);
+        Assert.Equal(2, result.StartLine);
         Assert.Equal(["class A", "{", "    var x = 0;", "}"], target);
     }
 
@@ -706,7 +721,7 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, search, replace, -1, 0);
 
-        Assert.Equal(2, result);
+        Assert.Equal(2, result.StartLine);
         // search[1] без replacement: фрагмент «    DoSomething(val» удалён, suffix «ue);»
         // остался на последней эмитнутой строке (replace[0]).
         Assert.Equal(["public void Method()", "{", "    var x = 1;ue);", "}"], target);
@@ -731,16 +746,16 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, search, replace, -1, 0);
 
-        Assert.Equal(2, result);
+        Assert.Equal(2, result.StartLine);
         Assert.Equal(["public void Method()", "{", "    DoAll();", "}"], target);
     }
 
     [Fact]
     public void ApplyEdit_NullArguments_ReturnsMinusOne()
     {
-        Assert.Equal(-1, EditApplier.ApplyEdit(null!, ["a"], ["b"], -1, 0));
-        Assert.Equal(-1, EditApplier.ApplyEdit(["a"], null, ["b"], -1, 0));
-        Assert.Equal(-1, EditApplier.ApplyEdit(["a"], ["a"], null!, -1, 0));
+        Assert.Equal(EditOutcome.NotFound, EditApplier.ApplyEdit(null!, ["a"], ["b"], -1, 0).Outcome);
+        Assert.Equal(EditOutcome.NotFound, EditApplier.ApplyEdit(["a"], null, ["b"], -1, 0).Outcome);
+        Assert.Equal(EditOutcome.NotFound, EditApplier.ApplyEdit(["a"], ["a"], null!, -1, 0).Outcome);
     }
 
     [Fact]
@@ -754,7 +769,7 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, search, replace, -1, 0);
 
-        Assert.Equal(2, result);
+        Assert.Equal(2, result.StartLine);
         // Обе строки удалены; суффикс «ue);» последней строки сохранён и прикреплён
         // к предыдущему тексту («{»).
         Assert.Equal(["class A", "{ue);", "}"], target);
@@ -771,7 +786,7 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, search, replace, -1, 0);
 
-        Assert.Equal(0, result);
+        Assert.Equal(0, result.StartLine);
         Assert.Equal(["ue);", "}"], target);
     }
 
@@ -786,7 +801,7 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, search, replace, -1, 0);
 
-        Assert.Equal(2, result);
+        Assert.Equal(2, result.StartLine);
         // search[1] без replacement: фрагмент «    DoSomething(val» удалён, префикс
         // (отступ) сохранён, суффикс «ue);» прикреплён к последней эмитнутой строке.
         Assert.Equal(["public void Method()", "{", "    var x = 2;ue);", "}"], target);
@@ -803,7 +818,7 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, search, replace, -1, 0);
 
-        Assert.Equal(2, result);
+        Assert.Equal(2, result.StartLine);
         // Суффикс «value = value;» заменён на «value = 1;», префикс «    Log(» сохранён.
         Assert.Equal(["public void Method()", "{", "    Log(value = 1;", "}"], target);
     }
@@ -814,11 +829,11 @@ public class EditApplierTests
         // Regex special characters in the search text must be treated literally.
         var target = new List<string> { "var re = new Regex(\"a+b\");", "var s = \"[test]$\";" };
 
-        var result = EditApplier.FindInFile(target, ["a+b"], -1, 0);
+        var result = EditApplier.ApplyEdit(target, ["a+b"], [], -1, 0).StartLine;
 
         Assert.Equal(0, result);
 
-        result = EditApplier.FindInFile(target, ["[test]$"], -1, 0);
+        result = EditApplier.ApplyEdit(target, ["[test]$"], [], -1, 0).StartLine;
 
         Assert.Equal(1, result);
     }
@@ -828,7 +843,7 @@ public class EditApplierTests
     {
         var target = new List<string> { "a", "b", "c" };
 
-        var result = EditApplier.FindInFile(target, ["c"], 1000, 5);
+        var result = EditApplier.ApplyEdit(target, ["c"], [], 1000, 5).StartLine;
 
         Assert.Equal(2, result);
     }
@@ -845,7 +860,7 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, search, replace, -1, 0);
 
-        Assert.Equal(2, result);
+        Assert.Equal(2, result.StartLine);
         // The matched prefix was replaced with "    Log(val" and the trailing "ue);" survived.
         Assert.Equal(["public void Method()", "{", "    var x = 1;", "    Log(value);", "}"], target);
     }
@@ -858,7 +873,7 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, ["notfound"], ["x"], -1, 0);
 
-        Assert.Equal(-1, result);
+        Assert.Equal(-1, result.StartLine);
         Assert.Equal(original, target);
     }
 
@@ -869,7 +884,7 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, ["c"], ["C"], 3, 0);
 
-        Assert.Equal(2, result);
+        Assert.Equal(2, result.StartLine);
         Assert.Equal(["a", "b", "C"], target);
     }
 
@@ -883,11 +898,155 @@ public class EditApplierTests
             "var b = new List<string>"
         };
 
-        EditApplier.ApplyEdit(target, ["var a = new List<string"], ["var a = new List<string?>"], -1, 0);
-        var result = EditApplier.ApplyEdit(target, ["var b = new List<string"], ["var b = new List<string?>"], -1, 0);
+        // The search is a PREFIX of each line, so the fragment path replaces only that prefix and
+        // keeps the ">" that follows — the replacement therefore does not repeat the tail.
+        EditApplier.ApplyEdit(target, ["var a = new List<string"], ["var a = new List<int"], -1, 0);
+        var result = EditApplier.ApplyEdit(target, ["var b = new List<string"], ["var b = new List<int"], -1, 0);
 
-        Assert.Equal(1, result);
-        Assert.Equal(["var a = new List<string?>", "var b = new List<string?>"], target);
+        Assert.Equal(1, result.StartLine);
+        Assert.Equal(["var a = new List<int>", "var b = new List<int>"], target);
+    }
+
+    #endregion
+
+    #region Ambiguity and replaceAll
+
+    [Fact]
+    public void ApplyEdit_DuplicateBlocks_RefusesToGuess()
+    {
+        var target = new List<string> { "void A()", "{", "}", "void B()", "{", "}" };
+
+        var result = EditApplier.ApplyEdit(target, ["{", "}"], ["{ }", "}"], -1, 5);
+
+        Assert.Equal(EditOutcome.Ambiguous, result.Outcome);
+        Assert.Equal([1, 4], result.MatchLines);
+        Assert.Equal(-1, result.StartLine);
+        Assert.Equal(["void A()", "{", "}", "void B()", "{", "}"], target);
+    }
+
+    [Fact]
+    public void ApplyEdit_DuplicateBlocks_HintDisambiguates()
+    {
+        var target = new List<string> { "void A()", "{", "}", "void B()", "{", "}" };
+
+        var result = EditApplier.ApplyEdit(target, ["{", "}"], ["{ DoB(); }", "}"], 5, 1);
+
+        Assert.Equal(EditOutcome.Applied, result.Outcome);
+        Assert.Equal(4, result.StartLine);
+        Assert.Equal(["void A()", "{", "}", "void B()", "{ DoB(); }", "}"], target);
+    }
+
+    [Fact]
+    public void ApplyEdit_DuplicateBlocks_HintOutsideEveryMatch_IsStillAmbiguous()
+    {
+        // A hint that lands on nothing must NOT silently degrade to "the first one".
+        var target = new List<string> { "same", "middle", "same" };
+
+        var result = EditApplier.ApplyEdit(target, ["same"], ["SAME"], 20, 2);
+
+        Assert.Equal(EditOutcome.Ambiguous, result.Outcome);
+        Assert.Equal(2, result.MatchCount);
+        Assert.Equal(["same", "middle", "same"], target);
+    }
+
+    [Fact]
+    public void ApplyEdit_ReplaceAll_ReplacesEveryOccurrence()
+    {
+        var target = new List<string> { "x();", "keep", "x();", "x();" };
+
+        var result = EditApplier.ApplyEdit(target, ["x();"], ["y();"], -1, 0, replaceAll: true);
+
+        Assert.Equal(EditOutcome.Applied, result.Outcome);
+        Assert.Equal(3, result.AppliedCount);
+        Assert.Equal(3, result.MatchCount);
+        Assert.Equal(0, result.StartLine);
+        Assert.Equal(["y();", "keep", "y();", "y();"], target);
+    }
+
+    [Fact]
+    public void ApplyEdit_ReplaceAll_FragmentAtColumnZero_KeepsTrailingComments()
+    {
+        // Silent data loss: the search starts the second line while that line continues, so the
+        // old shortcut replaced the WHOLE line — replaceAll reported success (2 of 2) while
+        // " // keep" was gone. `x(); // needed by X` is everywhere.
+        var target = new List<string> { "x();", "x(); // keep", "y();" };
+
+        var result = EditApplier.ApplyEdit(target, ["x();"], ["z();"], -1, 0, replaceAll: true);
+
+        Assert.Equal(EditOutcome.Applied, result.Outcome);
+        Assert.Equal(2, result.AppliedCount);
+        Assert.Equal(2, result.MatchCount);
+        Assert.Equal(["z();", "z(); // keep", "y();"], target);
+    }
+
+    [Fact]
+    public void ApplyEdit_ReplaceAll_MultilineBlocks_AppliedBottomToTop()
+    {
+        var target = new List<string> { "a", "b", "x", "a", "b", "x" };
+
+        var result = EditApplier.ApplyEdit(target, ["a", "b"], ["A", "B"], -1, 0, replaceAll: true);
+
+        Assert.Equal(2, result.AppliedCount);
+        Assert.Equal(["A", "B", "x", "A", "B", "x"], target);
+    }
+
+    [Fact]
+    public void ApplyEdit_ReplaceAll_SingleOccurrence_BehavesLikeNormalEdit()
+    {
+        var target = new List<string> { "only one", "other" };
+
+        var result = EditApplier.ApplyEdit(target, ["only one"], ["replaced"], -1, 0, replaceAll: true);
+
+        Assert.Equal(1, result.AppliedCount);
+        Assert.Equal(["replaced", "other"], target);
+    }
+
+    [Fact]
+    public void ApplyEdit_NotFound_ReportsZeroMatches()
+    {
+        var result = EditApplier.ApplyEdit(["a"], ["missing"], ["b"], -1, 0);
+
+        Assert.Equal(EditOutcome.NotFound, result.Outcome);
+        Assert.Equal(0, result.MatchCount);
+        // Was Assert.False(result.IsApplied) — the same fact read off the outcome, plus the one
+        // thing IsApplied never proved: that nothing landed anywhere.
+        Assert.Equal(-1, result.StartLine);
+    }
+
+    [Fact]
+    public void ApplyEdit_UniqueMatch_ReportsOneMatch()
+    {
+        var result = EditApplier.ApplyEdit(["a", "b"], ["b"], ["B"], -1, 0);
+
+        Assert.Equal(EditOutcome.Applied, result.Outcome);
+        Assert.Equal(1, result.MatchCount);
+        Assert.Equal(1, result.AppliedCount);
+    }
+
+    [Fact]
+    public void ApplyEdit_AllEmptySearchBlock_RemovesEveryMatchedEmptyLine()
+    {
+        // The block matcher accepted TWO consecutive empty lines but only the first one was
+        // removed: the replacement landed a line early and a blank line survived.
+        var target = new List<string> { "a", "", "", "b" };
+
+        var result = EditApplier.ApplyEdit(target, ["", ""], ["x"], -1, 0);
+
+        Assert.Equal(EditOutcome.Applied, result.Outcome);
+        Assert.Equal(1, result.StartLine);
+        Assert.Equal(["a", "x", "b"], target);
+    }
+
+    [Fact]
+    public void ApplyEdit_EmptySearchInFileWithSeveralEmptyLines_IsNotAmbiguous()
+    {
+        // An empty search has no text to clarify with — legacy rule stands (hinted line, else first).
+        var target = new List<string> { "a", "", "b", "" };
+
+        var result = EditApplier.ApplyEdit(target, [""], ["inserted"], -1, 0);
+
+        Assert.Equal(EditOutcome.Applied, result.Outcome);
+        Assert.Equal(1, result.StartLine);
     }
 
     #endregion
@@ -961,7 +1120,7 @@ public class EditApplierTests
             EditApplier.SplitEditText("replaced\n"),
             -1, 0);
 
-        Assert.Equal(1, result);
+        Assert.Equal(1, result.StartLine);
         Assert.Equal(["line1", "replaced", "line3"], target);
     }
 
@@ -976,18 +1135,16 @@ public class EditApplierTests
 
         var result = EditApplier.ApplyEdit(target, ["line2", ""], ["replaced", ""], -1, 0);
 
-        Assert.Equal(-1, result);
+        Assert.Equal(-1, result.StartLine);
         Assert.Equal(["line1", "line2", "line3"], target);
     }
 
     [Fact]
-    public void ApplyEdit_SearchEndingWithNewLine_FragmentPrefix_ReplacesWholeLine()
+    public void ApplyEdit_SearchEndingWithNewLine_FragmentAtColumnZero_KeepsTrailingComment()
     {
-        // BEHAVIOUR PIN, not a bug: a single-line search that starts the target line while
-        // the line continues after it replaces the WHOLE line (the model cut the line's tail).
-        // Before SplitEditText such an oldStr failed loudly (["DoA();", ""] did not match);
-        // now it applies and the tail is dropped. Pinned so that the tail loss stays a
-        // DECISION rather than a surprise of the next change.
+        // REVERSED DECISION: this used to replace the WHOLE line, so the tail ("// keep me?")
+        // was silently dropped. The same search on an INDENTED line already kept the tail, so the
+        // outcome depended on indentation — a column-0 fragment is not a whole line.
         var target = new List<string> { "DoA(); // keep me?" };
 
         var result = EditApplier.ApplyEdit(
@@ -996,8 +1153,8 @@ public class EditApplierTests
             EditApplier.SplitEditText("DoB();\n"),
             -1, 0);
 
-        Assert.Equal(0, result);
-        Assert.Equal(["DoB();"], target);
+        Assert.Equal(0, result.StartLine);
+        Assert.Equal(["DoB(); // keep me?"], target);
     }
 
     [Fact]
@@ -1011,7 +1168,7 @@ public class EditApplierTests
             EditApplier.SplitEditText("A\nB\n"),
             -1, 0);
 
-        Assert.Equal(1, result);
+        Assert.Equal(1, result.StartLine);
         Assert.Equal(["start", "A", "B", "end"], target);
     }
 
@@ -1028,7 +1185,10 @@ public class EditApplierTests
         });
         var utils = new FileUtils(fileSystem);
 
-        var (lines, encoding, separator, hasFinalNewLine) = await utils.ReadFileWithMetadataAsync(path, TestContext.Current.CancellationToken);
+        var fileData = await utils.ReadFileWithMetadataAsync(path, TestContext.Current.CancellationToken);
+        var lines = fileData.Lines;
+        Assert.Equal(FileReadStatus.Ok, fileData.Status);
+        Assert.True(fileData.HasMixedLineEndings);
         Assert.Equal(["alpha", "beta", "gamma", "delta"], lines);
 
         var result = EditApplier.ApplyEdit(
@@ -1037,11 +1197,11 @@ public class EditApplierTests
             EditApplier.SplitEditText("BETA\r\nGAMMA"),
             -1, 0);
 
-        Assert.Equal(1, result);
-        await utils.SaveFileAsync(path, lines, encoding, separator, hasFinalNewLine);
+        Assert.Equal(1, result.StartLine);
+        await utils.SaveFileAsync(path, lines, fileData.Encoding, fileData.Separator, fileData.HasFinalNewLine);
 
         // A mixed file is normalised to the separator detected on read (CRLF here).
-        Assert.Equal("alpha\r\nBETA\r\nGAMMA\r\ndelta", fileSystem.File.ReadAllText(path));
+        Assert.Equal("alpha\r\nBETA\r\nGAMMA\r\ndelta", await fileSystem.File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -1057,15 +1217,128 @@ public class EditApplierTests
         });
         var utils = new FileUtils(fileSystem);
 
-        var (lines, encoding, separator, hasFinalNewLine) = await utils.ReadFileWithMetadataAsync(path, TestContext.Current.CancellationToken);
+        var fileData = await utils.ReadFileWithMetadataAsync(path, TestContext.Current.CancellationToken);
+        var lines = fileData.Lines;
+        Assert.Equal(FileReadStatus.Ok, fileData.Status);
+        Assert.False(fileData.HasMixedLineEndings);
         Assert.Equal(["alpha", "beta"], lines);
-        Assert.True(hasFinalNewLine);
+        Assert.True(fileData.HasFinalNewLine);
 
         var result = EditApplier.ApplyEdit(lines, EditApplier.SplitEditText("beta\n"), EditApplier.SplitEditText("BETA\n"), -1, 0);
-        Assert.Equal(1, result);
+        Assert.Equal(1, result.StartLine);
 
-        await utils.SaveFileAsync(path, lines, encoding, separator, hasFinalNewLine);
-        Assert.Equal("alpha\r\nBETA\r\n", fileSystem.File.ReadAllText(path));
+        await utils.SaveFileAsync(path, lines, fileData.Encoding, fileData.Separator, fileData.HasFinalNewLine);
+        Assert.Equal("alpha\r\nBETA\r\n", await fileSystem.File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public void ApplyEdit_ReplaceAll_SkipsOverlappingCandidates()
+    {
+        // A single-line search inside a repeated block produces candidates that are not distinct
+        // occurrences once the later one was rewritten. The skip is documented as behaviour, but
+        // no fixture overlapped — deleting the guard produced the same output on every other case.
+        var target = new List<string> { "a", "a", "a" };
+
+        var result = EditApplier.ApplyEdit(target, ["a", "a"], ["X"], -1, 0, replaceAll: true);
+
+        Assert.Equal(EditOutcome.Applied, result.Outcome);
+        Assert.Equal(1, result.AppliedCount);
+        Assert.Equal(new[] { "a", "X" }, target);
+    }
+
+    [Fact]
+    public void ApplyEdit_ReplaceAll_DoesNotTurnAnEmptySearchIntoEveryBlankLine()
+    {
+        // `oldStr: "\n"` is a natural spelling of "a blank line" and splits to ONE EMPTY search
+        // line, which `FindAllMatches` matches on EVERY blank line. Letting `replaceAll` have it
+        // rewrote the whole file (200 insertions on a file with 200 blank lines) while reporting
+        // success: an empty search carries no text, so it is settled by the legacy rule FIRST —
+        // the hinted line, otherwise the first one.
+        var target = new List<string> { "", "a", "", "b", "" };
+
+        var result = EditApplier.ApplyEdit(target, EditApplier.SplitEditText("\n"), EditApplier.SplitEditText("// TODO"), 3, 0, replaceAll: true);
+
+        Assert.Equal(EditOutcome.Applied, result.Outcome);
+        Assert.Equal(1, result.AppliedCount);
+        Assert.Equal(new[] { "", "a", "// TODO", "b", "" }, target);
+    }
+
+    [Fact]
+    public void ApplyEdit_EmptySearchWithTwoBlankLinesInTheWindow_UsesTheHintedOne()
+    {
+        // An empty search is never ambiguous, so its hint must not be answered by "is the window
+        // unambiguous": with TWO blank lines inside `hint +/- 5` that question answers null and the
+        // edit jumps to the FIRST blank line of the FILE (line 2 here) instead of the hinted line 8.
+        // The fixture therefore needs two blanks IN THE WINDOW — with one, both implementations
+        // agree and the test proves nothing.
+        var target = new List<string> { "a", "", "b", "c", "d", "e", "f", "", "h", "i", "j", "" };
+
+        var result = EditApplier.ApplyEdit(target, EditApplier.SplitEditText(""), EditApplier.SplitEditText("X"), 10, 5);
+
+        Assert.Equal(EditOutcome.Applied, result.Outcome);
+        Assert.Equal(7, result.StartLine);
+        Assert.Equal(new[] { "a", "", "b", "c", "d", "e", "f", "X", "h", "i", "j", "" }, target);
+    }
+
+    [Fact]
+    public void ApplyEdit_EmptySearchWithoutAHint_UsesTheFirstBlankLine()
+    {
+        var target = new List<string> { "a", "", "b", "", "c" };
+
+        var result = EditApplier.ApplyEdit(target, EditApplier.SplitEditText(""), EditApplier.SplitEditText("X"), -1, 5);
+
+        Assert.Equal(1, result.StartLine);
+        Assert.Equal(new[] { "a", "X", "b", "", "c" }, target);
+    }
+
+    [Fact]
+    public void ApplyEdit_EmptySearch_PicksTheBlankLineNearestTheHint_NotTheFirstInTheWindow()
+    {
+        // The window is +/-5 lines, so "the first candidate inside it" can be a line the model never
+        // pointed at — and the edit still reports success, leaving no signal that it missed.
+        //
+        // THE FIXTURE MATTERS: the two blanks must BOTH sit inside the window, otherwise there is a
+        // single candidate and "first" and "nearest" are the same answer — my first attempt used
+        // blanks at 0-based 1 and 4 with hint 8, and only 4 survived the window (minLine 2), so it
+        // passed against the buggy code. Here the blanks are at 3 and 6, the window is [3, 6] and
+        // the hint is line 8 (0-based 7): first = 3, nearest = 6.
+        var target = new List<string> { "a", "b", "c", "", "d", "e", "", "f", "g", "h", "i", "j", "k" };
+
+        var result = EditApplier.ApplyEdit(target, EditApplier.SplitEditText(""), EditApplier.SplitEditText("X"), 8, 5);
+
+        Assert.Equal(EditOutcome.Applied, result.Outcome);
+        Assert.Equal(6, result.StartLine);
+        Assert.Equal(new[] { "a", "b", "c", "", "d", "e", "X", "f", "g", "h", "i", "j", "k" }, target);
+    }
+
+    [Fact]
+    public void ApplyEdit_EmptySearch_NearerBlankAboveTheHint_Wins()
+    {
+        // The mirror case: the nearest candidate may be ABOVE the hint. A fixed "prefer the first
+        // one at or after the hint" rule would pass the previous test and fail this one.
+        var target = new List<string> { "a", "b", "", "c", "", "d", "e", "f", "g", "h" };
+
+        var result = EditApplier.ApplyEdit(target, EditApplier.SplitEditText(""), EditApplier.SplitEditText("X"), 6, 5);
+
+        Assert.Equal(EditOutcome.Applied, result.Outcome);
+        Assert.Equal(4, result.StartLine);
+        Assert.Equal(new[] { "a", "b", "", "c", "X", "d", "e", "f", "g", "h" }, target);
+    }
+
+    [Fact]
+    public void ApplyEdit_EmptySearch_TieBetweenTwoEquidistantBlanks_PicksTheEarlierOne()
+    {
+        // Determinism on a tie, NOT a guard for the nearest-line rule (this fixture answers the same
+        // both ways — blanks at 1 and 5, hint 0-based 3, both 2 lines away). It is here because the
+        // C# and TS hosts must agree on the same input: an enum order dependency would make them
+        // silently disagree on which blank line gets the text.
+        var target = new List<string> { "a", "", "b", "c", "d", "", "f" };
+
+        var result = EditApplier.ApplyEdit(target, EditApplier.SplitEditText(""), EditApplier.SplitEditText("X"), 4, 5);
+
+        Assert.Equal(EditOutcome.Applied, result.Outcome);
+        Assert.Equal(1, result.StartLine);
+        Assert.Equal(new[] { "a", "X", "b", "c", "d", "", "f" }, target);
     }
 
     #endregion

@@ -664,6 +664,42 @@ namespace UIBlazor.Localization {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to dry run.
+        /// </summary>
+        public static string EditDryRunBadge {
+            get {
+                return ResourceManager.GetString("EditDryRunBadge", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Nothing was written: the edits were only simulated..
+        /// </summary>
+        public static string EditDryRunTooltip {
+            get {
+                return ResourceManager.GetString("EditDryRunTooltip", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to replaceAll {0}/{1} edits.
+        /// </summary>
+        public static string EditReplaceAllBadge {
+            get {
+                return ResourceManager.GetString("EditReplaceAllBadge", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to {0} of {1} edits replace EVERY occurrence of oldStr instead of refusing an ambiguous match. How many occurrences that turned into is reported in the result..
+        /// </summary>
+        public static string EditReplaceAllTooltip {
+            get {
+                return ResourceManager.GetString("EditReplaceAllTooltip", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to empty.
         /// </summary>
         public static string Empty {
@@ -723,6 +759,69 @@ namespace UIBlazor.Localization {
         public static string ExecutePlan {
             get {
                 return ResourceManager.GetString("ExecutePlan", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to append.
+        /// </summary>
+        public static string FileModeAppend {
+            get {
+                return ResourceManager.GetString("FileModeAppend", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to overwrite.
+        /// </summary>
+        public static string FileModeOverwrite {
+            get {
+                return ResourceManager.GetString("FileModeOverwrite", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to prepend.
+        /// </summary>
+        public static string FileModePrepend {
+            get {
+                return ResourceManager.GetString("FileModePrepend", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Mode requested by the call. For an existing file: overwrite replaces the whole file, append and prepend keep the existing bytes. A file that does not exist yet is always created, whatever the mode..
+        /// </summary>
+        public static string FileModeTooltip {
+            get {
+                return ResourceManager.GetString("FileModeTooltip", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to unknown mode.
+        /// </summary>
+        public static string FileModeUnknown {
+            get {
+                return ResourceManager.GetString("FileModeUnknown", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The arguments are still arriving — the mode is not known yet. It is read from the call once they are complete..
+        /// </summary>
+        public static string FileModePendingTooltip {
+            get {
+                return ResourceManager.GetString("FileModePendingTooltip", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The host refuses this call: &apos;{0}&apos; is not a known mode. Use overwrite, append or prepend..
+        /// </summary>
+        public static string FileModeUnknownTooltip {
+            get {
+                return ResourceManager.GetString("FileModeUnknownTooltip", resourceCulture);
             }
         }
         

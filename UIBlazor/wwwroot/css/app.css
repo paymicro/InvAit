@@ -714,8 +714,40 @@ code.hljs {
 }
 
 /* Open file in IDE button (DiffView tool-file-header) */
+/* `min-width: 0` + ellipsis: without them a path has no break opportunity at `/`, so its
+   min-content width eats the header and the BADGE — the informative element — collapses to a
+   padding-only blob first. The path is allowed to truncate; the badge is not. */
 .tool-file-header .tool-file-path {
-    flex-grow: 1;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Mode / replaceAll / dryRun badges: they sit BETWEEN the path and the open button, so they must
+   not grow and must not wrap the header. `align-self: center` keeps them on the path's optical
+   line when the path itself wraps to several lines.
+   They CAN shrink, but only to a bound: an unknown mode prints the model's RAW value, and neither
+   its length nor its shape is bounded — a hallucinated sentence or an object would otherwise push
+   the open-file button out of the header. */
+.tool-file-header .tool-mode-badge,
+.tool-file-header .tool-replaceall-badge,
+.tool-file-header .tool-dryrun-badge {
+    flex-shrink: 1;
+    min-width: 0;
+    max-width: 45%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    align-self: center;
+    font-family: var(--rz-text-font-family);
+    font-weight: 400;
+    white-space: nowrap;
+}
+
+/* The mode argument has not finished arriving (no key yet, or a value that is a prefix of a known
+   one). Deliberately dim rather than warning-coloured: nothing is known yet, so nothing is claimed. */
+.tool-file-header .tool-mode-pending {
+    opacity: 0.55;
 }
 
 .tool-file-header .tool-file-open-btn {

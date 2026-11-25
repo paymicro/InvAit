@@ -97,7 +97,9 @@ internal static class AfUsageHelpers
                 Index = turnAcc.Count,
                 Id = fcc.CallId,
                 Type = "function",
-                Function = new ToolCallFunction { Name = fcc.Name ?? string.Empty }
+                Function = new ToolCallFunction { Name = fcc.Name ?? string.Empty },
+                // Born mid-stream: cleared by PrepareToolsForApprovals once the arguments are final.
+                ArgumentsOpen = true
             };
             turnAcc.Add(existing);
         }

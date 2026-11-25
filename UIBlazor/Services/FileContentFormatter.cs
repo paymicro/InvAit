@@ -80,7 +80,12 @@ public static class FileContentFormatter
                 sb.AppendLine();
             }
 
-            sb.AppendLine($"### {fc.Path}");
+            // Две записи одного файла (разные диапазоны) печатались ОДИНАКОВЫМ заголовком и
+            // выглядели дублем — диапазон в заголовке делает их различимыми.
+            var headerRange = fc.StartLine is { } headerFrom && fc.Lines is { Count: > 0 } headerLines
+                ? $" (lines {headerFrom}-{headerFrom + headerLines.Count - 1})"
+                : string.Empty;
+            sb.AppendLine($"### {fc.Path}{headerRange}");
 
             if (!string.IsNullOrEmpty(fc.Error))
             {
@@ -108,16 +113,17 @@ public static class FileContentFormatter
 
             sb.AppendLine("```");
 
-            // Truncation notice
-            if (fc.TotalLines.HasValue && fc.StartLine is { } sl && sl + fc.Lines.Count - 1 < fc.TotalLines.Value)
+            // Одна ветка вместо двух: `StartLine ?? 1` сводит «начало файла» и «срез с N» к одной
+            // арифметике. Эквивалентность проверена по краям: (null,5,10) → 1-5, (3,5,10) → 3-7,
+            // а (null,10,10) и (3,8,10) → ничего, как и раньше.
+            if (fc.TotalLines is { } total && fc.Lines.Count < total)
             {
-                var nextLine = sl + fc.Lines.Count;
-                sb.AppendLine($"[... File has {fc.TotalLines.Value} lines total. Showing lines {sl}-{sl + fc.Lines.Count - 1}. Use startLine={nextLine} to read the rest ...]");
-            }
-            else if (fc.TotalLines.HasValue && fc.StartLine is null && fc.Lines.Count < fc.TotalLines.Value)
-            {
-                var nextLine = fc.Lines.Count + 1;
-                sb.AppendLine($"[... File has {fc.TotalLines.Value} lines total. Showing lines 1-{fc.Lines.Count}. Use startLine={nextLine} to read the rest ...]");
+                var shownFrom = fc.StartLine ?? 1;
+                var shownTo = shownFrom + fc.Lines.Count - 1;
+                if (shownTo < total)
+                {
+                    sb.AppendLine($"[... File has {total} lines total. Showing lines {shownFrom}-{shownTo}. Use startLine={shownTo + 1} to read the rest ...]");
+                }
             }
         }
 

@@ -1,3 +1,4 @@
+@using System.Diagnostics
 @inject IJSRuntime Js
 @inject IVsBridge VsBridge
 @inject NotificationService NotificationService
@@ -8,6 +9,33 @@
     {
         <div class="tool-file-header">
             <span class="tool-file-path">@FilePath</span>
+            @* The mode is part of the CALL, not of the result: without it a create_file block is
+               indistinguishable from an append, and the only place the mode was visible was the raw
+               JSON. The badge resolves the same aliases the host does (FileWriteModeNames), so it
+               cannot claim a mode the host would refuse. It is ALWAYS shown — overwrite is the
+               default AND the destructive mode, so silence would hide the one case worth warning
+               about. *@
+            @* While the arguments are still streaming, `mode` may simply not have arrived yet, or may
+               have arrived half-written (`"app"` is what `append` looks like at a chunk boundary).
+               Both resolve to overwrite once the call runs, but showing the destructive warning —
+               or the refusal the host would give for an unknown mode — for a request that will end
+               as `append` is a lie about it, so the badge stays neutral until they are final. *@
+            @if (_modeResolved)
+            {
+                <Tooltip Text="@_modeTooltip">
+                    <RadzenBadge BadgeStyle="@_modeBadgeStyle" Variant="Variant.Text" class="tool-mode-badge">
+                        <i class="@_modeIcon"></i> @_modeBadge
+                    </RadzenBadge>
+                </Tooltip>
+            }
+            else
+            {
+                <Tooltip Text="@SharedResource.FileModePendingTooltip">
+                    <RadzenBadge BadgeStyle="BadgeStyle.Base" Variant="Variant.Text" class="tool-mode-badge tool-mode-pending">
+                        <i class="fa-solid fa-ellipsis"></i>
+                    </RadzenBadge>
+                </Tooltip>
+            }
             <button class="tool-file-open-btn" @onclick="OpenFileInIdeAsync"
                     title="@SharedResource.OpenFileInIde">
                 <i class="fas fa-external-link-alt"></i>
@@ -24,6 +52,28 @@
     [Parameter] public string Content { get; set; } = string.Empty;
 
     [Parameter] public string FilePath { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The raw <c>mode</c> argument of the call. Null/empty means <c>overwrite</c> — the same
+    /// default the host applies, so a call that omitted the argument is labelled, not left blank.
+    /// </summary>
+    [Parameter] public string? Mode { get; set; }
+
+    /// <summary>
+    /// Whether the call actually carried a <c>mode</c> argument. <c>Mode == null</c> alone cannot
+    /// tell "not streamed yet" from "explicitly null", and both resolve to <c>overwrite</c> — but
+    /// only the second one is a mode the call asked for.
+    /// </summary>
+    [Parameter] public bool ModeReceived { get; set; } = true;
+
+    /// <summary>
+    /// Whether the call's arguments can still grow. They are repaired to valid JSON at EVERY chunk,
+    /// so a value cut by the chunk boundary is a legal SHORT string: <c>"app"</c> is what
+    /// <c>append</c> looks like half-way through. While this is <c>false</c>, an absent or partial
+    /// value renders as "still arriving"; once the arguments are final the same value means what it
+    /// says — absent is <c>overwrite</c> (the host default) and a wrong value is a refusal.
+    /// </summary>
+    [Parameter] public bool ArgumentsFinal { get; set; } = true;
 
     private readonly string _blockId = $"nf-{Guid.NewGuid():N}";
     private string? _lastHighlightedContent;
@@ -51,9 +101,80 @@
 
     private string CodeCssClass => string.IsNullOrEmpty(_language) ? "hljs" : $"hljs language-{_language}";
 
+    private string _modeBadge = string.Empty;
+    private string _modeTooltip = string.Empty;
+    private BadgeStyle _modeBadgeStyle = BadgeStyle.Base;
+    private string _modeIcon = string.Empty;
+    private bool _modeResolved;
+
+    /// <summary>
+    /// Resolves the mode ONCE per parameter change instead of once per property read: the four
+    /// badge facets below all depend on the same alias lookup, and calling it from each of them
+    /// meant four lookups per render.
+    /// <para>
+    /// An unknown mode is deliberately NOT labelled "overwrite": the host rejects the whole call
+    /// (<c>Unknown mode '...'</c>), so that label would be a lie about what happened. The raw value
+    /// is shown instead — exactly what the model needs to see to fix its own call.
+    /// </para>
+    /// </summary>
+    private void ResolveModeBadge()
+    {
+        // "Has not arrived" and "has not FINISHED arriving" are one state for this badge: while the
+        // arguments are still growing, the absence of `mode` only means `overwrite` after the call
+        // ran, and a value that is a strict prefix of a known mode is a value still being written.
+        if (!ArgumentsFinal && (!ModeReceived || FileWriteModeNames.IsPrefixOfAKnownMode(Mode)))
+        {
+            _modeResolved = false;
+            return;
+        }
+
+        _modeResolved = true;
+
+        if (!FileWriteModeNames.TryNormalize(Mode, out var normalized))
+        {
+            _modeBadge = $"{SharedResource.FileModeUnknown}: {normalized}";
+            _modeTooltip = string.Format(SharedResource.FileModeUnknownTooltip, normalized);
+            _modeBadgeStyle = BadgeStyle.Danger;
+            _modeIcon = "fa-solid fa-triangle-exclamation";
+            return;
+        }
+
+        _modeTooltip = SharedResource.FileModeTooltip;
+
+        switch (normalized)
+        {
+            case FileWriteModeNames.Append:
+                _modeBadge = SharedResource.FileModeAppend;
+                // Append/prepend keep the existing bytes; overwrite deletes them, so only it warns.
+                _modeBadgeStyle = BadgeStyle.Success;
+                _modeIcon = "fa-solid fa-plus";
+                break;
+            case FileWriteModeNames.Prepend:
+                _modeBadge = SharedResource.FileModePrepend;
+                _modeBadgeStyle = BadgeStyle.Success;
+                _modeIcon = "fa-solid fa-arrow-up";
+                break;
+            case FileWriteModeNames.Overwrite:
+                _modeBadge = SharedResource.FileModeOverwrite;
+                _modeBadgeStyle = BadgeStyle.Warning;
+                _modeIcon = "fa-solid fa-file-pen";
+                break;
+            default:
+                // Unreachable: TryNormalize returns exactly the three canonical names. It is NOT a
+                // silent `overwrite` fallback on purpose — a fourth mode added to the alias table
+                // would otherwise be badged as the destructive default with no failing test.
+                Debug.Fail($"Unhandled create_file mode '{normalized}'");
+                _modeBadge = normalized;
+                _modeBadgeStyle = BadgeStyle.Danger;
+                _modeIcon = "fa-solid fa-triangle-exclamation";
+                break;
+        }
+    }
+
     protected override void OnParametersSet()
     {
         _language = GetHighlightLanguage(FilePath);
+        ResolveModeBadge();
     }
 
     /// <summary>

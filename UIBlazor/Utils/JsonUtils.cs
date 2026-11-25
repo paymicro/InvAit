@@ -119,6 +119,95 @@ public static class JsonUtils
         }
     }
 
+    /// <summary>
+    /// Reads a boolean argument with the SAME tolerance as the host
+    /// (<c>ToolCore/JsonUtils.GetBool</c>: <c>true</c>/<c>1</c>/<c>yes</c> and
+    /// <c>false</c>/<c>0</c>/<c>no</c>, case-insensitive).
+    /// <para>
+    /// The tool schema is strict, so a string <c>"yes"</c> is formally a violation — but the host
+    /// ACCEPTS it and performs the call. A UI that read it strictly would throw, and
+    /// <c>DeserializeAnonymousType</c> answers a throw by returning ALL defaults: the block would
+    /// lose its path and its diff exactly when the user is asked to approve the call. Tolerance here
+    /// is not laxity, it is agreement with the host about what the call means.
+    /// </para>
+    /// </summary>
+    public static bool GetBool(this JsonElement? element, bool defaultValue = false)
+    {
+        if (element is not { } value)
+        {
+            return defaultValue;
+        }
+
+        var text = value.ValueKind switch
+        {
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Number => value.GetRawText(),
+            _ => null
+        };
+
+        return text?.ToLowerInvariant() switch
+        {
+            "true" or "1" or "yes" => true,
+            "false" or "0" or "no" => false,
+            _ => defaultValue
+        };
+    }
+
+    /// <summary>
+    /// Reads an integer argument from a raw JSON value.
+    /// <para>
+    /// Tolerant in the one direction that keeps a block readable: a JSON number, or a string holding
+    /// one. The host deserialises <c>edits</c> strictly and REFUSES <c>"approximateLine": "12"</c>, so
+    /// this is not agreement about the call — it is the difference between showing the diff and
+    /// showing an empty box while the refusal is explained in the result.
+    /// </para>
+    /// </summary>
+    public static int? GetInt(this JsonElement? element)
+    {
+        if (element is not { } value)
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number))
+        {
+            return number;
+        }
+
+        return value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), out var parsed)
+            ? parsed
+            : null;
+    }
+
+    /// <summary>
+    /// Reads a string argument from a raw JSON value.
+    /// <para>
+    /// A JSON <c>null</c> yields <c>null</c> — deliberately NOT the host's <c>string.Empty</c>, so a
+    /// caller can tell an explicit null from a missing argument. For <c>mode</c> the difference does
+    /// not matter (both resolve to <c>overwrite</c>); for anything with "absent vs empty" semantics
+    /// it does, which is why this is stated rather than glossed over.
+    /// </para>
+    /// <para>
+    /// Any other non-string kind is echoed as its raw text.
+    /// </para>
+    /// </summary>
+    public static string? GetString(this JsonElement? element)
+    {
+        if (element is not { } value)
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Null or JsonValueKind.Undefined => null,
+            _ => value.GetRawText()
+        };
+    }
+
     public static T? GetObject<T>(this JsonElement jsonElement) where T : class
     {
         try

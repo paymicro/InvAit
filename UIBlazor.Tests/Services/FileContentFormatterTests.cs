@@ -303,4 +303,66 @@ public class FileContentFormatterTests
     }
 
     #endregion
+
+    #region Range header and one truncation branch
+
+    [Fact]
+    public void Format_SameFileTwoRanges_RendersDistinguishableHeaders()
+    {
+        // Regression: the dedup key used to be the path ALONE, so the second range of one file was
+        // dropped before formatting. Even once both entries arrive, two identical `### path`
+        // headers read as a duplicate of one file rather than as two slices — hence the range.
+        var result = FileContentFormatter.Format(
+        [
+            new() { Path = "Big.cs", Lines = ["line1", "line2"] },
+            new() { Path = "Big.cs", Lines = ["line10", "line11"], StartLine = 10 }
+        ]);
+
+        var headers = result
+            .Split('\n')
+            .Select(line => line.TrimEnd('\r'))
+            .Where(line => line.StartsWith("### ", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.Equal(new[] { "### Big.cs", "### Big.cs (lines 10-11)" }, headers);
+    }
+
+    [Fact]
+    public void Format_TruncationWithoutStartLine_ShowsOneToCount()
+    {
+        var result = FileContentFormatter.Format(
+            [new() { Path = "Big.cs", Lines = ["a", "b"], TotalLines = 10 }]);
+
+        Assert.Contains("Showing lines 1-2", result);
+        Assert.Contains("Use startLine=3", result);
+    }
+
+    [Fact]
+    public void Format_TruncationWithStartLine_ShowsTheSlice()
+    {
+        var result = FileContentFormatter.Format(
+            [new() { Path = "Big.cs", Lines = ["a", "b"], StartLine = 3, TotalLines = 10 }]);
+
+        Assert.Contains("Showing lines 3-4", result);
+        Assert.Contains("Use startLine=5", result);
+    }
+
+    [Theory]
+    [InlineData(null, 2, 2)] // slice ends exactly at the last line
+    [InlineData(3, 2, 4)]   // a later slice ends exactly at the last line
+    public void Format_NoNotice_WhenTheSliceReachesTheEnd(int? startLine, int lineCount, int totalLines)
+    {
+        // Both SHAPES that reach the end. The two old branches handled these separately, and the
+        // collapsed branch must keep both silent — a notice offering "the rest" of a complete file
+        // sends the model on a pointless second read.
+        var lines = Enumerable.Range(0, lineCount).Select(i => $"l{i}").ToArray();
+
+        var result = FileContentFormatter.Format(
+            [new() { Path = "Big.cs", Lines = [.. lines], StartLine = startLine, TotalLines = totalLines }]);
+
+        Assert.DoesNotContain("File has", result);
+        Assert.DoesNotContain("Use startLine=", result);
+    }
+
+    #endregion
 }

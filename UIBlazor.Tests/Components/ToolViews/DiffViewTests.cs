@@ -475,4 +475,119 @@ public class DiffViewTests : BunitContext
     }
 
     #endregion
+
+    #region Call-argument badges
+
+    [Fact]
+    public void ReplaceAllBadge_IsAbsent_WhenNoEditReplacesAll()
+    {
+        var cut = Render<DiffView>(parameters => parameters
+            .Add(p => p.FilePath, "a.cs")
+            .Add(p => p.Edits, new[] { CreateEdit("a", "b") }));
+
+        Assert.Throws<ElementNotFoundException>(() => cut.Find(".tool-replaceall-badge"));
+    }
+
+    [Fact]
+    public void ReplaceAllBadge_CountsOnlyTheEditsThatCarryTheFlag()
+    {
+        // A batch may mix both kinds, so the badge is a COUNT: a plain flag would hide which
+        // edit replaces everything and would read as "the whole batch replaces all".
+        var cut = Render<DiffView>(parameters => parameters
+            .Add(p => p.FilePath, "a.cs")
+            .Add(p => p.Edits, new[]
+            {
+                new DiffEdit { OldStr = "a", NewStr = "b", ReplaceAll = true },
+                CreateEdit("c", "d"),
+                new DiffEdit { OldStr = "e", NewStr = "f", ReplaceAll = true }
+            }));
+
+        // The denominator is the point: `×2` alone read as "2 replacements" next to a result that
+        // said "4 replacements". The badge counts EDITS, so it must say so.
+        Assert.Contains("2/3", cut.Find(".tool-replaceall-badge").TextContent);
+    }
+
+    [Fact]
+    public void ReplaceAllBadge_ShowsTheEditRatioNotAReplacementCount()
+    {
+        // The exact confusion the `×N` label caused: a call whose FIRST edit replaces all and whose
+        // second edit is a plain one reported `×1`, while the tool result read "1/2 edits,
+        // 4 replacements". The occurrence count is a property of the FILE and is unknown until the
+        // host runs the call, so the badge cannot show it — it must not LOOK like it does.
+        var cut = Render<DiffView>(parameters => parameters
+            .Add(p => p.FilePath, "a.cs")
+            .Add(p => p.Edits, new[]
+            {
+                new DiffEdit { OldStr = "a", NewStr = "A", ReplaceAll = true },
+                CreateEdit("TARGET", "DONE")
+            }));
+
+        var text = cut.Find(".tool-replaceall-badge").TextContent;
+        Assert.Contains("1/2", text);
+        Assert.DoesNotContain("×", text);
+        Assert.Contains("edits", text);
+    }
+
+    [Fact]
+    public void ReplaceAllBadge_TreatsNullAsFalse()
+    {
+        // DiffEdit.ReplaceAll is a bool? because the schema allows `"replaceAll": null`.
+        // Null means false, so it must not be counted.
+        var cut = Render<DiffView>(parameters => parameters
+            .Add(p => p.FilePath, "a.cs")
+            .Add(p => p.Edits, new[] { new DiffEdit { OldStr = "a", NewStr = "b", ReplaceAll = null } }));
+
+        Assert.Throws<ElementNotFoundException>(() => cut.Find(".tool-replaceall-badge"));
+    }
+
+    [Fact]
+    public void DryRunBadge_IsShownOnlyWhenTheCallIsADryRun()
+    {
+        // A successful-looking diff is otherwise indistinguishable from a real write.
+        var dry = Render<DiffView>(parameters => parameters
+            .Add(p => p.FilePath, "a.cs")
+            .Add(p => p.Edits, new[] { CreateEdit("a", "b") })
+            .Add(p => p.DryRun, true));
+
+        // Warning, not Info: the badge says NOTHING was written, and "Info" reads as a neutral
+        // remark about a completed action. Pinned so the style cannot silently regress.
+        Assert.Contains("rz-badge-warning", dry.Find(".tool-dryrun-badge").ClassList);
+
+        var real = Render<DiffView>(parameters => parameters
+            .Add(p => p.FilePath, "a.cs")
+            .Add(p => p.Edits, new[] { CreateEdit("a", "b") }));
+
+        Assert.Throws<ElementNotFoundException>(() => real.Find(".tool-dryrun-badge"));
+    }
+
+    [Fact]
+    public void Badges_AreNotRendered_WithoutFilePath()
+    {
+        // Both badges live in the file header, which only exists when a path is present.
+        var cut = Render<DiffView>(parameters => parameters
+            .Add(p => p.FilePath, string.Empty)
+            .Add(p => p.Edits, new[] { new DiffEdit { OldStr = "a", NewStr = "b", ReplaceAll = true } })
+            .Add(p => p.DryRun, true));
+
+        Assert.Empty(cut.FindAll(".tool-replaceall-badge"));
+        Assert.Empty(cut.FindAll(".tool-dryrun-badge"));
+    }
+
+    [Fact]
+    public void NullOldStrAndNewStr_StillRenderTheHeaderAndTheBlock()
+    {
+        // `DiffEdit.OldStr`/`NewStr` are non-nullable with `string.Empty` initialisers, but STJ sets
+        // them to null when the payload says `"oldStr": null`. Reading `.Length` on them threw inside
+        // OnParametersSet, and the user saw NEITHER the diff, nor the path, nor a reason — only an
+        // empty box above the approval buttons.
+        var cut = Render<DiffView>(parameters => parameters
+            .Add(p => p.FilePath, "src/App.cs")
+            .Add(p => p.Edits, new[] { new DiffEdit { OldStr = null!, NewStr = null! } }));
+
+        Assert.Contains("src/App.cs", cut.Markup);
+        // The diff BODY has to exist too: the defect blanked the whole block, not just the header.
+        Assert.Single(cut.FindAll(".diff-pane"));
+    }
+
+    #endregion
 }

@@ -9,6 +9,10 @@
 import * as sinon from 'sinon';
 import * as path from 'path';
 
+// Imported DIRECTLY and before the `Module._load` hook below, so this is the genuine 'fs' module
+// object (a namespace import would hand back a copy whose stubbing is inert).
+import fs = require('fs');
+
 // ---------------------------------------------------------------------------
 // Stubs
 // ---------------------------------------------------------------------------
@@ -61,6 +65,62 @@ export { toolHandlers };
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Points BOTH `fs` module identities at one virtual tree and returns a handle on what the code
+ * under test did with it.
+ *
+ * WHY BOTH: the toolHandlers keep a late-bound view of the `fs` object they captured at load time,
+ * and which object that is depends on the order mocha loads the test files — this file swaps 'fs'
+ * for `fsStub` before importing the toolHandlers barrel, so they are usually bound to `fsStub`, but
+ * not guaranteed. Patching both keeps a test independent of that order.
+ *
+ * `files` is keyed by absolute path (build the keys with `path.join(ROOT, ...)`); a key that is not
+ * in the map reads as ENOENT, exactly like the real module.
+ */
+export interface VirtualFsTree {
+    /** Every path handed to `readFileSync`, in order. */
+    reads: string[];
+    /** Every `writeFileSync` with its exact bytes; the tree is updated, so a later read sees them. */
+    writes: { path: string; bytes: Buffer }[];
+}
+
+export function stubFsTree(files: Record<string, Buffer | string>): VirtualFsTree {
+    const tree: VirtualFsTree = { reads: [], writes: [] };
+
+    const exists = (p: unknown): boolean => Object.prototype.hasOwnProperty.call(files, String(p));
+
+    const read = (p: unknown): Buffer | string => {
+        const key = String(p);
+        tree.reads.push(key);
+        if (!Object.prototype.hasOwnProperty.call(files, key)) {
+            const error = new Error(`ENOENT: no such file or directory, open '${key}'`) as Error & { code?: string };
+            error.code = 'ENOENT';
+            throw error;
+        }
+        return files[key];
+    };
+
+    const write = (p: unknown, data: unknown): void => {
+        const bytes = Buffer.from(data as Buffer);
+        tree.writes.push({ path: String(p), bytes });
+        files[String(p)] = bytes;
+    };
+
+    const mkdir = (): undefined => undefined;
+
+    (fsStub.existsSync as sinon.SinonStub).callsFake(exists);
+    (fsStub.readFileSync as sinon.SinonStub).callsFake(read);
+    (fsStub.writeFileSync as sinon.SinonStub).callsFake(write);
+    (fsStub.mkdirSync as sinon.SinonStub).callsFake(mkdir);
+
+    (sinon.stub(fs, 'existsSync') as unknown as sinon.SinonStub).callsFake(exists);
+    (sinon.stub(fs, 'readFileSync') as unknown as sinon.SinonStub).callsFake(read);
+    (sinon.stub(fs, 'writeFileSync') as unknown as sinon.SinonStub).callsFake(write);
+    (sinon.stub(fs, 'mkdirSync') as unknown as sinon.SinonStub).callsFake(mkdir);
+
+    return tree;
+}
 
 /** Create a fake fs.Dirent-like object. */
 export function dirent(name: string, isDir: boolean) {

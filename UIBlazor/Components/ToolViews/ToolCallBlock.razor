@@ -23,28 +23,41 @@
         </HeaderTemplate>
         <ChildContent>
 
-        @if (ToolCall.Function.Arguments.Length > 2) // json object: {}
+        @if (HasArguments())
         {
             <div class="tool-call-args">
                 @if (ToolCall.Function.Name == BuiltInToolEnum.EditFile)
                 {
-                    var result = new
+                    @* Every field is read from the raw JSON, and deliberately NOT through
+                       DeserializeAnonymousType: one wrong type anywhere inside `edits` made that call
+                       throw, and it answers a throw by returning ALL DEFAULTS — the user was then
+                       asked to approve an edit with no path and no diff. Deserializing into an
+                       anonymous type buys nothing here anyway: the host is the one that validates,
+                       and the view's job is to show what the call MEANS. *@
+                    <DiffView FilePath="@(ReadArgument("filePath").GetString() ?? string.Empty)"
+                              Edits="@ReadEdits()"
+                              DryRun="@ReadArgument("dryRun").GetBool()" />
+                    @* `edits` that is not an array at all (an object, a string, a number) yields no
+                       edits, and DiffView would then render the path over an EMPTY body while the
+                       approve/reject buttons are already live — the same blank approval the strict
+                       deserialize used to produce. Show the raw payload next to it: the user must be
+                       able to read what they are approving. *@
+                    @if (HasUnusableEdits())
                     {
-                        filePath = default(string),
-                        edits = default(DiffEdit[])
-                    };
-                    result = JsonUtils.DeserializeAnonymousType(ToolCall.Function.Arguments, result);
-                    <DiffView FilePath="@(result.filePath ?? string.Empty)" Edits="@(result.edits ?? [])" />
+                        <JsonArgsView Args="@ToolCall.Function.Arguments" />
+                    }
                 }
                 else if (ToolCall.Function.Name == BuiltInToolEnum.CreateFile)
                 {
-                    var result = new
-                    {
-                        filePath = default(string),
-                        content = default(string)
-                    };
-                    result = JsonUtils.DeserializeAnonymousType(ToolCall.Function.Arguments, result);
-                    <ToolCreateNewFile FilePath="@(result.filePath ?? string.Empty)" Content="@(result.content ?? string.Empty)" />
+                    @* Same reads, same reason. ModeReceived separates "not streamed yet" from
+                       "explicitly null": both resolve to overwrite, but only the second one is a
+                       mode the call actually asked for. ArgumentsFinal tells the view when a
+                       partial value is a partial VALUE rather than a wrong one. *@
+                    var modeArgument = ReadArgument("mode");
+                    <ToolCreateNewFile FilePath="@(ReadArgument("filePath").GetString() ?? string.Empty)"
+                                       Content="@(ReadArgument("content").GetString() ?? string.Empty)"
+                                       Mode="@modeArgument.GetString()" ModeReceived="@(modeArgument is not null)"
+                                       ArgumentsFinal="@(!ToolCall.ArgumentsOpen)" />
                 }
                 else if (ToolCall.Function.Name == BasicEnum.AskUser)
                 {
@@ -160,33 +173,49 @@
     private int _lastSubAgentCount = -1;
     private int _lastApprovalStatus = -1;
     private bool _lastHasResult;
-    private int _lastArgsLength = -1;
+    private bool _lastArgumentsOpen;
+    private string? _lastArgs;
 
     /// <summary>
     /// Structural changes (status, attach, approval, RESULT) render immediately; streamed
-    /// args growth is throttled to ~10fps. Args growth MUST be in the snapshot: ToolCall is
+    /// args growth is throttled to ~10fps. Args MUST be in the snapshot: ToolCall is
     /// a mutable reference (arguments grow inside it), so the parent cascade formally passes
     /// unchanged parameters — without the args check ShouldRender would return false, the
-    /// block would not re-render, the args would never be re-deserialized and DiffView
+    /// block would not re-render, the args would never be re-read and DiffView
     /// would never receive the new Edits (the diff showed only the final result).
+    /// <para>
+    /// The whole string is compared, not its length: a transport may REPLACE the arguments with a
+    /// cleaned version of the same length (trailing junk stripped, quotes normalised), and a
+    /// length-only snapshot left every badge computed from the old text on screen.
+    /// </para>
     /// </summary>
     protected override bool HasChanges()
     {
         var status = (int)ToolCall.ApprovalStatus;
         var count = ToolCall.SubAgents?.Count ?? 0;
         var hasResult = ToolCall.Result is not null;
-        var argsLength = ToolCall.Function.Arguments.Length;
+        // `ArgumentsOpen` MUST be part of the snapshot. It is the ONLY input that decides whether the
+        // mode badge is a fact or a "still arriving" ellipsis, and the transition that clears it
+        // (PrepareToolsForApprovals) usually changes nothing else: the approval status stays whatever
+        // it already was (Approved is the DEFAULT) and the cleaned arguments string is often
+        // value-equal to the streamed one. Without this field the transition produced no render at
+        // all, and the destructive `overwrite` badge appeared only when the RESULT arrived — i.e.
+        // after the file had already been truncated.
+        var open = ToolCall.ArgumentsOpen;
+        var args = ToolCall.Function.Arguments;
 
         var changed = status != _lastApprovalStatus ||
                       count != _lastSubAgentCount ||
                       hasResult != _lastHasResult ||
-                      argsLength != _lastArgsLength;
+                      open != _lastArgumentsOpen ||
+                      !string.Equals(args, _lastArgs, StringComparison.Ordinal);
         if (changed)
         {
             _lastApprovalStatus = status;
             _lastSubAgentCount = count;
             _lastHasResult = hasResult;
-            _lastArgsLength = argsLength;
+            _lastArgumentsOpen = open;
+            _lastArgs = args;
         }
         return changed;
     }
@@ -196,7 +225,8 @@
         _lastApprovalStatus = (int)ToolCall.ApprovalStatus;
         _lastSubAgentCount = ToolCall.SubAgents?.Count ?? 0;
         _lastHasResult = ToolCall.Result is not null;
-        _lastArgsLength = ToolCall.Function.Arguments.Length;
+        _lastArgumentsOpen = ToolCall.ArgumentsOpen;
+        _lastArgs = ToolCall.Function.Arguments;
     }
 
     private List<SubAgentMessage> _subAgents = [];
@@ -236,6 +266,165 @@
         });
 
     private string DisplayName => ToolManager.GetTool(ToolCall.Function.Name)?.DisplayName ?? ToolCall.Function.Name;
+
+    /// <summary>True when <c>edits</c> is present but is not a JSON array, so no diff can be built.</summary>
+    private bool HasUnusableEdits()
+    {
+        // NOT merely "is not an array": an ABSENT field, an EMPTY array and an array of non-objects
+        // all produce the same blank body, and the host refuses all three ("Failed to read 'edits'" /
+        // "'edits' is empty: nothing to apply"). The guard used to name only the object/string/number
+        // shapes, so the three that render identically slipped through — the user was asked to approve
+        // an edit they could not see.
+        if (ReadArgument("edits") is not { } edits)
+            return true;
+
+        if (edits.ValueKind != JsonValueKind.Array)
+            return true;
+
+        if (edits.GetArrayLength() == 0)
+            return true;
+
+        foreach (var element in edits.EnumerateArray())
+        {
+            if (element.ValueKind != JsonValueKind.Object)
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// True when the argument section must be rendered at all. The JSON-repair path substitutes
+    /// <c>{}</c> when nothing in the stream could be repaired, and <c>"{}"</c> has length 2 — so a raw
+    /// length test made the whole section disappear, leaving "Calling tool: Edit File" over live
+    /// Approve/Reject buttons with no path, no diff and no raw payload. The file tools always render:
+    /// an approval gate must never be blank.
+    /// </summary>
+    private bool HasArguments()
+        => ToolCall.Function.Arguments.Length > 2
+           || ToolCall.Function.Name == BuiltInToolEnum.EditFile
+           || ToolCall.Function.Name == BuiltInToolEnum.CreateFile;
+
+    /// <summary>
+    /// Reads the <c>edits</c> array field by field, tolerantly.
+    /// <para>
+    /// A type the host would refuse (<c>"approximateLine": "12"</c>, a <c>null</c> element, a
+    /// missing <c>newStr</c>) must still render as a diff with a visible reason, not as an empty
+    /// box: the approval buttons are rendered OUTSIDE this block, so a blank body asks the user to
+    /// approve an edit they cannot see. An element that is not an object becomes an empty edit —
+    /// the count has to stay honest, because the <c>replaceAll</c> badge is a ratio over it.
+    /// </para>
+    /// </summary>
+    private DiffEdit[] ReadEdits()
+    {
+        if (ReadArgument("edits") is not { ValueKind: JsonValueKind.Array } array)
+        {
+            return [];
+        }
+
+        var edits = new List<DiffEdit>(array.GetArrayLength());
+        foreach (var element in array.EnumerateArray())
+        {
+            edits.Add(new DiffEdit
+            {
+                OldStr = ReadProperty(element, "oldStr").GetString() ?? string.Empty,
+                NewStr = ReadProperty(element, "newStr").GetString() ?? string.Empty,
+                ApproximateLine = ReadProperty(element, "approximateLine").GetInt(),
+                ReplaceAll = ReadProperty(element, "replaceAll").GetBool()
+            });
+        }
+
+        return edits.ToArray();
+    }
+
+    /// <summary>
+    /// Property of a JSON object, or null when the value is not an object or lacks the key.
+    /// <para>
+    /// Case-insensitive on the second pass, deliberately: the strict deserialize this replaced set
+    /// <c>PropertyNameCaseInsensitive</c>, and the arguments are re-serialised from the model's OWN
+    /// spelling — a provider sending <c>OldStr</c> where the schema says <c>oldStr</c> used to render
+    /// and would otherwise silently show an empty diff.
+    /// </para>
+    /// </summary>
+    private static JsonElement? ReadProperty(JsonElement element, string name)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        if (element.TryGetProperty(name, out var exact))
+        {
+            return exact;
+        }
+
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                return property.Value;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Reads one top-level argument from the call's raw JSON without deserializing the whole payload.
+    /// Returns null when the payload is not a JSON object or has no such property, which is what the
+    /// views treat as "the argument was not sent".
+    /// <para>
+    /// The parse is CACHED for as long as the arguments string is the same INSTANCE: every chunk
+    /// assigns a new string, so this is one <see cref="JsonDocument"/> per render instead of one per
+    /// field. With three reads per block and a 100 KB `content` the uncached version parsed the whole
+    /// payload three times per frame at 10 fps. `Clone()` is gone with it — `GetString` and the other
+    /// readers materialise their value, so nothing has to outlive the document.
+    /// </para>
+    /// </summary>
+    private JsonElement? ReadArgument(string name)
+        => ReadProperty(ToolCall.Function.Arguments, name);
+
+    private JsonDocument? _argsDocument;
+    private string? _argsSource;
+
+    /// <summary>Property of the call's raw JSON, parsed at most once per distinct arguments string.</summary>
+    private JsonElement? ReadProperty(string json, string name)
+    {
+        var document = ArgsDocument(json);
+        return document is null ? null : ReadProperty(document.RootElement, name);
+    }
+
+    private JsonDocument? ArgsDocument(string json)
+    {
+        if (_argsDocument is not null && ReferenceEquals(_argsSource, json))
+        {
+            return _argsDocument;
+        }
+
+        ResetArgsDocument();
+        _argsSource = json;
+
+        try
+        {
+            _argsDocument = JsonDocument.Parse(json);
+        }
+        catch (JsonException)
+        {
+            // Arguments are repaired by the transports before they reach the UI, so broken JSON
+            // here is a fallback case, not a path to report: the views render their defaults.
+            _argsDocument = null;
+        }
+
+        return _argsDocument;
+    }
+
+    private void ResetArgsDocument()
+    {
+        _argsDocument?.Dispose();
+        _argsDocument = null;
+        _argsSource = null;
+    }
+
 
     /// <summary>
     /// Timeout for the countdown badge, ms. delegate_task is NOT limited by ToolTimeoutMs —
@@ -302,6 +491,7 @@
     {
         if (disposing)
         {
+            ResetArgsDocument();
             if (_subscribedToolCall is not null)
                 _subscribedToolCall.SubAgentsChanged -= OnSubAgentsChanged;
             foreach (var subAgent in _subAgents)

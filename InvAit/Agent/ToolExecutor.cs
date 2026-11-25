@@ -29,6 +29,7 @@ public class ToolExecutor
     private readonly ProcessExecutor _processExecutor = new(new VsLogger());
     private readonly Dictionary<string, string> _skillPathByName = [];
     private readonly FileUtils _fileUtils = new();
+    private readonly FileWriter _fileWriter = new();
 
     public async Task<VsResponse> ExecuteAsync(VsRequest vsRequest)
     {
@@ -109,16 +110,31 @@ public class ToolExecutor
     /// </summary>
     private const int MaxFileLines = 2_000;
 
-    private async Task<VsResponse> ReadFileAsync(List<ReadFileParams> fileParamsList, bool onlyContent = false)
+    private async Task<VsResponse> ReadFileAsync(List<ReadFileParams>? fileParamsList, bool onlyContent = false)
     {
         var solutionPath = await GetSolutionPathAsync();
+
+        // null = `files` не распарсился. GetObject глотает JsonException и возвращает default,
+        // поэтому сюда приходит null, а не пустой список; раньше это был NullReferenceException
+        // с текстом «Object reference not set…», то есть отказ хоста без единого слова о причине.
+        if (fileParamsList == null)
+        {
+            return Refuse("Failed to read 'files': each entry needs a 'path' string. Nothing was read.");
+        }
 
         if (fileParamsList.Count == 0)
         {
             return new VsResponse { Success = false, Payload = "No files specified." };
         }
 
-        fileParamsList = [.. fileParamsList.GroupBy(x => x.Path).Select(g => g.First())]; // DistinctBy
+        // Ключ дедупа — ВЕСЬ запрос, а не только путь: два диапазона одного файла — это
+        // два разных чтения, и старый ключ молча выбрасывал второе.
+        fileParamsList =
+        [
+            .. fileParamsList
+                .GroupBy(x => (x.Path, x.StartLine, x.LineCount))
+                .Select(g => g.First())
+        ];
 
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
@@ -233,73 +249,101 @@ public class ToolExecutor
         };
     }
 
-    private async Task<VsResponse> CreateNewFileAsync(IReadOnlyDictionary<string, object> args)
+    // Обычная readonly-структура, а не `record struct`: позиционный record требует init-сеттеров,
+    // то есть System.Runtime.CompilerServices.IsExternalInit, которого нет ни в net48, ни в ToolCore.
+    /// <summary>
+    /// Резолвнутая цель файловой операции: абсолютный путь для файлового вызова плюс два поля,
+    /// которые нужны отчёту — имя ровно в том виде, как его прислала модель, и корень решения.
+    /// </summary>
+    private readonly struct FileTarget(string solutionPath, string inputName, string absolutePath)
+    {
+        public string SolutionPath { get; } = solutionPath;
+
+        /// <summary>Имя для отчётов: то, что прислала модель, а не резолвнутый путь.</summary>
+        public string InputName { get; } = inputName;
+
+        public string AbsolutePath { get; } = absolutePath;
+    }
+
+    /// <summary>
+    /// Один и тот же триптих (корень решения → имя из payload → абсолютный путь) стоял в трёх
+    /// файловых инструментах копипастой. <see cref="GetAbsolutePath"/> бросает на пустом пути,
+    /// поэтому вызывать это надо ВНУТРИ try: пустой filePath обязан стать именованным отказом
+    /// (WARN), а не ERROR внешнего catch.
+    /// </summary>
+    private async Task<FileTarget> ResolveFileTargetAsync(IReadOnlyDictionary<string, object> args, string key)
     {
         var solutionPath = await GetSolutionPathAsync();
-        var fileParam = args.GetString("filePath");
-        var filepath = GetAbsolutePath(fileParam, solutionPath);
+        var inputName = args.GetString(key);
+        return new FileTarget(solutionPath, inputName, GetAbsolutePath(inputName, solutionPath));
+    }
+
+    /// <summary>Отказ инструмента: Success = false, payload — причина, которую прочитает модель.</summary>
+    private static VsResponse Refuse(string payload) => new() { Success = false, Payload = payload };
+
+    /// <summary>
+    /// Отказ, вызванный исключением файловой операции (нет прав, файл занят, путь пуст).
+    /// WARN, а не ERROR: это ожидаемый исход вызова, а ERROR в VS ещё и активирует панель Output.
+    /// </summary>
+    private async Task<VsResponse> RefuseAsync(string payload, Exception exception)
+    {
+        await Logger.LogAsync(exception.Message, "WARN");
+        return Refuse(payload);
+    }
+
+    private async Task<VsResponse> CreateNewFileAsync(IReadOnlyDictionary<string, object> args)
+    {
+        // `content` отсутствующий и `content` пустой — РАЗНЫЕ вещи, и склеивать их нельзя:
+        // null превращался в "", а overwrite с пустым телом СОЗНАТЕЛЬНО не отказывает (создание
+        // пустого файла — легальная операция), поэтому существующий файл затирался до нуля байт
+        // с ответом «overwritten successfully». Симметрично отказу `newStr: null` в edit_file.
         var content = args.GetString("content");
+        if (content is null)
+            return Refuse("'content' is missing: send the full file text (an empty string is a valid body). Nothing was written.");
+
+        var mode = args.GetString("mode");
 
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         try
         {
-            var directory = Path.GetDirectoryName(filepath);
-            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
+            var target = await ResolveFileTargetAsync(args, "filePath");
 
-            File.WriteAllText(filepath, content, Encoding.UTF8);
+            // FileWriter — кодировка и концы строк берутся из `.editorconfig` (для нового файла)
+            // или из самого файла (для существующего). Раньше здесь было File.WriteAllText(...)
+            // с Encoding.UTF8, то есть BOM — в дереве с `charset = utf-8` это невидимый дефект.
+            var result = await _fileWriter.WriteAsync(target.AbsolutePath, content, mode);
+            if (!result.Success)
+                await Logger.LogAsync(result.Payload, "WARN");
+
             return new VsResponse
             {
-                Payload = $"File {fileParam} created successfully."
+                Success = result.Success,
+                Payload = result.Payload
             };
         }
         catch (Exception e)
         {
             // Ожидаемый отказ файловой операции (нет прав, путь занят) — WARN, не ERROR.
-            await Logger.LogAsync(e.Message, "WARN");
-            return new VsResponse
-            {
-                Success = false,
-                Payload = e.Message
-            };
+            return await RefuseAsync(e.Message, e);
         }
     }
 
     private async Task<VsResponse> DeleteFileAsync(IReadOnlyDictionary<string, object> args)
     {
-        var solutionPath = await GetSolutionPathAsync();
-        var fileParam = args.GetString("path");
-        var filepath = GetAbsolutePath(fileParam, solutionPath);
-
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         try
         {
-            if (File.Exists(filepath))
-            {
-                File.Delete(filepath);
-                return new VsResponse
-                {
-                    Payload = $"File {fileParam} deleted successfully."
-                };
-            }
+            var target = await ResolveFileTargetAsync(args, "path");
+            if (!File.Exists(target.AbsolutePath))
+                return Refuse($"File {target.InputName} does not exist.");
 
-            return new VsResponse
-            {
-                Success = false,
-                Payload = $"File {fileParam} does not exist."
-            };
+            File.Delete(target.AbsolutePath);
+            return new VsResponse { Payload = $"File {target.InputName} deleted successfully." };
         }
         catch (Exception e)
         {
             // Ожидаемый отказ удаления (нет прав, файл занят) — WARN, не ERROR.
-            await Logger.LogAsync(e.Message, "WARN");
-            return new VsResponse
-            {
-                Success = false,
-                Payload = e.Message
-            };
+            return await RefuseAsync(e.Message, e);
         }
     }
 
@@ -318,6 +362,9 @@ public class ToolExecutor
 
         // Одно поле Payload на оба случая: stdout и stderr склеиваем. Раньше при ненулевом коде
         // возврата UI показывал только stderr, а stdout терялся — теперь виден весь вывод.
+        // ВАЖНО: у string.Join нет перегрузки (string, IEnumerable, TimeSpan) — любой ЛИШНИЙ
+        // аргумент молча уводит вызов в params object[] и печатает ToString() каждого элемента:
+        // result = "System.Linq.Enumerable+WhereArrayIterator`1[System.String]\n00:00:00.1000000".
         var payload = string.Join("\n",
             new[] { TruncateOutput(result.Output), TruncateOutput(result.Error) }
                 .Where(part => !string.IsNullOrWhiteSpace(part)));
@@ -366,7 +413,7 @@ public class ToolExecutor
 
         var solutionPath = await GetSolutionPathAsync();
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-        var regex = new Regex(pattern, RegexOptions.Compiled);
+        var regex = new Regex(pattern, RegexOptions.Compiled, TimeSpan.FromMilliseconds(100));
         var matchedFiles = new List<SearchFileInfo>();
 
         foreach (var file in Directory.EnumerateFiles(solutionPath, "*", SearchOption.AllDirectories))
@@ -425,7 +472,7 @@ public class ToolExecutor
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
         var files = await GetAllSolutionFilesAsync();
-        var regex = new Regex(query, RegexOptions.Multiline);
+        var regex = new Regex(query, RegexOptions.Multiline, TimeSpan.FromMilliseconds(100));
         var sb = new StringBuilder();
         var totalMatches = 0;
 
@@ -546,128 +593,122 @@ public class ToolExecutor
 
     private async Task<VsResponse> ListDirectoryAsync(IReadOnlyDictionary<string, object> args)
     {
-        var solutionPath = await GetSolutionPathAsync();
-        var path = args.GetString("path");
-        var dirPath = GetAbsolutePath(path, solutionPath);
         var recursive = args.GetBool("recursive");
 
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-        if (!Directory.Exists(dirPath))
-            return new VsResponse
-            {
-                Success = false,
-                Payload = $"Directory {path} doesn't exist",
-            };
-
-        var searchOption = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-        var items = string.Join(Environment.NewLine, Directory.GetFileSystemEntries(dirPath, "*", searchOption)
-            .Select(f => MakeRelativeToSolution(f, solutionPath)));
-
-        return new VsResponse
-        {
-            Payload = items
-        };
-    }
-
-    private async Task<VsResponse> EditFileAsync(IReadOnlyDictionary<string, object> args)
-    {
-        var solutionPath = await GetSolutionPathAsync();
-        var inputFileName = args.GetString("filePath");
-        var diffEdits = args.GetObject<List<DiffEdit>>("edits");
-        var filepath = GetAbsolutePath(inputFileName, solutionPath);
-
-        if (diffEdits is null || diffEdits.Count == 0)
-            return new VsResponse { Success = false, Payload = "Failed to get replacements" };
-
-        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-
-        if (!File.Exists(filepath))
-            return new VsResponse { Success = false, Payload = "File doesn't exist." };
-
-        var fileData = await _fileUtils.ReadFileWithMetadataAsync(filepath);
-        var lines = fileData.Lines;
-        var totalReplacements = 0;
-        var failures = new List<string>();
-
-        // Оригинальные индексы: модель повторяет только упавшие правки по номеру в своём запросе
-        var orderedEdits = diffEdits
-            .Select((rep, i) => (Rep: rep, Index: i))
-            .OrderByDescending(x => x.Rep.ApproximateLine)
-            .ToList();
-
-        foreach (var (rep, index) in orderedEdits)
-        {
-            // OldStr в контракте non-nullable, но JSON с "oldStr": null всё равно даёт null.
-            // Явный отказ: SplitEditText(null) вернул бы [""] и правка молча вставила бы
-            // newStr в ПЕРВУЮ пустую строку файла. Пустая строка остаётся легальной
-            // (легаси-семантика «oldStr матчит пустую строку файла»).
-            if (rep.OldStr is null)
-            {
-                failures.Add($"edit #{index} (line {rep.ApproximateLine ?? -1}): oldStr is missing");
-                continue;
-            }
-
-            // SplitEditText — the single normalisation point: mixed line endings (CRLF/LF/CR)
-            // and one trailing line break treated as a terminator, so an oldStr ending with \n
-            // does not turn into a phantom empty search line.
-            var search = EditApplier.SplitEditText(rep.OldStr);
-            var replace = EditApplier.SplitEditText(rep.NewStr);
-            var hint = rep.ApproximateLine ?? -1;
-            // ApplyEdit replaces only the matched FRAGMENT of partially matched lines
-            // (e.g. search "List<string" inside "var fileContent = new List<string>"),
-            // and whole lines for exact matches.
-            var actualStart = EditApplier.ApplyEdit(lines, search, replace, hint, 5);
-            if (actualStart == -1)
-            {
-                failures.Add($"edit #{index} (line {hint}): oldStr not found");
-                continue;
-            }
-
-            totalReplacements++;
-        }
-
-        // Per-edit отчёт: модель видит, КАКАЯ правка упала и почему — может прицельно
-        // повторить только упавшие. Пустой oldStr матчит пустую строку файла.
-        var report = failures.Count == 0
-            ? string.Empty
-            : "\nFailed edits:\n - " + string.Join("\n - ", failures);
-
-        // Dry-run: правки применяются к строкам в памяти (последующие поиски видят
-        // сдвиги строк), но файл НЕ пишется — проверка находимости всех oldStr.
-        var isDryRun = args.GetBool("dryRun");
-        if (isDryRun)
-        {
-            return new VsResponse
-            {
-                Payload = $"Dry run on {inputFileName}: {totalReplacements}/{diffEdits.Count} edits would apply.{report}"
-            };
-        }
-
-        if (totalReplacements == 0)
-        {
-            return new VsResponse { Success = false, Payload = "No valid replacements found." + report };
-        }
-
         try
         {
-            await _fileUtils.SaveFileAsync(filepath, lines, fileData.Encoding, fileData.Separator, fileData.HasFinalNewLine);
-            await OpenEditorAsync(filepath);
-            await Logger.LogAsync($"{totalReplacements} changes successfully applied to {inputFileName}.");
+            var target = await ResolveFileTargetAsync(args, "path");
+            if (!Directory.Exists(target.AbsolutePath))
+                return Refuse($"Directory {target.InputName} doesn't exist");
+
+            var searchOption = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
+            var items = string.Join(Environment.NewLine, Directory.GetFileSystemEntries(target.AbsolutePath, "*", searchOption)
+                .Select(f => MakeRelativeToSolution(f, target.SolutionPath)));
+
+            return new VsResponse
+            {
+                Payload = items
+            };
         }
         catch (Exception e)
         {
-            await Logger.LogAsync(e.Message);
-            return new VsResponse
-            {
-                Success = false,
-                Payload = $"Changes to {inputFileName} is FAILED. {e.Message}"
-            };
+            // Ожидаемый отказ (нет каталога, пустой путь) — WARN, не ERROR.
+            return await RefuseAsync(e.Message, e);
+        }
+    }
+
+    /// <summary>
+    /// `edit_file` = parse → resolve → read → <see cref="EditBatch"/> → dry-run / отказ → write.
+    /// Вся работа с правками в памяти (валидация, порядок, счётчики, текст отчёта) — в
+    /// ToolCore.EditBatch, под тестами: этот хост юнит-тестами не покрывается.
+    /// </summary>
+    private async Task<VsResponse> EditFileAsync(IReadOnlyDictionary<string, object> args)
+    {
+        // Пустой список и нечитаемый список — РАЗНЫЕ отказы: в первом модель прислала валидный,
+        // но пустой батч, во втором невалидно хотя бы одно поле внутри правки. Раньше оба случая
+        // давали «Failed to get replacements» — без файла, без причины, без индекса правки.
+        //
+        // Вторая половина того же урока: отказ НЕ ДОЛЖЕН угадывать причину. Готовая фраза
+        // «each edit needs 'oldStr' and 'newStr' strings» утверждала это на payload, где оба поля
+        // были на месте, и отправляла модель чинить не то. Теперь впереди стоит настоящая ошибка
+        // разбора, а подсказка про схему остаётся хвостом.
+        var diffEdits = args.GetObject<List<DiffEdit>>("edits", out var editError);
+        if (diffEdits is null)
+            return Refuse($"Failed to read 'edits': {editError}. " +
+                          "Each edit needs 'oldStr' and 'newStr' strings; 'approximateLine' takes an integer " +
+                          "and 'replaceAll' a boolean (both may be null or omitted). Nothing was changed.");
+
+        if (diffEdits.Count == 0)
+            return Refuse("'edits' is empty: nothing to apply.");
+
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+        FileTarget target;
+        try
+        {
+            target = await ResolveFileTargetAsync(args, "filePath");
+        }
+        catch (Exception e)
+        {
+            // Пустой filePath отказывает здесь, а не в внешнем catch: это отказ вызова.
+            return await RefuseAsync($"edit NOT attempted on {args.GetString("filePath")}: {e.Message}", e);
         }
 
-        return new VsResponse
+        // File.Exists для каталога — false: без этой проверки edit_file на папке отвечал
+        // «File doesn't exist.» и модель шла искать то, что уже нашла.
+        if (Directory.Exists(target.AbsolutePath))
+            return Refuse("Path is a directory, not a file.");
+
+        if (!File.Exists(target.AbsolutePath))
+            return Refuse("File doesn't exist.");
+
+        FileReadResult fileData;
+        try
         {
-            Payload = $"Changes successfully applied to {inputFileName}. {totalReplacements}/{diffEdits.Count}.{report}"
-        };
+            fileData = await _fileUtils.ReadFileWithMetadataAsync(target.AbsolutePath);
+        }
+        catch (Exception e)
+        {
+            // Ожидаемый отказ чтения (нет прав, файл занят) — WARN, не ERROR.
+            return await RefuseAsync($"edit NOT attempted on {target.InputName}: {e.Message}", e);
+        }
+
+        // Отказ чтения (нет файла, слишком большой, бинарный) — отчёт ДО применения правок: иначе
+        // «oldStr not found» отправлял модель искать контекст в файле, который вообще не читался.
+        if (fileData.Status != FileReadStatus.Ok)
+            return Refuse($"edit NOT attempted on {target.InputName}: {fileData.SkipReason ?? fileData.Status.ToString()}");
+
+        var batch = EditBatch.Apply(diffEdits, fileData.Lines);
+        batch.File = target.InputName;
+
+        // Dry-run: правки применяются к строкам в памяти, файл НЕ пишется.
+        if (args.GetBool("dryRun"))
+            return new VsResponse { Payload = batch.FormatReport(dryRun: true) };
+
+        // Ноль применённых правок — отказ ДО записи: иначе файл переписывается без изменений,
+        // а модель читает «Changes successfully applied» о правке, которой не было.
+        if (!batch.AnyApplied)
+            return Refuse(batch.FormatReport(dryRun: false));
+
+        try
+        {
+            await _fileUtils.SaveFileAsync(target.AbsolutePath, fileData.Lines, fileData.Encoding, fileData.Separator, fileData.HasFinalNewLine);
+            await OpenEditorAsync(target.AbsolutePath);
+            await Logger.LogAsync($"{batch.TotalReplacements} changes successfully applied to {target.InputName}.");
+        }
+        catch (Exception e)
+        {
+            // Ожидаемый отказ записи (файл занят, read-only) — WARN, не ERROR.
+            return await RefuseAsync($"Changes to {target.InputName} is FAILED. {e.Message}", e);
+        }
+
+        // Предупреждаем о нормализации строк ТОЛЬКО когда она реально произошла. Сам текст
+        // предупреждения собирает EditBatch: предложение для модели не должно существовать в двух
+        // хостах, иначе оно в них разойдётся.
+        var normalisedSeparator = fileData.HasMixedLineEndings ? fileData.Separator : null;
+
+        return new VsResponse { Payload = batch.FormatReport(dryRun: false, normalisedSeparator) };
     }
 
     /// <summary>
@@ -1091,8 +1132,10 @@ public class ToolExecutor
         try
         {
             Directory.CreateDirectory(folderPath);
+#pragma warning disable S4036
             if (Directory.Exists(folderPath))
             {
+
                 Process.Start("explorer.exe", folderPath);
                 return new VsResponse { Success = true, Payload = $"Folder {folderPath} opened in Explorer" };
             }
@@ -1107,6 +1150,7 @@ public class ToolExecutor
                 // Try to create directory if it doesn't exist? No, better just return error for folder opening
                 return new VsResponse { Success = false, Payload = $"Path {folderPath} does not exist" };
             }
+#pragma warning restore S4036
         }
         catch (Exception ex)
         {
@@ -1511,7 +1555,9 @@ public class ToolExecutor
 
             await StopAllMcpServersAsync();
 
-            File.WriteAllText(filePath, content, Encoding.UTF8);
+            // UTF-8 БЕЗ BOM: mcp.json читают другие агенты, а BOM ломает строгие JSON-парсеры.
+            // Файл лежит вне дерева (~/.agents), поэтому .editorconfig к нему не применим.
+            File.WriteAllText(filePath, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
             return new VsResponse { Payload = "OK" };
         }
         catch (Exception ex)

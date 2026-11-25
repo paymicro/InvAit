@@ -40,9 +40,9 @@
     {
         null => @<span class="json-args-null">null</span>,
         bool b => @<span class="json-args-bool">@b.ToString().ToLowerInvariant()</span>,
-        long l => @<span class="json-args-number">@l</span>,
-        double d => @<span class="json-args-number">@d</span>,
-        int i => @<span class="json-args-number">@i</span>,
+        long l => @<span class="json-args-number">@l.ToString(System.Globalization.CultureInfo.InvariantCulture)</span>,
+        double d => @<span class="json-args-number">@d.ToString(System.Globalization.CultureInfo.InvariantCulture)</span>,
+        int i => @<span class="json-args-number">@i.ToString(System.Globalization.CultureInfo.InvariantCulture)</span>,
         string s => RenderStringValue(s),
         JsonElement je => RenderJsonElement(je),
         Dictionary<string, object> d => RenderDict(d),
@@ -66,8 +66,12 @@
         {
             JsonValueKind.String => RenderStringValue(je.GetString() ?? string.Empty),
             JsonValueKind.Number => je.TryGetInt64(out var l)
-                ? @<span class="json-args-number">@l</span>
-                : @<span class="json-args-number">@je.GetDouble()</span>,
+                ? @<span class="json-args-number">@l.ToString(System.Globalization.CultureInfo.InvariantCulture)</span>
+                // GetRawText, not GetDouble: this view's whole job is to show EXACTLY what the call
+                // asked for, and a double round-trip loses digits (an Int128-sized integer printed as
+                // 1.2345678901234567E+19) — plus GetDouble() formats with the CURRENT culture, which
+                // turned 0.15 into "0,15" on a ru-RU host.
+                : @<span class="json-args-number">@je.GetRawText()</span>,
             JsonValueKind.True => @<span class="json-args-bool">true</span>,
             JsonValueKind.False => @<span class="json-args-bool">false</span>,
             JsonValueKind.Null => @<span class="json-args-null">null</span>,

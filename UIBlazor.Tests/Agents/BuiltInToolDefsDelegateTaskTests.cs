@@ -89,13 +89,16 @@ public partial class BuiltInToolDefsTests
     }
 
     [Fact]
-    public void MapMethodToTool_DelegateTask_TaskObject_RequiredAreTaskAndSystemPrompt()
+    public void MapMethodToTool_DelegateTask_TaskObject_EveryPropertyIsRequired()
     {
         var result = BuiltInToolDefs.MapMethodToTool(nameof(BuiltInToolDefs.DelegateTask));
 
         var items = Assert.IsType<NativeParameters>(result.Function.Parameters.Properties["tasks"].Items);
-        // allowedTools is nullable (optional) so it must NOT be in the required list
-        Assert.Equal(["task", "systemPrompt"], items.Required);
+        // Strict Mode expresses optionality ONLY through the null union, never by omitting a
+        // property from `required` — the same rule the top level follows. allowedTools is
+        // optional, so it is required-in-list AND typed ["array","null"].
+        Assert.Equal(["task", "systemPrompt", "allowedTools"], items.Required);
+        Assert.True(items.Properties!["allowedTools"].IsUnionType);
     }
 
     [Fact]
@@ -195,7 +198,7 @@ public partial class BuiltInToolDefsTests
 
         // Items is exposed as object; after a JSON roundtrip it comes back as JsonElement —
         // validate the task-item schema through the serialized structure instead.
-        Assert.Contains("\"required\":[\"task\",\"systemPrompt\"]", json);
+        Assert.Contains("\"required\":[\"task\",\"systemPrompt\",\"allowedTools\"]", json);
         Assert.Contains("\"task\"", json);
         Assert.Contains("\"systemPrompt\"", json);
         Assert.Contains("\"allowedTools\"", json);

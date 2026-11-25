@@ -98,16 +98,35 @@ public static class JsonUtils
     }
 
     public static T? GetObject<T>(this IReadOnlyDictionary<string, object> parameters, string key) where T : class
+        => parameters.GetObject<T>(key, out _);
+
+    /// <summary>
+    /// То же, но сообщает ПОЧЕМУ payload не прочитался.
+    /// <para>
+    /// Без этого вызывающий видит только <c>null</c> и вынужден УГАДЫВАТЬ причину в тексте отказа.
+    /// Ровно так и появилось «each edit needs 'oldStr' and 'newStr' strings» на payload, где оба
+    /// поля были на месте: настоящая ошибка (например, <c>"approximateLine": ""</c> не является
+    /// числом) проглатывалась, модель шла исправлять не то, а разработчик не имел ни одной зацепки.
+    /// </para>
+    /// </summary>
+    public static T? GetObject<T>(this IReadOnlyDictionary<string, object> parameters, string key, out string? error) where T : class
     {
+        error = null;
         var value = parameters.GetValue(key);
-        if (value == null) return null;
+        if (value == null)
+        {
+            error = $"'{key}' is missing";
+            return null;
+        }
 
         try
         {
             return JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(value, _jsonOptions), _jsonOptions);
         }
-        catch
+        catch (Exception e)
         {
+            // Текст System.Text.Json называет поле и позицию — именно то, что нужно вызывающему.
+            error = e.Message;
             return null;
         }
     }

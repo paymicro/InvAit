@@ -19,32 +19,40 @@ public static class BuiltInToolDefs
     { }
 
     [DisplayName(BuiltInToolEnum.CreateFile)]
-    [Description("Create a new file. The old file will be overwritten if it exists.")]
+    [Description("""
+        Create a file, or add to an existing one. Encoding and line endings come from .editorconfig;
+        an existing file keeps its own encoding and line endings. An existing file is REPLACED unless `mode` says append or prepend.
+        """)]
     public static void CreateFile(
         [Description("Relative or absolute file path")] string filePath,
-        [Description("Content")] string content)
+        [Description("Content")] string content,
+        [Description("overwrite = REPLACE the whole file, deleting everything already in it — this is what null means. append = add to the end, prepend = add to the start. create and replace are accepted aliases of overwrite. Ignored when the file does not exist yet.")] string? mode = null)
     { }
 
     [DisplayName(BuiltInToolEnum.EditFile)]
-    [Description("Applies a series of Search & Replace edits to the specified file.")]
+    [Description("""
+        Each oldStr must match exactly ONE place: several matches without approximateLine singling one out is a REFUSAL, not a first-match.
+        Edits run bottom-to-top (descending approximateLine), not in list order — every oldStr must exist in the file as it is on disk.
+        """)]
     public static void EditFile(
-        [Description("File path")] string filePath,
-        [Description("List of pairs 'search/replace'. Executed sequentially.")] DiffEdit[] edits)
+        [Description("Relative or absolute path of an EXISTING file")] string filePath,
+        [Description("List of pairs 'search/replace'")] DiffEdit[] edits,
+        [Description("Apply the edits in memory and report what WOULD change without writing the file")] bool? dryRun = null)
     { }
 
     [DisplayName(BuiltInToolEnum.SearchFiles)]
-    [Description("To return a list of files with patches in solution directory.")]
+    [Description("List files whose RELATIVE PATH matches the regex (file or folder NAME — never file contents). Returns each matching path with its size in KB. To search inside files, use grep.")]
     public static void SearchFiles(
-        [Description("Regex pattern")] string regex,
-        [Description("Max count of matches"), DefaultValue(50)] int maxMatches)
+        [Description("Regex pattern, matched against the path")] string regex,
+        [Description("Max count of matches. 50 is a good default"), DefaultValue(50)] int maxMatches)
     { }
 
     [DisplayName(BuiltInToolEnum.Grep)]
-    [Description("Grep search within the project.")]
+    [Description("Grep search within the project. The regex is matched against each LINE individually, so a pattern containing a line break never matches. Returns matching file paths, line numbers and a few surrounding lines.")]
     public static void Grep(
         [Description("Regex pattern")] string regex,
-        [Description("Lines below and after of match"), DefaultValue(3)] int contextLines,
-        [Description("Max count of matches"), DefaultValue(50)] int maxMatches)
+        [Description("Number of context lines printed BEFORE and AFTER each match. 3 is a good default"), DefaultValue(3)] int contextLines,
+        [Description("Max count of matches. 50 is a good default"), DefaultValue(50)] int maxMatches)
     { }
 
     [DisplayName(BuiltInToolEnum.FindDeclarations)]
@@ -120,7 +128,7 @@ public static class BuiltInToolDefs
     { }
 
     [DisplayName(BasicEnum.SwitchMode)]
-    [Description("Switch the current mode. Available modes: Chat, Agent, Plan.")]
+    [Description("Switch the current mode. The value must be exactly one of Chat, Agent, Plan (case-insensitive); anything else is refused and the mode is unchanged.")]
     public static void SwitchMode(
         [Description("Mode")] string mode)
     { }
@@ -129,7 +137,7 @@ public static class BuiltInToolDefs
     [Description("Load the full content of a skill when you need detailed instructions.")]
     public static void ReadSkillContent(
         [Description("Skill name")] string skillName,
-        [Description("Relative path to a file within the skill folder (e.g. 'references/api-spec.md', 'scripts/build.sh'). If omitted, returns the skill's SKILL.md content and a list of available files.")] string? fileName)
+        [Description("Relative path to a file within the skill folder (e.g. 'references/api-spec.md', 'scripts/build.sh'). This argument is REQUIRED and must be a string: pass an EMPTY STRING to get the skill's SKILL.md content and the list of available files.")] string? fileName)
     { }
 
     [DisplayName(BuiltInToolEnum.DeleteFile)]
@@ -188,7 +196,7 @@ public static class BuiltInToolDefs
             var paramName = ToCamelCase(param.Name!);
 
             // В Strict Mode все параметры в required, но для optional - тип с null
-            var prop = MapTypeToProperty(param.ParameterType, paramDesc, param.HasDefaultValue);
+            var prop = MapTypeToProperty(param.ParameterType, paramDesc, IsOptionalParameter(param));
             parameters.Properties.Add(paramName, prop);
             parameters.Required.Add(paramName);
         }
@@ -222,15 +230,15 @@ public static class BuiltInToolDefs
                 {
                     Type = NativeToolType.Object,
                     Properties = arrayObjects.Properties!,
-                    Required = [.. arrayObjects.Properties!.Where(p => !p.Value.IsUnionType).Select(p => p.Key)]
+                    // Как и на верхнем уровне: в Strict Mode ВСЕ поля в required, а
+                    // опциональность выражается ТОЛЬКО nullable-типом. Раньше union-поля
+                    // (replaceAll, approximateLine) выкидывались из required — валидирующий
+                    // endpoint отклонял весь запрос, а не один инструмент.
+                    Required = [.. arrayObjects.Properties!.Keys]
                 }
                 : arrayObjects;
 
-            if (isOptional)
-            {
-                prop.SetUnionTypes(NativeToolType.Array, NativeToolType.Null);
-            }
-            return prop;
+            return isOptional ? prop.AsOptionalUnion(NativeToolType.Array) : prop;
         }
 
         // Обработка объектов (классы, кроме string и примитивов)
@@ -241,23 +249,18 @@ public static class BuiltInToolDefs
 
             foreach (var p in type.GetProperties())
             {
-                var pDesc = p.GetCustomAttribute<DescriptionAttribute>()?.Description;
                 var propName = ToCamelCase(p.Name);
 
-                // Проверяем, имеет ли свойство дефолтное значение или nullable
-                var defaultValue = p.GetCustomAttribute<DefaultValueAttribute>()?.Value;
-                if (defaultValue is not null)
-                    pDesc += $" (default '{defaultValue}')";
-                var isNullableProperty = IsNullableProperty(p);
-                var isPropOptional = defaultValue is not null || isNullableProperty;
-                prop.Properties.Add(propName, MapTypeToProperty(p.PropertyType, pDesc, isPropOptional));
+                // Описание и «(default …)» собираются в одном месте: DefaultValueAttribute —
+                // единственный источник дефолта вложенного свойства, а optional-ность решает
+                // IsOptionalProperty (дефолт ИЛИ nullable-тип).
+                var pDesc = WithDefaultNote(
+                    p.GetCustomAttribute<DescriptionAttribute>()?.Description,
+                    p.GetCustomAttribute<DefaultValueAttribute>()?.Value);
+                prop.Properties.Add(propName, MapTypeToProperty(p.PropertyType, pDesc, IsOptionalProperty(p)));
             }
 
-            if (isOptional)
-            {
-                prop.SetUnionTypes(NativeToolType.Object, NativeToolType.Null);
-            }
-            return prop;
+            return isOptional ? prop.AsOptionalUnion(NativeToolType.Object) : prop;
         }
 
         // Обработка enum
@@ -271,23 +274,14 @@ public static class BuiltInToolDefs
             prop.Description = enumDescription;
             prop.SetSingleType(NativeToolType.String);
 
-            if (isOptional)
-            {
-                prop.SetUnionTypes(NativeToolType.String, NativeToolType.Null);
-            }
-            return prop;
+            return isOptional ? prop.AsOptionalUnion(NativeToolType.String) : prop;
         }
 
         // Обработка примитивов
         var baseType = GetBaseType(type);
         prop.SetSingleType(baseType);
 
-        if (isOptional)
-        {
-            prop.SetUnionTypes(baseType, NativeToolType.Null);
-        }
-
-        return prop;
+        return isOptional ? prop.AsOptionalUnion(baseType) : prop;
     }
 
     private static string GetBaseType(Type type)
@@ -302,6 +296,49 @@ public static class BuiltInToolDefs
             _ => NativeToolType.String,
         };
     }
+
+    /// <summary>
+    /// Optionality of a METHOD parameter. Strict mode has no "absent" argument, so this only
+    /// decides whether the schema type becomes ["type","null"].
+    /// <para>
+    /// Deliberately <see cref="ParameterInfo.HasDefaultValue"/> ONLY — nullability is NOT consulted
+    /// here. That is why <c>read_skill_content.fileName</c> (<c>string? fileName</c>, no default)
+    /// renders as a REQUIRED, non-nullable string while its own description says "If omitted, …".
+    /// Treating a nullable reference type as optional is a contract change (it changes what the
+    /// model may omit) and is pinned by <c>MapMethodToTool_NullableType_HasUnionTypeWithNull</c>;
+    /// the rule lives in this ONE method so that change is a one-line decision later.
+    /// </para>
+    /// </summary>
+    private static bool IsOptionalParameter(ParameterInfo parameter) => parameter.HasDefaultValue;
+
+    /// <summary>
+    /// Optionality of a nested OBJECT property: same strict-mode rule as
+    /// <see cref="IsOptionalParameter"/>, but C# has no default-value metadata for properties —
+    /// <see cref="DefaultValueAttribute"/> is the only way to declare one, so here the attribute
+    /// OR a nullable type makes the property optional.
+    /// </summary>
+    private static bool IsOptionalProperty(PropertyInfo property)
+        => property.GetCustomAttribute<DefaultValueAttribute>()?.Value is not null
+           || IsNullableProperty(property);
+
+    /// <summary>
+    /// Turns a single-typed property into its optional strict-mode form: the union of
+    /// <paramref name="types"/> and null. One place to spell it — the four property kinds
+    /// (array, object, enum, primitive) used to carry their own copy of
+    /// <c>SetUnionTypes(type, NativeToolType.Null)</c>.
+    /// </summary>
+    private static NativePropertyDefinition AsOptionalUnion(this NativePropertyDefinition prop, params string[] types)
+    {
+        prop.SetUnionTypes([.. types, NativeToolType.Null]);
+        return prop;
+    }
+
+    /// <summary>
+    /// Appends the «(default 'x')» note the model reads next to a nested property description.
+    /// A null default means there is nothing to note and the description comes back untouched.
+    /// </summary>
+    private static string? WithDefaultNote(string? description, object? defaultValue)
+        => defaultValue is null ? description : description + $" (default '{defaultValue}')";
 
     private static bool IsNullableProperty(PropertyInfo property)
     {

@@ -127,6 +127,10 @@ public class ToolCallHandler(IToolManager toolManager) : IToolCallHandler
         foreach (var toolCall in toolCalls)
         {
             toolCall.Function.Arguments = CleanJsonArguments(toolCall.Function.Arguments);
+            // The stream for this turn is over and the arguments have just been cleaned: from here
+            // on ANY value they carry is what the host will act on. The views need that boundary to
+            // tell "still arriving" from "wrong" — see ToolCall.ArgumentsOpen.
+            toolCall.ArgumentsOpen = false;
 
             // AskUser always requires user interaction (wait for answer)
             if (toolCall.Function.Name == BasicEnum.AskUser)

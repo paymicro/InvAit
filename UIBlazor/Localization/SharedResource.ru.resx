@@ -702,4 +702,37 @@
   <data name="EmptyResponseAfterRetries" xml:space="preserve">
     <value>Пустой ответ модели — бюджет повторов исчерпан (максимум {0}).</value>
   </data>
+  <data name="FileModeOverwrite" xml:space="preserve">
+    <value>перезапись</value>
+  </data>
+  <data name="FileModeAppend" xml:space="preserve">
+    <value>дописать в конец</value>
+  </data>
+  <data name="FileModePrepend" xml:space="preserve">
+    <value>дописать в начало</value>
+  </data>
+  <data name="FileModeUnknown" xml:space="preserve">
+    <value>неизвестный режим</value>
+  </data>
+  <data name="FileModeTooltip" xml:space="preserve">
+    <value>Режим, запрошенный вызовом. Для существующего файла: перезапись заменяет файл целиком, дописывание сохраняет существующие байты. Несуществующий файл создаётся всегда, независимо от режима.</value>
+  </data>
+  <data name="FileModePendingTooltip" xml:space="preserve">
+    <value>Аргументы ещё поступают — режим пока неизвестен. Он будет прочитан из вызова, когда они придут полностью.</value>
+  </data>
+  <data name="FileModeUnknownTooltip" xml:space="preserve">
+    <value>Хост отклонит этот вызов: '{0}' — неизвестный режим. Используйте overwrite, append или prepend.</value>
+  </data>
+  <data name="EditReplaceAllBadge" xml:space="preserve">
+    <value>replaceAll {0}/{1} правок</value>
+  </data>
+  <data name="EditReplaceAllTooltip" xml:space="preserve">
+    <value>{0} из {1} правок заменяют ВСЕ вхождения oldStr вместо отказа при неоднозначности. Сколько именно вхождений заменилось — в результате.</value>
+  </data>
+  <data name="EditDryRunBadge" xml:space="preserve">
+    <value>пробный прогон</value>
+  </data>
+  <data name="EditDryRunTooltip" xml:space="preserve">
+    <value>Ничего не записано: правки только смоделированы.</value>
+  </data>
 </root>

@@ -33,6 +33,26 @@ public class ToolCall
     [JsonIgnore]
     public ToolApprovalStatus? ApprovalStatus { get; set; } = ToolApprovalStatus.Approved;
 
+    /// <summary>
+    /// True while the arguments of this call are still being assembled from the stream.
+    /// <para>
+    /// The UI needs to know whether a value it cannot use is a value that is still ARRIVING or one
+    /// the model actually sent: the arguments are repaired to valid JSON at every chunk, so a
+    /// truncated `"append"` arrives as the perfectly legal `"app"`. Claiming "the host refuses this"
+    /// for it would be a lie about a call that was never broken.
+    /// </para>
+    /// <para>
+    /// Set by <c>AfUsageHelpers.AccumulateToolCall</c> when the call is born and cleared in
+    /// <c>ToolCallHandler.PrepareToolsForApprovals</c> — the same step that CLEANS the arguments,
+    /// i.e. the last write before the approval gate. Not persisted, and therefore DEFAULT FALSE: a
+    /// call restored from a session is complete by definition, and a flag derived from
+    /// <see cref="Result"/> instead would stay "arriving" for the whole approval wait — exactly when
+    /// a destructive mode must be visible.
+    /// </para>
+    /// </summary>
+    [JsonIgnore]
+    public bool ArgumentsOpen { get; set; }
+
     [JsonPropertyName("result")]
     public ToolResult? Result { get; set; }
 

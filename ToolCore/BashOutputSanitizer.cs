@@ -57,7 +57,7 @@ public static class BashOutputSanitizer
     /// </summary>
     private static readonly Regex TempScriptNamePattern = new(
         @"(?<![\w.:/\\-])['""]?(?:[\w.:/\\-]*[/\\])?invait_[\w-]+\.sh['""]?(:[ \t]?)?",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(100));
 
     /// <summary>
     /// Вырезает из вывода упоминания временного файла скрипта.
@@ -99,7 +99,7 @@ public static class BashOutputSanitizer
 
         // IgnoreCase: Windows-пути регистронезависимы, а оболочка может сменить регистр буквы диска.
         return Regex.Replace(output, pattern, string.Empty,
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
     }
 
     /// <summary>

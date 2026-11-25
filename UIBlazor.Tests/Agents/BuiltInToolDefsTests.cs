@@ -139,6 +139,30 @@ public partial class BuiltInToolDefsTests
     }
 
     [Fact]
+    public void MapMethodToTool_CreateFile_ModeIsNullableUnionTypeInRequired()
+    {
+        // `mode` decides overwrite / append / prepend. It must stay OPTIONAL: an existing prompt that
+        // omits it keeps the old overwrite behaviour, and strict mode would otherwise force the model
+        // to send a value it does not care about.
+        var method = typeof(BuiltInToolDefs).GetMethod(nameof(BuiltInToolDefs.CreateFile));
+
+        var result = BuiltInToolDefs.MapMethodToTool(method);
+
+        Assert.Equal(BuiltInToolEnum.CreateFile, result.Function.Name);
+        Assert.Contains("overwrite", result.Function.Parameters.Properties["mode"].Description, StringComparison.Ordinal);
+        Assert.Contains("append", result.Function.Parameters.Properties["mode"].Description, StringComparison.Ordinal);
+        Assert.Contains("prepend", result.Function.Parameters.Properties["mode"].Description, StringComparison.Ordinal);
+        Assert.Contains("editorconfig", result.Function.Description, StringComparison.OrdinalIgnoreCase);
+
+        // Strict mode keeps every parameter in `required`; optionality is expressed as a NULLABLE
+        // type, so the model may pass `"mode": null` and still get the overwrite default.
+        Assert.Equal(["filePath", "content", "mode"], result.Function.Parameters.Required);
+        var mode = result.Function.Parameters.Properties["mode"];
+        Assert.True(mode.IsUnionType);
+        Assert.Equal([NativeToolType.String, NativeToolType.Null], (string[])mode.Type);
+    }
+
+    [Fact]
     public void MapMethodToTool_EditFile_ReturnsCorrectPropertyDescription()
     {
         // Arrange
@@ -146,12 +170,101 @@ public partial class BuiltInToolDefsTests
 
         // Act
         var result = BuiltInToolDefs.MapMethodToTool(method);
-        var json = JsonUtils.SerializeCompact(result);
 
-        // Assert
+        // Assert — the contract the model depends on, field by field. A whole-JSON snapshot of a
+        // multi-line prose description was pure maintenance tax: it broke on every wording change
+        // and never caught a real schema defect.
+        Assert.Equal(BuiltInToolEnum.EditFile, result.Function.Name);
         Assert.True(result.Function.Parameters.Properties.ContainsKey("filePath"));
-        Assert.Equal("File path", result.Function.Parameters.Properties["filePath"].Description);
-        Assert.Equivalent(json, "{\"type\":\"function\",\"function\":{\"name\":\"edit_file\",\"description\":\"Applies a series of Search & Replace edits to the specified file.\",\"strict\":true,\"parameters\":{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"string\",\"description\":\"File path\"},\"edits\":{\"type\":\"array\",\"description\":\"List of pairs 'search/replace'. Executed sequentially.\",\"items\":{\"type\":\"object\",\"properties\":{\"approximateLine\":{\"type\":[\"integer\",\"null\"],\"description\":\"Approximate start line or null (default '-1')\"},\"oldStr\":{\"type\":\"string\",\"description\":\"Unique fragment of code\"},\"newStr\":{\"type\":\"string\",\"description\":\"New fragment of code\"}},\"required\":[\"oldStr\",\"newStr\"],\"additionalProperties\":false}}},\"required\":[\"filePath\",\"edits\"],\"additionalProperties\":false}}}");
+        // Не `Equal("File path")` в чистом виде: edit_file не умеет создавать файл, и описание
+        // должно это говорить. Проверяем СМЫСЛ (путь + существующий + отсылка к create_file),
+        // а не точную фразу — иначе тест снова начнёт защищать неудачную формулировку.
+        Assert.Contains("file", result.Function.Parameters.Properties["filePath"].Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("EXISTING", result.Function.Parameters.Properties["filePath"].Description, StringComparison.Ordinal);
+        Assert.Contains("create_file", result.Function.Parameters.Properties["filePath"].Description, StringComparison.Ordinal);
+        Assert.Contains("exactly ONE place", result.Function.Description, StringComparison.Ordinal);
+
+        var edits = result.Function.Parameters.Properties["edits"];
+        Assert.Equal("array", edits.Type);
+
+        var items = Assert.IsType<NativeParameters>(edits.Items);
+
+        // Strict mode: ВСЕ поля вложенного объекта в `required` — так же, как на верхнем
+        // уровне, где опциональность выражается ТОЛЬКО nullable-типом. Раньше union-поля
+        // (approximateLine, replaceAll) выкидывались из required, и валидирующий endpoint
+        // отклонял весь запрос, а не один инструмент. Состав сравнивается без учёта
+        // порядка: контракт — это набор полей, а не порядок рефлексии.
+        Assert.Equal(
+            ["approximateLine", "newStr", "oldStr", "replaceAll"],
+            items.Required.OrderBy(x => x, StringComparer.Ordinal).ToList());
+
+        // replaceAll ОПЦИОНАЛЕН семантически: union с null позволяет модели прислать null
+        // (и VS-хост обязан трактовать это как false), но поле остаётся в required.
+        var replaceAll = items.Properties!["replaceAll"];
+        Assert.True(replaceAll.IsUnionType);
+        Assert.Equal([NativeToolType.Boolean, NativeToolType.Null], (string[])replaceAll.Type);
+        Assert.Contains("Replace every occurrence", replaceAll.Description, StringComparison.Ordinal);
+
+        // approximateLine — та же форма: integer|null, null легален.
+        var approximateLine = items.Properties!["approximateLine"];
+        Assert.True(approximateLine.IsUnionType);
+        Assert.Equal([NativeToolType.Integer, NativeToolType.Null], (string[])approximateLine.Type);
+    }
+
+    [Fact]
+    public void MapMethodToTool_EditFile_NoFabricatedDefaultNoteOnNestedFields()
+    {
+        // [DefaultValue] on DiffEdit.ReplaceAll / ApproximateLine added NOTHING to the schema:
+        // IsNullableProperty already reports `bool?`/`int?` as optional, so the union with null is
+        // produced by the TYPE. The attributes only appended " (default 'False')" /
+        // " (default '-1')" to descriptions that already state the default in prose — a second
+        // source of truth for one default, and one of them factually wrong. They are removed; the
+        // descriptions below are the ones the model actually reads.
+        var method = typeof(BuiltInToolDefs).GetMethod(nameof(BuiltInToolDefs.EditFile));
+
+        var result = BuiltInToolDefs.MapMethodToTool(method);
+
+        var items = Assert.IsType<NativeParameters>(result.Function.Parameters.Properties["edits"].Items);
+
+        var replaceAll = items.Properties!["replaceAll"];
+        Assert.DoesNotContain("(default", replaceAll.Description, StringComparison.Ordinal);
+        Assert.Contains("Default: false", replaceAll.Description, StringComparison.Ordinal);
+
+        var approximateLine = items.Properties!["approximateLine"];
+        Assert.DoesNotContain("(default", approximateLine.Description, StringComparison.Ordinal);
+        // Здесь раньше стоял Assert.Equal("Approximate start line or null", …) — он ЗАКРЕПЛЯЛ текст,
+        // в котором не было ни 1-based, ни окна ±5, ни того, что устаревшая подсказка молча
+        // отбрасывается. Проверяем те три факта, которых модели не хватало.
+        Assert.Contains("1-based", approximateLine.Description, StringComparison.Ordinal);
+        Assert.Contains("+/-5", approximateLine.Description, StringComparison.Ordinal);
+        Assert.Contains("IGNORED", approximateLine.Description, StringComparison.Ordinal);
+
+        // Правило «пустой oldStr — это НЕ точка вставки, а ближайшая пустая строка» переехало на
+        // поле, к которому относится, вместо простыни в описании инструмента. Тест держит его на
+        // новом месте, иначе факт, которого модели не хватало, тихо исчезнет при следующей
+        // чистке текста.
+        var oldStr = items.Properties!["oldStr"];
+        Assert.Contains("NOT an insertion point", oldStr.Description, StringComparison.Ordinal);
+        Assert.Contains("BLANK line", oldStr.Description, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MapMethodToTool_EditFile_DryRunIsNullableBooleanInRequired()
+    {
+        // dryRun был реализован в VS-хосте и покрыт тестами в VS Code, но НЕ объявлен в схеме —
+        // schema-validated вызов не мог его прислать, то есть ветка была мёртвой. Теперь он
+        // есть и опционален той же формой, что остальные optional-поля: bool? в required.
+        var method = typeof(BuiltInToolDefs).GetMethod(nameof(BuiltInToolDefs.EditFile));
+
+        var result = BuiltInToolDefs.MapMethodToTool(method);
+
+        Assert.Equal(["filePath", "edits", "dryRun"], result.Function.Parameters.Required);
+
+        var dryRun = result.Function.Parameters.Properties["dryRun"];
+        Assert.True(dryRun.IsUnionType);
+        Assert.Equal([NativeToolType.Boolean, NativeToolType.Null], (string[])dryRun.Type);
+        Assert.Contains("WOULD change", dryRun.Description, StringComparison.Ordinal);
+        Assert.Contains("without writing", dryRun.Description, StringComparison.Ordinal);
     }
 
     [Fact]
