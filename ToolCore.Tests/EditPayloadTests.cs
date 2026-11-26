@@ -61,15 +61,14 @@ public class EditPayloadTests
     }
 
     [Theory]
-    [InlineData("""[{"oldStr":"a","newStr":"b","approximateLine":118.0}]""", 118)]
+    [InlineData("""[{"oldStr":"a","newStr":"b","approximateLine":118}]""", 118)]
     [InlineData("""[{"oldStr":"a","newStr":"b","approximateLine":1}]""", 1)]
-    [InlineData("""[{"oldStr":"a","newStr":"b","approximateLine":1e2}]""", 100)]
-    [InlineData("""[{"oldStr":"a","newStr":"b","approximateLine":-3.0}]""", -3)]
+    [InlineData("""[{"oldStr":"a","newStr":"b","approximateLine":-3}]""", -3)]
     public void TryParse_IntegralNumberHint_IsAccepted(string json, int expected)
     {
-        // `118.0`, `1e2` and `-3.0` are the same kind of hint as `118`; refusing them would make the
-        // model re-send a request that is already correct, and the VS Code host never lost them
-        // (JSON.parse renders all four as an integer).
+        // A hint written as digits is a hint, whatever its sign. `118.0` and `1e2` are refused in the
+        // theory below: the tolerance they needed cost a hand-written number grammar whose first draft
+        // turned `1.5e1` into 150 — a silent off-by-ten in the line an edit lands on.
         Assert.True(Parse(json, out var edits, out var refusal), refusal);
         Assert.Equal(expected, Assert.Single(edits).ApproximateLine);
     }
@@ -80,11 +79,10 @@ public class EditPayloadTests
     [InlineData("""[{"oldStr":"a","newStr":"b","approximateLine":1e10}]""")]
     public void TryParse_HintOutsideInt32OrUnparseable_IsRefused(string json)
     {
-        // `1e400` is the trap that made the old double-based check unsafe: `TryGetDouble` answers
-        // `Infinity` and the range test then decides on a value the model never wrote. With decimal
-        // the parse simply fails, which is the honest answer for a hint this host cannot store.
+        // An exponent, and a plain integer wider than `int`, are refused by one sentence: a hint has no
+        // consumer that could act on the difference.
         Assert.False(Parse(json, out _, out var refusal));
-        Assert.StartsWith("edit 1 of 1: 'approximateLine' must be an integer or null", refusal);
+        Assert.StartsWith("edit 1 of 1: 'approximateLine' must be a whole line number written as plain digits, or null", refusal);
         Assert.DoesNotContain("Infinity", refusal);
     }
 
@@ -119,13 +117,16 @@ public class EditPayloadTests
     }
 
     [Theory]
-    [InlineData("\"\"", "'approximateLine' must be an integer or null, received the string \"\". Nothing was changed.")]
-    [InlineData("\"118\"", "'approximateLine' must be an integer or null, received the string \"118\". Nothing was changed.")]
-    [InlineData("1.5", "'approximateLine' must be an integer or null, received the number 1.5. Nothing was changed.")]
+    [InlineData("\"\"", "'approximateLine' must be a whole line number written as plain digits, or null, received the string \"\". Nothing was changed.")]
+    [InlineData("\"118\"", "'approximateLine' must be a whole line number written as plain digits, or null, received the string \"118\". Nothing was changed.")]
+    [InlineData("1.5", "'approximateLine' must be a whole line number written as plain digits, or null, received the number 1.5. Nothing was changed.")]
+    [InlineData("118.0", "'approximateLine' must be a whole line number written as plain digits, or null, received the number 118.0. Nothing was changed.")]
+    [InlineData("1e2", "'approximateLine' must be a whole line number written as plain digits, or null, received the number 1e2. Nothing was changed.")]
     public void TryParse_HintOfAnotherType_IsRefusedInsteadOfRounded(string literal, string expectedTail)
     {
         // `""` here used to be the swallowed System.Text.Json exception. A fractional hint is NOT
-        // rounded: rounding edits a neighbour line.
+        // rounded: rounding edits a neighbour line. A point or an exponent is refused outright — the
+        // sentence says how to write it, so the retry is one turn long.
         var json = $$"""[{"oldStr":"a","newStr":"b","approximateLine":{{literal}}}]""";
 
         Assert.False(Parse(json, out _, out var refusal));
@@ -307,16 +308,16 @@ public class EditPayloadTests
     }
 
     [Fact]
-    public void TryParse_HintAtTheInt32Boundary_IsJudgedByTheNumberNotByItsSpelling()
+    public void TryParse_HintPastInt32_IsRefused()
     {
-        // `3000000000` is the literal the VS Code comment names: an `int` field cannot hold it, and
-        // truncating it would edit a line the model did not choose.
+        // An `int` field cannot hold this, and truncating it would edit a line the model did not choose.
         Assert.False(Parse("""
             [{"oldStr":"a","newStr":"b","approximateLine":3000000000}]
             """, out _, out var refusal));
 
         Assert.Equal(
-            "edit 1 of 1: 'approximateLine' must be an integer or null, received the number 3000000000. Nothing was changed.",
+            "edit 1 of 1: 'approximateLine' must be a whole line number written as plain digits, or null, " +
+            "received the number 3000000000. Nothing was changed.",
             refusal);
     }
 
@@ -340,9 +341,11 @@ public class EditPayloadTests
     [Fact]
     public void TryParse_SurrogatePairAtTheCutBoundary_IsNotSplit()
     {
-        // A lone surrogate in the refusal is not the text of anything: cutting 60 characters out of
-        // an emoji leaves half a code point.
-        var text = new string('a', 59) + "\U0001F600" + new string('b', 100);
+        // A lone surrogate in the refusal is not the text of anything: cutting inside an emoji leaves
+        // half a code point. The raw text of the literal is `"` + 58 a's + the pair, so the HIGH
+        // surrogate sits at index 59 — the last index a 60-character cut keeps. With 59 a's it sits at
+        // 60, outside the cut, and the test passed whether the back-off existed or not.
+        var text = new string('a', 58) + "\U0001F600" + new string('b', 100);
 
         Assert.False(Parse(
             "[{\"oldStr\":\"a\",\"newStr\":\"b\",\"approximateLine\":\"" + text + "\"}]",
@@ -350,10 +353,37 @@ public class EditPayloadTests
 
         Assert.NotNull(refusal);
         Assert.Contains("…", refusal);
-        // Half a code point would be an unpaired surrogate in the sentence the model reads.
+
         var cut = refusal!.Substring(0, refusal.IndexOf('…'));
         Assert.False(char.IsHighSurrogate(cut[^1]));
+        // The guard must have MOVED the cut, not merely happened to land well: a high surrogate at the
+        // boundary means the second half of the pair was dropped.
+        Assert.EndsWith("a", cut);
     }
+
+
+    [Fact]
+    public void TryParse_LiteralExactlyAtTheBudget_IsNotCut()
+    {
+        // The boundary itself was unpinned: `MaxLiteralLength` could be changed to 12 — or `<=` to `<`
+        // — and every existing assertion still held, because they only compared a 10-character literal
+        // (never cut) with a 500-character one (cut to pieces).
+        var atBudget = new string('x', 58);          // + the two quotes = 60 characters of raw JSON
+        Assert.False(Parse(EditWithHint(atBudget), out _, out var kept));
+        Assert.Contains("\"" + atBudget + "\"", kept);
+        Assert.DoesNotContain("…", kept);
+
+        // 61 characters: the closing quote is the character that falls off, so the literal now ends
+        // with the marker. The value itself still shows — that is what "cut at 60" means.
+        var onePast = new string('x', 59);
+        Assert.False(Parse(EditWithHint(onePast), out _, out var cut));
+        Assert.Contains("…\"", cut);
+        Assert.DoesNotContain("\"" + onePast + "\"", cut);
+    }
+
+    /// <summary>An edit whose `approximateLine` carries the given text — the field whose value is echoed.</summary>
+    private static string EditWithHint(string value)
+        => "[{\"oldStr\":\"a\",\"newStr\":\"b\",\"approximateLine\":\"" + value + "\"}]";
 
     #endregion
 

@@ -14,18 +14,18 @@ import { writeFileWithMode, parseMode } from './fileWriter';
 const MAX_LITERAL_LENGTH = 60;
 
 /**
- * The range of the C# `int` the hint ends up in. A number outside it cannot be a line number in the
- * sibling host, so accepting it here would run an edit the VS host refuses.
+ * The largest line number `startLine` / `lineCount` accept: a position in a file a person is looking
+ * at, so a value past it is a hallucinated coordinate the tool could not serve.
  */
+const MAX_LINE_NUMBER = 10000;
+
+/** The range of the C# `int` the hint ends up in. */
 const INT32_MIN = -2147483648;
 const INT32_MAX = 2147483647;
 
 /**
- * The offending value as the model sent it, cut to a readable length — `""` and `"yes"` must be
- * distinguishable at a glance, because "received a string" left the model guessing WHICH string.
- *
- * Mirrors `EditPayload.Describe` in the C# host: one sentence for one refusal, in two hosts. The
- * JSON form is reused verbatim so a string keeps its own quotes and a number its own spelling.
+ * The offending value as the model sent it, cut to a readable length. The JSON form is reused so a
+ * string keeps its own quotes and `""` stays distinguishable from `"yes"`.
  */
 function describeValue(value: unknown): string {
     if (value === undefined) {
@@ -42,9 +42,8 @@ function describeValue(value: unknown): string {
         case 'string':
             return `the string ${shortLiteral(JSON.stringify(value))}`;
         case 'number':
-            // `JSON.stringify(Infinity)` is the string "null", so a refused `1e400` used to be reported
-            // as `the number null` — naming a value the model never sent, in the one field the whole
-            // sentence hinges on. The C# host echoes the raw `1e400` here; JS keeps the value itself.
+            // `JSON.stringify(Infinity)` is the string "null", which would name a value the model never
+            // sent — hence the guard.
             return `the number ${Number.isFinite(value) ? shortLiteral(JSON.stringify(value)) : String(value)}`;
         case 'boolean':
             return `the boolean ${String(value)}`;
@@ -56,21 +55,14 @@ function describeValue(value: unknown): string {
 }
 
 /**
- * Marks a cut literal so the model cannot mistake a fragment for the whole value.
+ * Marks a cut literal so a fragment cannot be mistaken for the whole value: the cut backs off a split
+ * surrogate pair, and a cut JSON string gets its closing quote back.
  *
- * The cut backs off one character when it would land between the two halves of a surrogate pair:
- * a lone surrogate is not the text of anything, and raw JSON of an emoji is exactly where a 60th
- * character lands inside one.
- *
- * A cut JSON STRING gets its closing quote back, exactly like `JsonShape.Short` does in the C# host:
- * the text is cut blind, so a long string used to arrive as `"abcdef\u2026` — an opening quote with no
- * end, in the one field the whole sentence hinges on.
- *
- * KNOWN LIMITATION against the C# host: `JsonShape.Describe` echoes the RAW JSON text, so `1e3`
- * reads `the number 1e3` there and `the number 1000` here, and an object keeps its original spacing
- * there and loses it here. JavaScript cannot recover the source text after `JSON.parse` — the same
- * class of limit as the number spelling — so the two hosts agree on the sentence and on WHICH value
- * is named, but not on the literal spelling of a number or the whitespace inside an object.
+ * DELIBERATE DIVERGENCE from the C# host, which echoes the raw JSON text: here `1e3` reads `1000`,
+ * `9007199254740993` reads `…992` (a double is 53 bits), and an object loses its spacing. The same
+ * loss reaches the DECISION — `118.0` and `1e2` arrive already parsed — so this host accepts a
+ * spelling the C# host refuses. Recovering the source text would need the raw payload, which this
+ * host does not have. The refusal SENTENCE is shared, so the model learns one rule from both.
  */
 function shortLiteral(text: string): string {
     if (text.length <= MAX_LITERAL_LENGTH) {
@@ -78,6 +70,7 @@ function shortLiteral(text: string): string {
     }
 
     let cut = MAX_LITERAL_LENGTH;
+
     const last = text.charCodeAt(cut - 1);
     if (last >= 0xd800 && last <= 0xdbff) {
         cut--;
@@ -86,6 +79,7 @@ function shortLiteral(text: string): string {
     const closing = text.startsWith('"') ? '"' : '';
     return `${text.slice(0, cut)}\u2026${closing}`;
 }
+
 
 /**
  * A property by name, IGNORING CASE — the lookup the VS host performs in `JsonShape.TryGetProperty`,
@@ -145,17 +139,9 @@ export function readFiles(params: any, workspaceRoot: string): ToolResult {
         return { success: false, error: 'No files specified.' };
     }
 
-    // `null`, `-1` and `0` all mean "no range" — the schema offers ["integer","null"], and a
-    // non-positive count is the older spelling of the sentinel. One number, decided ONCE, so the
-    // dedup key and the arithmetic cannot disagree, and so this host agrees with the C# one, which
-    // normalises the same three spellings in ToolCore/ReadFilesPayload.TryParse.
-    //
-    // Any OTHER value is a REFUSAL, not a silent "no range". Folding `1.5`, `"3"` or `3000000000`
-    // to -1 here answered a request the sibling host rejected — and answered it with the ENTIRE
-    // file, i.e. with far more text than was asked for. Same rule as the `edits` hint: refuse,
-    // never round. `118.0` is a whole number and both hosts accept it (`JsonShape.ReadIntegerOrNull`
-    // reads the same `decimal` here); the reason list is what has to stay identical, not the
-    // spelling that produced it.
+    // `null`, `-1` and `0` all mean "no range", decided ONCE so the dedup key and the arithmetic
+    // cannot disagree. Any other value is a REFUSAL, not a silent "no range": folding `1.5`, `"3"` or
+    // `3000000000` to -1 answered with the ENTIRE file. Refuse, never round.
     const parseRange = (
         value: unknown,
         field: string,
@@ -164,34 +150,29 @@ export function readFiles(params: any, workspaceRoot: string): ToolResult {
         if (value === undefined || value === null) {
             return { ok: true, value: -1 };
         }
-        if (typeof value === 'number' && Number.isInteger(value)) {
-            if (value > 2147483647 || value < -2147483648) {
-                return {
-                    ok: false,
-                    reason: `${entryNo}: '${field}' is outside the 32-bit integer range, received ${describeValue(value)}. Nothing was read.`,
-                };
-            }
+        if (typeof value === 'number' && Number.isInteger(value)
+            && value <= MAX_LINE_NUMBER && value >= -MAX_LINE_NUMBER) {
             return { ok: true, value: value > 0 ? value : -1 };
         }
+        // ONE sentence, stated as a RANGE — same text as `ReadFilesPayload.TryReadRange`. Saying "not an
+        // integer" about `3000000000` (which IS one) sent the model to fix a spelling that was fine.
         return {
             ok: false,
-            reason: `${entryNo}: '${field}' must be an integer or null, received ${describeValue(value)}. Nothing was read.`,
+            reason: `${entryNo}: '${field}' must be a whole line number between 1 and ${MAX_LINE_NUMBER}, ` +
+                `written as plain digits, or null for no range, received ${describeValue(value)}. Nothing was read.`,
         };
     };
 
-    // One pass over the WHOLE array, before anything is resolved or read — the order the `edits`
-    // shape pass below uses, and for the same reason: a refusal has to name the entry, so it cannot
-    // come from the middle of a loop that has already answered half the request. An entry that
-    // cannot yield a path or a range refuses the call; skipping it would hand back a shorter answer
-    // than the one that was asked for, which is the kind of silence this function has to avoid.
+    // One pass over the WHOLE array before anything is resolved or read: a refusal has to name the
+    // entry, and an entry that yields no path or range refuses the call rather than shortening the
+    // answer.
     type ReadPlan = { path: string; startLine: number; lineCount: number };
     const planned: ReadPlan[] = [];
     for (let i = 0; i < files.length; i++) {
         const entryNo = `entry ${i + 1} of ${files.length}`;
         const f = files[i];
 
-        // `files: [null]` is valid JSON. Reading `f.path` here threw `Cannot read properties of null`
-        // — the same class of host-internals text the C# host stopped producing for this payload.
+        // `files: [null]` is valid JSON, and reading `f.path` here would throw a host-internals text.
         if (f === null || typeof f !== 'object' || Array.isArray(f)) {
             return {
                 success: false,
@@ -217,8 +198,7 @@ export function readFiles(params: any, workspaceRoot: string): ToolResult {
         planned.push({ path: readProperty(f, 'path'), startLine: startLine.value, lineCount: lineCount.value });
     }
 
-    // Deduplicate by the WHOLE request, not by path alone: two ranges of one file are two
-    // different reads, and the old key silently dropped the second one.
+    // Deduplicate by the WHOLE request: two ranges of one file are two different reads.
     const seen = new Set<string>();
     const deduped: ReadPlan[] = [];
     for (const f of planned) {
@@ -281,21 +261,17 @@ export function readFiles(params: any, workspaceRoot: string): ToolResult {
 export function createFile(params: any, workspaceRoot: string): ToolResult {
     try {
         const filePath: string = params.filePath;
-        // An ABSENT `content` and an EMPTY one are different things and must not be glued together:
-        // `overwrite` deliberately does NOT treat an empty body as a no-op (creating an empty file is
-        // legal), so coercing a missing field to '' truncated an existing file to zero bytes and then
-        // reported "overwritten successfully". Same refusal as `newStr: null` in `edit_file`, and the
-        // same sentence as `ToolExecutor.CreateNewFileAsync` in the VS host.
+        // An ABSENT `content` is refused: `overwrite` does not treat an empty body as a no-op, so
+        // coercing a missing field to '' would truncate the file and still report success. An EMPTY
+        // string stays legal.
         if (params.content === undefined || params.content === null) {
             return {
                 success: false,
                 error: "'content' is missing: send the full file text (an empty string is a valid body). Nothing was written.",
             };
         }
-        // Any other kind is echoed as text, exactly like the host's `GetString`. A JSON object or
-        // array keeps its JSON FORM: `String()` would write `[object Object]` into the file here
-        // while the VS host writes the raw JSON, so one approved call would produce two different
-        // files. A boolean still differs in capitalisation (`true` here, `True` there).
+        // Any other kind is echoed as text. A JSON object keeps its JSON form: `String()` would write
+        // `[object Object]` into the file where the VS host writes the raw JSON.
         const raw = params.content;
         const content: string = typeof raw === 'string'
             ? raw
@@ -304,8 +280,8 @@ export function createFile(params: any, workspaceRoot: string): ToolResult {
                 : String(raw);
         const absPath = getAbsolutePath(filePath, workspaceRoot);
 
-        // Encoding and line endings belong to the tree (.editorconfig) or to the existing file;
-        // mode decides whether the content replaces the file, extends it or is prepended to it.
+        // Encoding and line endings come from .editorconfig or the existing file; mode decides
+        // whether the content replaces, extends or prepends.
         return writeFileWithMode(filePath, absPath, content, parseMode(params.mode));
     } catch (e: any) {
         return { success: false, error: e.message ?? String(e) };
@@ -317,18 +293,11 @@ export function editFiles(params: any, workspaceRoot: string): ToolResult {
     try {
         const filePath: string = params.filePath;
 
-        // The SHAPE of `edits` is checked here with the same sentences the C# host builds in
-        // `ToolCore/EditPayload.cs`, and for the same reason: a refusal has to name the edit, the
-        // field and the value the model sent. The C# host used to pass a System.Text.Json exception
-        // through, whose "LineNumber 5 | BytePositionInLine 20" pointed into a pretty-printed COPY
-        // of a payload the model had sent as one line — so the model retried with another guess.
-        //
-        // The ORDER is part of the message, not an implementation detail: one pass per edit, in
+        // The SHAPE of `edits` is checked with the same sentences the C# host builds in
+        // `ToolCore/EditPayload.cs`. The ORDER is part of the message: one pass per edit, in
         // DiffEdit's order (hint -> oldStr -> newStr -> replaceAll), and the shape of the WHOLE array
-        // settled before the file is even resolved. The C# host does exactly this, so a payload with
-        // two mistakes is answered with the SAME one by both hosts. Checking `existsSync` first, as
-        // this function used to, answered "File doesn't exist." to a call the sibling host refused
-        // for its shape.
+        // settled before the file is resolved — so a payload with two mistakes gets the same answer
+        // from both hosts.
         const edits: any = params.edits;
 
         if (edits === undefined || edits === null) {
@@ -363,9 +332,8 @@ export function editFiles(params: any, workspaceRoot: string): ToolResult {
         for (let i = 0; i < edits.length; i++) {
             const edit = edits[i];
 
-            // A JSON null INSIDE the array is legal and is NOT a shape error: the batch reports it
-            // per edit ("the edit is null") so the siblings still apply. Refusing the whole call
-            // here would disagree with the C# host, where EditPayload keeps a null element too.
+            // A JSON null INSIDE the array is legal: the batch reports it per edit so the siblings
+            // still apply.
             if (edit === null) {
                 canonical.push(null);
                 continue;
@@ -380,21 +348,19 @@ export function editFiles(params: any, workspaceRoot: string): ToolResult {
             }
 
             const hint = readProperty(edit, 'approximateLine');
-            // int32 only: the C# host stores the hint in an `int`, so a number outside that range is
-            // a line the host cannot represent. `Number.isInteger` alone accepted 3000000000 and the
-            // edit ran here while the sibling host refused it.
+            // int32 only: the hint ends up in an `int`, so anything wider is a line it cannot hold.
             if (hint !== undefined && hint !== null && !isUsableHint(hint)) {
                 return {
                     success: false,
-                    error: `${labelFor(hint, i)}: 'approximateLine' must be an integer or null, ` +
+                    error: `${labelFor(hint, i)}: 'approximateLine' must be a whole line number written as plain digits, or null, ` +
                         `received ${describeValue(hint)}. Nothing was changed.`,
                 };
             }
 
             const label = labelFor(hint, i);
 
-            // A number or an object in a text field used to reach `splitEditText` through a
-            // substituted default and apply something the model never wrote.
+            // A number or an object here would otherwise reach `splitEditText` as a substituted
+            // default and apply something the model never wrote.
             for (const field of ['oldStr', 'newStr']) {
                 const value = readProperty(edit, field);
                 if (value !== undefined && value !== null && typeof value !== 'string') {
@@ -406,10 +372,8 @@ export function editFiles(params: any, workspaceRoot: string): ToolResult {
                 }
             }
 
-            // `replaceAll` is BOOLEAN or null, and a violation refuses the WHOLE batch — never the
-            // one edit. Reading it tolerantly here (asBool) turned the same call into a file-wide
-            // rewrite in this host only, and the two hosts then disagreed in the DESTRUCTIVE
-            // direction.
+            // `replaceAll` is boolean or null, and a violation refuses the WHOLE batch: reading it
+            // tolerantly turned the same call into a file-wide rewrite.
             const raw = readProperty(edit, 'replaceAll');
             if (raw !== undefined && raw !== null && typeof raw !== 'boolean') {
                 return {
@@ -427,8 +391,7 @@ export function editFiles(params: any, workspaceRoot: string): ToolResult {
             });
         }
 
-        // An empty batch is a legal payload the caller refuses in its own words — and it is refused
-        // only once the SHAPE above is sound, exactly like the C# host.
+        // An empty batch is legal, and is refused only once the SHAPE above is sound.
         if (edits.length === 0) {
             return { success: false, error: "'edits' is empty: nothing to apply." };
         }

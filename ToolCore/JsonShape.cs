@@ -4,13 +4,10 @@ using System.Text.Json;
 namespace ToolCore;
 
 /// <summary>
-/// How a refusal names the value it choked on: the shape readers and the wording helpers shared by
-/// <see cref="EditPayload"/> and <see cref="ReadFilesPayload"/>.
-///
-/// WHY one type. Both tools answer a bad payload with the same kind of sentence — WHICH entry, WHICH
-/// field, WHICH literal — and a second copy of that sentence drifts the moment one of the two is
-/// widened. A refusal is the only thing the model sees of a rejected call, so this is production
-/// text, not diagnostics: two hosts and two tools must not spell the same rule three ways.
+/// The shape readers and wording helpers shared by <see cref="EditPayload"/> and
+/// <see cref="ReadFilesPayload"/>. Both tools answer a bad payload with the same kind of sentence —
+/// which entry, which field, which literal — and a refusal is the only thing the model sees of a
+/// rejected call, so the wording is production text and lives in one place.
 /// </summary>
 internal static class JsonShape
 {
@@ -18,47 +15,41 @@ internal static class JsonShape
     internal const int MaxLiteralLength = 60;
 
     /// <summary>
-    /// Что оказалось в JSON-числе, которое читали как <c>int?</c>. Классификация — здесь, а ФРАЗА —
-    /// у вызывающего: у двух инструментов разные хвосты («Nothing was read.» / «Nothing was
-    /// changed.») и разные подписи записи.
+    /// What a JSON number read as a line number turned out to be. The classification is here; the
+    /// SENTENCE belongs to the caller, because the two tools have different tails ("Nothing was read."
+    /// / "Nothing was changed.") and different entry labels.
     /// </summary>
-    internal enum IntegerRead
+    internal enum LineNumberRead
     {
-        /// <summary>Поле отсутствует или JSON null — значение решает вызывающий.</summary>
+        /// <summary>The field is absent or JSON null — the caller decides what that means.</summary>
         Absent,
 
-        /// <summary>Целое в диапазоне <see cref="int"/>, включая интегральное написание вида `118.0`.</summary>
+        /// <summary>A plain integer within the allowed line number.</summary>
         Ok,
 
-        /// <summary>Не число, либо число с ненулевой дробной частью.</summary>
-        NotAnInteger,
-
-        /// <summary>Интегральное, но за пределами <see cref="int"/> — хост не может его представить.</summary>
-        OutOfInt32,
+        /// <summary>Anything else: not a number, not a plain integer (`1.5`, `1e2`), or out of range.</summary>
+        Invalid,
     }
 
     /// <summary>
-    /// A property by name, IGNORING CASE — the lookup <c>JsonUtils.GetObject</c> performed with
-    /// <c>PropertyNameCaseInsensitive = true</c>, and the one the approval card in
-    /// <c>ToolCallBlock</c> performs with <c>OrdinalIgnoreCase</c>.
+    /// A property by name, IGNORING CASE — the lookup the approval card also performs, so `{"OldStr": …}`
+    /// renders as a valid diff and must not then be refused as "oldStr is missing".
     /// <para>
-    /// Dropping that tolerance would be a real regression, not a tidy-up: <c>{"OldStr": …}</c> bound
-    /// fine before, so the card rendered a valid diff, the user APPROVED it, and the host answered
-    /// "oldStr is missing" — a refusal about a typo nobody made.
+    /// The value-kind test comes FIRST because <c>JsonElement.TryGetProperty</c> THROWS for an array, a
+    /// string, a number, a boolean or null — a guard placed after it could never run.
     /// </para>
     /// </summary>
     internal static bool TryGetProperty(JsonElement element, string name, out JsonElement value)
     {
-        // The fast path: the model usually spells the field the way the schema does.
-        if (element.TryGetProperty(name, out value))
-        {
-            return true;
-        }
-
         if (element.ValueKind != JsonValueKind.Object)
         {
             value = default;
             return false;
+        }
+
+        if (element.TryGetProperty(name, out value))
+        {
+            return true;
         }
 
         foreach (var property in element.EnumerateObject())
@@ -75,68 +66,54 @@ internal static class JsonShape
     }
 
     /// <summary>
-    /// Reads an optional integer property (<c>int?</c> in the contract, so <c>["integer","null"]</c>
-    /// in the schema). <paramref name="raw"/> receives the offending element so the caller can echo
-    /// it; it is <c>default</c> when nothing was found.
+    /// Reads an optional LINE NUMBER (<c>int?</c> in the contract, so <c>["integer","null"]</c> in the
+    /// schema). <paramref name="max"/> is the largest number the caller can serve;
+    /// <paramref name="raw"/> receives the offending element so the caller can echo it.
     /// <para>
-    /// `118.0` is the same number as `118`. <c>System.Text.Json</c> REFUSED that spelling for
-    /// <c>int?</c>, so accepting it is a PARITY fix with the VS Code host — which parses with
-    /// <c>JSON.parse</c> and never lost the fraction — and not a restoration of behaviour that once
-    /// worked. A fractional or out-of-range value is still not a line number: rounding it would
-    /// address the wrong line, so it is refused, never rounded.
+    /// The literal must be a PLAIN INTEGER, and <c>TryGetInt32</c> is the test: it parses the raw text
+    /// and accepts nothing but an optionally-signed run of digits. Deliberately not "parse and ask
+    /// whether the value is whole" — every API that reads a fraction ROUNDS first, so `1e-29` becomes
+    /// `0` (the whole file, silently) and 29 nines become `1` (one line instead of a refusal). An
+    /// integer parse never looks at a fraction, so that hazard is unreachable.
     /// </para>
     /// <para>
-    /// <c>decimal</c>, not <c>double</c>: decimal arithmetic is EXACT, so "the value is a whole
-    /// number" is a real test. A binary float would need an equality against <c>Math.Floor</c> — a
-    /// comparison that is a coin flip for the values that matter here (<c>0.1 + 0.2</c> is not
-    /// <c>0.3</c>) — and <c>double</c> additionally turns an out-of-range literal such as
-    /// <c>1e400</c> into <c>Infinity</c> instead of failing the parse.
+    /// The cost: `118.0` and `1e2` are refused, with a sentence saying to write plain digits. Both the
+    /// parse failure and the bound answer with one sentence naming a RANGE, so a value that was spelled
+    /// fine is never called a typo.
     /// </para>
     /// </summary>
-    internal static IntegerRead ReadIntegerOrNull(JsonElement item, string field, out int? value, out JsonElement raw)
+    internal static LineNumberRead ReadLineNumber(
+        JsonElement item,
+        string field,
+        int max,
+        out int? value,
+        out JsonElement raw)
     {
         value = null;
         raw = default;
 
         if (!TryGetProperty(item, field, out var part) || part.ValueKind == JsonValueKind.Null)
         {
-            return IntegerRead.Absent;
+            return LineNumberRead.Absent;
         }
 
         raw = part;
 
-        if (part.ValueKind != JsonValueKind.Number)
+        if (part.ValueKind != JsonValueKind.Number
+            || !part.TryGetInt32(out var number)
+            || number > max)
         {
-            return IntegerRead.NotAnInteger;
+            return LineNumberRead.Invalid;
         }
 
-        if (part.TryGetInt32(out var number))
-        {
-            value = number;
-            return IntegerRead.Ok;
-        }
-
-        if (part.TryGetDecimal(out var exact) && exact == decimal.Truncate(exact))
-        {
-            if (exact < int.MinValue || exact > int.MaxValue)
-            {
-                return IntegerRead.OutOfInt32;
-            }
-
-            value = (int)exact;
-            return IntegerRead.Ok;
-        }
-
-        return IntegerRead.NotAnInteger;
+        value = number;
+        return LineNumberRead.Ok;
     }
 
     /// <summary>
-    /// The offending value as the model sent it, cut to a readable length. `""` and `"yes"` must be
-    /// distinguishable at a glance — "received a string" left the model guessing WHICH string.
-    /// <para>
-    /// The RAW JSON text is reused verbatim: it already carries the quotes of a string and the bare
-    /// spelling of a number, so no second quoting scheme can disagree with what the model sent.
-    /// </para>
+    /// The offending value as the model sent it, cut to a readable length. The raw JSON is reused
+    /// verbatim, so it carries the quotes of a string and the bare spelling of a number and no second
+    /// quoting scheme can disagree with what the model sent.
     /// </summary>
     internal static string Describe(JsonElement element)
     {
@@ -155,17 +132,8 @@ internal static class JsonShape
     }
 
     /// <summary>
-    /// Marks a cut literal so the model cannot mistake a fragment for the whole value.
-    /// <para>
-    /// The cut backs off one character when it would land between the two halves of a surrogate
-    /// pair: a lone surrogate in the refusal is not the text of anything, and it is what a 60th
-    /// character inside an emoji produces in raw JSON.
-    /// </para>
-    /// <para>
-    /// A cut JSON STRING gets its closing quote back (<paramref name="isJsonString"/>): the raw text
-    /// is cut blind, so a long string arrived as `"abcdef…` — an opening quote with no end, in the
-    /// one field the whole sentence hinges on.
-    /// </para>
+    /// Cuts a literal and marks the cut, so a fragment cannot be mistaken for the whole value. A cut
+    /// JSON string gets its closing quote back, and a cut never splits a surrogate pair.
     /// </summary>
     internal static string Short(string value, bool isJsonString)
     {
@@ -186,15 +154,12 @@ internal static class JsonShape
     }
 
     /// <summary>
-    /// The payload value as a <see cref="JsonElement"/>. A real call already holds one (the payload
-    /// is deserialised into a dictionary of <see cref="JsonElement"/>), so the round trip below only
-    /// runs for a caller that built the dictionary in code — and it keeps ONE rule set instead of a
-    /// second, CLR-typed copy of these checks.
+    /// The payload value as a <see cref="JsonElement"/>. A real call already holds one, so the round
+    /// trip only runs for a caller that built the payload in code — and it keeps one rule set instead
+    /// of a second, CLR-typed copy of these checks.
     /// <para>
-    /// It serialises an arbitrary CLR object, which can throw, and an exception escaping a parser
-    /// that documents <c>false</c> for "unreadable" would surface as a host fault instead of a
-    /// refusal. The message is stripped of its JSON position first: that position describes the copy
-    /// this method just made, not the payload the model sent.
+    /// The message is stripped of its JSON position: that position describes the copy made here, not
+    /// the payload the model sent.
     /// </para>
     /// </summary>
     internal static bool TryAsElement(
@@ -217,7 +182,7 @@ internal static class JsonShape
 
         try
         {
-            document = JsonDocument.Parse(JsonUtils.SerializeCompact(value));
+            document = JsonDocument.Parse(JsonUtils.SerializeCompact(value!));
             element = document.RootElement;
             return true;
         }

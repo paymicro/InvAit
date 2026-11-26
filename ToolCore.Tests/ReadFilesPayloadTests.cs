@@ -1,8 +1,4 @@
-using System.Collections.Generic;
-using System.Text.Json;
 using Shared.Contracts;
-using ToolCore;
-using Xunit;
 
 namespace ToolCore.Tests;
 
@@ -26,6 +22,12 @@ public class ReadFilesPayloadTests
 
     private static bool Parse(string filesJson, out List<ReadFileParams> files, out string? refusal)
         => ReadFilesPayload.TryParse(Files(filesJson), out files, out refusal);
+
+    /// <summary>
+    /// The literal as the refusal echoes it: the raw JSON text, prefixed by its kind. Both hosts reuse
+    /// the raw text, so a test that reformatted the value would be checking something else.
+    /// </summary>
+    private static string DescribeNumber(string literal) => "the number " + literal;
 
     // ── the array itself ─────────────────────────────────────────────────────────
 
@@ -104,8 +106,8 @@ public class ReadFilesPayloadTests
         Assert.False(Parse("[{\"path\":\"a.cs\"},{\"path\":\"b.cs\",\"startLine\":\"2\"}]", out _, out var refusal));
 
         Assert.Equal(
-            "Failed to read 'files': entry 2 of 2: 'startLine' must be an integer or null, " +
-            "received the string \"2\". Nothing was read.",
+            "Failed to read 'files': entry 2 of 2: 'startLine' must be a whole line number between 1 and 10000, " +
+            "written as plain digits, or null for no range, received the string \"2\". Nothing was read.",
             refusal);
     }
 
@@ -113,55 +115,57 @@ public class ReadFilesPayloadTests
 
     [Theory]
     [InlineData("\"3\"", "the string \"3\"")]
-    [InlineData("1.5", "the number 1.5")]
+    [InlineData("\"\"", "the string \"\"")]
     [InlineData("true", "the boolean true")]
     [InlineData("{}", "an object {}")]
     [InlineData("[]", "an array []")]
-    public void TryParse_RangeOfAnotherType_IsRefusedInsteadOfFoldedToNoRange(string literal, string described)
+    [InlineData("1.5", "the number 1.5")]
+    [InlineData("118.0", "the number 118.0")]
+    [InlineData("0.0", "the number 0.0")]
+    [InlineData("1.5e1", "the number 1.5e1")]      // the shift bug lived here: this was 150
+    [InlineData("1e2", "the number 1e2")]
+    [InlineData("1e-29", "the number 1e-29")]       // `TryGetDecimal` rounds this to 0
+    [InlineData("1e400", "the number 1e400")]       // integral, but not a plain integer
+    [InlineData("0.99999999999999999999999999999", "the number 0.99999999999999999999999999999")]
+    [InlineData("10001", "the number 10001")]      // the bound
+    [InlineData("3000000000", "the number 3000000000")]
+    [InlineData("-3000000000", "the number -3000000000")]
+    public void TryParse_RangeThatIsNotAPlainLineNumber_IsRefused(string literal, string described)
     {
-        // These used to be folded to -1 and answered with the WHOLE file, while the VS Code host
-        // refused the call: two hosts, two different answers, one of them far too much text.
+        // ONE theory, because there is ONE sentence: a string, a fraction, an exponent, a value past the
+        // bound and a value wider than `int` all need the same correction — send plain digits in range.
+        // Four theories stood here, one per failure KIND, and that split was the old two-sentence design
+        // leaking into the tests: telling "not an integer" from "too big" needed a `long` parse and
+        // earned nothing, since the model acts the same way on both.
+        //
+        // The literals are what a decimal-based test would have got WRONG. `TryGetDecimal` keeps 28-29
+        // significant digits and rounds before any check runs, so `1e-29` arrived as `0` ("no range",
+        // the WHOLE file, silently) and 29 nines as `1` (one line instead of a refusal). `TryGetInt32`
+        // never looks at a fraction, so the hazard is unreachable. These used to be folded to -1 and
+        // answered with the whole file while VS Code refused the call.
         Assert.False(Parse($"[{{\"path\":\"a.cs\",\"startLine\":{literal}}}]", out var files, out var refusal));
 
         Assert.Empty(files);
         Assert.Equal(
-            $"Failed to read 'files': entry 1 of 1: 'startLine' must be an integer or null, received {described}. " +
-            RefusedNothingRead,
+            "Failed to read 'files': entry 1 of 1: 'startLine' must be a whole line number between 1 and 10000, " +
+            $"written as plain digits, or null for no range, received {described}. {RefusedNothingRead}",
             refusal);
-    }
-
-    [Theory]
-    [InlineData("3000000000")]
-    [InlineData("-3000000000")]
-    public void TryParse_RangeOutsideInt32_IsRefusedWithTheIntegerRangeReason(string literal)
-    {
-        Assert.False(Parse($"[{{\"path\":\"a.cs\",\"lineCount\":{literal}}}]", out _, out var refusal));
-
-        Assert.StartsWith("Failed to read 'files': entry 1 of 1: 'lineCount' is outside the 32-bit integer range, received the number ", refusal);
-        Assert.EndsWith($". {RefusedNothingRead}", refusal);
     }
 
     [Fact]
-    public void TryParse_NumberThatIsNotFinite_IsRefusedAndNamedAsSent()
+    public void TryParse_TheBoundItself_IsAccepted()
     {
-        // `1e400` is a valid JSON number and an `int` cannot hold it. `System.Text.Json` cannot parse
-        // it as a decimal either, so it lands in the "not an integer" branch — but the sentence must
-        // echo `1e400`, not a rounded value, or the model cannot recognise its own payload.
-        Assert.False(Parse("[{\"path\":\"a.cs\",\"startLine\":1e400}]", out _, out var refusal));
+        Assert.True(Parse("[{\"path\":\"a.cs\",\"startLine\":10000}]", out var files, out var refusal), refusal);
 
-        Assert.Equal(
-            "Failed to read 'files': entry 1 of 1: 'startLine' must be an integer or null, " +
-            "received the number 1e400. Nothing was read.",
-            refusal);
+        Assert.Null(refusal);
+        Assert.Equal(10000, Assert.Single(files).StartLine);
     }
 
     [Theory]
     [InlineData("118", 118)]
-    [InlineData("118.0", 118)]
-    [InlineData("1e2", 100)]
-    [InlineData("-3.0", -1)] // negative means "no range" and is normalised, not refused
     [InlineData("0", -1)]
     [InlineData("-1", -1)]
+    [InlineData("-3", -1)] // negative means "no range" and is normalised, not refused
     [InlineData("null", -1)]
     public void TryParse_IntegralRange_IsAcceptedAndNormalised(string literal, int expected)
     {
@@ -219,6 +223,25 @@ public class ReadFilesPayloadTests
         Assert.Equal(2, files.Count);
         Assert.Equal(1, files[0].StartLine);
         Assert.Equal(100, files[1].StartLine);
+    }
+
+    [Theory]
+    [InlineData("src/File.cs", "src/file.cs")]
+    [InlineData("src/file.cs", "SRC/FILE.CS")]
+    public void TryParse_PathsDifferingOnlyByCase_CollapseIntoOneEntry(string first, string second)
+    {
+        // The key folds case because on Windows these are ONE file: reading it twice returned the
+        // model a duplicate it paid for. The VS Code host pins this too — and until this test the
+        // C# half of the contract was unpinned, so deleting ToLowerInvariant stayed green here while
+        // the sibling suite failed.
+        Assert.True(Parse(
+            $"[{{\"path\":\"{first}\"}},{{\"path\":\"{second}\"}}]",
+            out var files,
+            out var refusal));
+
+        Assert.Null(refusal);
+        // The FIRST spelling wins, which is what both hosts push into their dedup set.
+        Assert.Equal(first, Assert.Single(files).Path);
     }
 
     [Fact]

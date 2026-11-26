@@ -6,39 +6,19 @@ using Shared.Contracts;
 namespace ToolCore;
 
 /// <summary>
-/// Parses the <c>files</c> array of <c>read_files</c> into the requests that will actually be
-/// served: normalised, deduplicated, and refused with a sentence that names the entry.
+/// Parses the <c>files</c> array of <c>read_files</c> into the requests that will actually be served:
+/// normalised, deduplicated, and refused with a sentence that names the entry, the field and the value.
 ///
-/// WHY this type exists. The payload used to go through <c>JsonUtils.GetObject&lt;List&lt;ReadFileParams&gt;&gt;</c>,
-/// which re-serialised the raw element with <c>WriteIndented = true</c> and asked
-/// <c>System.Text.Json</c> to bind the copy. A model that sent <c>"startLine": "120"</c> — a string,
-/// very common — was answered with the CLR type name and a 0-based index into a document it never
-/// wrote:
+/// It exists because the payload used to go through <c>JsonUtils.GetObject&lt;List&lt;ReadFileParams&gt;&gt;</c>,
+/// which swallowed the binding error and returned <c>null</c>, so the host could only answer with a
+/// fixed guess that asserted a cause it did not know — a model that sent <c>"startLine": "120"</c> was
+/// told to check its <c>path</c>.
 ///
-/// <code>
-/// Failed to read 'files': The JSON value could not be converted to
-/// System.Nullable`1[System.Int32]. Path: $[0].startLine. Nothing was read.
-/// </code>
-///
-/// That is the same defect <see cref="EditPayload"/> was created to remove from <c>edits</c>: no
-/// entry number a human counts, no field name, no value, and numbers that describe a copy. The model
-/// could not tell whether entry 0 or 1 was wrong, never saw the literal it had sent, and got a host
-/// internals name for a fixable typo.
-///
-/// WHAT it decides, so the host does not have to:
-/// <list type="bullet">
-///   <item>an absent entry and a null one are refused with their 1-based position, before any file is
-///   touched — a null entry cannot yield a path or a range, and letting it reach the read loop turned
-///   a fixable payload into <c>NULL_REFERENCE</c>;</item>
-///   <item><c>null</c>, <c>0</c> and <c>-1</c> all mean "no range" and collapse to ONE number BEFORE
-///   the dedup key is computed, because two spellings of the same read must not produce two identical
-///   entries in the answer;</item>
-///   <item>the dedup key is the WHOLE request (case-insensitive path plus both bounds): two ranges of
-///   one file are two different reads, and a path-only key silently dropped the second one;</item>
-///   <item>a range that is not an integer is REFUSED, not folded to "no range": folding it answered
-///   with the entire file — far more text than was asked for — while the VS Code host refused the
-///   call, so the same payload produced two different answers on two hosts.</item>
-/// </list>
+/// What it decides, so the host does not have to: a non-object entry is refused before any file is
+/// touched; <c>null</c>, <c>0</c> and negatives all mean "no range" and collapse to ONE number before
+/// the dedup key, because two spellings of one read must not produce two entries; the key is the whole
+/// request, since two ranges of one file are two different reads; and a range that is not a plain line
+/// number is refused rather than folded to "no range", which answered with the entire file.
 /// </summary>
 public static class ReadFilesPayload
 {
@@ -49,14 +29,19 @@ public static class ReadFilesPayload
     private const string NothingRead = "Nothing was read.";
 
     /// <summary>
-    /// Reads <c>files</c> into the list of reads to serve.
+    /// The largest line number either field accepts. These are positions in a file a person is looking
+    /// at, not arbitrary integers: past this is a hallucinated coordinate, and <c>read_files</c> could
+    /// not serve it anyway. Shared with the VS Code host (<c>MAX_LINE_NUMBER</c> in <c>fileOps.ts</c>).
     /// </summary>
+    public const int MaxLineNumber = 10_000;
+
+    /// <summary>Reads <c>files</c> into the list of reads to serve.</summary>
     /// <param name="value">The raw payload value (<see cref="JsonElement"/> for a real call).</param>
     /// <param name="files">
-    /// The plan: normalised and deduplicated, in request order. EMPTY whenever the method returns
-    /// false — the list is assembled locally and published only on success, so a caller that ignores
-    /// the return value cannot read half a payload this method already refused. An EMPTY array is a
-    /// successful parse with nothing in it; the caller words that ("No files specified.").
+    /// Normalised and deduplicated, in request order. EMPTY whenever the method returns false — the list
+    /// is published only on success, so a caller that ignores the return value cannot read half a
+    /// payload this method already refused. An EMPTY array is a successful parse with nothing in it;
+    /// the caller words that.
     /// </param>
     /// <param name="refusal">The model-facing refusal; null on success.</param>
     /// <returns>False when the payload could not be read as a list of reads.</returns>
@@ -77,7 +62,6 @@ public static class ReadFilesPayload
             return false;
         }
 
-        // Published to `files` only on success — see the parameter documentation.
         var parsed = new List<ReadFileParams>();
 
         try
@@ -101,9 +85,6 @@ public static class ReadFilesPayload
                     return false;
                 }
 
-                // Normalise BEFORE the key: null, 0 and -1 are one request, and two spellings of it
-                // must collapse into one entry — the answer would otherwise contain the same file
-                // twice and the model would pay for both.
                 entry.StartLine = entry.StartLine is > 0 ? entry.StartLine : -1;
                 entry.LineCount = entry.LineCount is > 0 ? entry.LineCount : -1;
 
@@ -124,8 +105,8 @@ public static class ReadFilesPayload
     }
 
     /// <summary>
-    /// One entry: a <c>path</c> and two optional integers. Every refusal here names the entry with
-    /// the 1-based index a reader counts ("entry 2 of 3"), the field, and the literal received.
+    /// One entry: a <c>path</c> and two optional integers. Every refusal names the entry with the 1-based
+    /// index a reader counts ("entry 2 of 3"), the field, and the literal received.
     /// </summary>
     private static bool TryReadEntry(JsonElement item, int index, int total, out ReadFileParams entry, out string? refusal)
     {
@@ -134,8 +115,6 @@ public static class ReadFilesPayload
 
         var label = $"entry {index} of {total}";
 
-        // An entry that is not an object (or is JSON null) has no path and no range: there is nothing
-        // to read, so the batch is refused instead of reporting a file that was never asked for.
         if (item.ValueKind != JsonValueKind.Object)
         {
             refusal = Prefix + $"{label} must be a JSON object with a 'path', " +
@@ -143,9 +122,9 @@ public static class ReadFilesPayload
             return false;
         }
 
-        // `path` is the one field with no null spelling: a read of nowhere is not a request. A blank
-        // string is the same mistake as a missing one — the host resolved it to the solution root and
-        // then answered "Path cannot be null or empty." from outside its own error handling.
+        // `path` has no null spelling: a read of nowhere is not a request. A blank string is the same
+        // mistake as a missing one — it resolved to the solution root and then failed outside the
+        // host's own error handling.
         if (!JsonShape.TryGetProperty(item, "path", out var pathPart)
             || pathPart.ValueKind != JsonValueKind.String
             || string.IsNullOrWhiteSpace(pathPart.GetString()))
@@ -172,32 +151,24 @@ public static class ReadFilesPayload
     }
 
     /// <summary>
-    /// An optional bound. The schema offers <c>["integer","null"]</c>, so null and an absent key are
-    /// legal and mean "no bound"; anything that is not a whole number is refused rather than guessed
-    /// at, because guessing here silently reads the whole file.
+    /// An optional bound: null and an absent key both mean "no bound", and anything that is not a plain
+    /// line number in range is refused rather than guessed at, because guessing here reads the whole
+    /// file. One sentence for every failure, stated as a RANGE — telling "not a number" from "too big"
+    /// would buy the model nothing, since both need the same correction.
     /// </summary>
     private static bool TryReadRange(JsonElement item, string field, string label, out int? value, out string? refusal)
     {
         refusal = null;
 
-        var read = JsonShape.ReadIntegerOrNull(item, field, out value, out var raw);
-        switch (read)
+        var read = JsonShape.ReadLineNumber(item, field, MaxLineNumber, out value, out var raw);
+        if (read is JsonShape.LineNumberRead.Absent or JsonShape.LineNumberRead.Ok)
         {
-            case JsonShape.IntegerRead.Absent:
-            case JsonShape.IntegerRead.Ok:
-                return true;
-
-            case JsonShape.IntegerRead.OutOfInt32:
-                value = null;
-                refusal = Prefix + $"{label}: '{field}' is outside the 32-bit integer range, " +
-                          $"received {JsonShape.Describe(raw)}. " + NothingRead;
-                return false;
-
-            default:
-                value = null;
-                refusal = Prefix + $"{label}: '{field}' must be an integer or null, " +
-                          $"received {JsonShape.Describe(raw)}. " + NothingRead;
-                return false;
+            return true;
         }
+
+        value = null;
+        refusal = Prefix + $"{label}: '{field}' must be a whole line number between 1 and {MaxLineNumber}, " +
+                  $"written as plain digits, or null for no range, received {JsonShape.Describe(raw)}. " + NothingRead;
+        return false;
     }
 }

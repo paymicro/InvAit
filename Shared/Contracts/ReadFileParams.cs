@@ -31,14 +31,18 @@ public class ReadFileParams
     // Нормализация null/0/-1 → ОДНО число и дедуп живут в ToolCore/ReadFilesPayload.TryParse,
     // в ОДНОМ месте на оба хоста (VS Code повторяет его в fileOps.ts): контракт не диктует хостам
     // форму значения, а второй источник истины здесь уже был багом.
-    [Description("Start line, 1-based. lineCount counts FROM this line. null (or -1) = read from the top of the file")]
+    // Верхняя граница — одна константа на оба хоста (ReadFilesPayload.MaxLineNumber и
+    // MAX_LINE_NUMBER в fileOps.ts). Она не про размер файла, а про то, что номер строки — это
+    // координата в файле, а не произвольное целое: за границей начинаются галлюцинации, и такое
+    // чтение всё равно нечего обслуживать.
+    [Description("Start line, 1-based, at most 10000. lineCount counts FROM this line. null (or -1) = read from the top of the file")]
     [JsonPropertyName("startLine")]
     public int? StartLine { get; set; }
 
     // Про 300 KB сказано потому, что обещать «5000 строк вернут 5000» и молчать про обрезку
     // результата — хуже, чем сказать оба числа: ToolResult режет ответ с НАЧАЛА (MessageContent),
     // и модель получала хвост, не понимая, куда делись первые строки.
-    [Description("How many lines to return starting at startLine. null (or -1) = to the end of the file, capped at 2000 lines (the total is then reported). An explicit count is honoured as sent, up to the 300 KB tool-result limit, which drops the beginning of very long output")]
+    [Description("How many lines to return starting at startLine, at most 10000. null (or -1) = to the end of the file, capped at 2000 lines (the total is then reported). An explicit count is honoured as sent, up to the 300 KB tool-result limit, which drops the beginning of very long output")]
     [JsonPropertyName("lineCount")]
     public int? LineCount { get; set; }
 }

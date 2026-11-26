@@ -235,34 +235,33 @@ describe('fileOps', () => {
 
         // --- a range -----------------------------------------------------------
 
-        it('should REFUSE a range that is not an integer instead of reading the whole file', () => {
-            // These used to be folded to -1, i.e. answered with the ENTIRE file, while the VS host
-            // refused the whole call: System.Text.Json will not bind them to `int?`.
+        it('should REFUSE a range that is not a plain line number in range', () => {
+            // These used to be folded to -1, i.e. answered with the ENTIRE file.
             (fsStub.existsSync as sinon.SinonStub).returns(true);
             (fsStub.readFileSync as sinon.SinonStub).returns('a\nb\nc');
 
             const cases: Array<[string, string]> = [
-                ['1.5', "the number 1.5"],
-                ['\"3\"', 'the string "3"'],
+                ['1.5', 'the number 1.5'],
+                ['"3"', 'the string "3"'],
+                ['3000000000', 'the number 3000000000'],
+                ['10001', 'the number 10001'],
             ];
             for (const [spelling, described] of cases) {
                 const payload = `{"files":[{"path":"a.txt","startLine":${spelling}}]}`;
                 const result = toolHandlers.dispatchTool('read_files', payload, WORKSPACE);
 
-                expect(result.success).to.be.false;
+                expect(result.success, `startLine=${spelling}`).to.be.false;
                 expect(result.error).to.equal(
-                    `Failed to read 'files': entry 1 of 1: 'startLine' must be an integer or null, received ${described}. Nothing was read.`);
+                    `Failed to read 'files': entry 1 of 1: 'startLine' must be a whole line number between 1 and 10000, written as plain digits, ` +
+                    `or null for no range, received ${described}. Nothing was read.`);
             }
 
-            // Out of int32 is a different reason and says so.
-            const huge = toolHandlers.dispatchTool(
-                'read_files', '{"files":[{"path":"a.txt","lineCount":3000000000}]}', WORKSPACE);
-            expect(huge.success).to.be.false;
-            expect(huge.error).to.equal(
-                "Failed to read 'files': entry 1 of 1: 'lineCount' is outside the 32-bit integer range, received the number 3000000000. Nothing was read.");
+            // The bound itself is legal: the message names a real limit, not one off by one.
+            const atBound = toolHandlers.dispatchTool(
+                'read_files', '{"files":[{"path":"a.txt","startLine":10000}]}', WORKSPACE);
+            expect(atBound.success).to.be.true;
 
-            // `1e400` parses to Infinity — it must not be reported as `the number null`
-            // (JSON.stringify(Infinity) is the string "null").
+            // `1e400` parses to Infinity, which must not be echoed as `the number null`.
             const infinite = toolHandlers.dispatchTool(
                 'read_files', '{"files":[{"path":"a.txt","startLine":1e400}]}', WORKSPACE);
             expect(infinite.success).to.be.false;
@@ -300,9 +299,12 @@ describe('fileOps', () => {
             expect(result.error).to.include('\u2026"');
         });
 
-        it('should still accept an integral range spelled with a fraction', () => {
-            // KNOWN LIMITATION: after JSON.parse, `118.0` IS `118`, so JavaScript cannot refuse the
-            // spelling the C# binder rejects. Documented next to `shortLiteral` and in `parseRange`.
+
+        it('should still accept an integral range spelled with a fraction or exponent', () => {
+            // DELIBERATE DIVERGENCE: after `JSON.parse`, `2.0` IS `2` and `1e2` IS `100`, so this host
+            // cannot refuse a spelling the C# host rejects. Recoverable only by reading the raw text,
+            // which this host does not have — and both hosts agree on every value a line number is
+            // actually written as. The refusal SENTENCE is shared, so the model learns one rule.
             (fsStub.existsSync as sinon.SinonStub).returns(true);
             (fsStub.readFileSync as sinon.SinonStub).returns('a\nb\nc');
 
@@ -1394,7 +1396,8 @@ describe('fileOps argument tolerance', () => {
 
             expect(result.success, `approximateLine=${raw}`).to.be.false;
             expect(result.error, `approximateLine=${raw}`).to.equal(
-                `edit 1 of 1: 'approximateLine' must be an integer or null, received ${described}. Nothing was changed.`);
+                `edit 1 of 1: 'approximateLine' must be a whole line number written as plain digits, or null, ` +
+                `received ${described}. Nothing was changed.`);
         }
     });
 
@@ -1494,7 +1497,8 @@ describe('fileOps argument tolerance', () => {
 
             expect(result.success, `approximateLine=${hint}`).to.be.false;
             expect(result.error, `approximateLine=${hint}`).to.equal(
-                `edit 1 of 1: 'approximateLine' must be an integer or null, received the number ${hint}. Nothing was changed.`);
+                `edit 1 of 1: 'approximateLine' must be a whole line number written as plain digits, or null, ` +
+                `received the number ${hint}. Nothing was changed.`);
         }
     });
 

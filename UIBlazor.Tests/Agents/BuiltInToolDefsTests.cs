@@ -250,6 +250,20 @@ public partial class BuiltInToolDefsTests
             // Описание обязано назвать null: это единственное, что модель ищет, чтобы не
             // изобретать сентинел.
             Assert.Contains("null", prop.Description, StringComparison.Ordinal);
+
+            // Схема и ТИП обязаны совпадать, иначе nullable-обещание снова окажется над
+            // non-nullable полем. `[DefaultValue]` делает свойство «optional» для генератора
+            // САМ ПО СЕБЕ (BuiltInToolDefs.IsOptionalProperty), поэтому union в схеме
+            // воспроизводится и на `int`, и на `int?` — то есть все проверки выше проходят при
+            // возврате исторического бага. Тип не подделать: только он говорит, что null в
+            // значении действительно поместится.
+            var clr = typeof(Shared.Contracts.ReadFileParams).GetProperty(
+                name == "startLine" ? nameof(Shared.Contracts.ReadFileParams.StartLine) : nameof(Shared.Contracts.ReadFileParams.LineCount))!;
+            Assert.Equal(typeof(int?), clr.PropertyType);
+            Assert.Null(System.Attribute.GetCustomAttribute(clr, typeof(System.ComponentModel.DefaultValueAttribute)));
+            // Второго источника правды рядом с текстом тоже быть не должно: «(default '-1')»
+            // дописывается из атрибута и спорит с описанием.
+            Assert.DoesNotContain("(default", prop.Description, StringComparison.Ordinal);
         }
 
         Assert.Contains("2000", items.Properties!["lineCount"].Description, StringComparison.Ordinal);
