@@ -11,22 +11,28 @@ namespace ToolCore.Tests;
 public class FileWriterTests
 {
     private const string _root = @"C:\ws";
-    private const string _path = _root + @"\src\file.txt";
 
-    private static MockFileSystem Tree(string? content = null, string? editorConfig = null, string path = _path, byte[]? raw = null)
+    // Normalised once, at definition: this string reaches BOTH the writer and the payload
+    // assertions below, so it has to be the same value on Windows and on the ubuntu CI runner.
+    // See MockPaths for why the mock cannot take the Windows spelling as-is.
+    private static readonly string _path = MockPaths.Mock(_root + @"\src\file.txt");
+
+    private static MockFileSystem Tree(string? content = null, string? editorConfig = null, string path = null!, byte[]? raw = null)
     {
-        var data = new Dictionary<string, MockFileData> { [_root + @"\.gitkeep"] = new MockFileData(string.Empty) };
+        path ??= _path;
+        var data = new Dictionary<string, MockFileData> { [MockPaths.Mock(_root + @"\.gitkeep")] = new MockFileData(string.Empty) };
         // `raw` bypasses the string overload: a cp1251/latin1 file holds bytes that are not text here.
         if (raw != null)
-            data[path] = new MockFileData(raw);
+            data[MockPaths.Mock(path)] = new MockFileData(raw);
         else if (content != null)
-            data[path] = new MockFileData(content);
+            data[MockPaths.Mock(path)] = new MockFileData(content);
         if (editorConfig != null)
-            data[_root + @"\.editorconfig"] = new MockFileData(editorConfig);
+            data[MockPaths.Mock(_root + @"\.editorconfig")] = new MockFileData(editorConfig);
+
         return new MockFileSystem(data);
     }
 
-    private static byte[] Bytes(MockFileSystem fs, string path = _path) => fs.File.ReadAllBytes(path);
+    private static byte[] Bytes(MockFileSystem fs, string? path = null) => fs.File.ReadAllBytes(path ?? _path);
 
     private static bool HasUtf8Bom(byte[] bytes) =>
         bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
@@ -105,10 +111,11 @@ public class FileWriterTests
     {
         var fs = Tree();
 
-        var result = await new FileWriter(fs).WriteAsync(@"C:\ws\deep\nested\file.txt", "x", FileWriteMode.Overwrite, TestContext.Current.CancellationToken);
+        var nested = MockPaths.Mock(@"C:\ws\deep\nested\file.txt");
+        var result = await new FileWriter(fs).WriteAsync(nested, "x", FileWriteMode.Overwrite, TestContext.Current.CancellationToken);
 
         Assert.True(result.Success);
-        Assert.True(fs.File.Exists(@"C:\ws\deep\nested\file.txt"));
+        Assert.True(fs.File.Exists(nested));
     }
 
     #endregion
@@ -321,7 +328,7 @@ public class FileWriterTests
 
         var result = await new FileWriter(fs).WriteAsync(_path, "a\nb", FileWriteMode.Overwrite, TestContext.Current.CancellationToken);
 
-        Assert.Equal(@"File C:\ws\src\file.txt created successfully. Encoding: utf-8-bom. Line endings: crlf.", result.Payload);
+        Assert.Equal($"File {_path} created successfully. Encoding: utf-8-bom. Line endings: crlf.", result.Payload);
     }
 
     [Fact]
@@ -335,7 +342,7 @@ public class FileWriterTests
 
         Assert.True(result.Success);
         Assert.False(HasUtf8Bom(Bytes(fs)));
-        Assert.Equal(@"File C:\ws\src\file.txt created successfully. Encoding: utf-8.", result.Payload);
+        Assert.Equal($"File {_path} created successfully. Encoding: utf-8.", result.Payload);
     }
 
     [Fact]

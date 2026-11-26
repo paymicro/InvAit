@@ -11,14 +11,26 @@ public class EditorConfigResolverTests
 {
     private const string _root = @"C:\ws";
 
-    private static EditorConfigResolver Resolver(MockFileSystem fs) => new(fs);
+    /// <summary>
+    /// Every call in this file is `Resolver(fs).Resolve(<windows-shaped path>)`. Translating the
+    /// path HERE (see <see cref="MockPaths"/>) keeps the 30-odd literals readable and makes them
+    /// mean "an absolute path on this machine" — which is what the VS host hands the resolver.
+    /// </summary>
+    private static ResolveFor Resolver(MockFileSystem fs) => new(new EditorConfigResolver(fs));
+
+    private readonly record struct ResolveFor(EditorConfigResolver Inner)
+    {
+        public EditorConfigSettings Resolve(string path) => Inner.Resolve(MockPaths.Mock(path));
+    }
 
     private static MockFileSystem Tree(params (string Path, string Text)[] files)
     {
         var data = new Dictionary<string, MockFileData>();
+        // MockPaths.Mock: the literals stay Windows-shaped, the MOCK gets a path that is absolute on
+        // this machine. Untranslated, they all miss on Linux and every setting silently reads null.
         foreach (var (path, text) in files)
-            data[path] = new MockFileData(text);
-        data[_root + @"\.gitkeep"] = new MockFileData(string.Empty);
+            data[MockPaths.Mock(path)] = new MockFileData(text);
+        data[MockPaths.Mock(_root + @".gitkeep")] = new MockFileData(string.Empty);
         return new MockFileSystem(data);
     }
 
@@ -238,7 +250,7 @@ public class EditorConfigResolverTests
         // READ (held by another process, ACLs, a network share that went away) threw out of
         // `Resolve`, and with it every `create_file` / `edit_file` under that directory failed.
         var fs = Tree();
-        fs.AddFile(_root + @"\.editorconfig", new MockFileData("root = true\n[*]\ncharset = latin1\n")
+        fs.AddFile(MockPaths.Mock(_root + @".editorconfig"), new MockFileData("root = true\n[*]\ncharset = latin1\n")
         {
             // `FileShare.None` = no reader may open it: the mock's equivalent of a locked file.
             AllowedFileShare = FileShare.None

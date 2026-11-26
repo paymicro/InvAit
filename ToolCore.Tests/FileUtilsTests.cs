@@ -5,8 +5,12 @@ namespace ToolCore.Tests;
 
 public class FileUtilsTests
 {
-    private const string _targetPath = @"C:\data\file.txt";
-    private const string _targetDirectory = @"C:\data";
+    // Normalised at definition, not at the 40-odd call sites: the mock inherits the RUNNING
+    // platform's path rules, so on Linux the Windows spelling below is not absolute —
+    // `Path.GetFullPath` prefixes the working directory and `AllFiles` reports `/C:\data\file.txt`.
+    // See MockPaths.
+    private static readonly string _targetPath = MockPaths.Mock(@"C:\data\file.txt");
+    private static readonly string _targetDirectory = MockPaths.Mock(@"C:\data");
 
     private static byte[] Concat(params byte[][] parts)
     {
@@ -181,7 +185,7 @@ public class FileUtilsTests
         var original = new byte[] { 0xCF, 0xF0, 0xE8, 0xE2, 0xE5, 0xF2, 0x0A };
         var fileSystem = new MockFileSystem();
         fileSystem.AddFile(_targetPath, new MockFileData(original));
-        fileSystem.AddFile(@"C:\.editorconfig", new MockFileData("root = true\n[*]\ncharset = latin1\n"));
+        fileSystem.AddFile(MockPaths.Mock(@"C:\.editorconfig"), new MockFileData("root = true\n[*]\ncharset = latin1\n"));
         var utils = new FileUtils(fileSystem);
 
         var result = await utils.ReadFileWithMetadataAsync(_targetPath, TestContext.Current.CancellationToken);
@@ -342,7 +346,10 @@ public class FileUtilsTests
         await utils.SaveFileAsync(_targetPath, ["rewritten"], new UTF8Encoding(false), "\r\n", true);
 
         Assert.Equal("rewritten\r\n", await fileSystem.File.ReadAllTextAsync(_targetPath, TestContext.Current.CancellationToken));
-        Assert.Equal([_targetPath], fileSystem.AllFiles);
+        // The mock reports paths in ITS normalised form, so compare against its own view of the
+        // target rather than the fixture literal: "the only file is the target, no temp leftovers"
+        // is the claim, and it must not depend on how the path was spelled.
+        Assert.Equal([fileSystem.Path.GetFullPath(_targetPath)], fileSystem.AllFiles);
     }
 
     [Fact]
@@ -354,7 +361,10 @@ public class FileUtilsTests
         await utils.SaveFileAsync(_targetPath, ["one", "two"], new UTF8Encoding(false), "\n", false);
 
         Assert.Equal("one\ntwo", await fileSystem.File.ReadAllTextAsync(_targetPath, TestContext.Current.CancellationToken));
-        Assert.Equal([_targetPath], fileSystem.AllFiles);
+        // The mock reports paths in ITS normalised form, so compare against its own view of the
+        // target rather than the fixture literal: "the only file is the target, no temp leftovers"
+        // is the claim, and it must not depend on how the path was spelled.
+        Assert.Equal([fileSystem.Path.GetFullPath(_targetPath)], fileSystem.AllFiles);
         Assert.True(fileSystem.Directory.Exists(_targetDirectory));
     }
 
@@ -373,6 +383,9 @@ public class FileUtilsTests
         await utils.SaveFileAsync(_targetPath, ["third"], new UTF8Encoding(false), "\n", false);
 
         Assert.Equal("third", await fileSystem.File.ReadAllTextAsync(_targetPath, TestContext.Current.CancellationToken));
-        Assert.Equal([_targetPath], fileSystem.AllFiles);
+        // The mock reports paths in ITS normalised form, so compare against its own view of the
+        // target rather than the fixture literal: "the only file is the target, no temp leftovers"
+        // is the claim, and it must not depend on how the path was spelled.
+        Assert.Equal([fileSystem.Path.GetFullPath(_targetPath)], fileSystem.AllFiles);
     }
 }

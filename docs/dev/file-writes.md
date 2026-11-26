@@ -346,6 +346,13 @@ the UTF-8 default for a new file); one reported with it came from the tree.
 | Edit read path: binary refusal leaves the bytes alone, a declared `latin1` round-trips byte-exact, `utf-8-bom` keeps exactly ONE BOM | `ToolCore.Tests/FileUtilsTests.cs` |
 | Edit batch orchestration: ordering, per-edit refusals, counters, the model-facing sentences | `ToolCore.Tests/EditBatchTests.cs` |
 | Same rules in the VS Code host (stubbed fs) | `VSCode/src/test/toolHandlers/fileWriter.test.ts`, `fileOps.test.ts` |
+| The fixture-path translation that lets the mock tests run on the ubuntu runner, incl. the Unix half with the platform as a parameter | `ToolCore.Tests/MockPathsTests.cs` |
+
+All three .NET test files above use `MockFileSystem`, which inherits the HOST's path rules and has no
+platform override — so every path handed to the mock goes through `MockPaths.Mock`. Untranslated, a
+Windows literal is not an absolute path on Linux, every `.editorconfig` lookup misses, and the whole
+file silently resolves to defaults (which is exactly how 33 tests failed on CI while passing locally).
+`AGENTS.md` states the rule; the reason and the local simulation command are there too.
 | Glob translator (`globToRegex`) | `VSCode/src/test/toolHandlers/editorConfig.test.ts` |
 
 Nothing above exercises the VS host's *wiring*. `InvAit` targets .NET Framework 4.8 against the VS SDK
