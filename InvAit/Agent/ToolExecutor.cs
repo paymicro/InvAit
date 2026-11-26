@@ -37,7 +37,7 @@ public class ToolExecutor
         {
             var response = vsRequest.Action switch
             {
-                BuiltInToolEnum.ReadFiles => await ReadFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload).GetObject<List<ReadFileParams>>("files")),
+                BuiltInToolEnum.ReadFiles => await ReadFilesAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.ReadOpenFile => await ReadCurrentlyOpenFileAsync(),
                 BuiltInToolEnum.CreateFile => await CreateNewFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
                 BuiltInToolEnum.DeleteFile => await DeleteFileAsync(JsonUtils.DeserializeParameters(vsRequest.Payload)),
@@ -110,31 +110,32 @@ public class ToolExecutor
     /// </summary>
     private const int MaxFileLines = 2_000;
 
-    private async Task<VsResponse> ReadFileAsync(List<ReadFileParams>? fileParamsList, bool onlyContent = false)
+    /// <summary>
+    /// `read_files` из payload. Разбор — <see cref="ReadFilesPayload"/> в ToolCore, потому что
+    /// здесь нет тестов: null-элемент, кривой диапазон и дедуп — решения, которые обязаны быть
+    /// покрыты, а не проверены глазами в net48-проекте.
+    /// </summary>
+    private Task<VsResponse> ReadFilesAsync(IReadOnlyDictionary<string, object> args)
+    {
+        if (!ReadFilesPayload.TryParse(args.GetValue("files"), out var files, out var refusal))
+        {
+            // `??`: TryParse документирует непустой refusal при false, но `!` превратил бы будущий
+            // недосмотр в Payload = null, а VsBridge переписывает его в «Request failed» — то есть
+            // в потерю причины без единого слова о том, что случилось.
+            return Task.FromResult(Refuse(refusal ?? "Failed to read 'files'. Nothing was read."));
+        }
+
+        return ReadFileAsync(files);
+    }
+
+    private async Task<VsResponse> ReadFileAsync(List<ReadFileParams> fileParamsList, bool onlyContent = false)
     {
         var solutionPath = await GetSolutionPathAsync();
-
-        // null = `files` не распарсился. GetObject глотает JsonException и возвращает default,
-        // поэтому сюда приходит null, а не пустой список; раньше это был NullReferenceException
-        // с текстом «Object reference not set…», то есть отказ хоста без единого слова о причине.
-        if (fileParamsList == null)
-        {
-            return Refuse("Failed to read 'files': each entry needs a 'path' string. Nothing was read.");
-        }
 
         if (fileParamsList.Count == 0)
         {
             return new VsResponse { Success = false, Payload = "No files specified." };
         }
-
-        // Ключ дедупа — ВЕСЬ запрос, а не только путь: два диапазона одного файла — это
-        // два разных чтения, и старый ключ молча выбрасывал второе.
-        fileParamsList =
-        [
-            .. fileParamsList
-                .GroupBy(x => (x.Path, x.StartLine, x.LineCount))
-                .Select(g => g.First())
-        ];
 
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
@@ -145,15 +146,19 @@ public class ToolExecutor
             var isSuccess = true;
             foreach (var rp in fileParamsList)
             {
-                var absPath = GetAbsolutePath(rp.Path, solutionPath);
-                if (!File.Exists(absPath))
-                {
-                    sb.AppendLine($"File \"{rp.Path}\" doesn't exist.");
-                    isSuccess = false;
-                    continue;
-                }
                 try
                 {
+                    // Резолв ВНУТРИ try: `GetAbsolutePath` бросает на неправдоподобном пути
+                    // (недопустимые символы, слишком длинный сегмент, пустой путь из caller'а), а
+                    // отказ одной записи не должен отменять остальные — этого же правила держится
+                    // цикл ниже и комментарий у `GetAbsolutePath`.
+                    var absPath = GetAbsolutePath(rp.Path, solutionPath);
+                    if (!File.Exists(absPath))
+                    {
+                        sb.AppendLine($"File \"{rp.Path}\" doesn't exist.");
+                        isSuccess = false;
+                        continue;
+                    }
                     sb.Append(File.ReadAllText(absPath, Encoding.UTF8));
                 }
                 catch (Exception ex)
@@ -180,20 +185,25 @@ public class ToolExecutor
 
         foreach (var rp in fileParamsList)
         {
-            var absPath = GetAbsolutePath(rp.Path, solutionPath);
-
-            if (!File.Exists(absPath))
-            {
-                results.Add(new FileContent { Path = rp.Path, Error = $"File doesn't exist." });
-                continue;
-            }
+            // Локальные копии: сентинел-арифметика не должна зависеть от nullable-типа контракта —
+            // `int? <= 0` при null даёт false, то есть тихо ДРУГОЕ поведение вместо «весь файл».
+            var startLine = rp.StartLine ?? -1;
+            var lineCount = rp.LineCount ?? -1;
 
             try
             {
+                var absPath = GetAbsolutePath(rp.Path, solutionPath);
+
+                if (!File.Exists(absPath))
+                {
+                    results.Add(new FileContent { Path = rp.Path, Error = $"File doesn't exist." });
+                    continue;
+                }
+
                 var allLines = File.ReadLines(absPath);
                 var totalLineCount = 0;
 
-                var needsLimit = rp.LineCount <= 0;
+                var needsLimit = lineCount <= 0;
                 List<string> materializedLines = null;
                 if (needsLimit)
                 {
@@ -201,8 +211,12 @@ public class ToolExecutor
                     totalLineCount = materializedLines.Count;
                 }
 
-                var skipCount = rp.StartLine > 0 ? Math.Max(0, rp.StartLine - 1) : 0;
-                var takeCount = rp.LineCount > 0 ? rp.LineCount : (needsLimit ? MaxFileLines : int.MaxValue);
+                var skipCount = startLine > 0 ? Math.Max(0, startLine - 1) : 0;
+                // `needsLimit` IS `lineCount <= 0`, so the old
+                // `lineCount > 0 ? lineCount : (needsLimit ? MaxFileLines : int.MaxValue)` had an
+                // unreachable third arm: inside the false branch of `lineCount > 0` the flag is
+                // always true, and `int.MaxValue` could never be produced. One condition, one choice.
+                var takeCount = needsLimit ? MaxFileLines : lineCount;
 
                 IEnumerable<string> lines;
                 if (materializedLines != null)
@@ -626,18 +640,16 @@ public class ToolExecutor
     private async Task<VsResponse> EditFileAsync(IReadOnlyDictionary<string, object> args)
     {
         // Пустой список и нечитаемый список — РАЗНЫЕ отказы: в первом модель прислала валидный,
-        // но пустой батч, во втором невалидно хотя бы одно поле внутри правки. Раньше оба случая
-        // давали «Failed to get replacements» — без файла, без причины, без индекса правки.
+        // но пустой батч, во втором невалидно хотя бы одно поле внутри правки.
         //
-        // Вторая половина того же урока: отказ НЕ ДОЛЖЕН угадывать причину. Готовая фраза
-        // «each edit needs 'oldStr' and 'newStr' strings» утверждала это на payload, где оба поля
-        // были на месте, и отправляла модель чинить не то. Теперь впереди стоит настоящая ошибка
-        // разбора, а подсказка про схему остаётся хвостом.
-        var diffEdits = args.GetObject<List<DiffEdit>>("edits", out var editError);
-        if (diffEdits is null)
-            return Refuse($"Failed to read 'edits': {editError}. " +
-                          "Each edit needs 'oldStr' and 'newStr' strings; 'approximateLine' takes an integer " +
-                          "and 'replaceAll' a boolean (both may be null or omitted). Nothing was changed.");
+        // Разбор — EditPayload, а НЕ JsonUtils.GetObject<List<DiffEdit>>: STJ биндил
+        // пере-сериализованную КОПИЮ с отступами и на ошибке типа отдавал позицию в ней
+        // («Path: $[0].replaceAll | LineNumber: 5 | BytePositionInLine: 20» на однострочном
+        // payload, которого модель никогда не слала) вместе с зашитой подсказкой, утверждавшей
+        // причину, которой код не знал. Теперь отказ называет номер правки, поле и присланное
+        // значение — и это единственное место, где живёт это правило.
+        if (!EditPayload.TryParse(args.GetValue("edits"), out var diffEdits, out var editsRefusal))
+            return Refuse(editsRefusal ?? "'edits' could not be read. Nothing was changed.");
 
         if (diffEdits.Count == 0)
             return Refuse("'edits' is empty: nothing to apply.");

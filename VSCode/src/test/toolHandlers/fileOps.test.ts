@@ -133,6 +133,186 @@ describe('fileOps', () => {
 
             expect(JSON.parse(result.payload!)).to.have.length(1);
         });
+
+        it('should treat a null range exactly like the -1 sentinel and like an absent field', () => {
+            // The schema offers ["integer","null"], so "read the whole file" arrives as null —
+            // the model no longer has to invent -1. Both spellings must reach the SAME arithmetic
+            // AND the same dedup key, otherwise two equivalent requests stop collapsing into one.
+            (fsStub.existsSync as sinon.SinonStub).returns(true);
+            (fsStub.readFileSync as sinon.SinonStub).returns('a\nb\nc');
+
+            const payload = JSON.stringify({
+                files: [
+                    { path: 'src/File.ts', startLine: null, lineCount: null },
+                    { path: 'src/File.ts', startLine: -1, lineCount: -1 },
+                    { path: 'src/File.ts' },
+                ]
+            });
+            const result = toolHandlers.dispatchTool('read_files', payload, WORKSPACE);
+
+            const parsed = JSON.parse(result.payload!);
+            expect(parsed).to.have.length(1);
+            expect(parsed[0].lines).to.deep.equal(['a', 'b', 'c']);
+        });
+
+        it('should read from the top when startLine is null and lineCount is set', () => {
+            (fsStub.existsSync as sinon.SinonStub).returns(true);
+            (fsStub.readFileSync as sinon.SinonStub).returns('a\nb\nc\nd');
+
+            const payload = JSON.stringify({
+                files: [{ path: 'test.txt', startLine: null, lineCount: 2 }]
+            });
+            const result = toolHandlers.dispatchTool('read_files', payload, WORKSPACE);
+
+            const parsed = JSON.parse(result.payload!);
+            expect(parsed[0].lines).to.deep.equal(['a', 'b']);
+            expect(parsed[0].startLine).to.be.undefined;
+        });
+
+        // --- the array itself -------------------------------------------------
+
+        it('should REFUSE an absent files field instead of answering an empty success', () => {
+            // `params.files || []` turned a call that asked for four files into
+            // `{"success":true,"payload":"[]"}` — the model read none and was told it had them.
+            const result = toolHandlers.dispatchTool('read_files', JSON.stringify({}), WORKSPACE);
+
+            expect(result.success).to.be.false;
+            expect(result.error).to.equal(
+                "Failed to read 'files': the value is missing. Send a JSON array of reads, " +
+                'e.g. [{"path": "src/File.cs"}]. Nothing was read.');
+        });
+
+        it('should REFUSE files null and files that is not an array', () => {
+            const nullResult = toolHandlers.dispatchTool(
+                'read_files', JSON.stringify({ files: null }), WORKSPACE);
+            expect(nullResult.success).to.be.false;
+            expect(nullResult.error).to.equal(
+                "Failed to read 'files': the value is missing. Send a JSON array of reads, " +
+                'e.g. [{"path": "src/File.cs"}]. Nothing was read.');
+
+            const stringResult = toolHandlers.dispatchTool(
+                'read_files', JSON.stringify({ files: 'oops' }), WORKSPACE);
+            expect(stringResult.success).to.be.false;
+            expect(stringResult.error).to.equal(
+                "Failed to read 'files': expected a JSON array, received the string \"oops\". Nothing was read.");
+        });
+
+        it('should REFUSE an empty files array, like the VS host', () => {
+            const result = toolHandlers.dispatchTool('read_files', JSON.stringify({ files: [] }), WORKSPACE);
+
+            expect(result.success).to.be.false;
+            expect(result.error).to.equal('No files specified.');
+        });
+
+        // --- one entry ---------------------------------------------------------
+
+        it('should REFUSE a null entry instead of throwing Cannot read properties of null', () => {
+            // `files: [null]` is valid JSON. Reading `f.path` in the dedup loop threw a TypeError
+            // from the host internals — the same class of text the VS host stopped producing.
+            (fsStub.existsSync as sinon.SinonStub).returns(true);
+            (fsStub.readFileSync as sinon.SinonStub).returns('a');
+
+            const payload = '{"files":[{"path":"a.txt"},null]}';
+            const result = toolHandlers.dispatchTool('read_files', payload, WORKSPACE);
+
+            expect(result.success).to.be.false;
+            expect(result.error).to.equal(
+                "Failed to read 'files': entry 2 of 2 must be a JSON object with a 'path', received null. Nothing was read.");
+            // Nothing was read, not even the VALID sibling: the refusal names the entry up front.
+            expect((fsStub.readFileSync as sinon.SinonStub).called).to.be.false;
+        });
+
+        it('should REFUSE an entry without a usable path', () => {
+            (fsStub.existsSync as sinon.SinonStub).returns(true);
+
+            const payload = '{"files":[{"path":""}]}';
+            const result = toolHandlers.dispatchTool('read_files', payload, WORKSPACE);
+
+            expect(result.success).to.be.false;
+            expect(result.error).to.equal(
+                "Failed to read 'files': entry 1 of 1 has no 'path'. Each entry needs a 'path' string. Nothing was read.");
+        });
+
+        // --- a range -----------------------------------------------------------
+
+        it('should REFUSE a range that is not an integer instead of reading the whole file', () => {
+            // These used to be folded to -1, i.e. answered with the ENTIRE file, while the VS host
+            // refused the whole call: System.Text.Json will not bind them to `int?`.
+            (fsStub.existsSync as sinon.SinonStub).returns(true);
+            (fsStub.readFileSync as sinon.SinonStub).returns('a\nb\nc');
+
+            const cases: Array<[string, string]> = [
+                ['1.5', "the number 1.5"],
+                ['\"3\"', 'the string "3"'],
+            ];
+            for (const [spelling, described] of cases) {
+                const payload = `{"files":[{"path":"a.txt","startLine":${spelling}}]}`;
+                const result = toolHandlers.dispatchTool('read_files', payload, WORKSPACE);
+
+                expect(result.success).to.be.false;
+                expect(result.error).to.equal(
+                    `Failed to read 'files': entry 1 of 1: 'startLine' must be an integer or null, received ${described}. Nothing was read.`);
+            }
+
+            // Out of int32 is a different reason and says so.
+            const huge = toolHandlers.dispatchTool(
+                'read_files', '{"files":[{"path":"a.txt","lineCount":3000000000}]}', WORKSPACE);
+            expect(huge.success).to.be.false;
+            expect(huge.error).to.equal(
+                "Failed to read 'files': entry 1 of 1: 'lineCount' is outside the 32-bit integer range, received the number 3000000000. Nothing was read.");
+
+            // `1e400` parses to Infinity — it must not be reported as `the number null`
+            // (JSON.stringify(Infinity) is the string "null").
+            const infinite = toolHandlers.dispatchTool(
+                'read_files', '{"files":[{"path":"a.txt","startLine":1e400}]}', WORKSPACE);
+            expect(infinite.success).to.be.false;
+            expect(infinite.error).to.include('received the number Infinity');
+            expect(infinite.error).to.not.include('the number null');
+        });
+
+        it('should read the entry fields ignoring case, like the VS host', () => {
+            // `JsonShape.TryGetProperty` is case-insensitive in the C# host, because
+            // `System.Text.Json` bound these with `PropertyNameCaseInsensitive = true` before the
+            // parser existed and the approval card reads them with `OrdinalIgnoreCase`. A
+            // case-sensitive read refuses a payload the UI has just rendered as a valid call.
+            (fsStub.existsSync as sinon.SinonStub).returns(true);
+            (fsStub.readFileSync as sinon.SinonStub).returns('a\nb\nc');
+
+            const payload = '{"files":[{"Path":"a.txt","StartLine":2,"LineCount":1}]}';
+            const result = toolHandlers.dispatchTool('read_files', payload, WORKSPACE);
+
+            expect(result.success).to.be.true;
+            const parsed = JSON.parse(result.payload!);
+            expect(parsed[0].lines).to.deep.equal(['b']);
+            expect(parsed[0].startLine).to.equal(2);
+        });
+
+        it('should cut a long offending literal and keep both of its quotes', () => {
+            // The text is cut blind, so a long STRING used to arrive as `"abc…` — an opening quote
+            // with no end, in the one field the whole sentence hinges on.
+            const huge = 'x'.repeat(500);
+            const payload = '{"files":[{"path":"a.txt","startLine":"' + huge + '"}]}';
+            const result = toolHandlers.dispatchTool('read_files', payload, WORKSPACE);
+
+            expect(result.success).to.be.false;
+            expect(result.error).to.not.include(huge);
+            expect(result.error).to.include('received the string "');
+            expect(result.error).to.include('\u2026"');
+        });
+
+        it('should still accept an integral range spelled with a fraction', () => {
+            // KNOWN LIMITATION: after JSON.parse, `118.0` IS `118`, so JavaScript cannot refuse the
+            // spelling the C# binder rejects. Documented next to `shortLiteral` and in `parseRange`.
+            (fsStub.existsSync as sinon.SinonStub).returns(true);
+            (fsStub.readFileSync as sinon.SinonStub).returns('a\nb\nc');
+
+            const result = toolHandlers.dispatchTool(
+                'read_files', '{"files":[{"path":"a.txt","startLine":2.0,"lineCount":1.0}]}', WORKSPACE);
+
+            expect(result.success).to.be.true;
+            const parsed = JSON.parse(result.payload!);
+            expect(parsed[0].lines).to.deep.equal(['b']);
+        });
     });
 
     // -----------------------------------------------------------------------
@@ -1175,6 +1355,220 @@ describe('fileOps argument tolerance', () => {
             expect(result.payload, `dryRun=${raw}`).to.include('Dry run on test.ts');
             expect((fsStub.writeFileSync as sinon.SinonStub).called, `dryRun=${raw}`).to.be.false;
         }
+    });
+
+    it('should name the edit, the field and the value when replaceAll is not a boolean', () => {
+        // The VS host answered THIS shape with a System.Text.Json exception ("could not be converted
+        // to Nullable<bool>. Path: $[0].replaceAll | LineNumber: 5 | BytePositionInLine: 20") — a
+        // position inside a pretty-printed copy of a payload the model had sent as one line. It never
+        // said which value it choked on, so the retry was a guess. Both hosts now refuse in the same
+        // words, and the words contain what the model actually sent.
+        for (const [raw, described] of [['""', 'the string ""'], ['"yes"', 'the string "yes"'], ['1', 'the number 1']]) {
+            resetStubs();
+            (fsStub.existsSync as sinon.SinonStub).returns(true);
+            (fsStub.readFileSync as sinon.SinonStub).returns('line A');
+
+            const result = toolHandlers.dispatchTool('edit_file', JSON.stringify({
+                filePath: 'test.ts',
+                edits: [{ approximateLine: 1, oldStr: 'line A', newStr: 'AA', replaceAll: JSON.parse(raw) }]
+            }), WORKSPACE);
+
+            expect(result.success, `replaceAll=${raw}`).to.be.false;
+            expect(result.error, `replaceAll=${raw}`).to.equal(
+                `edit 1 of 1 (line 1): 'replaceAll' must be true, false or null, received ${described}. Nothing was changed.`);
+        }
+    });
+
+    it('should refuse a non-numeric approximateLine instead of rounding it', () => {
+        // `""` for a line hint used to die in the C# host's deserialiser. A fractional hint is NOT
+        // rounded here either: rounding edits a neighbour line.
+        for (const [raw, described] of [['""', 'the string ""'], ['1.5', 'the number 1.5']]) {
+            resetStubs();
+            (fsStub.existsSync as sinon.SinonStub).returns(true);
+            (fsStub.readFileSync as sinon.SinonStub).returns('line A');
+
+            const result = toolHandlers.dispatchTool('edit_file', JSON.stringify({
+                filePath: 'test.ts',
+                edits: [{ approximateLine: JSON.parse(raw), oldStr: 'line A', newStr: 'AA' }]
+            }), WORKSPACE);
+
+            expect(result.success, `approximateLine=${raw}`).to.be.false;
+            expect(result.error, `approximateLine=${raw}`).to.equal(
+                `edit 1 of 1: 'approximateLine' must be an integer or null, received ${described}. Nothing was changed.`);
+        }
+    });
+
+    it('should refuse a non-string oldStr or newStr', () => {
+        (fsStub.existsSync as sinon.SinonStub).returns(true);
+        (fsStub.readFileSync as sinon.SinonStub).returns('line A');
+
+        const result = toolHandlers.dispatchTool('edit_file', JSON.stringify({
+            filePath: 'test.ts',
+            edits: [{ oldStr: 'line A', newStr: 42 }]
+        }), WORKSPACE);
+
+        expect(result.success).to.be.false;
+        expect(result.error).to.equal(
+            "edit 1 of 1: 'newStr' must be a string, received the number 42. Nothing was changed.");
+    });
+
+    it('should refuse an edits field that is not an array, naming what arrived', () => {
+        // `params.edits || []` used to make a STRING look like a one-element batch and then refuse a
+        // meaningless per-edit reason; the C# host refused it up front. Both now say the same thing.
+        (fsStub.existsSync as sinon.SinonStub).returns(true);
+
+        const result = toolHandlers.dispatchTool('edit_file',
+            JSON.stringify({ filePath: 'test.ts', edits: 'line A' }), WORKSPACE);
+
+        expect(result.success).to.be.false;
+        expect(result.error).to.equal(
+            "'edits' must be a JSON array of edit objects, received the string \"line A\". Nothing was changed.");
+    });
+
+    it('should refuse a missing edits field with the shape it expects', () => {
+        (fsStub.existsSync as sinon.SinonStub).returns(true);
+
+        const result = toolHandlers.dispatchTool('edit_file',
+            JSON.stringify({ filePath: 'test.ts' }), WORKSPACE);
+
+        expect(result.success).to.be.false;
+        expect(result.error).to.include("'edits' is missing: send a JSON array of edits");
+        expect(result.error).to.include('Nothing was changed.');
+    });
+
+    it('should accept the payload the VS host used to answer with a JSON conversion error', () => {
+        // The reported pair: `replaceAll: false` (a legal boolean) on a long, escape-heavy edit was
+        // answered with "The JSON value could not be converted to Nullable<bool>". Nothing in this
+        // payload is wrong, so it must simply apply.
+        (fsStub.existsSync as sinon.SinonStub).returns(true);
+        (fsStub.readFileSync as sinon.SinonStub).returns('- **Tool Calling:** `strict: true` — the default is SENT as `null`.');
+        (fsStub.writeFileSync as sinon.SinonStub).returns(undefined);
+
+        const result = toolHandlers.dispatchTool('edit_file', JSON.stringify({
+            filePath: 'AGENTS.md',
+            dryRun: false,
+            edits: [{
+                approximateLine: 118,
+                oldStr: '- **Tool Calling:** `strict: true` — the default is SENT as `null`.',
+                newStr: '- **Tool Calling:** `strict: true` — the default is SENT as `null`, never by omission.',
+                replaceAll: false,
+            }]
+        }), WORKSPACE);
+
+        expect(result.success).to.be.true;
+        expect(result.payload).to.include('Changes successfully applied to AGENTS.md');
+        expect(writtenText()).to.equal('- **Tool Calling:** `strict: true` — the default is SENT as `null`, never by omission.');
+    });
+
+    it('should read the four edit fields ignoring case, as the VS host and the approval card do', () => {
+        // System.Text.Json bound `edits` with PropertyNameCaseInsensitive, and ToolCallBlock reads
+        // the arguments with OrdinalIgnoreCase — so the card rendered this diff and the user could
+        // approve it. A case-sensitive read then answered "oldStr is missing": a refusal about a typo
+        // nobody made. PascalCase must apply here too.
+        (fsStub.existsSync as sinon.SinonStub).returns(true);
+        (fsStub.readFileSync as sinon.SinonStub).returns('alpha');
+        (fsStub.writeFileSync as sinon.SinonStub).returns(undefined);
+
+        const result = toolHandlers.dispatchTool('edit_file', JSON.stringify({
+            filePath: 'test.ts',
+            edits: [{ OldStr: 'alpha', NewStr: 'ALPHA', ApproximateLine: 1, ReplaceAll: false }]
+        }), WORKSPACE);
+
+        expect(result.success).to.be.true;
+        expect(result.payload).to.include('Changes successfully applied to test.ts');
+        expect(writtenText()).to.equal('ALPHA');
+    });
+
+    it('should refuse an approximateLine outside int32, which the VS host cannot represent', () => {
+        // `Number.isInteger` alone accepted these and the edit RAN here while the VS host refused the
+        // very same call: its hint is a C# `int`.
+        for (const hint of [3000000000, -3000000000, 2147483648, 1e10]) {
+            resetStubs();
+            (fsStub.existsSync as sinon.SinonStub).returns(true);
+            (fsStub.readFileSync as sinon.SinonStub).returns('line A');
+
+            const result = toolHandlers.dispatchTool('edit_file', JSON.stringify({
+                filePath: 'test.ts',
+                edits: [{ approximateLine: hint, oldStr: 'line A', newStr: 'AA' }]
+            }), WORKSPACE);
+
+            expect(result.success, `approximateLine=${hint}`).to.be.false;
+            expect(result.error, `approximateLine=${hint}`).to.equal(
+                `edit 1 of 1: 'approximateLine' must be an integer or null, received the number ${hint}. Nothing was changed.`);
+        }
+    });
+
+    it('should report the FIRST broken field of an edit, in the same order the VS host checks them', () => {
+        // Two mistakes in one edit are answered with the SAME one by both hosts: the validation runs
+        // hint -> oldStr -> newStr -> replaceAll, one pass, not one pass per field.
+        (fsStub.existsSync as sinon.SinonStub).returns(true);
+        (fsStub.readFileSync as sinon.SinonStub).returns('line A');
+
+        const result = toolHandlers.dispatchTool('edit_file', JSON.stringify({
+            filePath: 'test.ts',
+            edits: [{ oldStr: 'line A', newStr: 42, replaceAll: 'yes' }]
+        }), WORKSPACE);
+
+        expect(result.success).to.be.false;
+        expect(result.error).to.equal(
+            "edit 1 of 1: 'newStr' must be a string, received the number 42. Nothing was changed.");
+    });
+
+    it('should settle the batch shape BEFORE looking at the file', () => {
+        // The VS host parses, then resolves the path, then asks whether the file exists. Answering
+        // "File doesn't exist." to a payload the sibling host refuses for its shape made the same call
+        // look like two different problems.
+        (fsStub.existsSync as sinon.SinonStub).returns(false);
+
+        const shape = toolHandlers.dispatchTool('edit_file',
+            JSON.stringify({ filePath: 'nope.ts', edits: [{ oldStr: 7, newStr: 'b' }] }), WORKSPACE);
+        expect(shape.error).to.equal(
+            "edit 1 of 1: 'oldStr' must be a string, received the number 7. Nothing was changed.");
+
+        const empty = toolHandlers.dispatchTool('edit_file',
+            JSON.stringify({ filePath: 'nope.ts', edits: [] }), WORKSPACE);
+        expect(empty.error).to.equal("'edits' is empty: nothing to apply.");
+    });
+
+    it('should treat 0 as the sentinel too, so all three spellings share one dedup key', () => {
+        // `null`, `-1` and `0` all mean "no range" — the C# host normalises the same three into one
+        // number, so a payload that mixes them is ONE read here as well, not three identical rows.
+        (fsStub.existsSync as sinon.SinonStub).returns(true);
+        (fsStub.readFileSync as sinon.SinonStub).returns('a\nb\nc');
+
+        const payload = JSON.stringify({
+            files: [
+                { path: 'src/File.ts', startLine: 0, lineCount: 0 },
+                { path: 'src/File.ts', startLine: -1, lineCount: -1 },
+                { path: 'src/file.ts', startLine: null, lineCount: null },
+            ]
+        });
+        const result = toolHandlers.dispatchTool('read_files', payload, WORKSPACE);
+
+        const parsed = JSON.parse(result.payload!);
+        expect(parsed).to.have.length(1);
+        expect(parsed[0].lines).to.deep.equal(['a', 'b', 'c']);
+    });
+
+    it('should cap a read with no lineCount at 2000 lines and honour an explicit count', () => {
+        // The dead branch that used to sit here (`lineCount > 0 ? lineCount : (needsLimit ? 2000 :
+        // Infinity)`) could never produce Infinity, so the cap is 2000 and an explicit count is
+        // honoured as sent — which is what the field description now promises.
+        const lines = Array.from({ length: 2500 }, (_, i) => `l${i}`);
+        (fsStub.existsSync as sinon.SinonStub).returns(true);
+        (fsStub.readFileSync as sinon.SinonStub).returns(lines.join('\n'));
+
+        const capped = JSON.parse(toolHandlers.dispatchTool('read_files', JSON.stringify({
+            files: [{ path: 'big.ts' }]
+        }), WORKSPACE).payload!);
+        expect(capped[0].lines).to.have.length(2000);
+        expect(capped[0].totalLines).to.equal(2500);
+
+        const explicit = JSON.parse(toolHandlers.dispatchTool('read_files', JSON.stringify({
+            files: [{ path: 'big.ts', lineCount: 2500 }]
+        }), WORKSPACE).payload!);
+        expect(explicit[0].lines).to.have.length(2500);
+        expect(explicit[0].totalLines).to.be.undefined;
     });
 
     it('should refuse an empty edits array with the reason the VS host gives', () => {

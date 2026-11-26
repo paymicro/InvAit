@@ -258,8 +258,35 @@ public class VsBridgeTests
             Payload = FileMissingPayload,
         }));
 
-        // Assert — late/duplicate answers are dropped silently (console line only)
+        // Assert — a late/duplicate answer must not throw: the request it belongs to is already gone
         Assert.Null(exception);
+    }
+
+    [Fact]
+    public async Task HandleVsResponseAsync_UnknownCorrelationId_LeavesEvidenceInTheHostLog()
+    {
+        // A refusal the model did not cause ("The JSON value could not be converted to
+        // Nullable<bool>...") is unexplainable without knowing WHICH request it answered. A crossed
+        // or duplicated correlation id is the one mechanism that produces exactly that, and its only
+        // symptom is an answer nobody awaits — which used to be a browser-console line, invisible
+        // from the chat window and absent from the host log. The id is the evidence.
+        var js = new FakeVsHostJs();
+        var bridge = CreateBridge(js);
+
+        await bridge.HandleVsResponseAsync(new VsResponse
+        {
+            CorrelationId = "the-other-call",
+            Success = false,
+            Payload = FileMissingPayload,
+        });
+
+        await WaitUntilAsync(() => js.Logs.Count > 0);
+        var entry = Assert.Single(js.Logs);
+
+        // WARN, never ERROR: a late answer for a timed-out request lands here too and is expected.
+        Assert.Equal(LogEntry.WarnLevel, entry.Level);
+        Assert.Contains("the-other-call", entry.Message);
+        Assert.Contains("still pending", entry.Message);
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 5_000)

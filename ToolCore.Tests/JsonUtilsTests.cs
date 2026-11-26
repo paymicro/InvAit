@@ -250,7 +250,62 @@ public class JsonUtilsTests
 
     #endregion
 
+    #region DescribeParseError
+
+    // The one piece of System.Text.Json text that still reaches a model — from
+    // `JsonShape.TryAsElement` — and it must arrive without the geometry of the COPY that was
+    // serialised. Untested, a `System.Text.Json` upgrade that reorders the suffix reinstates the
+    // defect with a green suite, so each shape gets a case.
+
+    [Fact]
+    public void DescribeParseError_DropsThePositionAndKeepsThePath()
+    {
+        var message = new JsonException(
+            "The JSON value could not be converted to System.Nullable`1[System.Int32]. " +
+            "Path: $[0].startLine | LineNumber: 5 | BytePositionInLine: 20.");
+
+        var result = JsonUtils.DescribeParseError(message);
+
+        Assert.Equal(
+            "The JSON value could not be converted to System.Nullable`1[System.Int32]. Path: $[0].startLine",
+            result);
+        Assert.DoesNotContain("LineNumber", result);
+        Assert.DoesNotContain("BytePositionInLine", result);
+    }
+
+    [Fact]
+    public void DescribeParseError_WithoutAPosition_IsUnchangedApartFromTheFinalStop()
+    {
+        var result = JsonUtils.DescribeParseError(new JsonException("Something else went wrong."));
+
+        Assert.Equal("Something else went wrong", result);
+    }
+
+    [Fact]
+    public void DescribeParseError_TrimsTheSeparatorLeftByTheCut()
+    {
+        // The cut may land before the pipe, leaving `… . Path: $.x |`; the caller appends its own
+        // sentence, so a dangling separator reads as a host fault ("… |. Nothing was read.").
+        var message = new JsonException("Bad value. LineNumber: 0 | BytePositionInLine: 13.");
+
+        var result = JsonUtils.DescribeParseError(message);
+
+        Assert.Equal("Bad value", result);
+    }
+
+    #endregion
+
     #region GetObject Tests
+
+    [Fact]
+    public void GetObject_MissingKey_ReturnsNull()
+    {
+        // `null` here means "absent" AND "unreadable" — which is why the file tools no longer use
+        // this overload: `EditPayload` and `ReadFilesPayload` say WHICH field failed instead.
+        var dict = JsonUtils.DeserializeParameters("""{"other":1}""");
+
+        Assert.Null(dict.GetObject<TestObject>("key"));
+    }
 
     [Fact]
     public void GetObject_ValidObject_ReturnsObject()

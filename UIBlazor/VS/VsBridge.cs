@@ -267,6 +267,23 @@ public class VsBridge : IVsBridge, IDisposable
             else
             {
                 Console.WriteLine($"No pending request found for correlationId: {response.CorrelationId}");
+
+                // A response nobody awaits is the ONLY symptom a crossed or duplicated correlation
+                // id has, and it used to reach the browser console alone — which the user cannot read
+                // from the chat window. The result was a "strange" tool error in the field with no
+                // trace: the host log said the tool ran, the model got a refusal, and nothing said
+                // the two ids differed. The ids ARE the evidence, so they go to the host log.
+                //
+                // WARN, not ERROR: a late answer for a request that already timed out lands here
+                // too, and that is an expected skew, not a fault. The pending count tells the two
+                // apart at a glance — a crossing has a request still waiting, a late answer has 0.
+                _ = PostLogAsync(new LogEntry
+                {
+                    Level = LogEntry.WarnLevel,
+                    Source = "VsBridge",
+                    Message = $"Response for unknown correlationId '{response.CorrelationId}' dropped; " +
+                              $"{_pendingRequests.Count} request(s) still pending.",
+                });
             }
         }
         catch (Exception ex)

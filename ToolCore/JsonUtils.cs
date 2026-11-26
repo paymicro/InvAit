@@ -97,25 +97,21 @@ public static class JsonUtils
         }
     }
 
-    public static T? GetObject<T>(this IReadOnlyDictionary<string, object> parameters, string key) where T : class
-        => parameters.GetObject<T>(key, out _);
-
     /// <summary>
-    /// То же, но сообщает ПОЧЕМУ payload не прочитался.
+    /// Приводит значение payload к <typeparamref name="T"/>, глотая ошибку разбора.
     /// <para>
-    /// Без этого вызывающий видит только <c>null</c> и вынужден УГАДЫВАТЬ причину в тексте отказа.
-    /// Ровно так и появилось «each edit needs 'oldStr' and 'newStr' strings» на payload, где оба
-    /// поля были на месте: настоящая ошибка (например, <c>"approximateLine": ""</c> не является
-    /// числом) проглатывалась, модель шла исправлять не то, а разработчик не имел ни одной зацепки.
+    /// Годится только там, где <c>null</c> и «не разобралось» РАВНОЗНАЧНЫ (аргументы MCP-сервера,
+    /// боковой канал). Инструментам файловой системы он больше не нужен: и <c>edits</c>, и
+    /// <c>files</c> разбирают <see cref="EditPayload"/> и <see cref="ReadFilesPayload"/>, потому что
+    /// текст STJ («Path: $[0].x | LineNumber: 5») отдавать модели нельзя — эти номера относятся к
+    /// копии, которую сериализует именно этот метод, а не к присланному payload.
     /// </para>
     /// </summary>
-    public static T? GetObject<T>(this IReadOnlyDictionary<string, object> parameters, string key, out string? error) where T : class
+    public static T? GetObject<T>(this IReadOnlyDictionary<string, object> parameters, string key) where T : class
     {
-        error = null;
         var value = parameters.GetValue(key);
         if (value == null)
         {
-            error = $"'{key}' is missing";
             return null;
         }
 
@@ -123,12 +119,36 @@ public static class JsonUtils
         {
             return JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(value, _jsonOptions), _jsonOptions);
         }
-        catch (Exception e)
+        catch
         {
-            // Текст System.Text.Json называет поле и позицию — именно то, что нужно вызывающему.
-            error = e.Message;
             return null;
         }
+    }
+
+    /// <summary>
+    /// Сообщение разбора без ПОЗИЦИИ. `Path: $[0].startLine` называет запись и поле и остаётся,
+    /// а `LineNumber`/`BytePositionInLine` отбрасываются: они относятся к pretty-printed копии,
+    /// которую сериализует <see cref="JsonShape.TryAsElement"/>, то есть к документу, которого
+    /// модель не отправляла (см. docs/dev/edit-matching.md).
+    /// Завершающая точка тоже снимается: вызывающий дописывает свою, и «19.. Nothing was read.»
+    /// читается как сбой самого хоста.
+    /// <para>
+    /// Режется по `LineNumber:` БЕЗ ведущего разделителя и с зачисткой остатка: вариант
+    /// « | LineNumber:» держался на точном написании одного пробела и одной черты, и любой сдвиг
+    /// в форматировании STJ вернул бы модели номер строки в копии — молча, с зелёным тестом.
+    /// </para>
+    /// </summary>
+    internal static string DescribeParseError(Exception exception)
+    {
+        var message = exception.Message;
+
+        var position = message.IndexOf("LineNumber:", StringComparison.Ordinal);
+        if (position >= 0)
+        {
+            message = message.Substring(0, position).TrimEnd(' ', '|', ',');
+        }
+
+        return message.TrimEnd('.', ' ');
     }
 
     public static T? GetObject<T>(this JsonElement jsonElement) where T : class

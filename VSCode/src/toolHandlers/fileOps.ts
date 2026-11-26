@@ -10,17 +10,219 @@ import { applyEdit, splitEditText } from './diffMatch';
 import { readFileWithMetadata, writeFileWithMetadata, separatorName } from './fileReader';
 import { writeFileWithMode, parseMode } from './fileWriter';
 
+/** How much of an offending value is echoed back. A whole 40 KB oldStr is not a message. */
+const MAX_LITERAL_LENGTH = 60;
+
+/**
+ * The range of the C# `int` the hint ends up in. A number outside it cannot be a line number in the
+ * sibling host, so accepting it here would run an edit the VS host refuses.
+ */
+const INT32_MIN = -2147483648;
+const INT32_MAX = 2147483647;
+
+/**
+ * The offending value as the model sent it, cut to a readable length — `""` and `"yes"` must be
+ * distinguishable at a glance, because "received a string" left the model guessing WHICH string.
+ *
+ * Mirrors `EditPayload.Describe` in the C# host: one sentence for one refusal, in two hosts. The
+ * JSON form is reused verbatim so a string keeps its own quotes and a number its own spelling.
+ */
+function describeValue(value: unknown): string {
+    if (value === undefined) {
+        return 'nothing (the value is absent)';
+    }
+    if (value === null) {
+        return 'null';
+    }
+    if (Array.isArray(value)) {
+        return `an array ${shortLiteral(JSON.stringify(value))}`;
+    }
+
+    switch (typeof value) {
+        case 'string':
+            return `the string ${shortLiteral(JSON.stringify(value))}`;
+        case 'number':
+            // `JSON.stringify(Infinity)` is the string "null", so a refused `1e400` used to be reported
+            // as `the number null` — naming a value the model never sent, in the one field the whole
+            // sentence hinges on. The C# host echoes the raw `1e400` here; JS keeps the value itself.
+            return `the number ${Number.isFinite(value) ? shortLiteral(JSON.stringify(value)) : String(value)}`;
+        case 'boolean':
+            return `the boolean ${String(value)}`;
+        case 'object':
+            return `an object ${shortLiteral(JSON.stringify(value))}`;
+        default:
+            return `${typeof value} ${shortLiteral(String(value))}`;
+    }
+}
+
+/**
+ * Marks a cut literal so the model cannot mistake a fragment for the whole value.
+ *
+ * The cut backs off one character when it would land between the two halves of a surrogate pair:
+ * a lone surrogate is not the text of anything, and raw JSON of an emoji is exactly where a 60th
+ * character lands inside one.
+ *
+ * A cut JSON STRING gets its closing quote back, exactly like `JsonShape.Short` does in the C# host:
+ * the text is cut blind, so a long string used to arrive as `"abcdef\u2026` — an opening quote with no
+ * end, in the one field the whole sentence hinges on.
+ *
+ * KNOWN LIMITATION against the C# host: `JsonShape.Describe` echoes the RAW JSON text, so `1e3`
+ * reads `the number 1e3` there and `the number 1000` here, and an object keeps its original spacing
+ * there and loses it here. JavaScript cannot recover the source text after `JSON.parse` — the same
+ * class of limit as the number spelling — so the two hosts agree on the sentence and on WHICH value
+ * is named, but not on the literal spelling of a number or the whitespace inside an object.
+ */
+function shortLiteral(text: string): string {
+    if (text.length <= MAX_LITERAL_LENGTH) {
+        return text;
+    }
+
+    let cut = MAX_LITERAL_LENGTH;
+    const last = text.charCodeAt(cut - 1);
+    if (last >= 0xd800 && last <= 0xdbff) {
+        cut--;
+    }
+
+    const closing = text.startsWith('"') ? '"' : '';
+    return `${text.slice(0, cut)}\u2026${closing}`;
+}
+
+/**
+ * A property by name, IGNORING CASE — the lookup the VS host performs in `JsonShape.TryGetProperty`,
+ * the one `System.Text.Json` used to perform with `PropertyNameCaseInsensitive = true`, and the one
+ * the approval card performs with `OrdinalIgnoreCase`.
+ *
+ * Dropping that tolerance would be a real regression, not a tidy-up: `{"OldStr": …}` bound fine
+ * before, so the card rendered a valid diff, the user APPROVED it, and the host answered
+ * "oldStr is missing" — a refusal about a typo nobody made. `read_files` needs it too, and one copy
+ * is what keeps `{"Path": "a.cs"}` working on both hosts.
+ */
+function readProperty(obj: any, name: string): any {
+    if (obj === null || typeof obj !== 'object') {
+        return undefined;
+    }
+    if (name in obj) {
+        return obj[name];
+    }
+
+    const wanted = name.toLowerCase();
+    for (const key of Object.keys(obj)) {
+        if (key.toLowerCase() === wanted) {
+            return obj[key];
+        }
+    }
+
+    return undefined;
+}
+
 // 1. read_files
 export function readFiles(params: any, workspaceRoot: string): ToolResult {
-    const files: any[] = params.files || [];
+    const raw = params.files;
+
+    // `files` itself: absent, `null` and a non-array are three DIFFERENT mistakes and none of them is
+    // "no files". All three used to become `[]` and answer `{"success":true,"payload":"[]"}`, i.e. a
+    // model that asked for four files was told it had read all of them. Every sentence below is the
+    // one `ToolCore/ReadFilesPayload.cs` produces — `read_files` has the same kind of shape pass as
+    // `edits`, so the two hosts answer the same payload with the same words.
+    if (raw === undefined || raw === null) {
+        return {
+            success: false,
+            error: "Failed to read 'files': the value is missing. Send a JSON array of reads, " +
+                'e.g. [{"path": "src/File.cs"}]. Nothing was read.',
+        };
+    }
+    if (!Array.isArray(raw)) {
+        return {
+            success: false,
+            error: `Failed to read 'files': expected a JSON array, received ${describeValue(raw)}. Nothing was read.`,
+        };
+    }
+
+    const files: any[] = raw;
     const results: any[] = [];
+
+    if (files.length === 0) {
+        return { success: false, error: 'No files specified.' };
+    }
+
+    // `null`, `-1` and `0` all mean "no range" — the schema offers ["integer","null"], and a
+    // non-positive count is the older spelling of the sentinel. One number, decided ONCE, so the
+    // dedup key and the arithmetic cannot disagree, and so this host agrees with the C# one, which
+    // normalises the same three spellings in ToolCore/ReadFilesPayload.TryParse.
+    //
+    // Any OTHER value is a REFUSAL, not a silent "no range". Folding `1.5`, `"3"` or `3000000000`
+    // to -1 here answered a request the sibling host rejected — and answered it with the ENTIRE
+    // file, i.e. with far more text than was asked for. Same rule as the `edits` hint: refuse,
+    // never round. `118.0` is a whole number and both hosts accept it (`JsonShape.ReadIntegerOrNull`
+    // reads the same `decimal` here); the reason list is what has to stay identical, not the
+    // spelling that produced it.
+    const parseRange = (
+        value: unknown,
+        field: string,
+        entryNo: string,
+    ): { ok: true; value: number } | { ok: false; reason: string } => {
+        if (value === undefined || value === null) {
+            return { ok: true, value: -1 };
+        }
+        if (typeof value === 'number' && Number.isInteger(value)) {
+            if (value > 2147483647 || value < -2147483648) {
+                return {
+                    ok: false,
+                    reason: `${entryNo}: '${field}' is outside the 32-bit integer range, received ${describeValue(value)}. Nothing was read.`,
+                };
+            }
+            return { ok: true, value: value > 0 ? value : -1 };
+        }
+        return {
+            ok: false,
+            reason: `${entryNo}: '${field}' must be an integer or null, received ${describeValue(value)}. Nothing was read.`,
+        };
+    };
+
+    // One pass over the WHOLE array, before anything is resolved or read — the order the `edits`
+    // shape pass below uses, and for the same reason: a refusal has to name the entry, so it cannot
+    // come from the middle of a loop that has already answered half the request. An entry that
+    // cannot yield a path or a range refuses the call; skipping it would hand back a shorter answer
+    // than the one that was asked for, which is the kind of silence this function has to avoid.
+    type ReadPlan = { path: string; startLine: number; lineCount: number };
+    const planned: ReadPlan[] = [];
+    for (let i = 0; i < files.length; i++) {
+        const entryNo = `entry ${i + 1} of ${files.length}`;
+        const f = files[i];
+
+        // `files: [null]` is valid JSON. Reading `f.path` here threw `Cannot read properties of null`
+        // — the same class of host-internals text the C# host stopped producing for this payload.
+        if (f === null || typeof f !== 'object' || Array.isArray(f)) {
+            return {
+                success: false,
+                error: `Failed to read 'files': ${entryNo} must be a JSON object with a 'path', received ${describeValue(f)}. Nothing was read.`,
+            };
+        }
+        if (typeof readProperty(f, 'path') !== 'string' || readProperty(f, 'path').trim() === '') {
+            return {
+                success: false,
+                error: `Failed to read 'files': ${entryNo} has no 'path'. Each entry needs a 'path' string. Nothing was read.`,
+            };
+        }
+
+        const startLine = parseRange(readProperty(f, 'startLine'), 'startLine', entryNo);
+        if (!startLine.ok) {
+            return { success: false, error: `Failed to read 'files': ${startLine.reason}` };
+        }
+        const lineCount = parseRange(readProperty(f, 'lineCount'), 'lineCount', entryNo);
+        if (!lineCount.ok) {
+            return { success: false, error: `Failed to read 'files': ${lineCount.reason}` };
+        }
+
+        planned.push({ path: readProperty(f, 'path'), startLine: startLine.value, lineCount: lineCount.value });
+    }
 
     // Deduplicate by the WHOLE request, not by path alone: two ranges of one file are two
     // different reads, and the old key silently dropped the second one.
     const seen = new Set<string>();
-    const deduped: any[] = [];
-    for (const f of files) {
-        const key = `${(f.path || '').toLowerCase()}|${f.startLine ?? -1}|${f.lineCount ?? -1}`;
+    const deduped: ReadPlan[] = [];
+    for (const f of planned) {
+        const key = `${f.path.toLowerCase()}|${f.startLine}|${f.lineCount}`;
         if (!seen.has(key)) {
             seen.add(key);
             deduped.push(f);
@@ -29,8 +231,8 @@ export function readFiles(params: any, workspaceRoot: string): ToolResult {
 
     for (const f of deduped) {
         const p: string = f.path;
-        const startLine: number = f.startLine ?? -1;
-        const lineCount: number = f.lineCount ?? -1;
+        const startLine: number = f.startLine;
+        const lineCount: number = f.lineCount;
 
         try {
             const absPath = getAbsolutePath(p, workspaceRoot);
@@ -46,8 +248,12 @@ export function readFiles(params: any, workspaceRoot: string): ToolResult {
             }
 
             const skipCount = startLine > 0 ? Math.max(0, startLine - 1) : 0;
+            // `needsLimit` IS `lineCount <= 0`, so `lineCount > 0 ? lineCount : (needsLimit ? 2000 :
+            // Infinity)` had an unreachable third arm — inside the false branch of `lineCount > 0`
+            // the flag is always true and `Infinity` could never be produced. The C# host carries the
+            // same simplification.
             const needsLimit = lineCount <= 0;
-            const takeCount = lineCount > 0 ? lineCount : (needsLimit ? 2000 : Infinity);
+            const takeCount = needsLimit ? 2000 : lineCount;
             const totalLineCount = needsLimit ? lines.length : 0;
 
             const sliced = lines.slice(skipCount, skipCount + takeCount);
@@ -110,34 +316,127 @@ export function createFile(params: any, workspaceRoot: string): ToolResult {
 export function editFiles(params: any, workspaceRoot: string): ToolResult {
     try {
         const filePath: string = params.filePath;
-        const edits: any[] = params.edits || [];
-        const absPath = getAbsolutePath(filePath, workspaceRoot);
 
-        if (!fs.existsSync(absPath)) {
-            return { success: false, error: "File doesn't exist." };
+        // The SHAPE of `edits` is checked here with the same sentences the C# host builds in
+        // `ToolCore/EditPayload.cs`, and for the same reason: a refusal has to name the edit, the
+        // field and the value the model sent. The C# host used to pass a System.Text.Json exception
+        // through, whose "LineNumber 5 | BytePositionInLine 20" pointed into a pretty-printed COPY
+        // of a payload the model had sent as one line — so the model retried with another guess.
+        //
+        // The ORDER is part of the message, not an implementation detail: one pass per edit, in
+        // DiffEdit's order (hint -> oldStr -> newStr -> replaceAll), and the shape of the WHOLE array
+        // settled before the file is even resolved. The C# host does exactly this, so a payload with
+        // two mistakes is answered with the SAME one by both hosts. Checking `existsSync` first, as
+        // this function used to, answered "File doesn't exist." to a call the sibling host refused
+        // for its shape.
+        const edits: any = params.edits;
+
+        if (edits === undefined || edits === null) {
+            return {
+                success: false,
+                error: "'edits' is missing: send a JSON array of edits, " +
+                    'e.g. [{"oldStr": "line to find", "newStr": "replacement"}]. Nothing was changed.',
+            };
         }
 
+        if (!Array.isArray(edits)) {
+            return {
+                success: false,
+                error: `'edits' must be a JSON array of edit objects, received ${describeValue(edits)}. Nothing was changed.`,
+            };
+        }
+
+        // Labels match `EditBatch.EditLabel`: "edit 2 of 3 (line 42)", and the hint is printed ONLY
+        // when the model sent a usable one — a null hint used to show up as "line -1", a fractional
+        // one as "line 1.5", and an out-of-int32 one as "line 3000000000". The C# host prints no hint
+        // whenever the hint itself is what failed, so the range check belongs here too.
+        const isUsableHint = (hint: any): boolean =>
+            typeof hint === 'number' && Number.isInteger(hint) && hint >= INT32_MIN && hint <= INT32_MAX;
+
+        const labelFor = (hint: any, index: number): string => {
+            const label = `edit ${index + 1} of ${edits.length}`;
+            return isUsableHint(hint) ? `${label} (line ${hint})` : label;
+        };
+
+        const canonical: any[] = [];
+
+        for (let i = 0; i < edits.length; i++) {
+            const edit = edits[i];
+
+            // A JSON null INSIDE the array is legal and is NOT a shape error: the batch reports it
+            // per edit ("the edit is null") so the siblings still apply. Refusing the whole call
+            // here would disagree with the C# host, where EditPayload keeps a null element too.
+            if (edit === null) {
+                canonical.push(null);
+                continue;
+            }
+
+            if (typeof edit !== 'object' || Array.isArray(edit)) {
+                return {
+                    success: false,
+                    error: `edit ${i + 1} of ${edits.length}: must be a JSON object with 'oldStr' and 'newStr', ` +
+                        `received ${describeValue(edit)}. Nothing was changed.`,
+                };
+            }
+
+            const hint = readProperty(edit, 'approximateLine');
+            // int32 only: the C# host stores the hint in an `int`, so a number outside that range is
+            // a line the host cannot represent. `Number.isInteger` alone accepted 3000000000 and the
+            // edit ran here while the sibling host refused it.
+            if (hint !== undefined && hint !== null && !isUsableHint(hint)) {
+                return {
+                    success: false,
+                    error: `${labelFor(hint, i)}: 'approximateLine' must be an integer or null, ` +
+                        `received ${describeValue(hint)}. Nothing was changed.`,
+                };
+            }
+
+            const label = labelFor(hint, i);
+
+            // A number or an object in a text field used to reach `splitEditText` through a
+            // substituted default and apply something the model never wrote.
+            for (const field of ['oldStr', 'newStr']) {
+                const value = readProperty(edit, field);
+                if (value !== undefined && value !== null && typeof value !== 'string') {
+                    return {
+                        success: false,
+                        error: `${label}: '${field}' must be a string, ` +
+                            `received ${describeValue(value)}. Nothing was changed.`,
+                    };
+                }
+            }
+
+            // `replaceAll` is BOOLEAN or null, and a violation refuses the WHOLE batch — never the
+            // one edit. Reading it tolerantly here (asBool) turned the same call into a file-wide
+            // rewrite in this host only, and the two hosts then disagreed in the DESTRUCTIVE
+            // direction.
+            const raw = readProperty(edit, 'replaceAll');
+            if (raw !== undefined && raw !== null && typeof raw !== 'boolean') {
+                return {
+                    success: false,
+                    error: `${label}: 'replaceAll' must be true, false or null, ` +
+                        `received ${describeValue(raw)}. Nothing was changed.`,
+                };
+            }
+
+            canonical.push({
+                approximateLine: typeof hint === 'number' ? hint : undefined,
+                oldStr: readProperty(edit, 'oldStr'),
+                newStr: readProperty(edit, 'newStr'),
+                replaceAll: raw,
+            });
+        }
+
+        // An empty batch is a legal payload the caller refuses in its own words — and it is refused
+        // only once the SHAPE above is sound, exactly like the C# host.
         if (edits.length === 0) {
             return { success: false, error: "'edits' is empty: nothing to apply." };
         }
 
-        // `replaceAll` is BOOLEAN or absent, and a violation refuses the WHOLE batch — never the one
-        // edit. The C# host deserialises `edits` into List<DiffEdit> where ReplaceAll is `bool?`, so
-        // System.Text.Json throws on "yes" / "true" / 1 and GetObject answers null, which
-        // ToolExecutor reports as "Failed to read 'edits'" with nothing written. Reading it
-        // tolerantly here (asBool) turned the same call into a file-wide rewrite in this host only,
-        // and the two hosts then disagreed in the DESTRUCTIVE direction. The tolerance was added for
-        // `dryRun`, which the C# host reads through JsonUtils.GetBool — but `replaceAll` reaches it
-        // through DESERIALISATION, and that path is strict.
-        for (let i = 0; i < edits.length; i++) {
-            const edit = edits[i];
-            const raw = edit?.replaceAll;
-            if (raw !== undefined && raw !== null && typeof raw !== 'boolean') {
-                return {
-                    success: false,
-                    error: `edit ${i + 1} of ${edits.length}: replaceAll must be true or false, not ${JSON.stringify(raw)}. Nothing was written.`,
-                };
-            }
+        const absPath = getAbsolutePath(filePath, workspaceRoot);
+
+        if (!fs.existsSync(absPath)) {
+            return { success: false, error: "File doesn't exist." };
         }
 
         // Encoding, separator and the final line break belong to the FILE, and the writer puts
@@ -152,20 +451,19 @@ export function editFiles(params: any, workspaceRoot: string): ToolResult {
 
         const lines = file.lines;
 
-        // Sort edits by approximateLine DESCENDING (null treated as -1).
+        // Sort edits by approximateLine DESCENDING (no hint treated as -1).
         // Original indices are preserved: the model re-sends only failed edits
         // by their position in ITS request, not in the sorted copy.
-        // A NON-NUMERIC hint is treated as "no hint" (-1), not as NaN: `NaN` makes the comparator
-        // inconsistent, and `Array.prototype.sort` then leaves the order implementation-defined —
-        // edits would run out of order against shifting line numbers.
+        //
+        // The comparator sees the CANONICAL view, where a hint is either a validated integer or
+        // `undefined` — a non-numeric one was refused above. That is why there is no `NaN` guard
+        // here any more: an inconsistent comparator would make `Array.prototype.sort` leave the
+        // order implementation-defined, and edits would then run out of order against shifting
+        // line numbers.
         const hintForSort = (edit: any): number =>
-            typeof edit?.approximateLine === 'number' && Number.isFinite(edit.approximateLine)
-                ? edit.approximateLine
-                : -1;
+            typeof edit?.approximateLine === 'number' ? edit.approximateLine : -1;
 
-        // A JSON `null` inside the array is legal and must become a readable per-edit failure below,
-        // not a TypeError before the loop — see `hintForSort` and the loop's guard.
-        const sortedEdits = edits
+        const sortedEdits = canonical
             .map((edit, index) => ({ edit, index }))
             .sort((a, b) => hintForSort(b.edit) - hintForSort(a.edit));
 
@@ -180,10 +478,11 @@ export function editFiles(params: any, workspaceRoot: string): ToolResult {
 
             // A JSON `null` in the array is legal: refused per edit rather than thrown before the
             // loop, so the model gets a sentence it can act on instead of a TypeError message.
-            if (edit === null || typeof edit !== 'object') {
+            if (edit === null) {
                 failures.push(`${label}: the edit is null. Each edit needs 'oldStr' and 'newStr' strings.`);
                 continue;
             }
+
             const hasHint = typeof edit.approximateLine === 'number';
             const hint = hasHint ? edit.approximateLine : -1;
             // ONE label shape for every failure. A missing oldStr/newStr used to report the bare
@@ -193,10 +492,12 @@ export function editFiles(params: any, workspaceRoot: string): ToolResult {
             // line stays absent ONLY when the model sent no hint, never as `line -1`.
             const where = hasHint ? `${label} (line ${hint})` : label;
 
-            // A null oldStr is refused BEFORE any matching: splitEditText(null) returns [''], and
-            // an all-empty search legitimately matches the FIRST empty line of the file — the edit
-            // would "succeed" by inserting newStr at a random blank line. An explicitly empty
-            // oldStr stays legal: that is the legacy "matches an empty file line" semantics.
+            // A null or OMITTED oldStr is refused BEFORE any matching: splitEditText(null) returns
+            // [''], and an all-empty search legitimately matches the FIRST empty line of the file —
+            // the edit would "succeed" by inserting newStr at a random blank line. An explicitly
+            // empty oldStr stays legal: that is the legacy "matches an empty file line" semantics.
+            // (The canonical view normalises "absent" to `undefined` and "null" stays null; both are
+            // refusals, and the C# host reaches the same sentence through EditBatch.)
             if (edit.oldStr === null || edit.oldStr === undefined) {
                 failures.push(`${where}: oldStr is missing`);
                 continue;

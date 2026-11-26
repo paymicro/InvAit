@@ -219,6 +219,48 @@ public partial class BuiltInToolDefsTests
     }
 
     [Fact]
+    public void MapMethodToTool_ReadFiles_StartLineAndLineCountAreNullableUnionsInRequired()
+    {
+        // Диапазона чтения НЕТ в намерении модели: «весь файл» — это отсутствие выбора, а не
+        // число. Пока тип был non-nullable integer, strict-схема заставляла её выдумывать
+        // сентинел -1 в ОБА поля на каждом вызове.
+        //
+        // Optionality выражена ТИПОМ, а не [DefaultValue]: strict-режим не умеет «отсутствующий
+        // ключ», он умеет только «ключ со значением null». Non-nullable int под nullable-
+        // обещанием — не косметика: STJ бросает на `"startLine": null`, JsonUtils.GetObject
+        // глотает исключение и отдаёт null, и хост теряет ВЕСЬ вызов, а не одно поле.
+        var method = typeof(BuiltInToolDefs).GetMethod(nameof(BuiltInToolDefs.ReadFiles));
+
+        var result = BuiltInToolDefs.MapMethodToTool(method);
+
+        Assert.Equal(BuiltInToolEnum.ReadFiles, result.Function.Name);
+
+        var items = Assert.IsType<NativeParameters>(result.Function.Parameters.Properties["files"].Items);
+
+        // Все три ключа остаются в required: strict-схема отвергает запрос, где объявленное в
+        // `properties` поле отсутствует в `required` — валидирующий endpoint отклонил бы весь
+        // инструмент, а не одно поле.
+        Assert.Equal(["path", "startLine", "lineCount"], items.Required);
+
+        foreach (var name in new[] { "startLine", "lineCount" })
+        {
+            var prop = items.Properties![name];
+            Assert.True(prop.IsUnionType);
+            Assert.Equal([NativeToolType.Integer, NativeToolType.Null], (string[])prop.Type);
+            // Описание обязано назвать null: это единственное, что модель ищет, чтобы не
+            // изобретать сентинел.
+            Assert.Contains("null", prop.Description, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("2000", items.Properties!["lineCount"].Description, StringComparison.Ordinal);
+
+        // Контроль, что сосед не «поехал» вместе с ними: путь — строго обязательное значение.
+        var path = items.Properties!["path"];
+        Assert.False(path.IsUnionType);
+        Assert.Equal(NativeToolType.String, path.Type);
+    }
+
+    [Fact]
     public void MapMethodToTool_Bash_HasDescriptionParameterRequired()
     {
         // Arrange

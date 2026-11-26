@@ -734,8 +734,6 @@ code.hljs {
 .tool-file-header .tool-replaceall-badge,
 .tool-file-header .tool-dryrun-badge {
     flex-shrink: 1;
-    min-width: 0;
-    max-width: 45%;
     overflow: hidden;
     text-overflow: ellipsis;
     align-self: center;

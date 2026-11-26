@@ -244,6 +244,111 @@ the null union, so the top-level object AND each nested `edits` entry list EVERY
 `required`, and a call that wants a default sends `null` rather than omitting the key. `dryRun` is
 optional in exactly that sense: `true` computes the edit in memory and writes nothing.
 
+## Shape refusals name the edit, the field and the value
+
+`ToolCore/EditPayload.cs` is the ONLY place that decides whether the `edits` array is readable, and
+the ONLY place that words a refusal when it is not. The host calls
+`EditPayload.TryParse(args.GetValue("edits"), out edits, out refusal)`; `EditBatch` then owns the
+value semantics (`oldStr is missing`, `oldStr not found`, the ambiguity report).
+
+Why it is not `JsonUtils.GetObject<List<DiffEdit>>` any more. That call re-serialised the raw
+`edits` element with `WriteIndented = true` and let `System.Text.Json` bind the copy, so a type error
+came back with a position inside a document the model never sent:
+
+```
+Failed to read 'edits': The JSON value could not be converted to
+System.Nullable`1[System.Boolean]. Path: $[0].replaceAll | LineNumber: 5 | BytePositionInLine: 20.
+```
+
+The model had sent ONE LINE. "Line 5, byte 20" was the pretty-printed copy's geometry; the sentence
+named no edit, no field beyond the path and — the part that cost a turn — not the value it choked
+on, so the retry was a guess. Behind it sat a fixed hint ("each edit needs `oldStr` and `newStr`
+strings") asserting a cause the code did not know, on a payload where both fields were present.
+
+The rules that replaced it:
+
+| Payload | Refusal |
+|---------|---------|
+| `edits` missing or `null` | `'edits' is missing: send a JSON array of edits, e.g. [{…}]. Nothing was changed.` |
+| `edits` is an object, string or number | `'edits' must be a JSON array of edit objects, received the string "line A". Nothing was changed.` |
+| an element is a string or a number | `edit 2 of 3: must be a JSON object with 'oldStr' and 'newStr', received the number 7. Nothing was changed.` |
+| `oldStr` / `newStr` is not a string | `edit 1 of 2 (line 118): 'newStr' must be a string, received the number 42. Nothing was changed.` |
+| `approximateLine` is not an integer or null | `edit 1 of 1: 'approximateLine' must be an integer or null, received the string "". Nothing was changed.` |
+| `replaceAll` is not true/false/null | `edit 1 of 1: 'replaceAll' must be true, false or null, received the string "". Nothing was changed.` |
+
+Invariants behind that table:
+
+- **Label = `EditBatch.EditLabel`.** `edit 2 of 3 (line 42)`, 1-based, the hint printed only when the
+  model sent one. A shape refusal and a match refusal are the same sentence with the same index, so
+  the model re-sends exactly one edit.
+- **The received value is echoed**, cut to 60 characters and marked with `…`. `""` and `"yes"` are
+  different mistakes; "received a string" left the model guessing which.
+- **No JSON path, no line, no byte offset, ever.** Those numbers describe a copy, not the request.
+  `EditPayloadTests` and `ReadFilesPayloadTests` assert their refusals against `LineNumber` /
+  `BytePositionInLine` / `Path: $` / `could not be converted` / `System.Nullable` precisely so the old
+  text cannot come back. The only message in this area that still originates in `System.Text.Json` is
+  the one for a caller that built the payload as a CLR object (`JsonShape.TryAsElement`), and it goes
+  through `JsonUtils.DescribeParseError` first: the position is cut, `Path: $[0].x` stays.
+- **A JSON `null` ELEMENT is not a shape error.** It stays a null `DiffEdit` and `EditBatch` refuses
+  it PER EDIT ("the edit is null"), so its siblings still apply. Refusing the batch here would throw
+  away a call that was almost entirely valid. A string or a number in that position is different:
+  there is nothing to hand `EditBatch`, so the batch is refused up front.
+- **A NON-INTEGRAL `approximateLine` is refused, not rounded.** `118.0` is accepted as 118 —
+  `System.Text.Json` REFUSED that spelling for `int?`, so accepting it is a PARITY fix with the
+  VS Code host, not a restoration of behaviour that once worked; `1.5` is not a line number and
+  rounding it edits a neighbour line.
+- **Any shape error refuses the WHOLE batch.** Applying the edits that happen to parse while
+  silently dropping another's `replaceAll` would rewrite one occurrence where the model asked for
+  all of them.
+
+The VS Code host keeps the same table in `fileOps.ts` (`describeValue` + the shape loops), with the
+same words. It is a port, not a second policy: extend both, in one change. The one difference that
+remains is the SPELLING of an echoed literal, and it is a limit of the language rather than a choice:
+JavaScript cannot recover the source text after `JSON.parse`, so `1e3` reads `the number 1e3` in the
+C# host and `the number 1000` in VS Code, and an object keeps its original spacing only there. WHICH
+value is named, and the sentence around it, are identical — that is what a test can pin.
+
+## `read_files` has the same rule, in `ReadFilesPayload`
+
+`ToolCore/ReadFilesPayload.cs` is to `files` what `EditPayload` is to `edits`: the one place that
+decides whether the array is readable, normalises it, deduplicates it and words the refusal. It exists
+for the same reason and replaces the same kind of text — a model that sent `"startLine": "120"` used
+to be answered with a CLR type name and a 0-based index into a copy:
+
+```
+Failed to read 'files': The JSON value could not be converted to
+System.Nullable`1[System.Int32]. Path: $[0].startLine. Nothing was read.
+```
+
+| Payload | Refusal |
+|---------|---------|
+| `files` missing or `null` | `Failed to read 'files': the value is missing. Send a JSON array of reads, e.g. [{"path": "src/File.cs"}]. Nothing was read.` |
+| `files` is not an array | `Failed to read 'files': expected a JSON array, received the string "oops". Nothing was read.` |
+| an element is `null`, a string or a number | `Failed to read 'files': entry 2 of 3 must be a JSON object with a 'path', received null. Nothing was read.` |
+| `path` missing, `null`, blank or not a string | `Failed to read 'files': entry 1 of 2 has no 'path'. Each entry needs a 'path' string. Nothing was read.` |
+| `startLine` / `lineCount` is not an integer or null | `Failed to read 'files': entry 1 of 2: 'startLine' must be an integer or null, received the string "3". Nothing was read.` |
+| the same, outside `int` | `Failed to read 'files': entry 1 of 2: 'lineCount' is outside the 32-bit integer range, received the number 3000000000. Nothing was read.` |
+
+Invariants, and the failure each one prevents:
+
+- **One refusal for the whole call, before any file is touched.** `read_files` reports per-file errors
+  in `FileContent.Error`, so a bad ENTRY looked like it belonged there — but an entry with no usable
+  path has no range and no file, and letting it reach `GetAbsolutePath` outside the per-file `try`
+  made `{"files":[{"path":""},{"path":"a.cs"}]}` answer the bare `Path cannot be null or empty.`
+  with `a.cs` never read. The batch is refused up front instead, and nothing is read.
+- **`null`, `0` and `-1` are ONE request.** They collapse to `-1` before the dedup key is computed.
+  Two spellings of the same read produced two identical entries, and the model paid for both.
+- **The dedup key is the WHOLE request** — case-insensitive path plus both bounds. A path-only key
+  silently dropped the second range of a file, i.e. answered a shorter request than was sent.
+- **A range is refused, never folded.** Folding `1.5`, `"3"` or `3000000000` to "no range" answered
+  with the ENTIRE file — far more text than was asked for — while the other host refused the call.
+- **Property names are read ignoring case**, as `System.Text.Json` did with
+  `PropertyNameCaseInsensitive` and as the approval card does with `OrdinalIgnoreCase`. A
+  case-sensitive read refuses `{"Path": "a.cs"}`, which the UI has just rendered as a valid call.
+- **The shape helpers live once**, in `JsonShape`: the case-insensitive lookup, the echoed literal
+  (cut at 60 characters, surrogate-safe, closing quote restored) and the `int?` test. A second copy of
+  "what counts as an integer" is how `118.0` ends up accepted in one tool and refused in the other.
+
 ## The tests are still named `FindInFile_*`
 
 There is NO `FindInFile` method any more. It was an `internal` single-match view of the matcher
