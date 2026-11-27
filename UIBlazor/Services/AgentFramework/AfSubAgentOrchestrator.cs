@@ -60,18 +60,48 @@ public sealed class AfSubAgentOrchestrator(
         try
         {
             // RunBranchAsync reports every in-branch failure itself (as failure text or a
-            // graceful timeout message) and rethrows only on chat-level cancellation,
-            // so any exception escaping Task.WhenAll means the root token fired.
+            // graceful timeout message) and rethrows only on chat-level cancellation. Anything
+            // else escaping Task.WhenAll comes from the batch plumbing - the two catches below
+            // tell the two apart.
             await Task.WhenAll(tickets.Select(t => RunBranchAsync(t, cancellationToken))).ConfigureAwait(false);
         }
         catch (Exception) when (cancellationToken.IsCancellationRequested)
         {
-            logger.LogInformation("Delegation batch cancelled by user.");
+            logger.LogInformation("Delegation batch cancelled.");
             foreach (var ticket in tickets)
                 if (!ticket.SubAgent.IsFinished)
                     Finish(ticket.SubAgent, SubAgentStatus.Cancelled, "Cancelled by user.", ticket.OwnerSubAgent);
 
-            return VsToolResult.Cancelled(BuiltInToolEnum.DelegateTask);
+            // A stopped batch still hands over what exists: the text produced before the stop is the
+            // only work that survives the run, and the parent used to receive
+            // "Operation was cancelled." and nothing else.
+            var answered = tickets.Where(t => !string.IsNullOrWhiteSpace(t.ResultText)).ToArray();
+            if (answered.Length == 0)
+                return VsToolResult.Cancelled(BuiltInToolEnum.DelegateTask);
+
+            return new VsToolResult
+            {
+                Name = BuiltInToolEnum.DelegateTask,
+                Success = false,
+                Result = ComposeAnsweredBlocks(answered, tickets.Length),
+                ErrorMessage = "Operation was cancelled."
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is never translated into a tool result (see the two run loops): an OCE
+            // that is not the root token is a plumbing bug, and the caller must see it.
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Every BRANCH reports its own failure (RunBranchAsync catches, and rethrows only root
+            // cancellation), so landing here means the batch PLUMBING broke - typically a UI
+            // subscriber throwing inside Finish. The branches that did finish still hold the only
+            // work the parent can use, so the report is composed; a branch that never reached its
+            // own catch is marked failed here, otherwise it would end up a green, empty block.
+            logger.LogError(ex, "Delegation batch failed outside its branches; reporting what finished.");
+            FinalizeUnfinished(tickets, ex);
         }
         finally
         {
@@ -89,11 +119,21 @@ public sealed class AfSubAgentOrchestrator(
     /// Aggregates the finished batch: finalizes every branch state and composes the unified
     /// text for the model. A single task returns its answer verbatim; several tasks get a
     /// light per-task header so the model can map each answer to its task.
+    /// <para>
+    /// A batch is a PARTIAL success: some branches may fail while the others produce real work.
+    /// <see cref="VsToolResult.Success"/> never crosses the wire (<c>BuildWire</c> sends the
+    /// content only), so whatever the parent must know has to be in the text - including WHICH
+    /// branches failed. The report used to be one sentence in <c>ErrorMessage</c>, and
+    /// <c>ToolResult.Convert</c> preferred that sentence on failure, so a partly failed batch
+    /// reached the parent as "One or more delegated task(s) failed." and every successful
+    /// branch's answer died with it.
+    /// </para>
     /// </summary>
     private VsToolResult ComposeResult(SubAgentTicket[] tickets)
     {
         var sb = new System.Text.StringBuilder();
         var success = true;
+        List<int> failedTasks = [];
 
         foreach (var ticket in tickets)
         {
@@ -105,6 +145,8 @@ public sealed class AfSubAgentOrchestrator(
                 Finish(ticket.SubAgent, status, ticket.ErrorMessage, ticket.OwnerSubAgent);
             }
             success &= !ticket.Failed;
+            if (ticket.Failed)
+                failedTasks.Add(ticket.Index + 1);
 
             logger.LogInformation("Sub-agent branch {Index}/{Total} completed. Tokens: {Tokens}",
                 ticket.Index + 1, tickets.Length, ticket.SubAgent.TotalTokens);
@@ -122,13 +164,75 @@ public sealed class AfSubAgentOrchestrator(
         }
 
         var resultText = sb.ToString();
+
+        // The summary goes LAST on purpose: ToolResult.TruncateContent keeps the TAIL of an oversized
+        // result and drops the beginning, so a head line is the first thing a big batch loses -
+        // together with the early tasks' blocks. Each block already names its own failure, so the
+        // summary is a convenience, and it is one that survives the cut.
+        if (failedTasks.Count > 0 && tickets.Length > 1)
+            resultText += Environment.NewLine + FailedTasksSummary(failedTasks, tickets.Length);
+
         return new VsToolResult
         {
             Name = BuiltInToolEnum.DelegateTask,
             Success = success,
             Result = resultText.Length > 0 ? resultText : EmptyResponse,
-            ErrorMessage = success ? string.Empty : "One or more delegated task(s) failed."
+            ErrorMessage = success ? string.Empty : FailedTasksSummary(failedTasks, tickets.Length)
         };
+    }
+
+    /// <summary>
+    /// Names the failed branches in the order they were requested. The reasons live in each task's
+    /// own block, so this line only answers "which ones".
+    /// </summary>
+    private static string FailedTasksSummary(List<int> taskNumbers, int total)
+        => $"{taskNumbers.Count} of {total} delegated task(s) failed (Task {string.Join(", ", taskNumbers)}).";
+
+    /// <summary>
+    /// Marks every branch that never reached its own catch as failed, so a plumbing exception cannot
+    /// leave a COMPLETED branch with an empty block and a green batch.
+    /// </summary>
+    private void FinalizeUnfinished(SubAgentTicket[] tickets, Exception ex)
+    {
+        foreach (var ticket in tickets.Where(t => !t.SubAgent.IsFinished))
+        {
+            ticket.ErrorMessage ??= ex.Message;
+            try
+            {
+                Finish(ticket.SubAgent, SubAgentStatus.Failed, ticket.ErrorMessage, ticket.OwnerSubAgent);
+            }
+            catch (Exception finalizeError)
+            {
+                // The subscriber that broke the batch may throw again here; the report still wins.
+                logger.LogWarning(finalizeError, "Failed to finalize branch {Index} after a batch failure.",
+                    ticket.Index);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Text of a batch that was stopped early: one block per branch that got as far as producing
+    /// text, then the notice that the batch was cut short. A branch that produced nothing
+    /// contributes nothing - the report is about the work that exists.
+    /// </summary>
+    private static string ComposeAnsweredBlocks(SubAgentTicket[] answered, int total)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var ticket in answered)
+        {
+            if (total == 1)
+            {
+                sb.AppendLine(ticket.ResultText);
+            }
+            else
+            {
+                sb.AppendLine($"### Task {ticket.Index + 1}: {ticket.ShortTask}")
+                  .AppendLine(ticket.ResultText)
+                  .AppendLine();
+            }
+        }
+
+        return sb.Append("(Cancelled: the remaining branches did not finish.)").ToString();
     }
 
     private SubAgentTicket[] CreateTickets(
@@ -332,7 +436,7 @@ public sealed class AfSubAgentOrchestrator(
             // An over-budget branch still reports its answer, with a warning for the parent.
             var budget = profileManager.ActiveProfile.MaxTokensPerSubAgent;
             if (budget > 0 && session.TotalTokens > budget)
-                ticket.ResultText += $"(Token budget exceeded: {session.TotalTokens} / {budget} tokens.)";
+                ticket.ResultText += $" (Token budget exceeded: {session.TotalTokens} / {budget} tokens.)";
 
             logger.LogInformation("Sub-agent branch {Index} finished. Tokens: {Tokens}",
                 ticket.Index, session.TotalTokens);
@@ -349,11 +453,11 @@ public sealed class AfSubAgentOrchestrator(
             // path (session is out of scope here - the subAgent mirror is kept in sync).
             var budget = profileManager.ActiveProfile.MaxTokensPerSubAgent;
             var budgetNote = budget > 0 && subAgent.TotalTokens > budget
-                ? $"(Token budget exceeded: {subAgent.TotalTokens} / {budget} tokens.)"
+                ? $" (Token budget exceeded: {subAgent.TotalTokens} / {budget} tokens.)"
                 : string.Empty;
             var message = $"Sub-agent exceeded execution time limit " +
-                          $"({(DateTime.Now - subAgent.StartedAt).TotalMinutes:F1} / {timeLimitSeconds / 60.0:F0} minutes). " +
-                          $"Last response: {LastAssistantContent(subAgent)}" + budgetNote;
+                          $"({(DateTime.Now - subAgent.StartedAt).TotalMinutes:F1} / {timeLimitSeconds / 60.0:F0} minutes)." +
+                          LastResponseSuffix(subAgent) + budgetNote;
             ticket.ResultText = message;
             logger.LogInformation("Sub-agent branch {Index} exceeded execution time limit mid-run.", ticket.Index);
         }
@@ -361,7 +465,10 @@ public sealed class AfSubAgentOrchestrator(
         {
             logger.LogError(ex, "Sub-agent branch {Index} failed.", ticket.Index);
             ticket.ErrorMessage = ex.Message;
-            ticket.ResultText = $"(Sub-agent branch failed: {ex.Message})";
+            // Whatever the branch produced before it died is the ONLY thing the parent can still
+            // use, so it travels with the reason (the time-limit path reports it the same way):
+            // a branch that worked for twenty turns and then hit a 404 used to lose all of it.
+            ticket.ResultText = $"(Sub-agent branch failed: {ex.Message})" + LastResponseSuffix(subAgent);
         }
         finally
         {
@@ -791,6 +898,23 @@ public sealed class AfSubAgentOrchestrator(
             : EmptyResponse;
 
     /// <summary>
+    /// The branch's last answer, prefixed for a report. Empty when the branch never produced one:
+    /// the empty marker reads like an answer, and pasting it next to a failure explains nothing.
+    /// <para>
+    /// The LAST message with content, not the last assistant message: a branch that answered and
+    /// then issued a tool call ends on a contentless tool-call turn, and taking that one threw away
+    /// the answer this suffix exists to preserve.
+    /// </para>
+    /// </summary>
+    private static string LastResponseSuffix(SubAgentMessage subAgent)
+    {
+        var content = subAgent.GetMessages()
+            .LastOrDefault(m => m.Role == ChatMessageRole.Assistant && !string.IsNullOrWhiteSpace(m.Content))
+            ?.Content;
+        return content is null ? string.Empty : $" Last response: {content}";
+    }
+
+    /// <summary>
     /// Parses both argument shapes: the 'tasks' array (the current schema)
     /// and the legacy single-task shape (task / systemPrompt / allowedTools).
     /// </summary>
@@ -942,8 +1066,8 @@ public sealed class AfSubAgentOrchestrator(
         /// <summary>Appends a note reported to the parent agent together with the answer.</summary>
         public void AddNote(string note) => _notes.Add(note);
 
-        /// <summary>All notes as one text (empty when nothing was recorded).</summary>
-        public string NoteText => _notes.Count == 0 ? string.Empty : string.Join(" ", _notes);
+        /// <summary>All notes as one text, prefixed so they never glue onto the answer.</summary>
+        public string NoteText => _notes.Count == 0 ? string.Empty : " " + string.Join(" ", _notes);
 
         /// <summary>
         /// Per-delta UI touch: marks the streaming message for render and reports the change

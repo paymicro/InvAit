@@ -14,7 +14,7 @@ carry the *why*: the invariants, the failure modes they prevent, and the traps t
 
 | Document | Answers | Update when |
 |----------|---------|-------------|
-| [agent-turn-loop.md](agent-turn-loop.md) | Who owns the LLM turn cycle, what happens between turns, why the loop left the gateway | Turn-loop shape, who calls `GetTurnCompletionsAsync`, between-turn mutations |
+| [agent-turn-loop.md](agent-turn-loop.md) | Who owns the LLM turn cycle, what happens between turns, why the loop left the gateway, and what a `delegate_task` batch reports back to its parent | Turn-loop shape, who calls `GetTurnCompletionsAsync`, between-turn mutations, how `ToolResult.Convert` picks the text of a tool message, the shape of the batch report |
 | [llm-transport.md](llm-transport.md) | Timeout ownership, retry policy, error classification, the UI trace of a failed turn | Timeout ownership, retry budget, error classification, `LlmApiException` |
 | [session-and-context.md](session-and-context.md) | `BuildWire`, compression planning, the system-prompt cache, token accounting | `BuildWire` validation rules, compression planning, prompt cache key |
 | [chat-service.md](chat-service.md) | `IChatService` surface: what each member guarantees and who may call it | An `IChatService` member (add/remove/change a guarantee) |

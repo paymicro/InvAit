@@ -14,7 +14,8 @@ using System.Diagnostics;
 /// <item>it must be logged as WARN — never through the error channel, because Blazor WASM
 /// shows the #blazor-error-ui banner whenever something is written to Console.Error;</item>
 /// <item>an empty failure payload must still surface a non-empty <c>ErrorMessage</c>, otherwise
-/// <c>ToolResult.Convert</c> would hand the LLM an empty tool result.</item>
+/// <c>ToolResult.Convert</c> would hand the LLM an empty tool result (it reads
+/// <c>ErrorMessage</c> whenever <c>Result</c> is empty).</item>
 /// </list>
 /// <para>
 /// The fake JS runtime replaces both the host (answering postVsMessage synchronously) and the
@@ -136,7 +137,7 @@ public class VsBridgeTests
         // Act
         var result = await bridge.ExecuteToolAsync(BuiltInToolEnum.ReadFiles, "{}", TestContext.Current.CancellationToken);
 
-        // Assert — never empty: ToolResult.Convert feeds ErrorMessage to the model on failure
+        // Assert — never empty: ToolResult.Convert reads ErrorMessage when Result is empty
         Assert.False(result.Success);
         Assert.False(string.IsNullOrWhiteSpace(result.ErrorMessage));
         Assert.Equal("Request failed", result.ErrorMessage);

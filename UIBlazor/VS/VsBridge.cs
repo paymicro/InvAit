@@ -84,8 +84,8 @@ public class VsBridge : IVsBridge, IDisposable
     {
         // Бинарный контракт VsResponse: дискриминатор — Success, отдельного канала ошибки нет.
         // При отказе весь Payload — причина, поэтому ErrorMessage заполняется из него ЖЕ.
-        // Пустым он быть не должен: ToolResult.Convert показывает LLM именно ErrorMessage,
-        // и пустая строка превратила бы отказ в «успешный» пустой результат инструмента.
+        // Пустым он быть не должен: ToolResult.Convert читает ErrorMessage, когда Result пуст,
+        // и пустая строка превратила бы отказ в пустой результат инструмента.
         var payload = vsResponse.Payload ?? string.Empty;
         var errorMessage = vsResponse.Success
             ? string.Empty

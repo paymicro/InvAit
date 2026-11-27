@@ -168,6 +168,65 @@ helper SPENDS that window (`isStart = false`) instead of leaving it armed for th
 limitation: a tag split across two deltas (`"<thi"` + `"nk>"`) is not detected — that needs a
 buffered seam in `AfDeltaMapper`, not a smarter pure function.
 
+## What the parent reads back
+
+One `delegate_task` call produces ONE tool message, and `BuildWire` sends only its
+`ToolResult.Content`: `Success` lives in the UI (the ❌/✅ badge) and never crosses the wire, so every
+fact the parent has to act on must be in the text.
+
+`ToolResult.Convert` owns that text, and the text is `Result` whenever it is non-empty — a
+whitespace-only payload counts as none. `ErrorMessage` is the FALLBACK for a result that carries no
+payload (the shape of `VsToolResult.Failed`). The older rule, `Success ? Result : ErrorMessage`, read
+the flag as "which field is the answer", which held only while a failure had no payload: the first
+tool that reported a PARTIAL outcome lost the payload entirely. That tool is `delegate_task`, and
+what it lost was a whole batch — a parent that delegated three tasks and lost one received
+`One or more delegated task(s) failed.` instead of the two finished answers.
+
+`AfSubAgentOrchestrator.ComposeResult` builds the report, `FailedTasksSummary` the one line naming
+the failed tasks:
+
+| Batch | `Success` | What the model reads |
+|---|---|---|
+| one task, completed | true | the branch answer, plus whatever limit note it appended |
+| one task, failed | false | `(Sub-agent branch failed: <reason>) Last response: <its last answer>` |
+| several tasks, none failed | true | one `### Task N: <short task>` block per branch |
+| several tasks, some failed | false | the same blocks, then `N of M delegated task(s) failed (Task …).` |
+| no task parsed | false | `Result` is empty, so the `MissingTasksError` sentence |
+| cancelled after some branches produced text | false | the blocks that exist, then `(Cancelled: the remaining branches did not finish.)` |
+
+The summary is a TRAILER, not a header: `ToolResult.TruncateContent` keeps the TAIL of a result past
+300 KB and drops the beginning, so a header would be the first thing a big batch lost — together
+with the earliest tasks' blocks. Each block already names its own failure, so the summary is a
+convenience, one that survives the cut.
+
+A CANCELLED batch is its own outcome: `ComposeAnsweredBlocks` reports every branch that got as far as
+producing text — an answer, a limit note or a failure report — and appends
+`(Cancelled: the remaining branches did not finish.)`, because that text is the only work that
+survives the run. A batch where nothing produced text yet still returns plain
+`VsToolResult.Cancelled`. The notice says "cancelled", not "cancelled by the user": a nested batch
+sees the OUTER branch's time limit on its own token, so no user is involved there.
+
+**Only an exception makes a branch FAILED.** A branch that stopped at the time limit, the iteration
+cap or the token budget counts as finished: its block carries the note it appended, it is absent
+from the `N of M` line, and the batch keeps `Success = true`. One failed branch is enough to turn the
+batch into `Success = false`: the tool call completed, but not with what the parent asked for.
+
+A branch that died mid-run keeps what it answered before — `LastResponseSuffix` reads the last
+assistant message WITH content, because a branch that answered and then issued a tool call ends on a
+contentless tool-call turn. That partial answer is the only part the parent can still use, and the
+same suffix reports the last answer next to the time limit.
+
+`ErrorMessage` always carries that same `N of M …` sentence — for a single failed task too, where
+the report itself has no trailer. Nothing reads it for this tool (the payload exists, so `Convert`
+never falls back), but a `VsToolResult` reporting failure with an empty reason is the shape
+`VsResponse` forbids, and a future consumer of `Success` would otherwise see a failure with no words
+at all.
+
+Nested batches compose the same way one level down: the branch's model reads the same shape. And the
+batch is composed even when the batch PLUMBING breaks (a UI subscriber throwing inside `Finish`):
+`RunBatchAsync` catches that separately from cancellation and reports what finished, instead of
+replacing the whole delegation with "The tool call was not executed".
+
 ## Related
 
 - Transport, timeouts and retries: [llm-transport.md](llm-transport.md)

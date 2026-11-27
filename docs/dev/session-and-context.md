@@ -33,6 +33,11 @@ providers reject shapes that look fine to us:
 `Id` is **not** used for deduplication: `VisualChatMessage.Id` is `[JsonIgnore]` and generated in
 the constructor, so every message loaded from storage has a new one.
 
+One thing `BuildWire` does NOT decide: which field of a result becomes the text of a `tool` message.
+It sends `ToolCall.Result.Content`, and `ToolResult.Convert` chose that string when the result was
+constructed — `Result` unless it carries nothing (empty or whitespace), `ErrorMessage` only then
+([agent-turn-loop.md](agent-turn-loop.md#what-the-parent-reads-back)).
+
 `BuildWire` mutates the session objects when it stubs an orphan call. That is deliberate: the UI
 must show the same "not executed" result the model sees. The mutation is idempotent — a call that
 already has a `Result` is never touched.

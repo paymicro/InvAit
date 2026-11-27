@@ -41,7 +41,16 @@ public class ToolResult
 
     public static ToolResult Convert(VsToolResult vsToolResult, string displayName, string name)
     {
-        var rawContent = vsToolResult.Success ? vsToolResult.Result : vsToolResult.ErrorMessage;
+        // Модель читает ОДНУ строку на вызов, и это Result. Отказ без полезной нагрузки
+        // (`VsToolResult.Failed`) приходит с пустым Result, поэтому причиной служит ErrorMessage —
+        // как запасной канал, а не как главный; пробельный Result — тоже отсутствие нагрузки.
+        // Прежнее правило (`Success ? Result : ErrorMessage`) выбрасывало нагрузку вместе с флагом:
+        // у частично провалившегося `delegate_task` в Result лежали ответы всех удачных ветвей,
+        // а родитель получал одну фразу «One or more delegated task(s) failed.».
+        var rawContent = string.IsNullOrWhiteSpace(vsToolResult.Result)
+            ? vsToolResult.ErrorMessage
+            : vsToolResult.Result;
+
         return new()
         {
             Name = name,
