@@ -6,8 +6,8 @@ the chat service contract, the transcript's render cost and why it folds its mid
 documents on the tool layer, where behaviour is invisible in the UI and expensive to get wrong twice,
 once per host: how long a tool may run ([tool-timeout.md](tool-timeout.md)), what the model sees of a
 bash output ([bash-output.md](bash-output.md)), which line an `edit_file` search lands on
-([edit-matching.md](edit-matching.md)) and which bytes `create_file` writes — over the one file
-identity both file tools share ([file-writes.md](file-writes.md)).
+([edit-matching.md](edit-matching.md)) and which bytes the file tools write and decode — over the one
+file identity they share ([file-writes.md](file-writes.md)).
 
 `AGENTS.md` carries the architecture map and the rules that must not be broken. These documents
 carry the *why*: the invariants, the failure modes they prevent, and the traps that produced them.
@@ -23,7 +23,7 @@ carry the *why*: the invariants, the failure modes they prevent, and the traps t
 | [tool-timeout.md](tool-timeout.md) | Who limits how long a tool may run: the three clocks, the `timeoutMs` channel rule, the client grace, the per-tool defaults | A tool timeout: who enforces it, the `timeoutMs` payload field, a new per-tool default, the client grace |
 | [bash-output.md](bash-output.md) | What the model sees of a bash command's output: why the temp-script path is stripped, the strip-by-identity rule, and why the sanitizer lives in the host and not in the UI | Bash output shaping: the temp-script path, `BashOutputSanitizer`/`bashOutput.ts`, the temp-file naming |
 | [edit-matching.md](edit-matching.md) | How an `oldStr`/`newStr` becomes a file change: the single normalisation point, the trailing-newline rule, the matching/replacement semantics, why an ambiguous edit is refused, how the batch orchestration is kept testable, how the VS Code port is kept in step, and how a malformed `edits` or `files` payload is refused in words the model can act on | Edit matching: how `oldStr`/`newStr` becomes lines, a matching/replacement rule, the ambiguity policy, the `edits`/`dryRun` schema, the `edits` shape refusals and their wording (`EditPayload`), the `read_files` shape refusals (`ReadFilesPayload`) and the wording helpers both share (`JsonShape`), the `replaceAll`/`dryRun` badges, the batch orchestration in `EditBatch`, a rule ported to `diffMatch.ts` |
-| [file-writes.md](file-writes.md) | How encoding and line endings are decided: `.editorconfig` resolution, the one file identity that `create_file` and `edit_file` both use — BOM ladder, strict-UTF-8 probe, refusal — the majority line-break rule, byte-level `append`/`prepend`, and what the tool reports back | File writing and identity: a `.editorconfig` key or pattern rule, the encoding/line-ending policy, the identification ladder or its refusal, a write mode, its alias table (`FileWriteModeNames` in `Shared`, `parseMode` in the VS Code host), the `mode` schema, the `create_file` mode badge, the `Line endings:`/note-tail report |
+| [file-writes.md](file-writes.md) | How encoding and line endings are decided: `.editorconfig` resolution, the one file identity that `create_file` and `edit_file` use — BOM ladder, strict-UTF-8 probe, refusal — and that `read_files` decodes through with different consequences, the majority line-break rule, byte-level `append`/`prepend`, and what the tool reports back | File writing and identity: a `.editorconfig` key or pattern rule, the encoding/line-ending policy, the identification ladder or its refusal, a write mode, its alias table (`FileWriteModeNames` in `Shared`, `parseMode` in the VS Code host), the `mode` schema, the `create_file` mode badge, the `Line endings:`/note-tail report, the read path (`decodeWorkspaceFileBytes`) |
 
 ## Conventions
 

@@ -172,10 +172,120 @@ function emptyMetadata(): FileMetadata {
 }
 
 /**
+ * How a byte buffer became text: the charset that produced it, the text itself, and the body bytes
+ * the decode saw (callers need them for the BYTE-level separator count). A refusal names the charset
+ * and why, in words the model and the edit path both read.
+ */
+export type TextDecodeOutcome =
+    | { ok: true; text: string; spec: CharsetSpec; body: Buffer }
+    | { ok: false; spec: CharsetSpec; reason: string };
+
+/**
+ * The ladder itself: BOM first, then the charset the CALLER resolved, then UTF-8 — and the result
+ * VERIFIED by re-encoding it, because Node never fails on bad bytes.
+ *
+ * Why it is a function at all: `read_files` used to do `readFileSync(path, 'utf-8')` while `edit_file`
+ * walked the full ladder, so a UTF-16 file reached the model as mojibake from one tool and
+ * round-tripped untouched through the other. Two copies of an encoding decision do not drift loudly —
+ * they drift silently, and the symptom lands in the model's context.
+ *
+ * It deliberately knows NOTHING about the file beyond its bytes: the NUL probe and the
+ * `.editorconfig` fallback need a path and are the same for every caller, so they live one level up
+ * in `decodeWorkspaceFileBytes`. This level stays a pure function over a buffer, which is what makes
+ * it testable without stubs.
+ */
+export function decodeTextBytes(bytes: Buffer, declaredCharset?: CharsetName): TextDecodeOutcome {
+    // The BOM ladder decides both the charset and where the body starts.
+    const sniffed = sniffPreamble(bytes);
+    const spec = sniffed !== undefined
+        ? sniffed.spec
+        : declaredCharset !== undefined
+            ? CHARSETS[declaredCharset]
+            : CHARSETS['utf-8'];
+    const body = sniffed === undefined ? bytes : bytes.subarray(sniffed.bodyOffset);
+
+    const text = spec.decode(body);
+
+    // Node NEVER fails on bad bytes: `toString('utf8')` substitutes U+FFFD, `utf16le` drops an odd
+    // trailing byte, UTF-32 clamps an out-of-range unit. Decoding is therefore not proof of
+    // anything on its own — but a decode that its OWN encoder cannot undo is proof the file is not
+    // in that charset (a lone 0xFF under a UTF-8 BOM, an odd-length UTF-16 body), and writing the
+    // decoded text back would put those replacement bytes on disk. So the READ verifies itself:
+    // re-encode with the very same byte-preserving function and compare. A mismatch is a REFUSAL,
+    // never a warning.
+    //
+    // This is deliberately NOT a check on the model's new text: that text is not part of `body`,
+    // and a character the charset cannot hold is refused on the WRITE side (`encodeStrict`), which
+    // names the file and the character. Here the question is only "were these bytes decoded
+    // losslessly", and the answer must be yes before a single line is matched or printed.
+    if (!spec.encode(text).equals(body)) {
+        return {
+            ok: false,
+            spec,
+            // Tool-NEUTRAL: both callers print this, and a read does not write anything back, so a
+            // sentence about "what an edit would write" was a description of a consequence that one
+            // of them cannot have. What is true for both is that the text would invent characters.
+            reason: `file is not valid ${spec.charset}: decoding it and re-encoding the result does not ` +
+                'reproduce the same bytes (a replacement character, a dropped trailing byte or a clamped ' +
+                'code point). The text would contain characters the file does not have.',
+        };
+    }
+
+    return { ok: true, text, spec, body };
+}
+
+/**
+ * The DECISION both tools share: what a workspace file's bytes mean, or why they cannot be shown as
+ * text. `decodeTextBytes` is the ladder itself; this adds the two inputs a caller cannot invent on
+ * its own — the NUL probe and the tree's `charset` as the last resort — so that `read_files` and
+ * `edit_file` cannot answer differently about the SAME file.
+ *
+ * Splitting them that way is the whole point: the decision is shared, the CONSEQUENCES are not. The
+ * edit path adds a 2 MB window and answers with `FileMetadata` (`status` / `skipReason`); the read
+ * path adds neither a window nor a rewrite, and answers with one entry's `error`.
+ */
+export function decodeWorkspaceFileBytes(absPath: string, bytes: Buffer): TextDecodeOutcome {
+    const sniffed = sniffPreamble(bytes);
+    if (sniffed === undefined) {
+        // No BOM: the file must describe itself as UTF-8, or the tree must name the charset it was
+        // written in — otherwise decoding it at all is a guess. The probe is charset-free and runs
+        // only for a BOM-less file: ASCII bytes inside UTF-16 contain NULs, so probing a BOM-ed file
+        // first would declare every UTF-16/UTF-32 file binary.
+        if (bytes.subarray(0, BINARY_PROBE_BYTES).includes(0)) {
+            return {
+                ok: false,
+                spec: CHARSETS['utf-8'],
+                reason: 'file looks binary (NUL byte in the first 1 KB)',
+            };
+        }
+        if (!isValidUtf8(bytes)) {
+            // `.editorconfig` may declare the charset. Refusing without asking made the same file
+            // editable in Visual Studio and unreadable here — the divergence the shared codec was
+            // brought in to end.
+            const declared = resolveEditorConfig(absPath).charset;
+            if (declared === undefined || !isCreatableCharset(declared)) {
+                return {
+                    ok: false,
+                    spec: CHARSETS['utf-8'],
+                    reason: declared === undefined
+                        ? 'file has no BOM and is not valid UTF-8, and .editorconfig declares no charset. ' +
+                          'Add charset to .editorconfig, or edit the file with bash.'
+                        : `file has no BOM and is not valid UTF-8, and .editorconfig declares charset '${declared}', ` +
+                          'which is not supported. Declare a supported charset, or edit the file with bash.',
+                };
+            }
+            return decodeTextBytes(bytes, declared);
+        }
+    }
+
+    return decodeTextBytes(bytes);
+}
+
+/**
  * Reads a file into lines plus everything needed to write it back unchanged.
  *
- * Order of the refusals: size (cheap, before loading a huge file) -> encoding (BOM first, then a
- * NUL probe and a strict UTF-8 probe for a BOM-less file) -> content.
+ * Order of the refusals: size (cheap, before loading a huge file) -> identity (`decodeWorkspaceFileBytes`)
+ * -> content. The identity is the one both file tools share; the window above it is this path's own.
  */
 export function readFileWithMetadata(absPath: string): FileMetadata {
     if (!fs.existsSync(absPath)) {
@@ -202,71 +312,21 @@ export function readFileWithMetadata(absPath: string): FileMetadata {
         };
     }
 
-    // The BOM ladder decides both the charset and where the body starts.
-    const sniffed = sniffPreamble(bytes);
-    let declaredCharset: CharsetName | undefined;
-    if (sniffed === undefined) {
-        // No BOM: the file must describe itself as UTF-8, or the tree must name the charset it was
-        // written in — otherwise decoding it at all is a guess.
-        if (bytes.subarray(0, BINARY_PROBE_BYTES).includes(0)) {
-            return {
-                ...emptyMetadata(),
-                status: 'binary',
-                skipReason: 'file looks binary (NUL byte in the first 1 KB)',
-            };
-        }
-        if (!isValidUtf8(bytes)) {
-            // `.editorconfig` may declare the charset. Refusing without asking made the same file
-            // editable in Visual Studio and unreadable here — the divergence the shared codec was
-            // brought in to end.
-            const declared = resolveEditorConfig(absPath).charset;
-            if (declared === undefined || !isCreatableCharset(declared)) {
-                return {
-                    ...emptyMetadata(),
-                    status: 'binary',
-                    skipReason: declared === undefined
-                        ? 'file has no BOM and is not valid UTF-8, and .editorconfig declares no charset. ' +
-                          'Add charset to .editorconfig, or edit the file with bash.'
-                        : `file has no BOM and is not valid UTF-8, and .editorconfig declares charset '${declared}', ` +
-                          'which is not supported. Declare a supported charset, or edit the file with bash.',
-                };
-            }
-            declaredCharset = declared;
-        }
-    }
-
-    const spec = sniffed !== undefined
-        ? sniffed.spec
-        : declaredCharset !== undefined
-            ? CHARSETS[declaredCharset]
-            : CHARSETS['utf-8'];
-    const body = sniffed === undefined ? bytes : bytes.subarray(sniffed.bodyOffset);
-
-    const text = spec.decode(body);
-
-    // Node NEVER fails on bad bytes: `toString('utf8')` substitutes U+FFFD, `utf16le` drops an odd
-    // trailing byte, UTF-32 clamps an out-of-range unit. Decoding is therefore not proof of
-    // anything on its own — but a decode that its OWN encoder cannot undo is proof the file is not
-    // in that charset (a lone 0xFF under a UTF-8 BOM, an odd-length UTF-16 body), and writing the
-    // decoded text back would put those replacement bytes on disk. So the READ verifies itself:
-    // re-encode with the very same byte-preserving function and compare.
-    //
-    // This is deliberately NOT a check on the model's new text: that text is not part of `body`,
-    // and a character the charset cannot hold is refused on the WRITE side (`encodeStrict`), which
-    // names the file and the character. Here the question is only "were these bytes decoded
-    // losslessly", and the answer must be yes before a single line is matched.
-    if (!spec.encode(text).equals(body)) {
+    // The identity of the file — BOM, probe, `.editorconfig` — is the SAME call `read_files` makes,
+    // so the two tools cannot disagree about whether a file is readable text.
+    const decoded = decodeWorkspaceFileBytes(absPath, bytes);
+    if (!decoded.ok) {
         return {
             ...emptyMetadata(),
-            encoding: asFileEncoding(spec),
+            encoding: asFileEncoding(decoded.spec),
             // 'binary' is the shared word for "nothing was decoded" — the same status the C# reader
             // reports for `DecoderFallbackException`, so the two hosts' reports stay comparable.
             status: 'binary',
-            skipReason: `file is not valid ${spec.charset}: decoding it and re-encoding the result does not ` +
-                'reproduce the same bytes (a replacement character, a dropped trailing byte or a clamped ' +
-                'code point would be written back by an edit)',
+            skipReason: decoded.reason,
         };
     }
+
+    const { text, spec, body } = decoded;
 
     const hasFinalNewLine = text.length > 0 && (text.endsWith('\n') || text.endsWith('\r'));
 

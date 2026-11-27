@@ -1,9 +1,10 @@
 # File writes (`create_file`) and file identity
 
 How an encoding and a line ending are decided: what `create_file` puts on disk, and how an existing
-file is IDENTIFIED before either `create_file` or `edit_file` touches it. The two tools share one
-identity on purpose — an edit re-saves the whole file, so a wrong decode there is not a display
-problem, it is a rewrite.
+file is IDENTIFIED before `create_file` or `edit_file` touches it, or `read_files` decodes it. The two
+writing tools share one identity on purpose — an edit re-saves the whole file, so a wrong decode there
+is not a display problem, it is a rewrite — and the reading one shares it so that a file the agent can
+edit cannot be unreadable to it.
 
 Code, VS host: `ToolCore/FileWriter.cs` (the write path) on top of four single homes —
 `ToolCore/FileIdentity.cs` (the BOM ladder, the two-encoding split), `ToolCore/TextFileCodec.cs`
@@ -14,7 +15,9 @@ path). `.editorconfig` resolution lives in `ToolCore/EditorConfig.cs`, whose
 
 VS Code mirror: `VSCode/src/toolHandlers/fileWriter.ts` + `fileReader.ts` + `encoding.ts` +
 `editorConfig.ts`. Everything encoding-shaped is `encoding.ts`, which imports NOTHING (no `fs`, no
-`path`) — that is what makes it testable without stubs.
+`path`) — that is what makes it testable without stubs. The identity both file tools ask for is
+`decodeWorkspaceFileBytes` in `fileReader.ts` (BOM, NUL probe, strict UTF-8, the tree's charset); the
+ladder it is built on, `decodeTextBytes`, is what the unit tests drive.
 
 ## The defect this replaces
 
@@ -183,6 +186,44 @@ is the SAVING encoding (it carries the preamble, so `SaveFileAsync`'s `StreamWri
 exactly ONE BOM), while the body codec emits none. Collapsing the two into one member drops the BOM
 of every `utf-8-bom` / UTF-16 file on the first edit.
 
+## `read_files` asks the same question, with different consequences
+
+`read_files` used to be one line — `fs.readFileSync(absPath, 'utf-8')` — while `edit_file` walked the
+ladder above. So a UTF-16 file reached the model as mojibake (a `U+FFFD` pair where its BOM was, a NUL
+between every character), a UTF-8 file with a BOM kept the `U+FEFF` glued to its first line, and a
+BOM-less cp1251 file was decoded with replacement characters and reported as read.
+
+Both tools now ask ONE function, `decodeWorkspaceFileBytes`: the BOM ladder, the NUL probe for a
+BOM-less file, the strict-UTF-8 probe, the tree's `charset` as the last resort, and the decode
+verified by re-encoding it. The DECISION is shared; the CONSEQUENCES are not, because reading is not
+rewriting:
+
+| | `edit_file` (`readFileWithMetadata`) | `read_files` |
+|---|---|---|
+| Size window | 2 MB, refused above it | none — the 2000-line cap applies to the slice, not to the file |
+| Answer | `FileMetadata` with `status` / `skipReason` | that ONE entry gets `error` and no `lines` |
+
+A DECODE refusal is per entry, never per call: the other files the model asked for still come back —
+the partial success `FileContent.Error` gives in the VS host. A SHAPE refusal is the opposite (an
+entry without a `path`, a non-object entry, an unusable range) and refuses the whole call before any
+file is read — see [edit-matching.md](edit-matching.md). `startLine` / `lineCount` are applied to the
+DECODED line list, so a line number means what the model counts, not a byte offset.
+
+The .NET host reads this tool through `File.ReadLines`, i.e. a `StreamReader` with BOM detection: a
+BOM-tagged file is decoded by its own preamble and the preamble never reaches the text, which is why a
+BOM-ed file was only ever garbled in the VS Code host. That path does not walk the rest of the ladder,
+so a BOM-less non-UTF-8 file arrives there as `U+FFFD` content instead of a refusal, and a BOM-less
+UTF-16 file arrives as text with NULs where this host says `file looks binary` — the two hosts are not
+byte-identical here.
+
+Cost, accepted: the verification re-encodes the decoded text, so one read holds the bytes, the text and
+an encoded copy — and a JS string is UTF-16, so an ASCII/UTF-8 file peaks at roughly FOUR times its
+size before the line array and the JSON payload exist. `read_files` has no size window (the 2000-line
+cap is applied after the decode), so this is a read-side cost the edit path avoids above 2 MB.
+
+Not covered by this ladder, in the same host: `read_open_file` (the active editor's file) and `grep`
+still decode `'utf-8'`, so they can still garble a UTF-16 or BOM-ed file.
+
 ## Modes
 
 `mode` is a **required** property of the schema; `overwrite` is what `null` means. With `strict: true`
@@ -345,7 +386,7 @@ the UTF-8 default for a new file); one reported with it came from the tree.
 | The single homes: splitter parity, majority separator counted over bytes (incl. UTF-16), strict-UTF-8 probe, charset table, byte helpers | `ToolCore.Tests/TextFileCodecTests.cs` |
 | Edit read path: binary refusal leaves the bytes alone, a declared `latin1` round-trips byte-exact, `utf-8-bom` keeps exactly ONE BOM | `ToolCore.Tests/FileUtilsTests.cs` |
 | Edit batch orchestration: ordering, per-edit refusals, counters, the model-facing sentences | `ToolCore.Tests/EditBatchTests.cs` |
-| Same rules in the VS Code host (stubbed fs) | `VSCode/src/test/toolHandlers/fileWriter.test.ts`, `fileOps.test.ts` |
+| Same rules in the VS Code host (stubbed fs): the writer, the reader's refusals, and the identity both file tools share | `VSCode/src/test/toolHandlers/fileWriter.test.ts`, `fileOps.test.ts`, `fileReader.test.ts` (incl. the `decodeTextBytes` / `decodeWorkspaceFileBytes` blocks) |
 | The fixture-path translation that lets the mock tests run on the ubuntu runner, incl. the Unix half with the platform as a parameter | `ToolCore.Tests/MockPathsTests.cs` |
 
 All three .NET test files above use `MockFileSystem`, which inherits the HOST's path rules and has no

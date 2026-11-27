@@ -3,11 +3,10 @@
  */
 
 import * as fs from 'fs';
-import * as path from 'path';
 import { ToolResult } from './types';
 import { getAbsolutePath, makeRelative, listDir } from './fileUtils';
 import { applyEdit, splitEditText } from './diffMatch';
-import { readFileWithMetadata, writeFileWithMetadata, separatorName } from './fileReader';
+import { decodeWorkspaceFileBytes, readFileWithMetadata, writeFileWithMetadata, separatorName } from './fileReader';
 import { writeFileWithMode, parseMode } from './fileWriter';
 
 /** How much of an offending value is echoed back. A whole 40 KB oldStr is not a message. */
@@ -221,7 +220,23 @@ export function readFiles(params: any, workspaceRoot: string): ToolResult {
                 continue;
             }
 
-            const content = fs.readFileSync(absPath, 'utf-8');
+            // BYTES, not a `'utf-8'` decode: a UTF-16 or BOM-ed file used to reach the model as
+            // mojibake (a replacement pair where the UTF-16 BOM was, a NUL between every character;
+            // `U+FEFF` glued to the first line of a BOM-ed UTF-8 file) while `edit_file` handled the
+            // very same file correctly. `decodeWorkspaceFileBytes` is the identity BOTH tools use —
+            // BOM, NUL probe, strict UTF-8, the tree's charset — so they can no longer disagree about
+            // whether a file is readable text. Only the CONSEQUENCES differ here: no 2 MB window
+            // (reading is not rewriting) and a refusal costs ONE entry, not the call.
+            const rawBytes = fs.readFileSync(absPath);
+            // Defensive: a stubbed or exotic `fs` may answer a string, and the decoder speaks bytes.
+            const bytes = Buffer.isBuffer(rawBytes) ? rawBytes : Buffer.from(String(rawBytes), 'utf8');
+            const decoded = decodeWorkspaceFileBytes(absPath, bytes);
+            if (!decoded.ok) {
+                results.push({ path: p, error: decoded.reason });
+                continue;
+            }
+
+            const content = decoded.text;
             let lines = content.split(/\r\n|\r|\n/);
             if (lines.length > 0 && lines[lines.length - 1] === '') {
                 lines.pop();

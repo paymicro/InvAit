@@ -293,26 +293,26 @@ Invariants behind that table:
   it PER EDIT ("the edit is null"), so its siblings still apply. Refusing the batch here would throw
   away a call that was almost entirely valid. A string or a number in that position is different:
   there is nothing to hand `EditBatch`, so the batch is refused up front.
-- **A `approximateLine` is read as DIGITS, never as a parsed number.** `118` is a hint; `118.0`,
-  `1e2` and `1.5` are refused with one sentence that says how to write it ("must be a whole number
-  written plainly, like 42"). An earlier version ACCEPTED the first two for parity with VS Code and
-  paid for the tolerance with a hand-written number grammar (sign, mantissa, exponent, decimal-point
-  shift) whose first draft turned `1.5e1` into 150 — a silent off-by-ten in the line an edit lands
-  on. The tolerance served a spelling no caller produces.
+- **An `approximateLine` must be a PLAIN INTEGER** — `TryGetInt32` on the literal's own text, so
+  `118` is a hint and `118.0` / `1e2` / `1.5` are refused. One sentence covers them all, and it is
+  stated as what the field needs rather than as a spelling complaint. An earlier version accepted
+  the first two and paid for the tolerance with a hand-written number grammar whose first draft
+  turned `1.5e1` into 150 — a silent off-by-ten in the line an edit lands on.
 - **Any shape error refuses the WHOLE batch.** Applying the edits that happen to parse while
   silently dropping another's `replaceAll` would rewrite one occurrence where the model asked for
   all of them.
 
 The VS Code host keeps the same table in `fileOps.ts` (`describeValue` + the shape loops), with the
-same words. It is a port, not a second policy: extend both, in one change. Two differences remain,
-and both are limits of the language rather than choices. First, JavaScript cannot recover the source
-text after `JSON.parse`, so `1e3` reads `the number 1e3` in the C# host and `the number 1000` in VS
-Code, `9007199254740993` reads itself there and `…992` here, and an object keeps its original spacing
-only there. Second, the C# host can therefore be STRICTER about a SPELLING: `118.0` is refused there
-and invisible here, because it is already `118` by the time this host sees it. That asymmetry points
-the safe way — a value that reaches the applier is one both hosts read the same, and C# can never
-silently accept a number this host would refuse. WHICH ENTRY, WHICH FIELD and the sentence around
-them are identical, and that is what a test can pin.
+same words: extend both, in one change. The two hosts are NOT required to be identical — they are
+different IDEs — but a refusal a user can be shown must not contradict itself across them. Where the
+languages force a difference, the difference is written down:
+
+- JavaScript cannot recover the source text after `JSON.parse`, so `1e3` reads `the number 1000`
+  here and `the number 1e3` there, `9007199254740993` reads `…992`, and an object loses its spacing.
+- Because of that, `118.0` and `1e2` are refused by C# and accepted here: the fraction is already
+  gone by the time this host sees it. Recovering it would need the raw payload, which a webview
+  handler does not get. The direction is the safe one — a value that reaches the applier is read the
+  same by both hosts — and the SENTENCE is shared, so the model learns one rule.
 
 ## `read_files` has the same rule, in `ReadFilesPayload`
 
@@ -336,7 +336,7 @@ and a `$[0]` index instead; both tools now say which entry, which field and whic
 | an element is `null`, a string or a number | `Failed to read 'files': entry 2 of 3 must be a JSON object with a 'path', received null. Nothing was read.` |
 | `path` missing, `null`, blank or not a string | `Failed to read 'files': entry 1 of 2 has no 'path'. Each entry needs a 'path' string. Nothing was read.` |
 | `startLine` / `lineCount` is not a whole number or null | `Failed to read 'files': entry 1 of 2: 'startLine' must be an integer or null, received the string "3". Nothing was read.` |
-| the same, past `MaxLineNumber` | `Failed to read 'files': entry 1 of 2: 'lineCount' must be a line number between 1 and 10000, or null for no range, received the number 3000000000. Nothing was read.` |
+| the same, past `MaxLineNumber` | `Failed to read 'files': entry 1 of 2: 'lineCount' must be a whole line number between 1 and 10000, written as plain digits, or null for no range, received the number 3000000000. Nothing was read.` |
 
 Invariants, and the failure each one prevents:
 
@@ -351,21 +351,19 @@ Invariants, and the failure each one prevents:
   silently dropped the second range of a file, i.e. answered a shorter request than was sent.
 - **A range is refused, never folded.** Folding `1.5`, `"3"` or `3000000000` to "no range" answered
   with the ENTIRE file — far more text than was asked for — while the other host refused the call.
-- **A line number is read as DIGITS, and bounded.** The rule is one line: an optional `-` followed by
-  decimal digits. Every numeric API here ROUNDS before a test can run — `JsonElement.TryGetDecimal`
-  keeps 28–29 significant digits — so a test on a parsed value answers a question about a number the
-  model never sent: `1e-29` arrived as `0` (i.e. "no range", the whole file, no refusal) and 29 nines
-  as `1` (i.e. line 1, one line returned). Deciding on the digits cannot round, because there is no
-  number to round. The cost is a refused SPELLING (`118.0`, `1e2`) and the refusal says how to write
-  it. The bound (`MaxLineNumber`, 10 000) gives a number past it "must be a line number between 1 and
-  10000" instead of calling an integral value a typo.
+- **A line number must be a PLAIN INTEGER, and is bounded.** The test is `TryGetInt32` on the
+  literal's own text — an optionally-signed run of digits, nothing else. It cannot be a test on a
+  PARSED value: every API that reads a fraction rounds first (`TryGetDecimal` keeps 28–29 significant
+  digits), so `1e-29` arrived as `0` — "no range", i.e. the whole file — and 29 nines as `1`. An
+  integer parse never looks at a fraction, so that hazard is unreachable rather than merely avoided.
+  The cost is a refused SPELLING (`118.0`, `1e2`). The bound (`MaxLineNumber`, 10 000) answers a
+  number past it with the allowed range, which is also what makes the single sentence honest.
 - **Property names are read ignoring case**, as `System.Text.Json` did with
   `PropertyNameCaseInsensitive` and as the approval card does with `OrdinalIgnoreCase`. A
   case-sensitive read refuses `{"Path": "a.cs"}`, which the UI has just rendered as a valid call.
 - **The shape helpers live once**, in `JsonShape`: the case-insensitive lookup, the echoed literal
-  (cut at 60 characters, surrogate-safe, closing quote restored) and the digits-only test. A second
-  copy of "what counts as a line number" is how `118.0` ends up accepted in one tool and refused in
-  the other.
+  (cut at 60 characters, surrogate-safe, closing quote restored) and the plain-integer test. A second
+  copy of "what counts as a line number" is how the two tools end up disagreeing.
 
 ## The tests are still named `FindInFile_*`
 

@@ -169,6 +169,151 @@ describe('fileOps', () => {
             expect(parsed[0].startLine).to.be.undefined;
         });
 
+        // --- encoding ---------------------------------------------------------
+
+        /**
+         * Models the REAL `fs.readFileSync(path, encoding)` contract: with an encoding it answers a
+         * STRING, without one a Buffer. A stub that always answered a Buffer made the old
+         * `readFileSync(path, 'utf-8')` die on `content.split` — the tests would then have passed for
+         * a reason the bug never had. The bug was silent mojibake, so the stub has to produce it.
+         */
+        const stubFileBytes = (file: Buffer): void => {
+            (fsStub.existsSync as sinon.SinonStub).returns(true);
+            (fsStub.readFileSync as sinon.SinonStub).callsFake(
+                (_p: string, encoding?: BufferEncoding) => encoding === undefined ? file : file.toString(encoding));
+        };
+
+        it('should decode a UTF-16LE file instead of handing the model mojibake', () => {
+            // `readFileSync(absPath, 'utf-8')` decoded a UTF-16 file as if it were UTF-8: the model
+            // read a `U+FFFD` pair where the UTF-16 BOM was, plus a NUL between every character,
+            // while `edit_file` handled the very same file correctly.
+            stubFileBytes(Buffer.concat([
+                Buffer.from([0xff, 0xfe]),
+                Buffer.from('line1\nline2', 'utf16le'),
+            ]));
+
+            const result = toolHandlers.dispatchTool('read_files', JSON.stringify({
+                files: [{ path: 'utf16.txt' }]
+            }), WORKSPACE);
+
+            expect(result.success, JSON.stringify(result)).to.be.true;
+            const parsed = JSON.parse(result.payload!);
+            expect(parsed[0].lines).to.deep.equal(['line1', 'line2']);
+        });
+
+        it('should keep a UTF-8 BOM out of the first line', () => {
+            // The BOM belongs to the encoding, not to the text: it used to arrive as `\uFEFFa`, so a
+            // model asked to match that line had to reproduce a character it cannot see.
+            stubFileBytes(Buffer.concat([
+                Buffer.from([0xef, 0xbb, 0xbf]),
+                Buffer.from('a\nb', 'utf8'),
+            ]));
+
+            const result = toolHandlers.dispatchTool('read_files', JSON.stringify({
+                files: [{ path: 'bom.txt' }]
+            }), WORKSPACE);
+
+            expect(result.success).to.be.true;
+            const parsed = JSON.parse(result.payload!);
+            expect(parsed[0].lines).to.deep.equal(['a', 'b']);
+        });
+
+        it('should refuse an entry it cannot decode losslessly instead of answering U+FFFD', () => {
+            // `61 FF 62` has no BOM and is not UTF-8; Node decodes it to `a\uFFFDb` and reports
+            // nothing, so the model used to be handed a character the file never contained. The entry
+            // now carries the reason and NO lines — the same channel the VS host's FileContent.Error
+            // uses — and the other entries of the call still come back. The sentence is the edit
+            // path's, because the refusal is the SAME decision (`decodeWorkspaceFileBytes`) and names
+            // the two ways out: declare the charset, or read/edit the file with bash.
+            stubFileBytes(Buffer.from([0x61, 0xff, 0x62]));
+
+            const result = toolHandlers.dispatchTool('read_files', JSON.stringify({
+                files: [{ path: 'latin1.txt' }]
+            }), WORKSPACE);
+
+            expect(result.success).to.be.true;
+            const parsed = JSON.parse(result.payload!);
+            expect(parsed[0].path).to.equal('latin1.txt');
+            expect(parsed[0].lines).to.be.undefined;
+            expect(parsed[0].error).to.include('not valid UTF-8');
+            expect(parsed[0].error).to.include('.editorconfig declares no charset');
+        });
+
+        it('should refuse a BOM-less UTF-16 file instead of returning text full of NULs', () => {
+            // `ab` in UTF-16LE is `61 00 62 00` — every byte is ASCII, so it passes the strict-UTF-8
+            // probe AND the decode/re-encode check, and the lines would arrive with a NUL between
+            // every character. The NUL probe runs before the decode for exactly this case, and it is
+            // the same probe `edit_file` runs: the two tools must agree on whether a file is text.
+            stubFileBytes(Buffer.from('ab', 'utf16le'));
+
+            const result = toolHandlers.dispatchTool('read_files', JSON.stringify({
+                files: [{ path: 'utf16-nobom.txt' }]
+            }), WORKSPACE);
+
+            const parsed = JSON.parse(result.payload!);
+            expect(parsed[0].lines).to.be.undefined;
+            expect(parsed[0].error).to.include('file looks binary');
+        });
+
+        it('should report an empty file and a BOM-only file as no lines, not as one empty line', () => {
+            stubFileBytes(Buffer.alloc(0));
+            const empty = JSON.parse(toolHandlers.dispatchTool('read_files',
+                JSON.stringify({ files: [{ path: 'empty.txt' }] }), WORKSPACE).payload!);
+            expect(empty[0].lines).to.deep.equal([]);
+
+            // The BOM is the encoding's, so a file that is nothing but a BOM has no text at all.
+            stubFileBytes(Buffer.from([0xef, 0xbb, 0xbf]));
+            const bomOnly = JSON.parse(toolHandlers.dispatchTool('read_files',
+                JSON.stringify({ files: [{ path: 'bom-only.txt' }] }), WORKSPACE).payload!);
+            expect(bomOnly[0].lines).to.deep.equal([]);
+        });
+
+        it('should split CR-only line endings', () => {
+            // The splitter is the same three-way one the reader uses; a CR-only file is not one line.
+            stubFileBytes(Buffer.from('a\rb\rc', 'utf8'));
+
+            const parsed = JSON.parse(toolHandlers.dispatchTool('read_files',
+                JSON.stringify({ files: [{ path: 'cr.txt' }] }), WORKSPACE).payload!);
+            expect(parsed[0].lines).to.deep.equal(['a', 'b', 'c']);
+        });
+
+        it('should refuse an entry it cannot decode and still return the entries it can', () => {
+            // The refusal channel is per ENTRY — a SHAPE refusal refuses the whole call instead —
+            // so a decode failure must not cost the model the files it CAN read. Without this, a
+            // `continue` turned into a `return` would be invisible to the suite.
+            (fsStub.existsSync as sinon.SinonStub).returns(true);
+            (fsStub.readFileSync as sinon.SinonStub).callsFake((p: string) =>
+                String(p).endsWith('bad.txt')
+                    ? Buffer.from([0x61, 0xff, 0x62])
+                    : Buffer.from('ok', 'utf8'));
+
+            const result = toolHandlers.dispatchTool('read_files', JSON.stringify({
+                files: [{ path: 'good.txt' }, { path: 'bad.txt' }]
+            }), WORKSPACE);
+
+            expect(result.success).to.be.true;
+            const parsed = JSON.parse(result.payload!);
+            expect(parsed).to.have.length(2);
+            expect(parsed[0].lines).to.deep.equal(['ok']);
+            expect(parsed[1].error).to.include('not valid UTF-8');
+        });
+
+        it('should apply startLine to the DECODED lines of a UTF-16 file', () => {
+            // A range counted on the decoded text is the only one that means what the model counts.
+            stubFileBytes(Buffer.concat([
+                Buffer.from([0xff, 0xfe]),
+                Buffer.from('a\nb\nc\nd', 'utf16le'),
+            ]));
+
+            const result = toolHandlers.dispatchTool('read_files', JSON.stringify({
+                files: [{ path: 'utf16.txt', startLine: 2, lineCount: 2 }]
+            }), WORKSPACE);
+
+            const parsed = JSON.parse(result.payload!);
+            expect(parsed[0].lines).to.deep.equal(['b', 'c']);
+            expect(parsed[0].startLine).to.equal(2);
+        });
+
         // --- the array itself -------------------------------------------------
 
         it('should REFUSE an absent files field instead of answering an empty success', () => {
